@@ -1,0 +1,82 @@
+agent:
+  id: ""          # Auto-detected from /etc/machine-id if empty
+  version: "0.3.1"
+
+forwarder:
+  backend_url: "https://192.168.1.140:8443"
+  management_url: "http://192.168.1.140"
+  ca_file: "certs/ca.crt"       # Path to backend CA cert (for TLS verification)
+  api_key: "changeme"           # API key — set to match backend config
+  install_key: ""               # Set automatically during install
+  batch_size: 200
+  flush_interval: 5s
+
+queue:
+  db_path: "/var/lib/obsidianwatch/queue"   # Changed to /tmp/obsidianwatch for interactive run
+  max_rows: 100000
+
+collector:
+  journald:
+    enabled: true               # systemd journal: auth, SSH, sudo, kernel, cron
+
+  process:
+    enabled: true
+    poll_interval: 2s           # /proc poll interval (netlink handles real-time)
+
+  network:
+    enabled: true
+    poll_interval: 30s          # /proc/net/tcp|udp diff interval
+
+  dns:
+    enabled: true               # Detects port 53 UDP connections per process
+
+  fim:
+    enabled: true
+    dirs:
+      - path: /home
+        recursive: true
+        exclude: ["*.log", "*.cache", ".git"]
+      - path: /root
+        recursive: true
+        exclude: ["*.log", ".cache"]
+      - path: /tmp
+        recursive: false
+        exclude: ["*.log", "*.tmp"]
+      - path: /var/tmp
+        recursive: false
+      - path: /etc
+        recursive: false
+      - path: /opt
+        recursive: false
+      - path: /srv
+        recursive: false
+
+  config_monitor:
+    enabled: true               # Watches sensitive /etc paths (equiv. to Windows registry)
+    paths:
+      - /etc/passwd
+      - /etc/shadow
+      - /etc/sudoers
+      - /etc/sudoers.d
+      - /etc/ssh/sshd_config
+      - /etc/cron.d
+      - /etc/cron.daily
+      - /etc/cron.weekly
+      - /etc/crontab
+      - /etc/hosts
+      - /etc/ld.so.preload
+      - /etc/systemd/system
+      - /root/.ssh
+
+  health:
+    enabled: true
+    interval: 60s
+
+  rate_limit:
+    enabled: true
+    max_per_second: 500
+    dedupe_window: 5s
+
+log:
+  level: "info"                 # debug | info | warn | error
+  format: "json"

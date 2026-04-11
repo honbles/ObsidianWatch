@@ -1,0 +1,144 @@
+agent:
+  # Unique agent identifier. Leave empty to use the machine hostname.
+  id: ""
+  version: "0.2.0"
+
+collector:
+
+  event_log:
+    enabled: true
+    channels:
+      - Security
+      - System
+      - Application
+      - Microsoft-Windows-PowerShell/Operational
+      # Domain Controller channels (silently skipped if not a DC)
+      - Directory Service
+      - DNS Server
+      - File Replication Service
+      - Microsoft-Windows-Authentication/AuthenticationPolicyFailures-DomainController
+      - Microsoft-Windows-Kerberos/Operational
+    poll_interval: 5s
+
+  sysmon:
+    # Requires Sysmon to be installed. If not installed the channel is skipped.
+    enabled: true
+
+  network:
+    enabled: true
+    poll_interval: 30s
+
+  process:
+    # ETW-based real-time process create/terminate. Falls back to WMI polling.
+    enabled: true
+
+  registry:
+    enabled: true
+    keys:
+      - HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Run
+      - HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\RunOnce
+      - HKLM\SYSTEM\CurrentControlSet\Services
+      - HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\Run
+
+  # DNS query/response telemetry via Microsoft-Windows-DNS-Client/Operational.
+  # No Sysmon required. The agent auto-enables this channel if it is off.
+  dns:
+    enabled: true
+
+  # File Integrity Monitoring - watches directories for create/modify/delete.
+  fim:
+    enabled: true
+    dirs:
+      - path: "C:\\Windows\\System32"
+        recursive: false
+        exclude:
+          - "*.log"
+          - "*.tmp"
+          - "*.etl"
+      - path: "C:\\Windows\\SysWOW64"
+        recursive: false
+        exclude:
+          - "*.log"
+          - "*.tmp"
+          - "*.etl"
+      # User profile sensitive paths — catches credential files, startup scripts, DLL hijacking
+      - path: "C:\\Users"
+        recursive: true
+        exclude:
+          - "*.log"
+          - "*.tmp"
+          - "*.etl"
+          - "*.db"
+          - "*.sqlite"
+          - "ntuser.dat*"
+          - "*.lnk"
+          - "Thumbs.db"
+          - "desktop.ini"
+      # ProgramData — malware staging, service configs
+      - path: "C:\\ProgramData"
+        recursive: true
+        exclude:
+          - "*.log"
+          - "*.tmp"
+          - "*.etl"
+      # - path: "C:\\inetpub\\wwwroot"
+      #   recursive: true
+      #   exclude: []
+
+  # Agent health heartbeat - reports queue depth, dropped events, memory usage.
+  health:
+    enabled: true
+    interval: 60s
+
+  # Per-source rate limiting and deduplication.
+  # Prevents log floods from filling the queue and backend.
+  rate_limit:
+    enabled: true
+    max_per_second: 500   # max events/sec per source
+    dedupe_window: 5s     # suppress duplicate event IDs within this window
+
+  # Application log tailing - ship any log file to the SIEM backend.
+  # format: json | text | combined (apache/nginx)
+  app_logs: []
+
+  # Examples (uncomment and edit paths):
+  # app_logs:
+  #   - name: "my-api"
+  #     path: "C:\\logs\\my-api\\app.log"
+  #     format: "json"
+  #     event_type: "applog"
+  #     severity: 2
+  #
+  #   - name: "nginx-access"
+  #     path: "C:\\nginx\\logs\\access.log"
+  #     format: "combined"
+  #     event_type: "weblog"
+  #     severity: 1
+
+forwarder:
+  backend_url: "https://192.168.1.140:8443"
+  management_url: "http://192.168.1.140"
+  batch_size: 200
+  flush_interval: 5s
+  # mTLS - comment out to use API key auth
+  # cert_file: "certs/agent.crt"
+  # key_file:  "certs/agent.key"
+  ca_file:   "certs/ca.crt"         # CA cert for backend :8443
+  # management_ca_file: "certs/mgmt-ca.crt" # CA cert for management HTTPS (leave empty to reuse ca_file)
+  api_key: "changeme-generate-a-real-key-with-openssl-rand-hex-32"
+
+  # Tamper Protection - required when installing as a Windows service.
+  # Get this key from the ObsidianWatch dashboard:
+  #   Agents -> click the shield icon on your agent -> copy the Install Key
+  # Paste the key below before running the install command:
+  #   .\obsidianwatch-win-agent-V1.0.exe -config agent.yaml install
+  # Without this key the agent service cannot be uninstalled.
+  install_key: "11111111"
+
+queue:
+  db_path: "C:\\ProgramData\\ObsidianWatch\\queue"
+  max_rows: 100000
+
+log:
+  level: "info"
+  format: "json"

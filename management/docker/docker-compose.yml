@@ -1,0 +1,49 @@
+# This file is kept for reference / development of the management stack alone.
+# For production, use the root docker-compose.yml which starts everything together.
+#
+# Usage (management stack only — requires an external TimescaleDB):
+#   cd management/docker
+#   sudo docker compose up -d --build
+
+services:
+
+  mgmt-api:
+    build:
+      context: ../..
+      dockerfile: management/docker/Dockerfile
+    container_name: obsidianwatch-mgmt-api
+    restart: unless-stopped
+    ports:
+      - "8443:8443"
+    volumes:
+      - ./server.yaml:/app/server.yaml:ro
+      - agent-cache:/var/lib/obsidianwatch/agent-cache
+    healthcheck:
+      test: ["CMD-SHELL", "cat /proc/net/tcp6 | grep -q 20FB || cat /proc/net/tcp | grep -q 20FB || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+    networks:
+      - obsidianwatch
+
+  mgmt-ui:
+    build:
+      context: ../../management/frontend
+      dockerfile: Dockerfile
+    container_name: obsidianwatch-mgmt-ui
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    depends_on:
+      mgmt-api:
+        condition: service_healthy
+    networks:
+      - obsidianwatch
+
+volumes:
+  agent-cache:
+
+networks:
+  obsidianwatch:
+    external: true   # must exist — created by root docker-compose.yml or backend stack
+    name: obsidianwatch

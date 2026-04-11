@@ -1,0 +1,33 @@
+# This file is mounted into the container at /app/server.yaml
+# Edit this file, NOT configs/server.yaml (which is the build-time template)
+
+server:
+  listen_addr: ":8443"
+  tls_cert_file: "certs/server.crt"
+  tls_key_file:  "certs/server.key"
+  # tls_ca_file: "certs/ca.crt"   # uncomment for mTLS
+  read_timeout:  "30s"
+  write_timeout: "30s"
+  max_batch_size: 1000
+
+database:
+  host:     "timescaledb"   # Docker service name — do not change when using compose
+  port:     5432
+  name:     "obsidianwatch"
+  user:     "obsidianwatch"
+  password: "changeme"      # ← MUST MATCH POSTGRES_PASSWORD in docker-compose.yml
+  ssl_mode: "disable"
+  max_open_conns:    25
+  max_idle_conns:    10
+  conn_max_lifetime: "5m"
+
+auth:
+  # Generate a strong key: openssl rand -hex 32
+  # Paste the same value into agent.yaml forwarder.api_key
+  api_keys:
+    - "changeme-generate-a-real-key-with-openssl-rand-hex-32"
+  mtls_enabled: false
+
+log:
+  level:  "info"
+  format: "json"

@@ -1,0 +1,70 @@
+# ObsidianWatch Network Probe Configuration
+# Drop this file at /etc/obsidianwatch-probe/probe.yaml
+
+probe:
+  version: "0.1.0"
+  site_name: "HQ-Network"          # Friendly name shown in dashboard
+  location: "Server Room Rack 3"   # Physical location
+
+forwarder:
+  backend_url:    "https://YOUR_BACKEND:8443"   # Backend ingest URL
+  management_url: "http://YOUR_MANAGEMENT"      # Management URL
+  api_key:        "CHANGE_ME"                   # Agent API key from agent builder
+  batch_size:     200
+  flush_interval: "10s"
+  summary_interval: "5m"
+
+syslog:
+  enabled:     true
+  udp_addr:    ":514"   # Point all network devices here
+  tcp_addr:    ":514"
+  buffer_size: 65536
+
+netflow:
+  enabled:          true
+  addr:             ":2055"   # NetFlow v5/v9/IPFIX
+  sflow_addr:       ":6343"   # sFlow
+  summary_interval: "5m"
+
+snmp:
+  enabled:       true
+  poll_interval: "60s"
+  targets:
+    - host:      "192.168.1.1"
+      port:      161
+      version:   "v2c"
+      community: "public"
+      label:     "core-router"
+    # - host:      "192.168.1.2"
+    #   version:   "v3"
+    #   username:  "obsidianwatch"
+    #   auth_proto: "SHA"
+    #   auth_key:  "your-auth-key"
+    #   priv_proto: "AES"
+    #   priv_key:  "your-priv-key"
+    #   label:     "core-switch"
+
+arp:
+  enabled:       true
+  poll_interval: "30s"
+  interfaces:
+    - "eth0"   # Interface connected to the monitored network
+
+detection:
+  port_scan_threshold:       20     # distinct ports/min → alert
+  port_scan_window:          60     # seconds
+  brute_force_threshold:     10     # auth failures/min → alert
+  bandwidth_spike_multiplier: 3.0   # 3x baseline → alert
+  lateral_movement_enabled:  true
+  internal_subnets:
+    - "10.0.0.0/8"
+    - "172.16.0.0/12"
+    - "192.168.0.0/16"
+
+store:
+  db_path:       "/var/lib/obsidianwatch-probe/state.db"
+  retention_days: 7
+
+log:
+  level:  "info"    # debug | info | warn | error
+  format: "json"

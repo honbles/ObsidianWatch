@@ -1,0 +1,822 @@
+//go:build windows
+
+package collector
+
+// eventlog.go - reads Windows Event Log channels via wevtapi.dll.
+// Full XML parsing: EventID, time, computer, user, and all EventData
+// key-value pairs are extracted into normalized schema.Event fields.
+
+import (
+	"context"
+	"encoding/json"
+	"encoding/xml"
+	"fmt"
+	"log/slog"
+	"strconv"
+	"strings"
+	"time"
+	"unsafe"
+
+	"golang.org/x/sys/windows"
+
+	"obsidianwatch/agent/pkg/schema"
+)
+
+var (
+	modWevtapi                   = windows.NewLazySystemDLL("wevtapi.dll")
+	procEvtSubscribe             = modWevtapi.NewProc("EvtSubscribe")
+	procEvtNext                  = modWevtapi.NewProc("EvtNext")
+	procEvtRender                = modWevtapi.NewProc("EvtRender")
+	procEvtClose                 = modWevtapi.NewProc("EvtClose")
+	procEvtFormatMessage         = modWevtapi.NewProc("EvtFormatMessage")
+	procEvtOpenPublisherMetadata = modWevtapi.NewProc("EvtOpenPublisherMetadata")
+)
+
+const (
+	evtSubscribeToFutureEvents = 1
+	evtRenderEventXml          = 1
+)
+
+// XML structures for parsing Windows Event XML
+type winEventXML struct {
+	XMLName   xml.Name     `xml:"Event"`
+	System    winSystemXML `xml:"System"`
+	EventData winEventData `xml:"EventData"`
+}
+
+type winSystemXML struct {
+	Provider    winProvider `xml:"Provider"`
+	EventID     uint32      `xml:"EventID"`
+	Level       uint8       `xml:"Level"`
+	Task        uint16      `xml:"Task"`
+	TimeCreated winTime     `xml:"TimeCreated"`
+	RecordID    uint64      `xml:"EventRecordID"`
+	Channel     string      `xml:"Channel"`
+	Computer    string      `xml:"Computer"`
+}
+
+type winProvider struct {
+	Name string `xml:"Name,attr"`
+}
+
+type winTime struct {
+	SystemTime string `xml:"SystemTime,attr"`
+}
+
+type winEventData struct {
+	Data []winDataItem `xml:"Data"`
+}
+
+type winDataItem struct {
+	Name  string `xml:"Name,attr"`
+	Value string `xml:",chardata"`
+}
+
+type EventLogCollector struct {
+	channels []string
+	agentID  string
+	host     string
+	out      chan<- schema.Event
+	logger   *slog.Logger
+}
+
+func NewEventLogCollector(channels []string, agentID, host string, out chan<- schema.Event, logger *slog.Logger) *EventLogCollector {
+	return &EventLogCollector{channels: channels, agentID: agentID, host: host, out: out, logger: logger}
+}
+
+func (c *EventLogCollector) Run(ctx context.Context) error {
+	handles := make([]windows.Handle, 0, len(c.channels))
+	for _, ch := range c.channels {
+		h, err := c.subscribe(ch)
+		if err != nil {
+			c.logger.Error("eventlog: subscribe failed", "channel", ch, "err", err)
+			continue
+		}
+		handles = append(handles, h)
+		c.logger.Info("eventlog: subscribed", "channel", ch)
+	}
+	if len(handles) == 0 {
+		return fmt.Errorf("eventlog: no channels could be subscribed")
+	}
+	defer func() {
+		for _, h := range handles {
+			closeEvtHandle(h)
+		}
+	}()
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-ticker.C:
+			for _, h := range handles {
+				c.drain(h)
+			}
+		}
+	}
+}
+
+func (c *EventLogCollector) subscribe(channel string) (windows.Handle, error) {
+	channelPtr, err := windows.UTF16PtrFromString(channel)
+	if err != nil {
+		return 0, err
+	}
+	queryPtr, err := windows.UTF16PtrFromString("*")
+	if err != nil {
+		return 0, err
+	}
+	signalEvent, err := windows.CreateEvent(nil, 0, 0, nil)
+	if err != nil {
+		return 0, fmt.Errorf("CreateEvent: %w", err)
+	}
+	defer windows.CloseHandle(signalEvent)
+	h, _, callErr := procEvtSubscribe.Call(
+		0, uintptr(signalEvent),
+		uintptr(unsafe.Pointer(channelPtr)),
+		uintptr(unsafe.Pointer(queryPtr)),
+		0, 0, 0,
+		evtSubscribeToFutureEvents,
+	)
+	if h == 0 {
+		return 0, fmt.Errorf("EvtSubscribe: %w", callErr)
+	}
+	return windows.Handle(h), nil
+}
+
+func (c *EventLogCollector) drain(subHandle windows.Handle) {
+	const batchSize = 64
+	events := make([]windows.Handle, batchSize)
+	for {
+		var returned uint32
+		ret, _, _ := procEvtNext.Call(
+			uintptr(subHandle), uintptr(batchSize),
+			uintptr(unsafe.Pointer(&events[0])),
+			500, 0, uintptr(unsafe.Pointer(&returned)),
+		)
+		if ret == 0 || returned == 0 {
+			break
+		}
+		for i := uint32(0); i < returned; i++ {
+			ev := c.parseEvent(events[i])
+			closeEvtHandle(events[i])
+			if ev != nil {
+				select {
+				case c.out <- *ev:
+				default:
+					c.logger.Warn("eventlog: out channel full, dropping event")
+				}
+			}
+		}
+	}
+}
+
+func (c *EventLogCollector) parseEvent(evHandle windows.Handle) *schema.Event {
+	xmlBytes, err := renderXML(evHandle)
+	if err != nil {
+		c.logger.Warn("eventlog: render failed", "err", err)
+		return nil
+	}
+
+	var parsed winEventXML
+	if err := xml.Unmarshal(xmlBytes, &parsed); err != nil {
+		raw, _ := json.Marshal(map[string]string{"raw_xml": string(xmlBytes)})
+		return &schema.Event{
+			Time: time.Now().UTC(), AgentID: c.agentID, Host: c.host, OS: "windows",
+			EventType: schema.EventTypeRaw, Severity: schema.SeverityInfo,
+			Source: "EventLog", Raw: raw,
+		}
+	}
+
+	sys := parsed.System
+	ev := &schema.Event{
+		AgentID:   c.agentID,
+		Host:      c.host,
+		OS:        "windows",
+		EventID:   sys.EventID,
+		Channel:   sys.Channel,
+		RecordID:  sys.RecordID,
+		Source:    sys.Channel,
+		Severity:  windowsLevelToSeverity(sys.Level),
+		EventType: schema.EventTypeRaw,
+	}
+
+	if t, err := time.Parse(time.RFC3339Nano, sys.TimeCreated.SystemTime); err == nil {
+		ev.Time = t.UTC()
+	} else {
+		ev.Time = time.Now().UTC()
+	}
+
+	// Build flat data map from EventData
+	dataMap := make(map[string]string, len(parsed.EventData.Data))
+	for _, d := range parsed.EventData.Data {
+		if d.Name != "" {
+			dataMap[d.Name] = strings.TrimSpace(d.Value)
+		}
+	}
+
+	rawPayload := map[string]interface{}{
+		"event_id": sys.EventID, "channel": sys.Channel,
+		"provider": sys.Provider.Name, "record_id": sys.RecordID,
+		"level": sys.Level, "event_data": dataMap,
+	}
+	ev.Raw, _ = json.Marshal(rawPayload)
+
+	extractCommonFields(ev, dataMap)
+	classifyAndEnrichEvent(ev, dataMap)
+	// If EventType was cleared (e.g. noisy logon type), drop the event
+	if ev.EventType == "" {
+		return nil
+	}
+	return ev
+}
+
+func extractCommonFields(ev *schema.Event, data map[string]string) {
+	if v := firstOf(data, "SubjectUserName", "TargetUserName", "UserName", "User"); v != "" {
+		ev.UserName = v
+	}
+	if v := firstOf(data, "SubjectDomainName", "TargetDomainName", "Domain"); v != "" {
+		ev.Domain = v
+	}
+	if v := firstOf(data, "SubjectLogonId", "TargetLogonId", "LogonId"); v != "" {
+		ev.LogonID = v
+	}
+	if v := firstOf(data, "NewProcessName", "ProcessName", "Application"); v != "" {
+		ev.ProcessName = v
+		ev.ImagePath = v
+	}
+	if v := firstOf(data, "NewProcessId", "ProcessId", "ProcessID"); v != "" {
+		if pid, err := parseHexOrDec(v); err == nil {
+			ev.PID = pid
+		}
+	}
+	if v := firstOf(data, "ParentProcessId", "ParentProcessID"); v != "" {
+		if ppid, err := parseHexOrDec(v); err == nil {
+			ev.PPID = ppid
+		}
+	}
+	if v := data["CommandLine"]; v != "" {
+		ev.CommandLine = v
+	}
+}
+
+func classifyAndEnrichEvent(ev *schema.Event, data map[string]string) {
+	switch ev.EventID {
+	case 4624:
+		lt := data["LogonType"]
+		// Skip noisy background logons: 3=Network, 4=Batch, 5=Service, 0=System
+		// Keep: 2=Interactive, 7=Unlock, 10=RemoteInteractive(RDP), 11=CachedInteractive
+		if lt == "3" || lt == "4" || lt == "5" || lt == "0" {
+			// Skip — mark as skippable by clearing EventType so parseEvent drops it
+			ev.EventType = ""
+			return
+		}
+		ev.EventType = schema.EventTypeLogon
+		ev.Severity = schema.SeverityInfo
+		if lt != "" {
+			ev.Severity = logonTypeSeverity(lt)
+		}
+	case 4625:
+		ev.EventType = schema.EventTypeLogon
+		ev.Severity = schema.SeverityMedium
+		if data["LogonType"] == "3" {
+			ev.Severity = schema.SeverityHigh
+		}
+	case 4648:
+		ev.EventType = schema.EventTypeLogon
+		ev.Severity = schema.SeverityMedium
+		if v := data["TargetServerName"]; v != "" {
+			ev.DstIP = v
+		}
+	case 4672:
+		ev.EventType = schema.EventTypeLogon
+		ev.Severity = schema.SeverityMedium
+	case 4634, 4647:
+		ev.EventType = schema.EventTypeLogon
+		ev.Severity = schema.SeverityInfo
+	case 4776:
+		ev.EventType = schema.EventTypeLogon
+		ev.Severity = schema.SeverityLow
+		if v := data["Workstation"]; v != "" {
+			ev.SrcIP = v
+		}
+	case 4688:
+		ev.EventType = schema.EventTypeProcess
+		ev.Severity = schema.SeverityLow
+	case 4689:
+		ev.EventType = schema.EventTypeProcess
+		ev.Severity = schema.SeverityInfo
+	case 5156:
+		ev.EventType = schema.EventTypeNetwork
+		ev.Severity = schema.SeverityLow
+		ev.SrcIP = data["SourceAddress"]
+		ev.DstIP = data["DestAddress"]
+		if p, err := strconv.Atoi(data["SourcePort"]); err == nil {
+			ev.SrcPort = p
+		}
+		if p, err := strconv.Atoi(data["DestPort"]); err == nil {
+			ev.DstPort = p
+		}
+		ev.Proto = protocolNumber(data["Protocol"])
+	case 5157:
+		ev.EventType = schema.EventTypeNetwork
+		ev.Severity = schema.SeverityMedium
+		ev.SrcIP = data["SourceAddress"]
+		ev.DstIP = data["DestAddress"]
+		if p, err := strconv.Atoi(data["SourcePort"]); err == nil {
+			ev.SrcPort = p
+		}
+		if p, err := strconv.Atoi(data["DestPort"]); err == nil {
+			ev.DstPort = p
+		}
+		ev.Proto = protocolNumber(data["Protocol"])
+	case 4657:
+		ev.EventType = schema.EventTypeRegistry
+		ev.Severity = schema.SeverityMedium
+		ev.RegKey = data["ObjectName"]
+		ev.RegValue = data["ObjectValueName"]
+		ev.RegData = data["NewValue"]
+	case 4663:
+		ev.EventType = schema.EventTypeFile
+		ev.Severity = schema.SeverityLow
+		ev.FilePath = data["ObjectName"]
+	case 4660:
+		ev.EventType = schema.EventTypeFile
+		ev.Severity = schema.SeverityMedium
+		ev.FilePath = data["ObjectName"]
+	case 4698, 4702:
+		ev.EventType = schema.EventTypeProcess
+		ev.Severity = schema.SeverityHigh
+	case 4720:
+		ev.EventType = schema.EventTypeLogon
+		ev.Severity = schema.SeverityHigh
+	case 4728, 4732, 4756:
+		ev.EventType = schema.EventTypeLogon
+		ev.Severity = schema.SeverityHigh
+	case 7045:
+		ev.EventType = schema.EventTypeProcess
+		ev.Severity = schema.SeverityHigh
+		if v := data["ServiceName"]; v != "" {
+			ev.ProcessName = v
+		}
+		if v := data["ImagePath"]; v != "" {
+			ev.ImagePath = v
+		}
+
+	// -- Domain Controller Events -----------------------------------------------
+	// 4662 — Object operation in AD (DCSync uses LDAP replication on DS-Replication objects)
+	case 4662:
+		ev.EventType = "ad_object_access"
+		ev.Severity = schema.SeverityMedium
+		if v := data["ObjectType"]; v != "" {
+			ev.CommandLine = v // reuse CommandLine for object type
+		}
+		if v := data["ObjectName"]; v != "" {
+			ev.FilePath = v
+		}
+	// 4768 — Kerberos TGT request
+	case 4768:
+		ev.EventType = "kerberos"
+		ev.Severity = schema.SeverityLow
+		if v := data["TargetUserName"]; v != "" {
+			ev.UserName = v
+		}
+		if v := data["IpAddress"]; v != "" {
+			ev.SrcIP = v
+		}
+	// 4769 — Kerberos service ticket request
+	case 4769:
+		ev.EventType = "kerberos"
+		ev.Severity = schema.SeverityLow
+		if v := data["TargetUserName"]; v != "" {
+			ev.UserName = v
+		}
+		if v := data["IpAddress"]; v != "" {
+			ev.SrcIP = v
+		}
+		if v := data["ServiceName"]; v != "" {
+			ev.ProcessName = v
+		}
+	// 4770 — Kerberos service ticket renewed
+	case 4770:
+		ev.EventType = "kerberos"
+		ev.Severity = schema.SeverityInfo
+	// 4771 — Kerberos pre-auth failed (bad password at DC)
+	case 4771:
+		ev.EventType = "kerberos"
+		ev.Severity = schema.SeverityMedium
+		if v := data["TargetUserName"]; v != "" {
+			ev.UserName = v
+		}
+		if v := data["IpAddress"]; v != "" {
+			ev.SrcIP = v
+		}
+	// 5136 — AD directory object modified
+	case 5136:
+		ev.EventType = "ad_change"
+		ev.Severity = schema.SeverityHigh
+		if v := data["ObjectDN"]; v != "" {
+			ev.FilePath = v
+		}
+		if v := data["AttributeLDAPDisplayName"]; v != "" {
+			ev.RegKey = v
+		}
+		if v := data["AttributeValue"]; v != "" {
+			ev.RegValue = v
+		}
+	// 5137 — AD directory object created
+	case 5137:
+		ev.EventType = "ad_change"
+		ev.Severity = schema.SeverityHigh
+		if v := data["ObjectDN"]; v != "" {
+			ev.FilePath = v
+		}
+	// 5141 — AD directory object deleted
+	case 5141:
+		ev.EventType = "ad_change"
+		ev.Severity = schema.SeverityHigh
+		if v := data["ObjectDN"]; v != "" {
+			ev.FilePath = v
+		}
+	// 4742 — Computer account changed
+	case 4742:
+		ev.EventType = "ad_change"
+		ev.Severity = schema.SeverityMedium
+	// 4741 — Computer account created
+	case 4741:
+		ev.EventType = "ad_change"
+		ev.Severity = schema.SeverityHigh
+	// 4743 — Computer account deleted
+	case 4743:
+		ev.EventType = "ad_change"
+		ev.Severity = schema.SeverityHigh
+	// 4739 — Domain policy changed
+	case 4739:
+		ev.EventType = "ad_change"
+		ev.Severity = schema.SeverityCritical
+
+	// -- Sysmon Events ----------------------------------------------------------
+	// EventID 1 - Process Create
+	case 1:
+		ev.EventType = schema.EventTypeProcess
+		ev.Source = "Sysmon"
+		if v := data["Image"]; v != "" {
+			ev.ImagePath = v
+			idx := strings.LastIndex(v, "\\")
+			if idx >= 0 {
+				ev.ProcessName = v[idx+1:]
+			} else {
+				ev.ProcessName = v
+			}
+		}
+		if v := data["CommandLine"]; v != "" {
+			ev.CommandLine = v
+		}
+		if v := data["ProcessId"]; v != "" {
+			if pid, err := parseHexOrDec(v); err == nil { ev.PID = pid }
+		}
+		if v := data["ParentProcessId"]; v != "" {
+			if ppid, err := parseHexOrDec(v); err == nil { ev.PPID = ppid }
+		}
+		if v := data["ParentImage"]; v != "" {
+			// parent image path available in v if needed
+		}
+		if v := firstOf(data, "User", "SubjectUserName"); v != "" {
+			ev.UserName = v
+		}
+		ev.Severity = schema.SeverityLow
+		// Elevate suspicious process names / command lines
+		cmdLower := strings.ToLower(ev.CommandLine + ev.ProcessName)
+		if containsAnyStr(cmdLower, "mimikatz", "meterpreter", "cobalt", "shellcode",
+			"invoke-expression", "downloadstring", "-enc", "bypass", "webclient") {
+			ev.Severity = schema.SeverityCritical
+		} else if containsAnyStr(cmdLower, "powershell", "wscript", "cscript", "mshta",
+			"regsvr32", "rundll32", "certutil", "bitsadmin", "wmic", "psexec") {
+			ev.Severity = schema.SeverityMedium
+		}
+
+	// EventID 2 - File creation time changed
+	case 2:
+		ev.EventType = schema.EventTypeFile
+		ev.Source = "Sysmon"
+		ev.FilePath = data["TargetFilename"]
+		ev.Severity = schema.SeverityMedium
+
+	// EventID 3 - Network connection
+	case 3:
+		ev.EventType = schema.EventTypeNetwork
+		ev.Source = "Sysmon"
+		ev.SrcIP = data["SourceIp"]
+		ev.DstIP = data["DestinationIp"]
+		if p, err := strconv.Atoi(data["SourcePort"]); err == nil { ev.SrcPort = p }
+		if p, err := strconv.Atoi(data["DestinationPort"]); err == nil { ev.DstPort = p }
+		ev.Proto = strings.ToLower(data["Protocol"])
+		if v := data["Image"]; v != "" {
+			idx := strings.LastIndex(v, "\\")
+			if idx >= 0 {
+				ev.ProcessName = v[idx+1:]
+			} else {
+				ev.ProcessName = v
+			}
+		}
+		ev.Severity = schema.SeverityLow
+
+	// EventID 5 - Process terminated
+	case 5:
+		ev.EventType = schema.EventTypeProcess
+		ev.Source = "Sysmon"
+		if v := data["Image"]; v != "" {
+			idx := strings.LastIndex(v, "\\")
+			if idx >= 0 {
+				ev.ProcessName = v[idx+1:]
+			} else {
+				ev.ProcessName = v
+			}
+		}
+		ev.Severity = schema.SeverityInfo
+
+	// EventID 6 - Driver loaded
+	case 6:
+		ev.EventType = schema.EventTypeProcess
+		ev.Source = "Sysmon"
+		ev.ImagePath = data["ImageLoaded"]
+		ev.Severity = schema.SeverityMedium
+
+	// EventID 7 - Image (DLL) loaded
+	case 7:
+		ev.EventType = schema.EventTypeProcess
+		ev.Source = "Sysmon"
+		if v := data["Image"]; v != "" {
+			idx := strings.LastIndex(v, "\\")
+			if idx >= 0 {
+				ev.ProcessName = v[idx+1:]
+			} else {
+				ev.ProcessName = v
+			}
+		}
+		ev.ImagePath = data["ImageLoaded"]
+		ev.Severity = schema.SeverityInfo
+
+	// EventID 8 - CreateRemoteThread (injection)
+	case 8:
+		ev.EventType = schema.EventTypeProcess
+		ev.Source = "Sysmon"
+		ev.Severity = schema.SeverityCritical
+		if v := data["SourceImage"]; v != "" {
+			idx := strings.LastIndex(v, "\\")
+			if idx >= 0 {
+				ev.ProcessName = v[idx+1:]
+			} else {
+				ev.ProcessName = v
+			}
+		}
+
+	// EventID 10 - Process access (injection attempt)
+	case 10:
+		ev.EventType = schema.EventTypeProcess
+		ev.Source = "Sysmon"
+		ev.Severity = schema.SeverityHigh
+		if v := data["SourceImage"]; v != "" {
+			idx := strings.LastIndex(v, "\\")
+			if idx >= 0 {
+				ev.ProcessName = v[idx+1:]
+			} else {
+				ev.ProcessName = v
+			}
+		}
+
+	// EventID 11 - File created
+	case 11:
+		ev.EventType = schema.EventTypeFile
+		ev.Source = "Sysmon"
+		ev.FilePath = data["TargetFilename"]
+		if v := data["Image"]; v != "" {
+			idx := strings.LastIndex(v, "\\")
+			if idx >= 0 {
+				ev.ProcessName = v[idx+1:]
+			} else {
+				ev.ProcessName = v
+			}
+		}
+		ev.Severity = schema.SeverityLow
+
+	// EventID 12 - Registry object create/delete
+	case 12:
+		ev.EventType = schema.EventTypeRegistry
+		ev.Source = "Sysmon"
+		ev.RegKey = data["TargetObject"]
+		ev.Severity = schema.SeverityLow
+
+	// EventID 13 - Registry value set
+	case 13:
+		ev.EventType = schema.EventTypeRegistry
+		ev.Source = "Sysmon"
+		ev.RegKey = data["TargetObject"]
+		ev.RegData = data["Details"]
+		ev.Severity = schema.SeverityLow
+		// Persistence via run keys
+		keyLower := strings.ToLower(ev.RegKey)
+		if containsAnyStr(keyLower, `\run\`, `\runonce\`, `\services\`, "userinit", "shell") {
+			ev.Severity = schema.SeverityHigh
+		}
+
+	// EventID 14 - Registry key/value renamed
+	case 14:
+		ev.EventType = schema.EventTypeRegistry
+		ev.Source = "Sysmon"
+		ev.RegKey = data["TargetObject"]
+		ev.Severity = schema.SeverityMedium
+
+	// EventID 15 - File stream created (ADS)
+	case 15:
+		ev.EventType = schema.EventTypeFile
+		ev.Source = "Sysmon"
+		ev.FilePath = data["TargetFilename"]
+		ev.Severity = schema.SeverityHigh
+
+	// EventID 17/18 - Named pipe
+	case 17, 18:
+		ev.EventType = schema.EventTypeNetwork
+		ev.Source = "Sysmon"
+		ev.Severity = schema.SeverityLow
+
+	// EventID 22 - DNS query
+	case 22:
+		ev.EventType = schema.EventTypeDNS
+		ev.Source = "Sysmon"
+		ev.DstIP = data["QueryName"]
+		if v := data["Image"]; v != "" {
+			idx := strings.LastIndex(v, "\\")
+			if idx >= 0 {
+				ev.ProcessName = v[idx+1:]
+			} else {
+				ev.ProcessName = v
+			}
+		}
+		ev.Severity = schema.SeverityInfo
+
+	// EventID 23 - File deleted
+	case 23:
+		ev.EventType = schema.EventTypeFile
+		ev.Source = "Sysmon"
+		ev.FilePath = data["TargetFilename"]
+		ev.Severity = schema.SeverityMedium
+
+	// EventID 25 - Process tampering
+	case 25:
+		ev.EventType = schema.EventTypeProcess
+		ev.Source = "Sysmon"
+		ev.Severity = schema.SeverityCritical
+
+		// PowerShell - Module logging (4103) and Script Block logging (4104)
+	case 4103:
+		ev.EventType = schema.EventTypeProcess
+		ev.Severity = schema.SeverityLow
+		ev.ProcessName = "powershell"
+		// Payload contains the actual command/script that ran
+		if v := firstOf(data, "Payload", "ScriptBlockText", "MessageNumber"); v != "" {
+			ev.CommandLine = v
+		}
+		if v := firstOf(data, "HostApplication", "Path"); v != "" {
+			ev.ImagePath = v
+		}
+		// Mark as suspicious if contains common attack patterns
+		cmdLower := strings.ToLower(ev.CommandLine)
+		if containsAnyStr(cmdLower, "-enc", "downloadstring", "iex", "invoke-expression",
+			"webclient", "bypass", "hidden", "frombase64", "reflection.assembly") {
+			ev.Severity = schema.SeverityHigh
+		}
+	case 4104:
+		ev.EventType = schema.EventTypeProcess
+		ev.Severity = schema.SeverityLow
+		ev.ProcessName = "powershell"
+		// 4104 = Script Block Logging - captures the ACTUAL script text
+		if v := firstOf(data, "ScriptBlockText", "Payload"); v != "" {
+			ev.CommandLine = v
+		}
+		if v := data["Path"]; v != "" {
+			ev.ImagePath = v
+		}
+		cmdLower := strings.ToLower(ev.CommandLine)
+		if containsAnyStr(cmdLower, "-enc", "downloadstring", "iex", "invoke-expression",
+			"webclient", "bypass", "hidden", "frombase64", "reflection.assembly",
+			"mimikatz", "invoke-mimikatz", "shellcode") {
+			ev.Severity = schema.SeverityHigh
+		}
+	// Windows Defender detections
+	case 1116, 1117:
+		ev.EventType = schema.EventTypeProcess
+		ev.Severity = schema.SeverityCritical
+		if v := firstOf(data, "Threat Name", "ThreatName"); v != "" {
+			ev.ProcessName = v
+		}
+		if v := firstOf(data, "Path", "Process Name"); v != "" {
+			ev.FilePath = v
+		}
+	// AppLocker blocked execution
+	case 8004, 8007:
+		ev.EventType = schema.EventTypeProcess
+		ev.Severity = schema.SeverityHigh
+		if v := firstOf(data, "FilePath", "FullFilePath"); v != "" {
+			ev.FilePath = v
+			ev.ImagePath = v
+		}
+		if v := data["User"]; v != "" {
+			ev.UserName = v
+		}
+	}
+}
+
+func containsAnyStr(s string, subs ...string) bool {
+	for _, sub := range subs {
+		if strings.Contains(s, sub) {
+			return true
+		}
+	}
+	return false
+}
+
+func renderXML(evHandle windows.Handle) ([]byte, error) {
+	var bufSize uint32 = 4096
+	buf := make([]uint16, bufSize)
+	var used, propCount uint32
+	ret, _, err := procEvtRender.Call(
+		0, uintptr(evHandle), evtRenderEventXml,
+		uintptr(bufSize*2), uintptr(unsafe.Pointer(&buf[0])),
+		uintptr(unsafe.Pointer(&used)), uintptr(unsafe.Pointer(&propCount)),
+	)
+	if ret == 0 {
+		if err == windows.ERROR_INSUFFICIENT_BUFFER {
+			buf = make([]uint16, used/2+1)
+			ret, _, err = procEvtRender.Call(
+				0, uintptr(evHandle), evtRenderEventXml,
+				uintptr(len(buf)*2), uintptr(unsafe.Pointer(&buf[0])),
+				uintptr(unsafe.Pointer(&used)), uintptr(unsafe.Pointer(&propCount)),
+			)
+			if ret == 0 {
+				return nil, fmt.Errorf("EvtRender retry: %w", err)
+			}
+		} else {
+			return nil, fmt.Errorf("EvtRender: %w", err)
+		}
+	}
+	return []byte(windows.UTF16ToString(buf)), nil
+}
+
+func closeEvtHandle(h windows.Handle) { procEvtClose.Call(uintptr(h)) }
+
+func windowsLevelToSeverity(level uint8) schema.Severity {
+	switch level {
+	case 1:
+		return schema.SeverityCritical
+	case 2:
+		return schema.SeverityHigh
+	case 3:
+		return schema.SeverityMedium
+	default:
+		return schema.SeverityInfo
+	}
+}
+
+func logonTypeSeverity(logonType string) schema.Severity {
+	switch logonType {
+	case "10":
+		return schema.SeverityMedium // RemoteInteractive (RDP)
+	case "3":
+		return schema.SeverityLow // Network
+	default:
+		return schema.SeverityInfo
+	}
+}
+
+func protocolNumber(p string) string {
+	switch p {
+	case "6":
+		return "tcp"
+	case "17":
+		return "udp"
+	case "1":
+		return "icmp"
+	default:
+		return p
+	}
+}
+
+func firstOf(m map[string]string, keys ...string) string {
+	for _, k := range keys {
+		if v := m[k]; v != "" && v != "-" {
+			return v
+		}
+	}
+	return ""
+}
+
+func parseHexOrDec(s string) (int, error) {
+	s = strings.TrimSpace(s)
+	if strings.HasPrefix(s, "0x") || strings.HasPrefix(s, "0X") {
+		v, err := strconv.ParseInt(s[2:], 16, 64)
+		return int(v), err
+	}
+	v, err := strconv.ParseInt(s, 10, 64)
+	return int(v), err
+}

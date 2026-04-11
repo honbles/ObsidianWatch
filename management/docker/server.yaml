@@ -1,0 +1,76 @@
+# ObsidianWatch Management Platform — Runtime Config
+# Edit this file then restart: sudo docker compose restart mgmt-api
+
+server:
+  listen_addr: ":8443"
+  read_timeout:  "30s"
+  write_timeout: "120s"
+  cors_origins:
+    - "*"   # tighten to https://192.168.1.140 in production
+  agent_api_key: "changeme-generate-a-real-key-with-openssl-rand-hex-32"
+  # TLS — auto-enabled when /app/certs/server.crt + server.key exist
+  tls_cert_file: "/app/certs/server.crt"
+  tls_key_file:  "/app/certs/server.key"
+
+database:
+  host:     "timescaledb"      # Docker service name — do not change
+  port:     5432
+  name:     "obsidianwatch"
+  user:     "obsidianwatch"
+  password: "changeme"         # ← MUST match agent backend POSTGRES_PASSWORD
+  ssl_mode: "disable"
+  max_open_conns:    10
+  max_idle_conns:    5
+  conn_max_lifetime: "5m"
+
+# Backend DB — reads agent location data reported by agents to the backend
+# Same host, same credentials — the backend stores location in its own DB
+backend_db:
+  host:     "timescaledb"
+  port:     5432
+  name:     "obsidianwatch"
+  user:     "obsidianwatch"
+  password: "changeme"         # ← same password as above
+  ssl_mode: "disable"
+  max_open_conns:    5
+  max_idle_conns:    2
+  conn_max_lifetime: "5m"
+
+auth:
+  # Generate with: openssl rand -hex 32
+  jwt_secret:     "changeme-generate-with-openssl-rand-hex-32"
+  token_duration: "24h"
+
+# ── AI Alert Analysis ─────────────────────────────────────────────────────────
+# Groq is free — get a key at console.groq.com
+# Anthropic requires credits — get a key at console.anthropic.com
+# If neither is set, the built-in rule-based analyser is used automatically.
+nvd:
+  api_key: ""          # optional — get free key at https://nvd.nist.gov/developers/request-an-api-key
+                       # raises rate limit from 5/30s to 50/30s (enough for 3000+ packages)
+
+groq:
+  api_key: ""   # ← paste your Groq key here (free)
+
+anthropic:
+  api_key: ""   # ← paste your Anthropic key here (paid)
+
+# ── Email Alerts (optional) ───────────────────────────────────────────────────
+# Set enabled: true and fill in your SMTP details to receive email alerts.
+# Supports Gmail, Office 365, SendGrid, or any SMTP relay.
+smtp:
+  enabled:      false
+  host:         "smtp.gmail.com"       # e.g. smtp.gmail.com / smtp.office365.com
+  port:         587
+  username:     "you@gmail.com"
+  password:     "your-app-password"    # Gmail: use App Password, not account password
+  from:         "ObsidianWatch <you@gmail.com>"
+  to:
+    - "security-team@yourcompany.com"
+    # - "soc@yourcompany.com"          # add more recipients here
+  min_severity: 4                      # 1=info 2=low 3=medium 4=high 5=critical
+  use_tls:      true
+
+log:
+  level:  "info"
+  format: "json"

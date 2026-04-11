@@ -1,0 +1,56 @@
+services:
+
+  # ── TimescaleDB ───────────────────────────────────────────────────────────
+  timescaledb:
+    image: timescale/timescaledb:latest-pg16
+    container_name: obsidianwatch-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB:       obsidianwatch
+      POSTGRES_USER:     obsidianwatch
+      POSTGRES_PASSWORD: changeme        # ← CHANGE THIS (match server.yaml)
+    volumes:
+      - timescale_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U obsidianwatch -d obsidianwatch"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - obsidianwatch
+
+  # ── ObsidianWatch Backend ─────────────────────────────────────────────────
+  backend:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: obsidianwatch-backend
+    restart: unless-stopped
+    depends_on:
+      timescaledb:
+        condition: service_healthy
+    ports:
+      - "8443:8443"
+    volumes:
+      - ./server.yaml:/app/server.yaml:ro
+      - ./certs:/app/certs:ro
+    environment:
+      TZ: UTC
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- --no-check-certificate https://localhost:8443/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+    networks:
+      - obsidianwatch
+
+volumes:
+  timescale_data:
+    driver: local
+
+networks:
+  obsidianwatch:
+    name: obsidianwatch
+    driver: bridge

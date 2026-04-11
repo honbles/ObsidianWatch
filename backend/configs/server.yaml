@@ -1,0 +1,42 @@
+server:
+  # Address and port to listen on.
+  listen_addr: ":8443"
+
+  # TLS — required. Generate certs with the instructions in docs/tls-setup.md
+  tls_cert_file: "certs/server.crt"
+  tls_key_file:  "certs/server.key"
+
+  # Only needed for mTLS (when agents connect with client certificates).
+  # tls_ca_file: "certs/ca.crt"
+
+  read_timeout:  "30s"
+  write_timeout: "30s"
+
+  # Maximum events the backend will accept in a single POST from an agent.
+  max_batch_size: 1000
+
+database:
+  host:     "timescaledb"   # Docker service name
+  port:     5432
+  name:     "obsidianwatch"
+  user:     "obsidianwatch"
+  password: "changeme"      # CHANGE THIS — also update docker-compose.yml
+  ssl_mode: "disable"       # Use "require" in production with a real DB cert
+
+  max_open_conns:     25
+  max_idle_conns:     10
+  conn_max_lifetime:  "5m"
+
+auth:
+  # List of accepted API keys (X-API-Key header from agents).
+  # Generate with: openssl rand -hex 32
+  api_keys:
+    - "changeme-generate-a-real-key-with-openssl-rand-hex-32"
+
+  # Set to true to require agent client certificates instead of API keys.
+  # Also set server.tls_ca_file when enabling this.
+  mtls_enabled: false
+
+log:
+  level:  "info"    # debug | info | warn | error
+  format: "json"    # json | text
