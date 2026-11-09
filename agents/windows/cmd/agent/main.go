@@ -511,6 +511,9 @@ func run(ctx context.Context, cfg *config.Config, logger *slog.Logger) error {
 		activeCollectors = append(activeCollectors, "live-response")
 	}
 
+	// [APP-COLLECTORS-BEGIN]
+	// [APP-COLLECTORS-END]
+
 	// Start the HTTP forwarder (reads from queue, not eventCh).
 	go func() { errCh <- fwd.Run(ctx) }()
 

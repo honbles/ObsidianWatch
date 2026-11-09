@@ -5,6 +5,10 @@ package api
 
 func allSignatureSets() map[string][]ThreatSig {
 	return map[string][]ThreatSig{
+		// [NET-REGISTRY-BEGIN]
+		// [NET-REGISTRY-END]
+		// [APP-REGISTRY-BEGIN]
+		// [APP-REGISTRY-END]
 		"linux": linuxSignatures, "endpoint": endpointAgentSignatures, "dns": dnsCatSignatures,
 		"windows": windowsSignatures, "windowsTamper": windowsTamperSignatures, "dc": dcSignatures,
 		"macos": macosSignatures, "devops": devopsSignatures,
