@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net"
+	"sync"
 	"time"
 
 	"obsidianwatch/network-probe/internal/config"
@@ -118,12 +119,21 @@ func (c *NetFlowCollector) listenNetFlow(ctx context.Context) {
 		switch version {
 		case 5:
 			c.parseV5(ctx, buf[:n])
-		case 9, 10:
-			// NetFlow v9 / IPFIX — simplified: extract src/dst/bytes from template fields
+		case 9:
+			// NetFlow v9 — simplified: extract src/dst/bytes from fixed offsets
 			c.parseV9Simple(ctx, buf[:n])
+		case 10:
+			// IPFIX has a 16-byte header and template-defined sets; the fixed-offset
+			// v9 shortcut would read garbage and raise bogus scan/lateral alerts.
+			ipfixOnce.Do(func() {
+				c.logger.Warn("netflow: IPFIX (v10) is not supported; packets are ignored. Export NetFlow v5/v9 or use a template-aware collector.")
+			})
 		}
 	}
 }
+
+// ipfixOnce logs the unsupported-IPFIX warning a single time.
+var ipfixOnce sync.Once
 
 func (c *NetFlowCollector) parseV5(ctx context.Context, buf []byte) {
 	if len(buf) < 24 {

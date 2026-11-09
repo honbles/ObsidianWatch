@@ -22,8 +22,11 @@ package api
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	neturl "net/url"
 	"strings"
 	"time"
 )
@@ -109,15 +112,20 @@ func RunSCC(ctx context.Context, saJSON, projectID string) (*SCCResult, error) {
 	result.ProjectID = projectID
 
 	// SCC needs the cloud-platform scope
-	token, err := getGCPTokenWithScope(ctx, sa, "https://www.googleapis.com/auth/cloud-platform.read-only")
+	token, err := getGCPTokenWithScope(ctx, sa, "https://www.googleapis.com/auth/cloud-platform")
 	if err != nil {
-		return nil, fmt.Errorf("auth failed: %w", err)
+		return nil, fmt.Errorf("auth failed: %w\n\nEnsure the service account JSON is complete and the Security Command Center API is enabled", err)
 	}
 
 	// Try project-level SCC first (v1 API)
 	// SCC can be accessed at: organizations/*/sources/-/findings, folders/*/... or projects/*/...
 	findings, sources, err := fetchSCCFindings(ctx, token, projectID)
 	if err != nil {
+		// scc_unavailable means API not enabled — not a real error, just unavailable
+		if strings.HasPrefix(err.Error(), "scc_unavailable:") {
+			result.SCCEnabled = false
+			return result, nil
+		}
 		result.Errors = append(result.Errors, "scc: "+err.Error())
 		result.SCCEnabled = false
 		return result, nil
@@ -147,11 +155,19 @@ func RunSCC(ctx context.Context, saJSON, projectID string) (*SCCResult, error) {
 
 // fetchSCCFindings lists all ACTIVE findings from SCC for a project
 func fetchSCCFindings(ctx context.Context, token, projectID string) ([]SCCFinding, []string, error) {
+	return fetchSCCFindingsFiltered(ctx, token, projectID, `state="ACTIVE" AND -mute="MUTED"`)
+}
+
+// fetchSCCFindingsFiltered lists SCC findings matching an SCC filter expression.
+func fetchSCCFindingsFiltered(ctx context.Context, token, projectID, sccFilter string) ([]SCCFinding, []string, error) {
 	// SCC v1 project-level findings endpoint
 	// Filters: state="ACTIVE" (not muted, not closed)
+	// G-43: exclude muted findings, and URL-escape the filter and the
+	// project/page-token values.
 	baseURL := fmt.Sprintf(
-		"https://securitycenter.googleapis.com/v1/projects/%s/sources/-/findings?filter=state%%3D%%22ACTIVE%%22&pageSize=1000",
-		projectID,
+		"https://securitycenter.googleapis.com/v1/projects/%s/sources/-/findings?filter=%s&pageSize=1000",
+		neturl.PathEscape(projectID),
+		neturl.QueryEscape(sccFilter),
 	)
 
 	var allFindings []SCCFinding
@@ -161,7 +177,7 @@ func fetchSCCFindings(ctx context.Context, token, projectID string) ([]SCCFindin
 	for {
 		url := baseURL
 		if pageToken != "" {
-			url += "&pageToken=" + pageToken
+			url += "&pageToken=" + neturl.QueryEscape(pageToken)
 		}
 
 		var resp struct {
@@ -180,6 +196,16 @@ func fetchSCCFindings(ctx context.Context, token, projectID string) ([]SCCFindin
 		}
 
 		if err := gcpCSPMGet(ctx, token, url, &resp); err != nil {
+			// 403 means SCC API not enabled or SA lacks securitycenter permission —
+			// treat as "SCC not available" rather than a hard error.
+			errMsg := err.Error()
+			if strings.Contains(errMsg, "403") ||
+				strings.Contains(errMsg, "securitycenter") ||
+				strings.Contains(errMsg, "not enabled") ||
+				strings.Contains(errMsg, "disabled") ||
+				strings.Contains(errMsg, "permission denied") {
+				return nil, nil, fmt.Errorf("scc_unavailable: %w", err)
+			}
 			return nil, nil, err
 		}
 
@@ -378,4 +404,74 @@ func sccMITRE(category, findingClass string) string {
 
 func parseGCPServiceAccount(saJSON string, sa *gcpServiceAccount) error {
 	return json.Unmarshal([]byte(saJSON), sa)
+}
+
+
+// ── SCC threat findings → detection events (G-11) ─────────────────────────────
+
+// pullSCCThreatEvents turns ACTIVE, unmuted THREAT-class findings of medium
+// severity or above into cloud.gcp_scc events so the C-SCC rules (and the
+// alert pipeline) fire on Event Threat Detection / Container Threat
+// Detection / VM Threat Detection, instead of threats only appearing as
+// posture rows every 6 hours. Event IDs are derived from finding name +
+// event time, so re-fetching the same finding is deduplicated at insert.
+func pullSCCThreatEvents(ctx context.Context, token, projectID string, connID int64) ([]CloudEvent, error) {
+	findings, _, err := fetchSCCFindingsFiltered(ctx, token, projectID,
+		`state="ACTIVE" AND -mute="MUTED" AND finding_class="THREAT"`)
+	if err != nil {
+		return nil, err
+	}
+	var evs []CloudEvent
+	for _, f := range findings {
+		sev := 0
+		switch strings.ToLower(f.Severity) {
+		case "critical":
+			sev = 5
+		case "high":
+			sev = 4
+		case "medium":
+			sev = 3
+		default:
+			continue
+		}
+		t := time.Now().UTC()
+		for _, ts := range []string{f.EventTime, f.CreateTime} {
+			if pt, perr := time.Parse(time.RFC3339Nano, ts); perr == nil {
+				t = pt
+				break
+			}
+		}
+		sum := sha256.Sum256([]byte(f.Name + "|" + t.UTC().Format(time.RFC3339Nano)))
+		raw, _ := json.Marshal(map[string]interface{}{
+			"source":        "gcp_scc",
+			"connector_id":  connID,
+			"finding_name":  f.Name,
+			"category":      f.Category,
+			"finding_class": f.FindingClass,
+			"severity":      f.Severity,
+			"state":         f.State,
+			"resource_name": f.ResourceName,
+			"description":   f.Description,
+			"external_uri":  f.ExternalURI,
+			"indicator":     f.Indicator,
+			"source_properties": f.SourceProperties,
+		})
+		ev := CloudEvent{
+			ID:        "scc-" + hex.EncodeToString(sum[:8]),
+			Time:      t,
+			AgentID:   fmt.Sprintf("gcp-scc-%d", connID),
+			Host:      projectID,
+			OS:        "gcp",
+			EventType: "cloud.gcp_scc",
+			Severity:  sev,
+			Source:    "gcp_scc",
+			Username:  "",
+			Raw:       raw,
+		}
+		if f.Indicator != nil && len(f.Indicator.IPAddresses) > 0 {
+			ev.SrcIP = f.Indicator.IPAddresses[0]
+		}
+		evs = append(evs, ev)
+	}
+	return evs, nil
 }

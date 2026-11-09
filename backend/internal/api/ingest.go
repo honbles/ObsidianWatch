@@ -4,12 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"log/slog"
+	"net"
 	"net/http"
+	"net/netip"
 	"strings"
 	"time"
 
-	"obsidianwatch/backend/pkg/schema"
 	"obsidianwatch/backend/internal/store"
+	"obsidianwatch/backend/pkg/schema"
 )
 
 type ingestStore interface {
@@ -24,9 +26,11 @@ func handleIngest(db ingestStore, maxBatch int, logger *slog.Logger) http.Handle
 			return
 		}
 
+		r.Body = http.MaxBytesReader(w, r.Body, maxIngestBodyBytes)
 		// Decode batch
 		var batch schema.Batch
 		if err := json.NewDecoder(r.Body).Decode(&batch); err != nil {
+			metrics.invalid.Add(1)
 			http.Error(w, `{"error":"invalid JSON"}`, http.StatusBadRequest)
 			return
 		}
@@ -45,8 +49,52 @@ func handleIngest(db ingestStore, maxBatch int, logger *slog.Logger) http.Handle
 			return
 		}
 
+		if len(batch.AgentID) > 128 {
+			http.Error(w, `{"error":"agent_id too long"}`, http.StatusBadRequest)
+			return
+		}
+		if !ingestThrottle.allow(batch.AgentID, len(batch.Events)) {
+			logger.Warn("ingest: per-agent rate limit exceeded", "agent", batch.AgentID, "count", len(batch.Events))
+			metrics.throttled.Add(1)
+			w.Header().Set("Retry-After", "30")
+			http.Error(w, `{"error":"rate limit exceeded"}`, http.StatusTooManyRequests)
+			return
+		}
+		truncated := 0
+		for i := range batch.Events {
+			if sanitizeEvent(&batch.Events[i]) {
+				truncated++
+			}
+		}
+		metrics.truncated.Add(int64(truncated))
+		if truncated > 0 {
+			logger.Warn("ingest: oversized fields truncated", "agent", batch.AgentID, "events", truncated)
+		}
+
 		// Prefer the explicit hostname field; fall back to scanning events.
 		hostname := batch.Hostname
+		// X-02: events carry agent-supplied timestamps. The server-side
+		// receive time is stored separately (events.ingested_at, migration
+		// 007); here we detect clock skew and stop future-dated events from
+		// poisoning time-window queries (they would sit at the top of every
+		// "latest" view and evade lookback windows).
+		recvNow := time.Now().UTC()
+		var maxFuture time.Duration
+		clamped := 0
+		for i := range batch.Events {
+			if t := batch.Events[i].Time; !t.IsZero() && t.After(recvNow.Add(10*time.Minute)) {
+				if d := t.Sub(recvNow); d > maxFuture {
+					maxFuture = d
+				}
+				batch.Events[i].Time = recvNow
+				clamped++
+			}
+		}
+		metrics.clamped.Add(int64(clamped))
+		if clamped > 0 {
+			logger.Warn("ingest: agent clock skew — future-dated events clamped to receive time",
+				"agent", batch.AgentID, "clamped", clamped, "max_skew", maxFuture.Round(time.Second).String())
+		}
 		for i := range batch.Events {
 			if batch.Events[i].AgentID == "" {
 				batch.Events[i].AgentID = batch.AgentID
@@ -63,11 +111,18 @@ func handleIngest(db ingestStore, maxBatch int, logger *slog.Logger) http.Handle
 		}
 
 		// Write events
+		insStart := time.Now()
 		if err := db.InsertEvents(r.Context(), batch.Events); err != nil {
+			metrics.insertErrors.Add(1)
 			logger.Error("ingest: insert failed", "agent", batch.AgentID, "err", err)
 			http.Error(w, `{"error":"internal server error"}`, http.StatusInternalServerError)
 			return
 		}
+
+		metrics.insertNanos.Add(int64(time.Since(insStart)))
+		metrics.batches.Add(1)
+		metrics.eventsAccepted.Add(int64(len(batch.Events)))
+		metrics.lastIngestUnix.Store(time.Now().Unix())
 
 		// Update agent registry
 		remoteIP := remoteAddr(r)
@@ -96,21 +151,63 @@ func handleIngest(db ingestStore, maxBatch int, logger *slog.Logger) http.Handle
 	}
 }
 
-// remoteAddr extracts a clean IP from the request, honouring X-Forwarded-For
-// when the backend is behind a reverse proxy.
-func remoteAddr(r *http.Request) string {
-	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-		// Take the first (leftmost) IP — the original client.
-		if parts := strings.Split(xff, ","); len(parts) > 0 {
-			return strings.TrimSpace(parts[0])
+var trustedProxies []netip.Prefix
+
+// SetTrustedProxies (M-13) configures which peers may supply X-Forwarded-For.
+func SetTrustedProxies(entries []string) {
+	var out []netip.Prefix
+	for _, e := range entries {
+		e = strings.TrimSpace(e)
+		if p, err := netip.ParsePrefix(e); err == nil {
+			out = append(out, p)
+		} else if a, err := netip.ParseAddr(e); err == nil {
+			out = append(out, netip.PrefixFrom(a, a.BitLen()))
 		}
 	}
-	// Strip port from RemoteAddr.
-	addr := r.RemoteAddr
-	if idx := strings.LastIndex(addr, ":"); idx != -1 {
-		return addr[:idx]
+	trustedProxies = out
+}
+
+func peerAddr(r *http.Request) string {
+	if h, _, err := net.SplitHostPort(r.RemoteAddr); err == nil {
+		return h
 	}
-	return addr
+	return r.RemoteAddr
+}
+
+// remoteAddr returns the client IP. X-Forwarded-For is honoured only when the
+// direct peer is a configured trusted proxy — otherwise any client could set
+// the header and spoof last_ip (M-13). When trusted, the rightmost entry not
+// itself a trusted proxy is used (the leftmost is client-controlled).
+func remoteAddr(r *http.Request) string {
+	peer := peerAddr(r)
+	pa, err := netip.ParseAddr(peer)
+	if err != nil || len(trustedProxies) == 0 || !inTrusted(pa) {
+		return peer
+	}
+	xff := r.Header.Get("X-Forwarded-For")
+	if xff == "" {
+		return peer
+	}
+	parts := strings.Split(xff, ",")
+	for i := len(parts) - 1; i >= 0; i-- {
+		a, err := netip.ParseAddr(strings.TrimSpace(parts[i]))
+		if err != nil {
+			return peer
+		}
+		if !inTrusted(a) {
+			return a.String()
+		}
+	}
+	return peer
+}
+
+func inTrusted(a netip.Addr) bool {
+	for _, p := range trustedProxies {
+		if p.Contains(a) {
+			return true
+		}
+	}
+	return false
 }
 
 // Ensure ingestStore is satisfied by *store.DB at compile time.

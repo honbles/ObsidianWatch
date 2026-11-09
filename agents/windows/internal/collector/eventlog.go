@@ -12,6 +12,8 @@ import (
 	"encoding/xml"
 	"fmt"
 	"log/slog"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -30,10 +32,14 @@ var (
 	procEvtClose                 = modWevtapi.NewProc("EvtClose")
 	procEvtFormatMessage         = modWevtapi.NewProc("EvtFormatMessage")
 	procEvtOpenPublisherMetadata = modWevtapi.NewProc("EvtOpenPublisherMetadata")
+	procEvtCreateBookmark        = modWevtapi.NewProc("EvtCreateBookmark")
+	procEvtUpdateBookmark        = modWevtapi.NewProc("EvtUpdateBookmark")
 )
 
 const (
 	evtSubscribeToFutureEvents = 1
+	evtSubscribeStartAfterBkmk = 3
+	evtRenderBookmark          = 2
 	evtRenderEventXml          = 1
 )
 
@@ -84,23 +90,51 @@ func NewEventLogCollector(channels []string, agentID, host string, out chan<- sc
 	return &EventLogCollector{channels: channels, agentID: agentID, host: host, out: out, logger: logger}
 }
 
+// elSub is one channel subscription plus its persisted bookmark (W-09), so
+// events written while the agent was stopped or restarting are not lost.
+type elSub struct {
+	channel  string
+	handle   windows.Handle
+	bookmark windows.Handle
+	path     string
+	dirty    int
+}
+
+func bookmarkDir() string {
+	base := os.Getenv("ProgramData")
+	if base == "" {
+		base = `C:\ProgramData`
+	}
+	return filepath.Join(base, "ObsidianWatch", "bookmarks")
+}
+
+func bookmarkFile(channel string) string {
+	r := strings.NewReplacer("/", "_", "\\", "_", " ", "_", ":", "_")
+	return filepath.Join(bookmarkDir(), r.Replace(channel)+".xml")
+}
+
 func (c *EventLogCollector) Run(ctx context.Context) error {
-	handles := make([]windows.Handle, 0, len(c.channels))
+	_ = os.MkdirAll(bookmarkDir(), 0o700)
+	subs := make([]*elSub, 0, len(c.channels))
 	for _, ch := range c.channels {
-		h, err := c.subscribe(ch)
+		sb, err := c.subscribe(ch)
 		if err != nil {
 			c.logger.Error("eventlog: subscribe failed", "channel", ch, "err", err)
 			continue
 		}
-		handles = append(handles, h)
+		subs = append(subs, sb)
 		c.logger.Info("eventlog: subscribed", "channel", ch)
 	}
-	if len(handles) == 0 {
+	if len(subs) == 0 {
 		return fmt.Errorf("eventlog: no channels could be subscribed")
 	}
 	defer func() {
-		for _, h := range handles {
-			closeEvtHandle(h)
+		for _, sb := range subs {
+			c.saveBookmark(sb)
+			closeEvtHandle(sb.handle)
+			if sb.bookmark != 0 {
+				closeEvtHandle(sb.bookmark)
+			}
 		}
 	}()
 	ticker := time.NewTicker(2 * time.Second)
@@ -110,47 +144,103 @@ func (c *EventLogCollector) Run(ctx context.Context) error {
 		case <-ctx.Done():
 			return nil
 		case <-ticker.C:
-			for _, h := range handles {
-				c.drain(h)
+			for _, sb := range subs {
+				c.drain(sb)
 			}
 		}
 	}
 }
 
-func (c *EventLogCollector) subscribe(channel string) (windows.Handle, error) {
+func (c *EventLogCollector) loadBookmark(path string) windows.Handle {
+	data, err := os.ReadFile(path)
+	if err != nil || len(data) == 0 {
+		return 0
+	}
+	xp, err := windows.UTF16PtrFromString(string(data))
+	if err != nil {
+		return 0
+	}
+	h, _, _ := procEvtCreateBookmark.Call(uintptr(unsafe.Pointer(xp)))
+	return windows.Handle(h)
+}
+
+func (c *EventLogCollector) saveBookmark(sb *elSub) {
+	if sb.bookmark == 0 || sb.dirty == 0 {
+		return
+	}
+	var used, props uint32
+	buf := make([]uint16, 2048)
+	ret, _, _ := procEvtRender.Call(0, uintptr(sb.bookmark), evtRenderBookmark,
+		uintptr(len(buf)*2), uintptr(unsafe.Pointer(&buf[0])),
+		uintptr(unsafe.Pointer(&used)), uintptr(unsafe.Pointer(&props)))
+	if ret == 0 || used == 0 {
+		return
+	}
+	xml := windows.UTF16ToString(buf)
+	tmp := sb.path + ".tmp"
+	if err := os.WriteFile(tmp, []byte(xml), 0o600); err == nil {
+		_ = os.Rename(tmp, sb.path)
+		sb.dirty = 0
+	}
+}
+
+func (c *EventLogCollector) subscribe(channel string) (*elSub, error) {
 	channelPtr, err := windows.UTF16PtrFromString(channel)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
 	queryPtr, err := windows.UTF16PtrFromString("*")
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
 	signalEvent, err := windows.CreateEvent(nil, 0, 0, nil)
 	if err != nil {
-		return 0, fmt.Errorf("CreateEvent: %w", err)
+		return nil, fmt.Errorf("CreateEvent: %w", err)
 	}
 	defer windows.CloseHandle(signalEvent)
+	sb := &elSub{channel: channel, path: bookmarkFile(channel)}
+	bk := c.loadBookmark(sb.path)
+	flags := uintptr(evtSubscribeToFutureEvents)
+	if bk != 0 {
+		flags = evtSubscribeStartAfterBkmk
+	}
 	h, _, callErr := procEvtSubscribe.Call(
 		0, uintptr(signalEvent),
 		uintptr(unsafe.Pointer(channelPtr)),
 		uintptr(unsafe.Pointer(queryPtr)),
-		0, 0, 0,
-		evtSubscribeToFutureEvents,
+		uintptr(bk), 0, 0,
+		flags,
 	)
-	if h == 0 {
-		return 0, fmt.Errorf("EvtSubscribe: %w", callErr)
+	if h == 0 && bk != 0 {
+		// Stale bookmark (log cleared / rotated): fall back to future events.
+		closeEvtHandle(bk)
+		bk = 0
+		h, _, callErr = procEvtSubscribe.Call(
+			0, uintptr(signalEvent),
+			uintptr(unsafe.Pointer(channelPtr)),
+			uintptr(unsafe.Pointer(queryPtr)),
+			0, 0, 0, evtSubscribeToFutureEvents,
+		)
 	}
-	return windows.Handle(h), nil
+	if h == 0 {
+		return nil, fmt.Errorf("EvtSubscribe: %w", callErr)
+	}
+	if bk == 0 {
+		nb, _, _ := procEvtCreateBookmark.Call(0)
+		bk = windows.Handle(nb)
+	}
+	sb.handle = windows.Handle(h)
+	sb.bookmark = windows.Handle(bk)
+	return sb, nil
 }
 
-func (c *EventLogCollector) drain(subHandle windows.Handle) {
+func (c *EventLogCollector) drain(sb *elSub) {
 	const batchSize = 64
 	events := make([]windows.Handle, batchSize)
 	for {
 		var returned uint32
 		ret, _, _ := procEvtNext.Call(
-			uintptr(subHandle), uintptr(batchSize),
+			uintptr(sb.handle), uintptr(batchSize),
 			uintptr(unsafe.Pointer(&events[0])),
 			500, 0, uintptr(unsafe.Pointer(&returned)),
 		)
@@ -159,6 +249,10 @@ func (c *EventLogCollector) drain(subHandle windows.Handle) {
 		}
 		for i := uint32(0); i < returned; i++ {
 			ev := c.parseEvent(events[i])
+			if sb.bookmark != 0 {
+				procEvtUpdateBookmark.Call(uintptr(sb.bookmark), uintptr(events[i]))
+				sb.dirty++
+			}
 			closeEvtHandle(events[i])
 			if ev != nil {
 				select {
@@ -169,6 +263,7 @@ func (c *EventLogCollector) drain(subHandle windows.Handle) {
 			}
 		}
 	}
+	c.saveBookmark(sb)
 }
 
 func (c *EventLogCollector) parseEvent(evHandle windows.Handle) *schema.Event {
@@ -712,6 +807,19 @@ func classifyAndEnrichEvent(ev *schema.Event, data map[string]string) {
 		}
 		if v := firstOf(data, "Path", "Process Name"); v != "" {
 			ev.FilePath = v
+		}
+	// W-08: Defender posture changes — real-time protection / scanning
+	// disabled (5001, 5010, 5012) and configuration changes (5007), which
+	// include exclusion additions (Exclusions\Paths / Extensions / Processes).
+	case 5001, 5010, 5012:
+		ev.Severity = schema.SeverityHigh
+	case 5007:
+		ev.Severity = schema.SeverityMedium
+		for _, v := range data {
+			if containsAnyStr(strings.ToLower(v), `\exclusions\`) {
+				ev.Severity = schema.SeverityHigh
+				break
+			}
 		}
 	// AppLocker blocked execution
 	case 8004, 8007:

@@ -4,7 +4,7 @@ agent:
 
 forwarder:
   backend_url: "https://192.168.1.140:8443"
-  management_url: "http://192.168.1.140"
+  management_url: "https://192.168.1.140"
   ca_file: "certs/ca.crt"       # Path to backend CA cert (for TLS verification)
   api_key: "changeme"           # API key — set to match backend config
   install_key: ""               # Set automatically during install
@@ -62,7 +62,24 @@ collector:
       - /private/etc/ssh/sshd_config
       - /Library/LaunchDaemons
       - /Library/LaunchAgents
+      - /System/Library/LaunchDaemons
       - /root/.ssh
+      # A-08: further persistence locations (per-user LaunchAgents and ~/.ssh
+      # are discovered automatically under /Users/*)
+      - /Library/StartupItems
+      - /etc/periodic/daily
+      - /etc/periodic/weekly
+      - /etc/periodic/monthly
+      - /etc/emond.d/rules
+      - /usr/lib/cron/tabs
+      - /private/var/at/tabs
+      - /Library/Preferences/com.apple.loginwindow.plist
+      - /etc/zshrc
+      - /etc/zprofile
+      - /etc/profile
+      - /etc/rc.common
+      - /private/var/db/com.apple.backgroundtaskmanagement
+      - /Library/Scripts
 
   health:
     enabled: true
@@ -76,3 +93,7 @@ collector:
 log:
   level: "info"                 # debug | info | warn | error
   format: "json"
+
+# Remote analyst shell. Off by default; enable only where you accept remote command execution.
+live_response:
+  enabled: false

@@ -10,10 +10,10 @@
 package main
 
 import (
+	"crypto/subtle"
+	"encoding/json"
 	"context"
 	"crypto/rand"
-	"crypto/tls"
-	"crypto/x509"
 	"encoding/hex"
 	"flag"
 	"fmt"
@@ -22,6 +22,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"sync"
 	"os/signal"
 	"path/filepath"
 	"strings"
@@ -80,7 +81,8 @@ func main() {
 	logger := buildLogger(cfg.Log.Level, cfg.Log.Format)
 
 	if isService {
-		os.MkdirAll(`C:\ProgramData\ObsidianWatch`, 0755)
+		os.MkdirAll(`C:\ProgramData\ObsidianWatch`, 0700)
+		hardenDataDir()
 		if f, err := os.OpenFile(`C:\ProgramData\ObsidianWatch\agent.log`,
 			os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err == nil {
 			fmt.Fprintf(f, `{"time":"%s","level":"INFO","msg":"main: starting as Windows service"}`+"\n",
@@ -122,7 +124,8 @@ func (s *agentService) Execute(args []string, r <-chan svc.ChangeRequest, status
 
 	// Write startup marker directly to log file — before anything else
 	// so we know Execute() was reached even if run() panics.
-	os.MkdirAll(`C:\ProgramData\ObsidianWatch`, 0755)
+	os.MkdirAll(`C:\ProgramData\ObsidianWatch`, 0700)
+	hardenDataDir()
 	if f, err := os.OpenFile(`C:\ProgramData\ObsidianWatch\agent.log`,
 		os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err == nil {
 		fmt.Fprintf(f, `{"time":"%s","level":"INFO","msg":"service Execute() started"}`+"\n",
@@ -478,6 +481,7 @@ func run(ctx context.Context, cfg *config.Config, logger *slog.Logger) error {
 			agentID, hostInfo.Hostname,
 			cfg.Forwarder.BackendURL, cfg.Forwarder.APIKey,
 			resolveRelative(cfg.Forwarder.CAFile), cfg.Forwarder.CACertPEM,
+			cfg.Forwarder.AllowInsecureTLS, cfg.Collector.LocationPrecisePositioning,
 			eventCh, // bypasses rate limiter — location is low frequency
 			logger,
 		)
@@ -485,19 +489,24 @@ func run(ctx context.Context, cfg *config.Config, logger *slog.Logger) error {
 		activeCollectors = append(activeCollectors, "location")
 	}
 
-	// Live Response — SSH tunnel for analyst terminal access
-	{
+	// Live Response — analyst terminal access. H-2: opt-in only.
+	if cfg.LiveResponse.Enabled {
 		lr := collector.NewLiveResponseCollector(
 			agentID, hostInfo.Hostname,
 			cfg.Forwarder.ManagementURL,
 			cfg.Forwarder.APIKey,
 			cfg.Forwarder.CAFile,
 			cfg.Forwarder.CAFile,
+			cfg.Forwarder.AllowInsecureTLS,
 			logger,
 		)
 		caPEM := cfg.Forwarder.ManagementCACertPEM
-		if caPEM == "" { caPEM = cfg.Forwarder.CACertPEM }
-		if caPEM != "" { lr.SetCAPEM(caPEM) }
+		if caPEM == "" {
+			caPEM = cfg.Forwarder.CACertPEM
+		}
+		if caPEM != "" {
+			lr.SetCAPEM(caPEM)
+		}
 		go func() { lr.Run(ctx) }()
 		activeCollectors = append(activeCollectors, "live-response")
 	}
@@ -508,6 +517,21 @@ func run(ctx context.Context, cfg *config.Config, logger *slog.Logger) error {
 	logStep("all collectors launched — waiting for shutdown")
 	<-ctx.Done()
 	logger.Info("agent shutting down")
+	// D-12: report the stop to the server before exiting (service stop,
+	// uninstall, or an attempt to blind the host).
+	{
+		raw, _ := json.Marshal(map[string]interface{}{
+			"reason": "service stop / shutdown requested", "pid": os.Getpid(),
+		})
+		fwd.SendFinal(schema.Event{
+			ID:        fmt.Sprintf("agent-tamper:%s:%d", agentID, time.Now().UnixNano()),
+			OS:        "windows",
+			EventType: "agent.tamper",
+			Severity:  schema.Severity(4),
+			Source:    "agent",
+			Raw:       raw,
+		})
+	}
 	return nil
 }
 
@@ -534,6 +558,13 @@ func installService() error {
 	exePath, err = filepath.Abs(exePath)
 	if err != nil {
 		return fmt.Errorf("abs exe path: %w", err)
+	}
+
+	// C-3: the binary embeds the fleet API key and CA, so restrict it to
+	// SYSTEM and Administrators (best effort; warn if it fails).
+	if out, aerr := exec.Command("icacls", exePath, "/inheritance:r",
+		"/grant:r", "*S-1-5-18:(RX)", "*S-1-5-32-544:(F)").CombinedOutput(); aerr != nil {
+		fmt.Printf("  Warning: could not restrict binary ACL: %v %s\n", aerr, strings.TrimSpace(string(out)))
 	}
 
 	// Load the embedded config — no yaml file needed.
@@ -714,26 +745,28 @@ func waitForServiceGone(svcName string) {
 // the high-level mgr.OpenService (which requests SERVICE_ALL_ACCESS).
 func removeExistingService(name string) {
 	const (
-		SC_MANAGER_CONNECT    = 0x0001
-		SERVICE_WRITE_DAC     = 0x00040000
-		SERVICE_ALL_ACCESS    = 0x000F01FF
+		SC_MANAGER_CONNECT = 0x0001
+		SERVICE_WRITE_DAC  = 0x00040000
+		SERVICE_ALL_ACCESS = 0x000F01FF
 	)
 	advapi32r := windows.NewLazySystemDLL("advapi32.dll")
-	openSCMr   := advapi32r.NewProc("OpenSCManagerW")
-	openSvcR   := advapi32r.NewProc("OpenServiceW")
-	closeHndR  := advapi32r.NewProc("CloseServiceHandle")
-	setSecR    := advapi32r.NewProc("SetServiceObjectSecurity")
-	controlR   := advapi32r.NewProc("ControlService")
-	deleteR    := advapi32r.NewProc("DeleteService")
+	openSCMr := advapi32r.NewProc("OpenSCManagerW")
+	openSvcR := advapi32r.NewProc("OpenServiceW")
+	closeHndR := advapi32r.NewProc("CloseServiceHandle")
+	setSecR := advapi32r.NewProc("SetServiceObjectSecurity")
+	controlR := advapi32r.NewProc("ControlService")
+	deleteR := advapi32r.NewProc("DeleteService")
 
 	scmName, _ := windows.UTF16PtrFromString("")
-	scmDB, _   := windows.UTF16PtrFromString("ServicesActive")
-	scm, _, _  := openSCMr.Call(
+	scmDB, _ := windows.UTF16PtrFromString("ServicesActive")
+	scm, _, _ := openSCMr.Call(
 		uintptr(unsafe.Pointer(scmName)),
 		uintptr(unsafe.Pointer(scmDB)),
 		SC_MANAGER_CONNECT,
 	)
-	if scm == 0 { return }
+	if scm == 0 {
+		return
+	}
 	defer closeHndR.Call(scm)
 
 	svcName, _ := windows.UTF16PtrFromString(name)
@@ -755,7 +788,9 @@ func removeExistingService(name string) {
 
 	// Now open with full access to stop and delete
 	hFull, _, _ := openSvcR.Call(scm, uintptr(unsafe.Pointer(svcName)), SERVICE_ALL_ACCESS)
-	if hFull == 0 { return }
+	if hFull == 0 {
+		return
+	}
 
 	var status windows.SERVICE_STATUS
 	controlR.Call(hFull, windows.SERVICE_CONTROL_STOP, uintptr(unsafe.Pointer(&status)))
@@ -773,9 +808,10 @@ func removeExistingService(name string) {
 // prevents stop/delete by non-SYSTEM accounts.
 //
 // Service-specific hex rights used in SDDL:
-//   0x000F01FF = SERVICE_ALL_ACCESS  (SYSTEM gets everything)
-//   0x0002019D = query/start/pause/read but NOT stop/delete (Administrators)
-//   0x00010020 = SERVICE_STOP | DELETE  (denied for Everyone)
+//
+//	0x000F01FF = SERVICE_ALL_ACCESS  (SYSTEM gets everything)
+//	0x0002019D = query/start/pause/read but NOT stop/delete (Administrators)
+//	0x00010020 = SERVICE_STOP | DELETE  (denied for Everyone)
 func applyTamperDACL(s *mgr.Service) error {
 	// Hex masks avoid the invalid generic-rights keywords that caused parse errors.
 	sddl := "D:P(A;;0x000F01FF;;;SY)(A;;0x0002019D;;;BA)(D;;0x00010020;;;WD)"
@@ -808,13 +844,10 @@ func registerInstallKey(mgmtURL, apiKey, mgmtCACertPEM, agentID, password string
 	mgmtURL = strings.TrimRight(mgmtURL, "/")
 	body := fmt.Sprintf(`{"agent_id":%q,"install_key":%q,"os":"windows"}`, agentID, password)
 
-	var tlsCfg *tls.Config
-	if mgmtCACertPEM != "" {
-		pool := x509.NewCertPool()
-		pool.AppendCertsFromPEM([]byte(mgmtCACertPEM))
-		tlsCfg = &tls.Config{RootCAs: pool}
-	} else {
-		tlsCfg = &tls.Config{InsecureSkipVerify: true}
+	// W-05: fail closed — no silent InsecureSkipVerify fallback.
+	tlsCfg, err := config.BuildTLSConfig([]byte(mgmtCACertPEM), false)
+	if err != nil {
+		return err
 	}
 	client := &http.Client{
 		Timeout:   10 * time.Second,
@@ -838,42 +871,52 @@ func registerInstallKey(mgmtURL, apiKey, mgmtCACertPEM, agentID, password string
 	return nil
 }
 
-// verifyInstallKey checks the key against the management server.
-func verifyInstallKey(key, mgmtURL string) bool {
+// verifyInstallKey (F-02/W-05) asks the management server to verify the key.
+// The key goes in a POST body (never the URL) with the fleet API key header.
+// The server rotates the key on success, so each key is single-use.
+// Returns (accepted, reachable): reachable=false means the server could not be
+// contacted at all (as opposed to contacted-and-rejected).
+func verifyInstallKey(key, mgmtURL, apiKey string) (bool, bool) {
 	if mgmtURL == "" {
-		fmt.Println("Warning: management_url not set in config — cannot verify install key")
-		return false
+		return false, false
 	}
 	mgmtURL = strings.TrimRight(mgmtURL, "/")
 
-	// Load management CA from embedded config if available.
-	var tlsCfg *tls.Config
-	if cfg, err := config.LoadEmbedded("agent.yaml"); err == nil {
-		mgmtCA := cfg.Forwarder.ManagementCACertPEM
-		if mgmtCA == "" {
-			mgmtCA = cfg.Forwarder.CACertPEM
-		}
-		if mgmtCA != "" {
-			pool := x509.NewCertPool()
-			pool.AppendCertsFromPEM([]byte(mgmtCA))
-			tlsCfg = &tls.Config{RootCAs: pool}
-		}
+	cfg, err := config.LoadEmbedded("agent.yaml")
+	if err != nil {
+		return false, false
 	}
-	if tlsCfg == nil {
-		tlsCfg = &tls.Config{InsecureSkipVerify: true}
+	mgmtCA := cfg.Forwarder.ManagementCACertPEM
+	if mgmtCA == "" {
+		mgmtCA = cfg.Forwarder.CACertPEM
+	}
+	tlsCfg, err := config.BuildTLSConfig([]byte(mgmtCA), cfg.Forwarder.AllowInsecureTLS)
+	if err != nil {
+		fmt.Printf("Warning: TLS setup failed: %v\n", err)
+		return false, false
+	}
+	if apiKey == "" {
+		apiKey = cfg.Forwarder.APIKey
 	}
 
 	client := &http.Client{
 		Timeout:   10 * time.Second,
 		Transport: &http.Transport{TLSClientConfig: tlsCfg},
 	}
-	resp, err := client.Get(mgmtURL + "/api/v1/verify-install-key?key=" + key)
+	body := fmt.Sprintf(`{"key":%q}`, key)
+	req, err := http.NewRequest(http.MethodPost, mgmtURL+"/api/v1/verify-install-key", strings.NewReader(body))
+	if err != nil {
+		return false, false
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-API-Key", apiKey)
+	resp, err := client.Do(req)
 	if err != nil {
 		fmt.Printf("Warning: could not reach management server at %s: %v\n", mgmtURL, err)
-		return false
+		return false, false
 	}
 	defer resp.Body.Close()
-	return resp.StatusCode == 200
+	return resp.StatusCode == 200, true
 }
 
 func uninstallService() error {
@@ -898,9 +941,24 @@ func uninstallService() error {
 	fmt.Scanln(&inputKey)
 	inputKey = strings.TrimSpace(inputKey)
 
-	if inputKey != installKey {
+	// F-02: the management server is the authority — it verifies the key and
+	// rotates it, so a key is single-use and "Regenerate key" on the dashboard
+	// actually works. The local copy is consulted only when the server cannot
+	// be reached at all; a server rejection is final.
+	mgmtURL := ""
+	if ecfg, cerr := config.LoadEmbedded("agent.yaml"); cerr == nil {
+		mgmtURL = ecfg.Forwarder.ManagementURL
+	}
+	accepted, reachable := verifyInstallKey(inputKey, mgmtURL, "")
+	if reachable {
+		if !accepted {
+			fmt.Println()
+			fmt.Println("  ✗ Incorrect key. Uninstall blocked.")
+			return fmt.Errorf("tamper protection: incorrect install key")
+		}
+	} else if subtle.ConstantTimeCompare([]byte(inputKey), []byte(installKey)) != 1 {
 		fmt.Println()
-		fmt.Println("  ✗ Incorrect key. Uninstall blocked.")
+		fmt.Println("  ✗ Incorrect key (management server unreachable; checked against local copy). Uninstall blocked.")
 		return fmt.Errorf("tamper protection: incorrect install key")
 	}
 	fmt.Println("  ✓ Key accepted.")
@@ -916,8 +974,8 @@ func uninstallService() error {
 	// then stop and delete using a fresh handle with full rights.
 
 	const (
-		SC_MANAGER_CONNECT = 0x0001         // always granted to any user
-		SERVICE_WRITE_DAC  = 0x00040000     // not in our deny list — should be allowed
+		SC_MANAGER_CONNECT = 0x0001     // always granted to any user
+		SERVICE_WRITE_DAC  = 0x00040000 // not in our deny list — should be allowed
 		SERVICE_ALL_ACCESS = 0x000F01FF
 	)
 
@@ -927,14 +985,14 @@ func uninstallService() error {
 	enablePrivilege("SeSecurityPrivilege")
 
 	advapi32u := windows.NewLazySystemDLL("advapi32.dll")
-	openSCM   := advapi32u.NewProc("OpenSCManagerW")
-	openSvc   := advapi32u.NewProc("OpenServiceW")
-	closeHnd  := advapi32u.NewProc("CloseServiceHandle")
-	setSec2   := advapi32u.NewProc("SetServiceObjectSecurity")
+	openSCM := advapi32u.NewProc("OpenSCManagerW")
+	openSvc := advapi32u.NewProc("OpenServiceW")
+	closeHnd := advapi32u.NewProc("CloseServiceHandle")
+	setSec2 := advapi32u.NewProc("SetServiceObjectSecurity")
 
 	// Open SCM with CONNECT only — always succeeds for any local user
 	scmName, _ := windows.UTF16PtrFromString("")
-	scmDB, _   := windows.UTF16PtrFromString("ServicesActive")
+	scmDB, _ := windows.UTF16PtrFromString("ServicesActive")
 	scmHandle, _, _ := openSCM.Call(
 		uintptr(unsafe.Pointer(scmName)),
 		uintptr(unsafe.Pointer(scmDB)),
@@ -979,7 +1037,7 @@ func uninstallService() error {
 	// Stop the service if running
 	var svcStatus windows.SERVICE_STATUS
 	controlSvc := advapi32u.NewProc("ControlService")
-	querySvc   := advapi32u.NewProc("QueryServiceStatus")
+	querySvc := advapi32u.NewProc("QueryServiceStatus")
 	querySvc.Call(hFull, uintptr(unsafe.Pointer(&svcStatus)))
 	if svcStatus.CurrentState != windows.SERVICE_STOPPED {
 		controlSvc.Call(hFull, windows.SERVICE_CONTROL_STOP, uintptr(unsafe.Pointer(&svcStatus)))
@@ -1103,6 +1161,22 @@ func ensureWindowsServices(logger *slog.Logger) {
 			}
 		}
 	}
+
+	// W-01: record the *final* outcome (after any install/elevation
+	// attempt above) so it reaches the management backend via the health
+	// reporter — previously this whole preflight only logged locally, so
+	// an admin had no way to know a host's process detections were
+	// running blind (ETW alone gives PID/TID/opcode only, no image path,
+	// command line, parent, or user) without reading that host's local
+	// agent log.
+	switch sysmonpkg.Check() {
+	case sysmonpkg.StatusRunning:
+		collector.SetSysmonStatus("running")
+	case sysmonpkg.StatusInstalled:
+		collector.SetSysmonStatus("installed_not_running")
+	default:
+		collector.SetSysmonStatus("not_installed")
+	}
 }
 
 // elevatedSysmonSetup re-launches this same agent.exe with runas (UAC prompt)
@@ -1115,13 +1189,13 @@ func elevatedSysmonSetup(logger *slog.Logger) error {
 	}
 
 	// ShellExecute with "runas" verb triggers UAC prompt
-	modShell32    := windows.NewLazySystemDLL("shell32.dll")
+	modShell32 := windows.NewLazySystemDLL("shell32.dll")
 	shellExecuteW := modShell32.NewProc("ShellExecuteW")
 
 	operation, _ := windows.UTF16PtrFromString("runas")
-	file, _      := windows.UTF16PtrFromString(exePath)
-	params, _    := windows.UTF16PtrFromString("--sysmon-setup-only")
-	dir, _       := windows.UTF16PtrFromString(filepath.Dir(exePath))
+	file, _ := windows.UTF16PtrFromString(exePath)
+	params, _ := windows.UTF16PtrFromString("--sysmon-setup-only")
+	dir, _ := windows.UTF16PtrFromString(filepath.Dir(exePath))
 
 	const SW_HIDE = 0
 	ret, _, err := shellExecuteW.Call(
@@ -1163,14 +1237,14 @@ func elevatedSysmonSetup(logger *slog.Logger) error {
 // Requires administrator privileges — silently skips on failure.
 func enableAuditPolicies(logger *slog.Logger) {
 	modAdvapi32Reg := windows.NewLazySystemDLL("advapi32.dll")
-	regSetValueEx  := modAdvapi32Reg.NewProc("RegSetValueExW")
+	regSetValueEx := modAdvapi32Reg.NewProc("RegSetValueExW")
 	regCreateKeyEx := modAdvapi32Reg.NewProc("RegCreateKeyExW")
-	regCloseKey    := modAdvapi32Reg.NewProc("RegCloseKey")
+	regCloseKey := modAdvapi32Reg.NewProc("RegCloseKey")
 
 	setDWORD := func(hive windows.Handle, path, name string, val uint32) error {
 		keyPtr, _ := windows.UTF16PtrFromString(path)
 		namePtr, _ := windows.UTF16PtrFromString(name)
-		const KEY_SET_VALUE  = 0x0002
+		const KEY_SET_VALUE = 0x0002
 		const KEY_WOW64_64KEY = 0x0100
 		const REG_OPTION_NON_VOLATILE = 0x00000000
 		var hkey windows.Handle
@@ -1293,4 +1367,20 @@ func buildLogger(level, format string) *slog.Logger {
 		}
 	}
 	return slog.New(handler)
+}
+
+var dataDirHardened sync.Once
+
+// hardenDataDir restricts C:\ProgramData\ObsidianWatch (agent.log, queue,
+// state) to SYSTEM and Administrators (W-06). Go's os file modes are ignored
+// on Windows, so the default ProgramData ACL lets every local user read the
+// log and queued events (which contain command lines). Best-effort: a
+// failure is non-fatal, and it runs once per process.
+func hardenDataDir() {
+	dataDirHardened.Do(func() {
+		_ = exec.Command("icacls", `C:\ProgramData\ObsidianWatch`,
+			"/inheritance:r",
+			"/grant:r", "*S-1-5-18:(OI)(CI)F", "*S-1-5-32-544:(OI)(CI)F",
+		).Run()
+	})
 }

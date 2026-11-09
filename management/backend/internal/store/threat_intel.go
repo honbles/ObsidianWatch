@@ -339,3 +339,83 @@ func (db *DB) GetSigmaRuleCount(ctx context.Context) (int, error) {
 	err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM sigma_rules`).Scan(&count)
 	return count, err
 }
+
+// ListIOCsCreatedSince returns active IOCs first inserted at/after t (P-01).
+func (db *DB) ListIOCsCreatedSince(ctx context.Context, source string, t time.Time) ([]IOCIndicator, error) {
+	rows, err := db.QueryContext(ctx, `
+		SELECT id, source, ioc_type, value, COALESCE(malware,''), COALESCE(threat_type,''),
+		       confidence, severity, created_at
+		FROM ioc_indicators
+		WHERE source = $1 AND created_at >= $2
+		  AND ioc_type IN ('ip','domain','hash')
+		  AND (expires_at IS NULL OR expires_at > NOW())
+		ORDER BY severity DESC, id
+		LIMIT 20000`, source, t)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []IOCIndicator
+	for rows.Next() {
+		var i IOCIndicator
+		if err := rows.Scan(&i.ID, &i.Source, &i.IOCType, &i.Value, &i.Malware, &i.ThreatType,
+			&i.Confidence, &i.Severity, &i.CreatedAt); err != nil {
+			continue
+		}
+		out = append(out, i)
+	}
+	return out, rows.Err()
+}
+
+// RetroHuntHit is one retained event that matches a newly-arrived IOC.
+type RetroHuntHit struct {
+	EventID   string
+	Time      time.Time
+	AgentID   string
+	Host      string
+	OS        string
+	EventType string
+	Process   string
+	Matched   string // the IOC value that matched (lower-cased)
+}
+
+// RetroHuntEvents searches retained events within `since` for any of the given
+// IOC values of one type. Results are capped by limit.
+func (db *DB) RetroHuntEvents(ctx context.Context, iocType string, values []string, since time.Time, limit int) ([]RetroHuntHit, error) {
+	if len(values) == 0 {
+		return nil, nil
+	}
+	var cond string
+	switch iocType {
+	case "ip":
+		cond = `(dst_ip = ANY($1) OR src_ip = ANY($1))`
+	case "domain":
+		cond = `(domain = ANY($1) OR dst_ip = ANY($1))`
+	case "hash":
+		cond = `(file_hash = ANY($1))`
+	default:
+		return nil, nil
+	}
+	rows, err := db.QueryContext(ctx, `
+		SELECT id, time, COALESCE(agent_id,''), COALESCE(host,''), COALESCE(os,''),
+		       COALESCE(event_type,''), COALESCE(process_name,''),
+		       COALESCE(NULLIF(dst_ip,''), NULLIF(src_ip,''), NULLIF(domain,''), COALESCE(file_hash,''))
+		FROM events
+		WHERE time >= $2 AND `+cond+`
+		ORDER BY time DESC
+		LIMIT $3`, pqStringArray(values), since, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []RetroHuntHit
+	for rows.Next() {
+		var h RetroHuntHit
+		if err := rows.Scan(&h.EventID, &h.Time, &h.AgentID, &h.Host, &h.OS,
+			&h.EventType, &h.Process, &h.Matched); err != nil {
+			continue
+		}
+		out = append(out, h)
+	}
+	return out, rows.Err()
+}

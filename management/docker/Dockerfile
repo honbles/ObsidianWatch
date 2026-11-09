@@ -29,9 +29,12 @@ RUN pip3 install --break-system-packages semgrep 2>/dev/null     || pip3 install
 ENV JAVA_HOME=/usr/lib/jvm/java-17-openjdk
 ENV PATH="${JAVA_HOME}/bin:${PATH}"
 
+# H-4: pinned release (bump deliberately); set CODEQL_SHA256 to also verify the download.
+ARG CODEQL_VERSION=v2.20.5
+ARG CODEQL_SHA256=
 # Install CodeQL CLI — best-effort, falls back to semgrep-only if unavailable
 # CodeQL adds deep dataflow analysis on top of Semgrep's pattern matching
-RUN ARCH=$(uname -m) &&     if [ "$ARCH" = "x86_64" ]; then CODEQL_ARCH="linux64"; else CODEQL_ARCH="linux-arm64"; fi &&     wget -q --timeout=120       "https://github.com/github/codeql-action/releases/latest/download/codeql-bundle-${CODEQL_ARCH}.tar.gz"       -O /tmp/codeql.tar.gz 2>/dev/null &&     tar -xzf /tmp/codeql.tar.gz -C /usr/local/ 2>/dev/null &&     ln -sf /usr/local/codeql/codeql /usr/local/bin/codeql &&     rm -f /tmp/codeql.tar.gz &&     codeql version && echo "CodeQL installed successfully"     || echo "CodeQL install failed — SAST will use Semgrep only"
+RUN ARCH=$(uname -m) &&     if [ "$ARCH" = "x86_64" ]; then CODEQL_ARCH="linux64"; else CODEQL_ARCH="linux-arm64"; fi &&     wget -q --timeout=120       "https://github.com/github/codeql-action/releases/download/codeql-bundle-${CODEQL_VERSION}/codeql-bundle-${CODEQL_ARCH}.tar.gz"       -O /tmp/codeql.tar.gz 2>/dev/null &&     { [ -z "$CODEQL_SHA256" ] || echo "$CODEQL_SHA256  /tmp/codeql.tar.gz" | sha256sum -c -; } &&     tar -xzf /tmp/codeql.tar.gz -C /usr/local/ 2>/dev/null &&     ln -sf /usr/local/codeql/codeql /usr/local/bin/codeql &&     rm -f /tmp/codeql.tar.gz &&     codeql version && echo "CodeQL installed successfully"     || echo "CodeQL install failed — SAST will use Semgrep only"
 
 WORKDIR /app
 

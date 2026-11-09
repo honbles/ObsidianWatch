@@ -8,7 +8,7 @@ probe:
 
 forwarder:
   backend_url:    "https://YOUR_BACKEND:8443"   # Backend ingest URL
-  management_url: "http://YOUR_MANAGEMENT"      # Management URL
+  management_url: "https://YOUR_MANAGEMENT"      # Management URL
   api_key:        "CHANGE_ME"                   # Agent API key from agent builder
   batch_size:     200
   flush_interval: "10s"

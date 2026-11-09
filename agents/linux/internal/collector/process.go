@@ -442,6 +442,21 @@ func (p *ProcessCollector) emit(pid int, entry procEntry, action string, sev sch
 		"uid":      entry.uid,
 		"username": username,
 	}
+	// F-11: stable process identity (boot id + pid + start time) so PID reuse
+	// cannot merge unrelated processes in the threat graph.
+	if g := linuxProcGUID(pid); g != "" {
+		rawData["process_guid"] = g
+	}
+	if entry.ppid > 0 {
+		if g := linuxProcGUID(entry.ppid); g != "" {
+			rawData["parent_process_guid"] = g
+		}
+	}
+	// L-01: hash on exec/start events (the cache makes repeats free).
+	sha := exeSHA256(pid)
+	if sha != "" {
+		rawData["sha256"] = sha
+	}
 	rawJSON, _ := json.Marshal(rawData)
 
 	ev := schema.Event{
@@ -450,6 +465,7 @@ func (p *ProcessCollector) emit(pid int, entry procEntry, action string, sev sch
 		Host:        p.host,
 		OS:          "linux",
 		EventType:   schema.EventTypeProcess,
+		FileHash:    sha,
 		Severity:    sev,
 		Source:      "proc",
 		Raw:         rawJSON,
@@ -476,3 +492,37 @@ func (p *ProcessCollector) emit(pid int, entry procEntry, action string, sev sch
 var _ = unsafe.Sizeof(0) // keep import
 
 // GlobalHealth is declared in health.go
+
+var (
+	bootIDOnce sync.Once
+	bootIDVal  string
+)
+
+// linuxProcGUID returns "<bootid8>-<pid>-<starttime ticks>" or "" if the
+// process is gone / unreadable.
+func linuxProcGUID(pid int) string {
+	bootIDOnce.Do(func() {
+		if b, err := os.ReadFile("/proc/sys/kernel/random/boot_id"); err == nil {
+			id := strings.ReplaceAll(strings.TrimSpace(string(b)), "-", "")
+			if len(id) > 8 {
+				id = id[:8]
+			}
+			bootIDVal = id
+		}
+	})
+	b, err := os.ReadFile(fmt.Sprintf("/proc/%d/stat", pid))
+	if err != nil {
+		return ""
+	}
+	str := string(b)
+	i := strings.LastIndex(str, ")")
+	if i < 0 || i+2 >= len(str) {
+		return ""
+	}
+	f := strings.Fields(str[i+2:])
+	// After the comm field: state is index 0, starttime (field 22) is index 19.
+	if len(f) < 20 {
+		return ""
+	}
+	return fmt.Sprintf("%s-%d-%s", bootIDVal, pid, f[19])
+}

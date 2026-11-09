@@ -107,7 +107,22 @@ func syncAzureDevOps(ctx context.Context, conn *store.DevOpsConnector, db *store
 		return 0, "", fmt.Errorf("failed to list projects: %w", err)
 	}
 
+	// DO-11: organisation audit log (needs auditing enabled and the Auditing scope).
+	if entries, aerr := fetchADOAudit(ctx, client, org, since); aerr == nil {
+		if evs := adoAuditToEvents(entries, conn); len(evs) > 0 {
+			n, _ := ingestCloudEvents(ctx, eventDB, evs)
+			total += n
+		}
+	}
+
 	for _, proj := range projectsResp.Value {
+		// DO-11: pipeline runs for this project.
+		if builds, berr := fetchADOBuilds(ctx, client, proj.Name, since); berr == nil {
+			if evs := adoBuildsToEvents(builds, proj.Name, conn); len(evs) > 0 {
+				n, _ := ingestCloudEvents(ctx, eventDB, evs)
+				total += n
+			}
+		}
 		// ── 2. List repos in project ──────────────────────────────────────────
 		var reposResp struct {
 			Value []struct {
@@ -199,7 +214,7 @@ func syncAzureDevOps(ctx context.Context, conn *store.DevOpsConnector, db *store
 						}
 					}
 					for _, sf := range sensitiveFilePatterns {
-						if matchesGlob(ch.Item.Path, sf) {
+						if ch.ChangeType != "delete" && matchesGlob(ch.Item.Path, sf) {
 							sensitiveModified = true
 						}
 					}
@@ -235,7 +250,7 @@ func syncAzureDevOps(ctx context.Context, conn *store.DevOpsConnector, db *store
 				})
 				ingestCloudEvents(ctx, eventDB, []CloudEvent{{
 					ID:        "devops:az:" + c.CommitID + ":push",
-					Time:      time.Now().UTC(),
+					Time:      commitEventTime(pushedAt),
 					AgentID:   fmt.Sprintf("devops:%d", conn.ID),
 					Host:      conn.Org,
 					OS:        "devops",
@@ -252,7 +267,7 @@ func syncAzureDevOps(ctx context.Context, conn *store.DevOpsConnector, db *store
 					})
 					ingestCloudEvents(ctx, eventDB, []CloudEvent{{
 						ID:        "devops:az:" + c.CommitID + ":secret",
-						Time:      time.Now().UTC(),
+						Time:      commitEventTime(pushedAt),
 						AgentID:   fmt.Sprintf("devops:%d", conn.ID),
 						Host:      conn.Org,
 						OS:        "devops",
@@ -269,7 +284,7 @@ func syncAzureDevOps(ctx context.Context, conn *store.DevOpsConnector, db *store
 					})
 					ingestCloudEvents(ctx, eventDB, []CloudEvent{{
 						ID:        "devops:az:" + c.CommitID + ":cicd",
-						Time:      time.Now().UTC(),
+						Time:      commitEventTime(pushedAt),
 						AgentID:   fmt.Sprintf("devops:%d", conn.ID),
 						Host:      conn.Org,
 						OS:        "devops",

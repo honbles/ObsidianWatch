@@ -25,8 +25,8 @@ import (
 	"time"
 	"unsafe"
 
-	"obsidianwatch/macos-agent/pkg/schema"
 	"golang.org/x/sys/unix"
+	"obsidianwatch/macos-agent/pkg/schema"
 )
 
 type ProcessCollectorConfig struct {
@@ -41,14 +41,16 @@ type ProcessCollector struct {
 	host     string
 	logger   *slog.Logger
 	seenPIDs map[int32]procEntry
+	starts   map[int32]uint64 // pid -> start time from the latest snapshot (F-11)
 	mu       sync.Mutex
 }
 
 type procEntry struct {
-	name string
-	ppid int32
-	uid  uint32
-	cmd  string
+	start uint64 // process start time, seconds*1e6+usec (F-11)
+	name  string
+	ppid  int32
+	uid   uint32
+	cmd   string
 }
 
 func NewProcessCollector(cfg ProcessCollectorConfig, agentID, host string, out chan<- schema.Event, logger *slog.Logger) *ProcessCollector {
@@ -85,7 +87,9 @@ func (c *ProcessCollector) Run(ctx context.Context) {
 			c.mu.Lock()
 			current := c.snapshot()
 			for pid, entry := range current {
-				if _, seen := c.seenPIDs[pid]; !seen {
+				if _, seen := c.seenPIDs[pid]; !seen && !esExecActive.Load() {
+					// While eslogger is streaming it reports every exec itself
+					// (see es_exec.go); emitting here too would double-count.
 					c.emit(pid, entry)
 				}
 			}
@@ -102,13 +106,19 @@ func (c *ProcessCollector) snapshot() map[int32]procEntry {
 		c.logger.Warn("process: sysctl list failed", "err", err)
 		return result
 	}
+	starts := make(map[int32]uint64, len(procs))
+	for _, p := range procs {
+		starts[p.pid] = p.start
+	}
+	c.starts = starts
 	for _, p := range procs {
 		cmd := getArgv(p.pid)
 		result[p.pid] = procEntry{
-			name: p.name,
-			ppid: p.ppid,
-			uid:  p.uid,
-			cmd:  cmd,
+			name:  p.name,
+			ppid:  p.ppid,
+			uid:   p.uid,
+			cmd:   cmd,
+			start: p.start,
 		}
 	}
 	return result
@@ -124,8 +134,25 @@ func (c *ProcessCollector) emit(pid int32, e procEntry) {
 		"username": username,
 		"uid":      e.uid,
 	}
+	// F-11: stable identity (pid + start time) so PID reuse can't merge processes.
+	if e.start != 0 {
+		detail["process_guid"] = fmt.Sprintf("%d-%d", pid, e.start)
+	}
+	if ps, ok := c.starts[e.ppid]; ok && ps != 0 {
+		detail["parent_process_guid"] = fmt.Sprintf("%d-%d", e.ppid, ps)
+	}
+	exePath := getExecPath(pid)
+	sha := hashFileCached(exePath)
+	if exePath != "" {
+		detail["exe"] = exePath
+	}
+	if sha != "" {
+		detail["sha256"] = sha
+	}
 	raw, _ := json.Marshal(detail)
 	c.out <- schema.Event{
+		ImagePath:   exePath,
+		FileHash:    sha,
 		AgentID:     c.agentID,
 		Host:        c.host,
 		OS:          "darwin",
@@ -145,10 +172,11 @@ func (c *ProcessCollector) emit(pid int32, e procEntry) {
 // ── sysctl helpers ────────────────────────────────────────────────────────────
 
 type bsdProc struct {
-	pid  int32
-	ppid int32
-	uid  uint32
-	name string
+	pid   int32
+	ppid  int32
+	uid   uint32
+	name  string
+	start uint64
 }
 
 func listProcesses() ([]bsdProc, error) {
@@ -175,16 +203,27 @@ func listProcesses() ([]bsdProc, error) {
 		//     +440+8: e_ppid (int32)
 		//     +440+52: e_ucred → cr_uid (uint32) at +440+52+4
 		//   p_comm: offset 231 in extern_proc, 16 bytes (MAXCOMLEN+1)
-		pid  := int32(readUint32LE(entry, 24))
+		pid := int32(readUint32LE(entry, 24))
 		ppid := int32(readUint32LE(entry, 448)) // eproc.e_ppid
-		uid  := readUint32LE(entry, 504)         // eproc.e_ucred.cr_uid (approximate)
-		name := nullTermStr(entry[431:447])       // extern_proc.p_comm (MAXCOMLEN=16)
+		uid := readUint32LE(entry, 504)         // eproc.e_ucred.cr_uid (approximate)
+		name := nullTermStr(entry[431:447])     // extern_proc.p_comm (MAXCOMLEN=16)
 		if pid == 0 {
 			continue
 		}
-		procs = append(procs, bsdProc{pid: pid, ppid: ppid, uid: uid, name: name})
+		// extern_proc.p_un.p_starttime (struct timeval) is at offset 0.
+		start := readUint64LE(entry, 0)*1000000 + uint64(readUint32LE(entry, 8))
+		procs = append(procs, bsdProc{pid: pid, ppid: ppid, uid: uid, name: name, start: start})
 	}
 	return procs, nil
+}
+
+// getExecPath returns the process image path from kern.procargs2.
+func getExecPath(pid int32) string {
+	buf, err := sysctlRawMIB([]int32{1, 55, pid})
+	if err != nil {
+		return ""
+	}
+	return execPathFromProcArgs(buf)
 }
 
 func getArgv(pid int32) string {
@@ -275,4 +314,11 @@ func uidToUsername(uid uint32) string {
 		return strconv.Itoa(int(uid))
 	}
 	return u.Username
+}
+
+func readUint64LE(b []byte, off int) uint64 {
+	if off+8 > len(b) {
+		return 0
+	}
+	return uint64(readUint32LE(b, off)) | uint64(readUint32LE(b, off+4))<<32
 }

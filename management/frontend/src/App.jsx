@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import ErrorBoundary from './components/ErrorBoundary'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { Navbar } from './components/Navbar'
 import Login from './pages/Login'
@@ -22,6 +23,7 @@ import LiveResponse from './pages/LiveResponse'
 import DevOps from './pages/DevOps'
 import NetworkProbes from './pages/NetworkProbes'
 import Setup from './pages/Setup'
+import Insights from './pages/Insights'
 
 function Layout({ user, children }) {
   return (
@@ -57,7 +59,7 @@ export default function App() {
     if (!user || !localStorage.getItem('token')) return <Navigate to="/login" replace />
     if (requirePasswordChange) return <Navigate to="/change-password" replace />
     if (adminOnly && user.role !== 'admin') return <Navigate to="/" replace />
-    return <Layout user={user}>{children}</Layout>
+    return <Layout user={user}><ErrorBoundary>{children}</ErrorBoundary></Layout>
   }
 
   return (
@@ -79,16 +81,17 @@ export default function App() {
         <Route path="/threat-intel" element={<Navigate to="/agents" replace />} />
         <Route path="/users"        element={<ProtectedRoute adminOnly><Users /></ProtectedRoute>} />
         <Route path="/audit-log"    element={<ProtectedRoute><AuditLog /></ProtectedRoute>} />
-        <Route path="/settings"      element={<ProtectedRoute><Settings /></ProtectedRoute>} />
+        <Route path="/settings"      element={<ProtectedRoute adminOnly><Settings /></ProtectedRoute>} />
         <Route path="/search"        element={<ProtectedRoute><Search /></ProtectedRoute>} />
         <Route path="/threat-graph" element={<Navigate to="/agents" replace />} />
         <Route path="/locations"      element={<Navigate to="/agents" replace />} />
         <Route path="/cloud"           element={<ProtectedRoute><CloudPage /></ProtectedRoute>} />
           <Route path="/detections"    element={<ProtectedRoute><Detections /></ProtectedRoute>} />
         <Route path="/agent-builder"   element={<ProtectedRoute adminOnly><AgentBuilder /></ProtectedRoute>} />
-        <Route path="/live-response"    element={<ProtectedRoute><LiveResponse /></ProtectedRoute>} />
+        <Route path="/live-response"    element={<ProtectedRoute adminOnly><LiveResponse /></ProtectedRoute>} />
         <Route path="/devops"             element={<ProtectedRoute><DevOps /></ProtectedRoute>} />
         <Route path="/network"            element={<ProtectedRoute><NetworkProbes /></ProtectedRoute>} />
+        <Route path="/insights"           element={<ProtectedRoute><Insights /></ProtectedRoute>} />
         <Route path="*"             element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>

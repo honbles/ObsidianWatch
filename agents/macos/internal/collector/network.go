@@ -36,6 +36,7 @@ type NetworkCollector struct {
 	host    string
 	logger  *slog.Logger
 	seen    map[string]struct{}
+	names   map[int32]string // pid -> process name, refreshed once per poll (A-06)
 }
 
 type connEntry struct {
@@ -94,7 +95,22 @@ func (c *NetworkCollector) Run(ctx context.Context) {
 	}
 }
 
+// refreshNames rebuilds the pid->name map with one sysctl call instead of a
+// `ps` fork per connection (A-06).
+func (c *NetworkCollector) refreshNames() {
+	procs, err := listProcesses()
+	if err != nil {
+		return
+	}
+	m := make(map[int32]string, len(procs))
+	for _, p := range procs {
+		m[p.pid] = p.name
+	}
+	c.names = m
+}
+
 func (c *NetworkCollector) getConnections() []connEntry {
+	c.refreshNames()
 	// netstat -anv -p tcp and udp
 	// -a: all, -n: numeric, -v: verbose (includes pid on macOS)
 	out, err := exec.Command("netstat", "-anvp", "tcp").Output()
@@ -148,7 +164,12 @@ func (c *NetworkCollector) emit(conn connEntry) {
 	// Try to get process name from pid
 	procName := conn.process
 	if procName == "" && conn.pid != "" && conn.pid != "0" {
-		procName = pidToName(conn.pid)
+		if n, err := strconv.Atoi(conn.pid); err == nil {
+			procName = c.names[int32(n)]
+		}
+		if procName == "" {
+			procName = pidToName(conn.pid) // process exited/not in sysctl list: one-off fallback
+		}
 	}
 
 	detail := map[string]interface{}{

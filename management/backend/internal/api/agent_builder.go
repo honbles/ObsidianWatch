@@ -24,6 +24,8 @@ package api
 import (
 	"archive/zip"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -33,6 +35,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -69,6 +72,15 @@ var platforms = map[string]platformDef{
 	},
 	"macos": {
 		GOOS: "darwin", GOARCH: "amd64", CGO: "0",
+		SourceDir:      "/agent-src/macos",
+		MainPkg:        "./cmd/agent",
+		BinaryName:     "obsidianwatch-macos-agent",
+		EmbeddedGoFile: "/agent-src/macos/internal/config/embedded.go",
+	},
+	// A-04: Apple Silicon build (same source, same in-zip binary name so install
+	// instructions are identical; cached separately by platform key).
+	"macos-arm64": {
+		GOOS: "darwin", GOARCH: "arm64", CGO: "0",
 		SourceDir:      "/agent-src/macos",
 		MainPkg:        "./cmd/agent",
 		BinaryName:     "obsidianwatch-macos-agent",
@@ -204,6 +216,31 @@ func restoreEmbeddedStub(platform string) {
 	os.WriteFile(p.EmbeddedGoFile, []byte(embeddedStub), 0644)
 }
 
+// embeddedFileLock (F-23) takes an OS-level advisory lock (flock) on the
+// platform's embedded.go before it's rewritten, and releases it only after
+// the build has finished and the stub has been restored.
+//
+// buildState (builds.start/finish) already serializes builds of the same
+// platform *within this process*, which is enough for the common case —
+// but it's in-memory, so it does nothing if the backend ever runs as more
+// than one process/replica sharing the same /agent-src volume (a second
+// instance, a manually-run build script, a future horizontally-scaled
+// deployment). flock is kernel-enforced across any process on the host,
+// so it closes that gap regardless of what's calling compilePlatform.
+func embeddedFileLock(platform string) (*os.File, error) {
+	p := platforms[platform]
+	lockPath := p.EmbeddedGoFile + ".lock"
+	f, err := os.OpenFile(lockPath, os.O_CREATE|os.O_RDWR, 0644)
+	if err != nil {
+		return nil, fmt.Errorf("open lock file: %w", err)
+	}
+	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX); err != nil {
+		f.Close()
+		return nil, fmt.Errorf("acquire build lock: %w", err)
+	}
+	return f, nil
+}
+
 func compilePlatform(platform, yamlContent string) error {
 	p, ok := platforms[platform]
 	if !ok {
@@ -216,11 +253,22 @@ func compilePlatform(platform, yamlContent string) error {
 	}
 	outPath := filepath.Join(outDir, p.BinaryName)
 
+	lockFile, err := embeddedFileLock(platform)
+	if err != nil {
+		return fmt.Errorf("lock embedded config: %w", err)
+	}
+	defer func() {
+		syscall.Flock(int(lockFile.Fd()), syscall.LOCK_UN)
+		lockFile.Close()
+	}()
+
 	// Inject config into embedded.go before compiling
 	if err := writeEmbeddedConfig(platform, yamlContent); err != nil {
 		return fmt.Errorf("write embedded config: %w", err)
 	}
-	// Always restore stub when done, even on error
+	// Always restore stub when done, even on error — while still holding
+	// the lock, so no other build can observe or overwrite our in-flight
+	// embedded.go before it's put back.
 	defer restoreEmbeddedStub(platform)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
@@ -239,8 +287,8 @@ func compilePlatform(platform, yamlContent string) error {
 		"GOPATH=/root/go",
 		"GOCACHE=/root/.cache/go-build",
 		"GOMODCACHE=/root/go/pkg/mod",
-		"GOPROXY=off",      // use only modules cached during docker build — no network
-		"GONOSUMDB=*",      // skip sum database lookup
+		"GOPROXY=off", // use only modules cached during docker build — no network
+		"GONOSUMDB=*", // skip sum database lookup
 		"GONOSUMCHECK=*",
 		"GOFLAGS=-mod=readonly", // never update go.sum at runtime
 	)
@@ -253,7 +301,12 @@ func compilePlatform(platform, yamlContent string) error {
 }
 
 // buildAndSaveZip compiles the agent and saves a zip to the cache.
-func buildAndSaveZip(platform string, cfg AgentBuilderConfig) error {
+func buildAndSaveZip(platform string, cfg AgentBuilderConfig) (err error) {
+	defer func() {
+		if err == nil {
+			err = writeAgentCacheMeta(cachedZipPath(platform), agentConfigHash(cfg))
+		}
+	}()
 	yamlContent := buildAgentYAML(cfg)
 
 	if err := compilePlatform(platform, yamlContent); err != nil {
@@ -295,7 +348,18 @@ func writeAgentZip(w io.Writer, platform string) error {
 	fh.SetMode(0755)
 	fh.Modified = binaryInfo.ModTime()
 	bw, _ := zw.CreateHeader(fh)
-	io.Copy(bw, binaryFile)
+	// F-24: hash the binary while copying so a SHA256SUMS file can ship with it.
+	hasher := sha256.New()
+	io.Copy(io.MultiWriter(bw, hasher), binaryFile)
+	sums, _ := zw.Create("SHA256SUMS")
+	fmt.Fprintf(sums, "%s  %s\n", hex.EncodeToString(hasher.Sum(nil)), p.BinaryName)
+
+	if platform == "macos" || platform == "macos-arm64" {
+		// A-04: MDM profile granting Full Disk Access. UUIDs are fixed so
+		// re-deploying the profile updates it instead of duplicating it.
+		pw, _ := zw.Create("ObsidianWatch-FullDiskAccess.mobileconfig")
+		pw.Write([]byte(macosFDAProfile("6C1D3F10-8B2A-4E55-9E31-0A4C7B5D2E01", "A7E94B22-3D6F-4C8A-B1D0-5F2E8C9A1B03")))
+	}
 
 	// INSTALL.md
 	rw, _ := zw.Create("INSTALL.md")
@@ -363,6 +427,10 @@ func handleAgentBuilderDownload(db *store.DB) http.HandlerFunc {
 			writeJSON(w, 400, map[string]string{"error": "backend_url, management_url, and agent_api_key are required"})
 			return
 		}
+		if !validHTTPURL(cfg.BackendURL, true) || !validHTTPURL(cfg.ManagementURL, true) {
+			writeJSON(w, 400, map[string]string{"error": "backend_url and management_url must be https URLs"})
+			return
+		}
 
 		// Save API keys — AI keys to settings table, threat intel keys to threat_intel_sources
 		if m := buildSettingsMap(cfg); len(m) > 0 {
@@ -372,7 +440,7 @@ func handleAgentBuilderDownload(db *store.DB) http.HandlerFunc {
 
 		// Compile + save zip if not already cached
 		zipPath := cachedZipPath(cfg.Platform)
-		if _, err := os.Stat(zipPath); err != nil {
+		if !agentCacheValid(zipPath, agentConfigHash(cfg), time.Now()) {
 			if builds.isBuilding(cfg.Platform) {
 				writeJSON(w, 409, map[string]string{"error": "build already in progress — try again shortly"})
 				return
@@ -402,8 +470,8 @@ func handleAgentDownloadCached() http.HandlerFunc {
 			writeJSON(w, 400, map[string]string{"error": "unknown platform"})
 			return
 		}
-		if _, err := os.Stat(cachedZipPath(platform)); err != nil {
-			writeJSON(w, 404, map[string]string{"error": "agent not built yet — use the Agent Builder to compile first"})
+		if !agentCacheValid(cachedZipPath(platform), "", time.Now()) {
+			writeJSON(w, 404, map[string]string{"error": "agent not built yet, expired, or failed its integrity check — use the Agent Builder to compile again"})
 			return
 		}
 		serveZip(w, r, platform)
@@ -469,25 +537,30 @@ func handleAgentBuilderSettings(db *store.DB) http.HandlerFunc {
 // ── Config types and helpers ──────────────────────────────────────────────────
 
 type AgentBuilderConfig struct {
-	Platform        string `json:"platform"`
-	BackendURL      string `json:"backend_url"`
-	ManagementURL   string `json:"management_url"`
-	AgentAPIKey     string `json:"agent_api_key"`
-	CACert          string `json:"ca_cert"`
-	GroqAPIKey      string `json:"groq_api_key"`
-	AnthropicAPIKey string `json:"anthropic_api_key"`
-	ThreatFoxAPIKey string `json:"threatfox_api_key"`
-	OTXAPIKey           string `json:"otx_api_key"`
-	ManagementCACert    string `json:"management_ca_cert"` // CA for management HTTPS (self-signed); leave empty if HTTP or trusted cert
-	SiteName           string `json:"site_name"`              // Network probe site name
+	Platform           string `json:"platform"`
+	BackendURL         string `json:"backend_url"`
+	ManagementURL      string `json:"management_url"`
+	AgentAPIKey        string `json:"agent_api_key"`
+	CACert             string `json:"ca_cert"`
+	GroqAPIKey         string `json:"groq_api_key"`
+	AnthropicAPIKey    string `json:"anthropic_api_key"`
+	ThreatFoxAPIKey    string `json:"threatfox_api_key"`
+	OTXAPIKey          string `json:"otx_api_key"`
+	ManagementCACert   string `json:"management_ca_cert"`   // CA for management HTTPS (self-signed); leave empty if HTTP or trusted cert
+	SiteName           string `json:"site_name"`            // Network probe site name
+	EnableLiveResponse bool   `json:"enable_live_response"` // H-2: opt-in remote shell (default off)
 }
 
 func buildSettingsMap(cfg AgentBuilderConfig) map[string]string {
 	// Only AI keys go to the settings table — they are read back by handleAIAnalysis.
 	// Threat intel keys go directly to threat_intel_sources via saveThreatIntelKeys.
 	m := map[string]string{}
-	if cfg.GroqAPIKey != ""      { m["ai.groq_api_key"]      = cfg.GroqAPIKey }
-	if cfg.AnthropicAPIKey != "" { m["ai.anthropic_api_key"] = cfg.AnthropicAPIKey }
+	if cfg.GroqAPIKey != "" {
+		m["ai.groq_api_key"] = cfg.GroqAPIKey
+	}
+	if cfg.AnthropicAPIKey != "" {
+		m["ai.anthropic_api_key"] = cfg.AnthropicAPIKey
+	}
 	return m
 }
 
@@ -505,10 +578,18 @@ func saveThreatIntelKeys(ctx context.Context, db *store.DB, cfg AgentBuilderConf
 }
 
 func buildAgentYAML(cfg AgentBuilderConfig) string {
+	y := buildAgentYAMLBase(cfg)
+	if cfg.Platform != "network" {
+		y += fmt.Sprintf("\nlive_response:\n  enabled: %t\n", cfg.EnableLiveResponse)
+	}
+	return y
+}
+
+func buildAgentYAMLBase(cfg AgentBuilderConfig) string {
 	switch cfg.Platform {
 	case "windows":
 		return buildWindowsYAML(cfg)
-	case "macos":
+	case "macos", "macos-arm64":
 		return buildMacOSYAML(cfg)
 	case "network":
 		return buildNetworkProbeYAML(cfg)
@@ -516,8 +597,6 @@ func buildAgentYAML(cfg AgentBuilderConfig) string {
 		return buildLinuxYAML(cfg)
 	}
 }
-
-
 
 // yamlLiteral formats a string as a YAML literal block scalar indented by indent.
 // Returns quoted empty string if s is empty.
@@ -532,7 +611,6 @@ func yamlLiteral(s string) string {
 	}
 	return sb.String()
 }
-
 
 func buildNetworkProbeYAML(cfg AgentBuilderConfig) string {
 	return fmt.Sprintf(`probe:
@@ -591,7 +669,6 @@ log:
   format: "json"
 `, cfg.SiteName, cfg.BackendURL, cfg.ManagementURL, cfg.AgentAPIKey, yamlLiteral(cfg.CACert))
 }
-
 
 func buildLinuxYAML(cfg AgentBuilderConfig) string {
 	return fmt.Sprintf(`agent:
@@ -741,6 +818,7 @@ collector:
       - System
       - Application
       - Microsoft-Windows-PowerShell/Operational
+      - Microsoft-Windows-Windows Defender/Operational
     poll_interval: 5s
   sysmon:
     enabled: true
@@ -756,12 +834,27 @@ collector:
       - HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\RunOnce
       - HKLM\SYSTEM\CurrentControlSet\Services
       - HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\Run
+      - HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options
+      - HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon
+      - HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Windows
+      - HKLM\SYSTEM\CurrentControlSet\Control\Session Manager
+      - HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer\Run
+      - HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\RunOnce
   dns:
     enabled: true
   fim:
     enabled: true
     dirs:
       - path: "C:\\Windows\\System32"
+        recursive: false
+        exclude: ["*.log", "*.tmp", "*.etl"]
+      - path: "C:\\Windows\\System32\\Tasks"
+        recursive: true
+        exclude: ["*.log", "*.tmp", "*.etl"]
+      - path: "C:\\Windows\\System32\\drivers"
+        recursive: false
+        exclude: ["*.log", "*.tmp", "*.etl"]
+      - path: "C:\\Windows\\System32\\wbem"
         recursive: false
         exclude: ["*.log", "*.tmp", "*.etl"]
   health:
@@ -803,9 +896,11 @@ func buildInstallReadme(platform string) string {
 	case "linux":
 		sb.WriteString("## Install\n```bash\nchmod +x obsidianwatch-linux-agent\nsudo ./obsidianwatch-linux-agent install\n```\n\n")
 		sb.WriteString("## Uninstall\n```bash\nsudo ./obsidianwatch-linux-agent uninstall\n```\n")
-	case "macos":
+	case "macos", "macos-arm64":
 		sb.WriteString("## Install\n```bash\nchmod +x obsidianwatch-macos-agent\nsudo ./obsidianwatch-macos-agent install\n```\n\n")
 		sb.WriteString("## Uninstall\n```bash\nsudo ./obsidianwatch-macos-agent uninstall\n```\n")
+		sb.WriteString("\n## Verify\nCompare against SHA256SUMS: `shasum -a 256 -c SHA256SUMS`. Binaries are not yet code-signed or notarized.\n")
+		sb.WriteString("\n## Full Disk Access (MDM)\nDeploy `ObsidianWatch-FullDiskAccess.mobileconfig` through your MDM (Jamf, Kandji, Intune) to pre-approve Full Disk Access for /usr/local/bin/obsidianwatch-agent. The profile matches by path because the binary is unsigned.\n")
 	case "windows":
 		sb.WriteString("## Install (run as Administrator)\n```powershell\n.\\obsidianwatch-win-agent.exe install\n```\n\n")
 		sb.WriteString("## Uninstall\n```powershell\n.\\obsidianwatch-win-agent.exe uninstall\n```\n")
@@ -873,7 +968,7 @@ func SeedAgentBuilderDefaults(ctx context.Context, db *store.DB, agentAPIKey str
 
 	if existing != "true" {
 		// First time — also set URLs
-		settings["setup.backend_url"]    = backendURL
+		settings["setup.backend_url"] = backendURL
 		settings["setup.management_url"] = mgmtURL
 	}
 

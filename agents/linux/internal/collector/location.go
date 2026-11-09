@@ -4,10 +4,17 @@ package collector
 
 // location.go — Linux location collector.
 //
-// Linux has no kernel location API, so we use IP geolocation exclusively.
-// Sources tried in order:
-//  1. ipinfo.io  — HTTPS, reliable, good city-level precision
-//  2. ip-api.com — HTTP fallback
+// Linux has no kernel location API, so we use IP geolocation exclusively,
+// via ipinfo.io over HTTPS.
+//
+// F-15: a plain-HTTP fallback to ip-api.com previously existed here. It has
+// been removed: ip-api.com's free tier has no HTTPS option, and falling back
+// to it leaked the host's public IP (and therefore its approximate location)
+// in cleartext to any on-path observer. If ipinfo.io is unavailable we now
+// simply report an error instead of silently downgrading to an insecure
+// transport. A future improvement could derive location server-side from
+// the ingest connection's source IP instead of having the agent call out to
+// a third-party geolocation service at all.
 //
 // Posts location directly to the backend /api/v1/agents/location endpoint.
 // Runs every 30 minutes — location data changes rarely.
@@ -15,7 +22,6 @@ package collector
 import (
 	"context"
 	"crypto/tls"
-	"crypto/x509"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -25,35 +31,38 @@ import (
 	"strings"
 	"time"
 
+	"obsidianwatch/linux-agent/internal/config"
 	"obsidianwatch/linux-agent/pkg/schema"
 )
 
 type LocationCollector struct {
-	interval   time.Duration
-	agentID    string
-	hostname   string
-	backendURL string
-	apiKey     string
-	caFile     string
-	caCertPEM  string
-	out        chan<- schema.Event
-	logger     *slog.Logger
+	interval         time.Duration
+	agentID          string
+	hostname         string
+	backendURL       string
+	apiKey           string
+	caFile           string
+	caCertPEM        string
+	allowInsecureTLS bool
+	out              chan<- schema.Event
+	logger           *slog.Logger
 }
 
-func NewLocationCollector(interval time.Duration, agentID, hostname, backendURL, apiKey, caFile, caCertPEM string, out chan<- schema.Event, logger *slog.Logger) *LocationCollector {
+func NewLocationCollector(interval time.Duration, agentID, hostname, backendURL, apiKey, caFile, caCertPEM string, allowInsecureTLS bool, out chan<- schema.Event, logger *slog.Logger) *LocationCollector {
 	if interval <= 0 {
 		interval = 30 * time.Minute
 	}
 	return &LocationCollector{
-		interval:   interval,
-		agentID:    agentID,
-		hostname:   hostname,
-		backendURL: backendURL,
-		apiKey:     apiKey,
-		caFile:     caFile,
-		caCertPEM:  caCertPEM,
-		out:        out,
-		logger:     logger,
+		interval:         interval,
+		agentID:          agentID,
+		hostname:         hostname,
+		backendURL:       backendURL,
+		apiKey:           apiKey,
+		caFile:           caFile,
+		caCertPEM:        caCertPEM,
+		allowInsecureTLS: allowInsecureTLS,
+		out:              out,
+		logger:           logger,
 	}
 }
 
@@ -129,7 +138,7 @@ func (c *LocationCollector) postLocation(loc locationResult) {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != 200 {
-		body, _ := io.ReadAll(resp.Body)
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 		c.logger.Warn("location: backend returned error", "status", resp.StatusCode, "body", string(body))
 		return
 	}
@@ -137,7 +146,6 @@ func (c *LocationCollector) postLocation(loc locationResult) {
 }
 
 func (c *LocationCollector) buildHTTPClient() *http.Client {
-	tlsCfg := &tls.Config{}
 	var caPEM []byte
 	switch {
 	case c.caCertPEM != "":
@@ -149,13 +157,10 @@ func (c *LocationCollector) buildHTTPClient() *http.Client {
 			caPEM = nil
 		}
 	}
-	if len(caPEM) > 0 {
-		pool := x509.NewCertPool()
-		pool.AppendCertsFromPEM(caPEM)
-		tlsCfg.RootCAs = pool
-	} else {
-		// No CA configured — skip TLS verification (self-signed backend cert)
-		tlsCfg.InsecureSkipVerify = true
+	tlsCfg, err := config.BuildTLSConfig(caPEM, c.allowInsecureTLS)
+	if err != nil {
+		c.logger.Error("location: TLS config error, requests will fail closed", "err", err)
+		tlsCfg = &tls.Config{}
 	}
 	return &http.Client{
 		Timeout:   15 * time.Second,
@@ -163,70 +168,52 @@ func (c *LocationCollector) buildHTTPClient() *http.Client {
 	}
 }
 
-// getIPGeolocation tries ipinfo.io then ip-api.com as fallback.
+// getIPGeolocation resolves an approximate location via ipinfo.io (HTTPS).
+//
+// F-15: this previously fell back to a plain-HTTP call to ip-api.com when
+// ipinfo.io failed, which leaked the host's public IP in cleartext. That
+// fallback has been removed; a failure here is now surfaced as an error
+// instead of being masked by an insecure fallback.
 func getIPGeolocation(ctx context.Context) (locationResult, error) {
 	client := &http.Client{Timeout: 8 * time.Second}
 
-	// Try ipinfo.io first
 	req, err := http.NewRequestWithContext(ctx, "GET", "https://ipinfo.io/json", nil)
-	if err == nil {
-		req.Header.Set("Accept", "application/json")
-		resp, err := client.Do(req)
-		if err == nil {
-			defer resp.Body.Close()
-			body, _ := io.ReadAll(resp.Body)
-			var r struct {
-				City    string `json:"city"`
-				Country string `json:"country"`
-				Loc     string `json:"loc"` // "lat,lng"
-			}
-			if json.Unmarshal(body, &r) == nil && r.Loc != "" {
-				parts := strings.SplitN(r.Loc, ",", 2)
-				if len(parts) == 2 {
-					var lat, lng float64
-					fmt.Sscanf(parts[0], "%f", &lat)
-					fmt.Sscanf(parts[1], "%f", &lng)
-					if lat != 0 || lng != 0 {
-						return locationResult{
-							Lat: lat, Lng: lng,
-							Accuracy: 5000,
-							Source:   "ip",
-							City:     r.City,
-							Country:  r.Country,
-						}, nil
-					}
-				}
-			}
-		}
-	}
-
-	// Fallback: ip-api.com
-	req2, err := http.NewRequestWithContext(ctx, "GET",
-		"http://ip-api.com/json/?fields=lat,lon,city,country,status", nil)
 	if err != nil {
 		return locationResult{}, err
 	}
-	resp2, err := client.Do(req2)
+	req.Header.Set("Accept", "application/json")
+	resp, err := client.Do(req)
 	if err != nil {
-		return locationResult{}, err
+		return locationResult{}, fmt.Errorf("ipinfo.io request failed: %w", err)
 	}
-	defer resp2.Body.Close()
-	body2, _ := io.ReadAll(resp2.Body)
-	var r2 struct {
-		Status  string  `json:"status"`
-		Lat     float64 `json:"lat"`
-		Lon     float64 `json:"lon"`
-		City    string  `json:"city"`
-		Country string  `json:"country"`
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	var r struct {
+		City    string `json:"city"`
+		Country string `json:"country"`
+		Loc     string `json:"loc"` // "lat,lng"
 	}
-	if err := json.Unmarshal(body2, &r2); err != nil || r2.Status != "success" {
-		return locationResult{}, fmt.Errorf("ip-api: %s", r2.Status)
+	if err := json.Unmarshal(body, &r); err != nil {
+		return locationResult{}, fmt.Errorf("ipinfo.io: invalid response: %w", err)
+	}
+	if r.Loc == "" {
+		return locationResult{}, fmt.Errorf("ipinfo.io: no location in response")
+	}
+	parts := strings.SplitN(r.Loc, ",", 2)
+	if len(parts) != 2 {
+		return locationResult{}, fmt.Errorf("ipinfo.io: malformed loc field %q", r.Loc)
+	}
+	var lat, lng float64
+	fmt.Sscanf(parts[0], "%f", &lat)
+	fmt.Sscanf(parts[1], "%f", &lng)
+	if lat == 0 && lng == 0 {
+		return locationResult{}, fmt.Errorf("ipinfo.io: zero coordinates")
 	}
 	return locationResult{
-		Lat: r2.Lat, Lng: r2.Lon,
+		Lat: lat, Lng: lng,
 		Accuracy: 5000,
 		Source:   "ip",
-		City:     r2.City,
-		Country:  r2.Country,
+		City:     r.City,
+		Country:  r.Country,
 	}, nil
 }

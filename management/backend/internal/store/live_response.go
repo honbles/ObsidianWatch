@@ -12,42 +12,47 @@ import (
 type LRCredential struct {
 	AgentID   string    `json:"agent_id"`
 	Username  string    `json:"username"`
+	Mode      string    `json:"mode"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
-	// PasswordHash is never returned to the frontend
 }
 
-// UpsertLRCredential stores (or updates) the bcrypt-hashed service account
-// for an agent. Called by the agent on install/reconnect.
-func (db *DB) UpsertLRCredential(ctx context.Context, agentID, username, passwordHash, password string) error {
+// UpsertLRCredential records that an agent has a live-response session
+// mode registered. M-05: this previously also stored a bcrypt hash AND a
+// plaintext password, neither of which is read back anywhere in the
+// backend — a DB leak handed over a live credential for every agent for
+// nothing. Only the username (for display) and mode are persisted now.
+func (db *DB) UpsertLRCredential(ctx context.Context, agentID, username, mode string) error {
+	if mode == "" {
+		mode = "direct-shell"
+	}
 	_, err := db.ExecContext(ctx, `
-		INSERT INTO lr_credentials (agent_id, username, password_hash, password, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, NOW(), NOW())
+		INSERT INTO lr_credentials (agent_id, username, mode, created_at, updated_at)
+		VALUES ($1, $2, $3, NOW(), NOW())
 		ON CONFLICT (agent_id) DO UPDATE SET
-			username      = EXCLUDED.username,
-			password_hash = EXCLUDED.password_hash,
-			password      = EXCLUDED.password,
-			updated_at    = NOW()
-	`, agentID, username, passwordHash, password)
+			username   = EXCLUDED.username,
+			mode       = EXCLUDED.mode,
+			updated_at = NOW()
+	`, agentID, username, mode)
 	return err
 }
 
-// GetLRCredential fetches the stored credential for an agent.
-func (db *DB) GetLRCredential(ctx context.Context, agentID string) (username, passwordHash, password string, err error) {
+// GetLRCredential fetches the stored credential record for an agent.
+func (db *DB) GetLRCredential(ctx context.Context, agentID string) (username, mode string, err error) {
 	err = db.QueryRowContext(ctx,
-		`SELECT username, password_hash, COALESCE(password, '') FROM lr_credentials WHERE agent_id = $1`,
+		`SELECT username, mode FROM lr_credentials WHERE agent_id = $1`,
 		agentID,
-	).Scan(&username, &passwordHash, &password)
+	).Scan(&username, &mode)
 	if err == sql.ErrNoRows {
-		return "", "", "", fmt.Errorf("no live response credentials for agent %q", agentID)
+		return "", "", fmt.Errorf("no live response credentials for agent %q", agentID)
 	}
-	return username, passwordHash, password, err
+	return username, mode, err
 }
 
 // ListLRCredentials returns which agents have credentials registered.
 func (db *DB) ListLRCredentials(ctx context.Context) ([]LRCredential, error) {
 	rows, err := db.QueryContext(ctx, `
-		SELECT agent_id, username, created_at, updated_at
+		SELECT agent_id, username, mode, created_at, updated_at
 		FROM lr_credentials ORDER BY updated_at DESC
 	`)
 	if err != nil {
@@ -57,7 +62,7 @@ func (db *DB) ListLRCredentials(ctx context.Context) ([]LRCredential, error) {
 	var creds []LRCredential
 	for rows.Next() {
 		var c LRCredential
-		if err := rows.Scan(&c.AgentID, &c.Username, &c.CreatedAt, &c.UpdatedAt); err != nil {
+		if err := rows.Scan(&c.AgentID, &c.Username, &c.Mode, &c.CreatedAt, &c.UpdatedAt); err != nil {
 			return nil, err
 		}
 		creds = append(creds, c)
@@ -166,4 +171,34 @@ func (db *DB) ListLRSessions(ctx context.Context, agentID string, limit int) ([]
 		sessions = append(sessions, s)
 	}
 	return sessions, rows.Err()
+}
+
+// ClaimLRSession atomically moves a session from 'pending' to 'active'.
+// A session token is therefore single-use (F-04): a second connection with
+// the same token, or one after the session ended, finds no pending row.
+func (db *DB) ClaimLRSession(ctx context.Context, token string) (bool, error) {
+	res, err := db.ExecContext(ctx, `
+		UPDATE lr_sessions SET status='active', started_at=NOW()
+		WHERE session_token=$1 AND status='pending'`, token)
+	if err != nil {
+		return false, err
+	}
+	n, _ := res.RowsAffected()
+	return n > 0, nil
+}
+
+// AppendLRTranscript records a chunk of session I/O. Total stored bytes per
+// session are capped (2 MiB) so a noisy session can't fill the database.
+func (db *DB) AppendLRTranscript(ctx context.Context, sessionID int64, direction string, data []byte) {
+	if len(data) == 0 {
+		return
+	}
+	if len(data) > 16<<10 {
+		data = data[:16<<10]
+	}
+	_, _ = db.ExecContext(ctx, `
+		INSERT INTO lr_transcripts (session_id, direction, data)
+		SELECT $1, $2, $3
+		WHERE COALESCE((SELECT SUM(octet_length(data)) FROM lr_transcripts WHERE session_id=$1), 0) < 2097152`,
+		sessionID, direction, data)
 }

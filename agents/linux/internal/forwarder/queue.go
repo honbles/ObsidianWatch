@@ -47,7 +47,7 @@ type Queue struct {
 // maxRows is accepted for API compatibility; enforced via maxSegments.
 func NewQueue(dir string, _ int, logger *slog.Logger) (*Queue, error) {
 	segDir := filepath.Join(dir, "segments")
-	if err := os.MkdirAll(segDir, 0755); err != nil {
+	if err := os.MkdirAll(segDir, 0700); err != nil {
 		return nil, fmt.Errorf("queue: mkdir %q: %w", segDir, err)
 	}
 
@@ -87,7 +87,7 @@ func (q *Queue) Push(events []schema.Event) error {
 		}
 
 		if q.writeFile == nil {
-			f, err := os.OpenFile(q.segPath(q.writeSeq), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
+			f, err := os.OpenFile(q.segPath(q.writeSeq), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
 			if err != nil {
 				return fmt.Errorf("queue: open segment: %w", err)
 			}
@@ -172,7 +172,7 @@ func (q *Queue) Pop(n int) ([]schema.Event, error) {
 				q.logger.Warn("queue: rewrite segment failed", "err", err)
 			} else if isWriteSeg {
 				// Reopen so Push() can continue appending.
-				f, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
+				f, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
 				if err != nil {
 					q.logger.Warn("queue: reopen write segment failed", "err", err)
 				} else {
@@ -252,8 +252,13 @@ func (q *Queue) evictIfNeeded() {
 		return
 	}
 	for i := 0; i < len(seqs)-maxSegments; i++ {
+		// L-08: never silently lose the high-severity events in an evicted
+		// segment — salvage up to 500 of them into the active segment and
+		// count what is genuinely dropped.
+		salvaged, dropped := q.salvageHighSeverity(seqs[i])
 		os.Remove(q.segPath(seqs[i]))
-		q.logger.Warn("queue: evicted oldest segment (queue full)", "seq", seqs[i])
+		q.logger.Warn("queue: evicted oldest segment (queue full)",
+			"seq", seqs[i], "salvaged_high_sev", salvaged, "dropped", dropped)
 	}
 }
 
@@ -306,4 +311,35 @@ func countLines(path string) (int, error) {
 		}
 	}
 	return n, sc.Err()
+}
+
+// salvageHighSeverity copies severity>=4 lines from an about-to-be-evicted
+// segment onto the end of the active write segment. Returns (kept, lost).
+func (q *Queue) salvageHighSeverity(seq int64) (int, int) {
+	lines, err := readLines(q.segPath(seq))
+	if err != nil {
+		return 0, 0
+	}
+	kept := 0
+	for _, l := range lines {
+		var probe struct {
+			Severity int `json:"severity"`
+		}
+		if json.Unmarshal([]byte(l), &probe) != nil || probe.Severity < 4 || kept >= 500 {
+			continue
+		}
+		if q.writeFile == nil {
+			f, err := os.OpenFile(q.segPath(q.writeSeq), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
+			if err != nil {
+				break
+			}
+			q.writeFile = f
+		}
+		if _, err := fmt.Fprintf(q.writeFile, "%s\n", l); err != nil {
+			break
+		}
+		q.writeCount++
+		kept++
+	}
+	return kept, len(lines) - kept
 }

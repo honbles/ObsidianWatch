@@ -2,7 +2,10 @@
 set -e
 
 CERT_DIR="/certs"
-CA_KEY="$CERT_DIR/ca.key"
+# H-3: the CA private key lives in a volume mounted ONLY into this init
+# container, never into the services that serve or consume certificates.
+PRIV_DIR="/ca-private"
+CA_KEY="$PRIV_DIR/ca.key"
 CA_CRT="$CERT_DIR/ca.crt"
 SRV_KEY="$CERT_DIR/server.key"
 SRV_CRT="$CERT_DIR/server.crt"
@@ -68,13 +71,33 @@ fi
 
 # ── Self-signed mode (no domain) ──────────────────────────────────────────────
 
-# Skip if self-signed certs already exist and are still valid
-if [ -f "$CA_CRT" ] && [ -f "$SRV_CRT" ] && [ -f "$SRV_KEY" ]; then
+mkdir -p "$PRIV_DIR" && chmod 700 "$PRIV_DIR"
+# Migrate a legacy CA key out of the shared certs volume.
+if [ -f "$CERT_DIR/ca.key" ]; then
+  if [ ! -f "$CA_KEY" ]; then mv "$CERT_DIR/ca.key" "$CA_KEY"; else rm -f "$CERT_DIR/ca.key"; fi
+  chmod 600 "$CA_KEY"
+  echo "cert-init: moved CA key out of the shared certs volume"
+fi
+
+# Server cert lifetime is short; the CA (10y) re-issues it on demand.
+SRV_DAYS=825
+NEED_SRV=1
+NEED_CA=1
+if [ -f "$CA_CRT" ] && [ -f "$CA_KEY" ]; then NEED_CA=0; fi
+if [ "$NEED_CA" = "0" ] && [ -f "$SRV_CRT" ] && [ -f "$SRV_KEY" ]; then
+  NEED_SRV=0
+  # renew when under 30 days remain
+  openssl x509 -checkend $((30*86400)) -noout -in "$SRV_CRT" >/dev/null 2>&1 || NEED_SRV=1
+  # re-issue when a requested extra DNS name is not yet in the certificate
+  for d in $(echo "${EXTRA_SAN_DNS:-}" | tr ',' ' '); do
+    openssl x509 -in "$SRV_CRT" -noout -text 2>/dev/null | grep -q "DNS:$d" || NEED_SRV=1
+  done
   MODE=$(cat "$MODE_FILE" 2>/dev/null || echo "selfsigned")
-  if [ "$MODE" = "selfsigned" ] || [ "$MODE" = "" ]; then
-    echo "cert-init: self-signed certificates already exist, skipping"
-    exit 0
-  fi
+  [ "$MODE" = "selfsigned" ] || [ "$MODE" = "" ] || NEED_SRV=0
+fi
+if [ "$NEED_CA" = "0" ] && [ "$NEED_SRV" = "0" ]; then
+  echo "cert-init: certificates present and valid, skipping"
+  exit 0
 fi
 
 echo "cert-init: Generating self-signed certificates..."
@@ -108,7 +131,15 @@ IP.$IP_IDX = $PUBLIC_IP"
   IP_IDX=$((IP_IDX + 1))
 fi
 
-echo "cert-init: SANs: $PRIVATE_IP, 127.0.0.1${PUBLIC_IP:+, $PUBLIC_IP}"
+DNS_IDX=1
+for d in $(echo "${EXTRA_SAN_DNS:-}" | tr ',' ' '); do
+  case "$d" in *[!a-zA-Z0-9.-]*) echo "cert-init: ignoring invalid EXTRA_SAN_DNS entry"; continue ;; esac
+  SAN="$SAN
+DNS.$DNS_IDX = $d"
+  DNS_IDX=$((DNS_IDX + 1))
+done
+
+echo "cert-init: SANs: $PRIVATE_IP, 127.0.0.1${PUBLIC_IP:+, $PUBLIC_IP}${EXTRA_SAN_DNS:+, $EXTRA_SAN_DNS}"
 
 # Write OpenSSL SAN config
 SAN_CNF="$CERT_DIR/san.cnf"
@@ -131,10 +162,12 @@ $SAN
 SANEOF
 
 # Generate CA
-echo "cert-init: Generating CA..."
-openssl genrsa -out "$CA_KEY" 4096 2>/dev/null
-openssl req -new -x509 -days 3650 -key "$CA_KEY" -out "$CA_CRT" \
-  -subj "/CN=ObsidianWatch CA/O=ObsidianWatch" 2>/dev/null
+if [ "$NEED_CA" = "1" ]; then
+  echo "cert-init: Generating CA..."
+  (umask 077; openssl genrsa -out "$CA_KEY" 4096 2>/dev/null)
+  openssl req -new -x509 -days 3650 -key "$CA_KEY" -out "$CA_CRT" \
+    -subj "/CN=ObsidianWatch CA/O=ObsidianWatch" 2>/dev/null
+fi
 
 # Generate server cert
 echo "cert-init: Generating server certificate..."
@@ -142,7 +175,7 @@ openssl genrsa -out "$SRV_KEY" 2048 2>/dev/null
 SRV_CSR="$CERT_DIR/server.csr"
 openssl req -new -key "$SRV_KEY" -out "$SRV_CSR" \
   -subj "/CN=obsidianwatch/O=ObsidianWatch" -config "$SAN_CNF" 2>/dev/null
-openssl x509 -req -days 3650 \
+openssl x509 -req -days "$SRV_DAYS" \
   -in "$SRV_CSR" -CA "$CA_CRT" -CAkey "$CA_KEY" -CAcreateserial \
   -extensions v3_req -extfile "$SAN_CNF" \
   -out "$SRV_CRT" 2>/dev/null
@@ -155,4 +188,4 @@ echo "selfsigned" > "$MODE_FILE"
 printf '{"private_ip":"%s","public_ip":"%s","backend_domain":"","cert_mode":"selfsigned"}' \
   "$PRIVATE_IP" "${PUBLIC_IP:-}" > "$META"
 
-echo "cert-init: Done. Certificates valid for 10 years."
+echo "cert-init: Done. Server certificate valid for $SRV_DAYS days (re-run cert-init to renew)."

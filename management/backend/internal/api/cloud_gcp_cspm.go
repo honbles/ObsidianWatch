@@ -1,6 +1,6 @@
 package api
 
-// cloud_gcp_cspm.go — GCP Cloud Security Posture Management
+// cloud_gcp_cspm.go — GCP Cloud Security Posture Management — build v2
 //
 // Checks implemented:
 //  1.  Firewall rules — 0.0.0.0/0 on risky ports (SSH, RDP, DB ports)
@@ -16,11 +16,15 @@ package api
 // 11.  MFA/2SV enforcement — check org policy constraints
 
 import (
+	"log/slog"
+	"crypto/sha256"
+	"encoding/hex"
 	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	neturl "net/url"
 	"strings"
 	"time"
 )
@@ -58,22 +62,137 @@ type CSPMResult struct {
 	SCCEnabled    bool          `json:"scc_enabled"`
 	SCCFindings   int           `json:"scc_findings"`
 	SCCSources    []string      `json:"scc_sources,omitempty"`
+	// G-36: checks that did not run, with the reason (coverage gaps).
+	NotAssessed []NotAssessedCheck `json:"not_assessed,omitempty"`
 }
 
-// gcpCSPMGet makes an authenticated GET to a GCP API
+// NotAssessedCheck records a posture check that was skipped or failed.
+type NotAssessedCheck struct {
+	Check  string `json:"check"`
+	Reason string `json:"reason"`
+}
+
+// gcpCSPMGet makes an authenticated GET to a GCP API and (G-35) follows
+// nextPageToken, merging top-level array fields (and the "items" map used by
+// aggregatedList) across pages so callers see the complete list.
 func gcpCSPMGet(ctx context.Context, token, url string, out interface{}) error {
+	if token == "" {
+		return fmt.Errorf("no access token provided — authentication failed")
+	}
+	const maxPages = 20
+	if strings.Contains(url, "iam.googleapis.com") &&
+		strings.HasSuffix(strings.SplitN(url, "?", 2)[0], "/serviceAccounts") &&
+		!strings.Contains(url, "pageSize=") {
+		url += pageSep(url) + "pageSize=100"
+	}
+	var merged map[string]json.RawMessage
+	pageToken := ""
+	for page := 0; page < maxPages; page++ {
+		u := url
+		if pageToken != "" {
+			u += pageSep(u) + "pageToken=" + neturl.QueryEscape(pageToken)
+		}
+		body, err := gcpCSPMGetRaw(ctx, token, u)
+		if err != nil {
+			return err
+		}
+		var cur map[string]json.RawMessage
+		if err := json.Unmarshal(body, &cur); err != nil {
+			// Not an object (or empty): fall back to direct decode, single page.
+			return json.Unmarshal(body, out)
+		}
+		var next string
+		if raw, ok := cur["nextPageToken"]; ok {
+			json.Unmarshal(raw, &next)
+		}
+		if merged == nil {
+			merged = cur
+		} else {
+			mergeGCPPage(merged, cur)
+		}
+		if next == "" {
+			break
+		}
+		if page == maxPages-1 {
+			// G-42: surface truncation instead of silently dropping resources.
+			slog.Warn("gcp: result truncated at page limit", "max_pages", maxPages, "url", strings.SplitN(url, "?", 2)[0])
+		}
+		pageToken = next
+	}
+	delete(merged, "nextPageToken")
+	buf, err := json.Marshal(merged)
+	if err != nil {
+		return err
+	}
+	return json.Unmarshal(buf, out)
+}
+
+func pageSep(u string) string {
+	if strings.Contains(u, "?") {
+		return "&"
+	}
+	return "?"
+}
+
+// mergeGCPPage appends array fields and merges the aggregatedList "items" map.
+func mergeGCPPage(dst, src map[string]json.RawMessage) {
+	for k, v := range src {
+		if k == "nextPageToken" {
+			continue
+		}
+		old, ok := dst[k]
+		if !ok {
+			dst[k] = v
+			continue
+		}
+		var oa, na []json.RawMessage
+		if json.Unmarshal(old, &oa) == nil && json.Unmarshal(v, &na) == nil {
+			b, _ := json.Marshal(append(oa, na...))
+			dst[k] = b
+			continue
+		}
+		var om, nm map[string]json.RawMessage
+		if k == "items" && json.Unmarshal(old, &om) == nil && json.Unmarshal(v, &nm) == nil {
+			mergeGCPPage(om, nm)
+			for nk, nv := range nm {
+				if _, exists := om[nk]; !exists {
+					om[nk] = nv
+				}
+			}
+			b, _ := json.Marshal(om)
+			dst[k] = b
+		}
+	}
+}
+
+// gcpCSPMGetRaw performs one authenticated GET and returns the body.
+func gcpCSPMGetRaw(ctx context.Context, token, url string) ([]byte, error) {
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
-	if err != nil { return err }
+	if err != nil {
+		return nil, err
+	}
 	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("Accept", "application/json")
 	resp, err := http.DefaultClient.Do(req)
-	if err != nil { return err }
+	if err != nil {
+		return nil, err
+	}
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(resp.Body)
-	if resp.StatusCode == 403 { return fmt.Errorf("permission denied (403): %s", string(body)[:minInt(200, len(body))]) }
-	if resp.StatusCode == 404 { return fmt.Errorf("not found (404)") }
-	if resp.StatusCode != 200 { return fmt.Errorf("API error %d: %s", resp.StatusCode, string(body)[:minInt(200, len(body))]) }
-	return json.Unmarshal(body, out)
+	if resp.StatusCode == 403 {
+		msg := string(body)
+		if len(msg) > 300 {
+			msg = msg[:300]
+		}
+		return nil, fmt.Errorf("permission denied (403): %s", msg)
+	}
+	if resp.StatusCode == 404 {
+		return nil, fmt.Errorf("not found (404)")
+	}
+	if resp.StatusCode != 200 {
+		return nil, fmt.Errorf("API error %d: %s", resp.StatusCode, string(body)[:minInt(200, len(body))])
+	}
+	return body, nil
 }
 
 func minInt(a, b int) int { if a < b { return a }; return b }
@@ -90,8 +209,8 @@ func RunGCPCSPM(ctx context.Context, saJSON, projectID string) (*CSPMResult, err
 	if projectID == "" { projectID = sa.ProjectID }
 	result.ProjectID = projectID
 
-	token, err := getGCPTokenWithScope(ctx, sa, "https://www.googleapis.com/auth/cloud-platform.read-only")
-	if err != nil { return nil, fmt.Errorf("auth failed: %w", err) }
+	token, err := getGCPTokenWithScope(ctx, sa, "https://www.googleapis.com/auth/cloud-platform")
+	if err != nil { return nil, fmt.Errorf("auth failed: %w\n\nMake sure the service account JSON is complete (includes token_uri, client_email, private_key) and the APIs are enabled in the project", err) }
 
 	findings := []CSPMFinding{}
 	passed := 0
@@ -100,6 +219,7 @@ func RunGCPCSPM(ctx context.Context, saJSON, projectID string) (*CSPMResult, err
 		f, p, e := fn()
 		if e != nil {
 			result.Errors = append(result.Errors, name+": "+e.Error())
+			result.NotAssessed = append(result.NotAssessed, NotAssessedCheck{Check: name, Reason: "check failed: " + e.Error()})
 		} else {
 			findings = append(findings, f...)
 			passed += p
@@ -121,7 +241,13 @@ func RunGCPCSPM(ctx context.Context, saJSON, projectID string) (*CSPMResult, err
 			// 404 means resource doesn't exist in this project — skip silently
 			if strings.Contains(e.Error(), "403") || strings.Contains(e.Error(), "404") ||
 				strings.Contains(e.Error(), "API not enabled") || strings.Contains(e.Error(), "disabled") {
-				return // skip — API not enabled or not applicable
+				// G-36: never let a skipped check look like a clean result.
+				reason := "API not enabled or not applicable in this project"
+				if strings.Contains(e.Error(), "403") {
+					reason = "permission denied or API disabled — grant the viewer role / enable the API"
+				}
+				result.NotAssessed = append(result.NotAssessed, NotAssessedCheck{Check: name, Reason: reason})
+				return
 			}
 			result.Errors = append(result.Errors, name+": "+e.Error())
 		} else {
@@ -129,12 +255,29 @@ func RunGCPCSPM(ctx context.Context, saJSON, projectID string) (*CSPMResult, err
 			passed += p
 		}
 	}
-	runOptional("kms",           func() ([]CSPMFinding, int, error) { return checkKMSKeys(ctx, token, projectID) })
-	runOptional("vpc_flow_logs", func() ([]CSPMFinding, int, error) { return checkVPCFlowLogs(ctx, token, projectID) })
-	runOptional("dns_logging",   func() ([]CSPMFinding, int, error) { return checkDNSLogging(ctx, token, projectID) })
+	runOptional("kms",            func() ([]CSPMFinding, int, error) { return checkKMSKeys(ctx, token, projectID) })
+	runOptional("vpc_flow_logs",  func() ([]CSPMFinding, int, error) { return checkVPCFlowLogs(ctx, token, projectID) })
+	runOptional("default_network", func() ([]CSPMFinding, int, error) { return checkDefaultNetwork(ctx, token, projectID) })
+	runOptional("https_lb_tls", func() ([]CSPMFinding, int, error) { return checkHTTPSLBTLS(ctx, token, projectID) })
+	runOptional("api_keys", func() ([]CSPMFinding, int, error) { return checkAPIKeys(ctx, token, projectID) })
+	runOptional("vertex_workbench", func() ([]CSPMFinding, int, error) { return checkVertexWorkbench(ctx, token, projectID) })
+	runOptional("dnssec", func() ([]CSPMFinding, int, error) { return checkDNSSEC(ctx, token, projectID) })
+	runOptional("dns_logging",    func() ([]CSPMFinding, int, error) { return checkDNSLogging(ctx, token, projectID) })
+	runOptional("gke",            func() ([]CSPMFinding, int, error) { return checkGKEClusters(ctx, token, projectID) })
+	runOptional("bigquery",       func() ([]CSPMFinding, int, error) { return checkBigQuery(ctx, token, projectID) })
+	runOptional("secret_manager", func() ([]CSPMFinding, int, error) { return checkSecretManager(ctx, token, projectID) })
+	runOptional("org_policies",       func() ([]CSPMFinding, int, error) { return checkOrgPolicies(ctx, token, projectID) })
+	runOptional("cloud_run",          func() ([]CSPMFinding, int, error) { return checkCloudRun(ctx, token, projectID) })
+	runOptional("artifact_registry",  func() ([]CSPMFinding, int, error) { return checkArtifactRegistry(ctx, token, projectID) })
+	runOptional("cloud_functions",    func() ([]CSPMFinding, int, error) { return checkCloudFunctions(ctx, token, projectID) })
+	runOptional("pubsub",             func() ([]CSPMFinding, int, error) { return checkPubSub(ctx, token, projectID) })
+	// Org-level IAM — works when SCC is enabled (SA has org visibility) or SA has resourcemanager.organizations.getIamPolicy
+	runOptional("org_iam",            func() ([]CSPMFinding, int, error) { return checkOrgLevelIAM(ctx, token, projectID) })
 
 	for i := range findings {
-		findings[i].ID = fmt.Sprintf("gcp-%s-%d", strings.ReplaceAll(projectID, ":", "-"), i)
+		// G-39: content-derived ID, stable across scans regardless of ordering.
+		gsum := sha256.Sum256([]byte(projectID + "\x00" + findings[i].Title + "\x00" + findings[i].Resource))
+		findings[i].ID = "gcp-" + hex.EncodeToString(gsum[:])[:12]
 		findings[i].Status = "open"
 		findings[i].ScannedAt = start
 		switch findings[i].Severity {
@@ -170,19 +313,46 @@ func RunGCPCSPM(ctx context.Context, saJSON, projectID string) (*CSPMResult, err
 }
 
 func getGCPTokenWithScope(ctx context.Context, sa gcpServiceAccount, scope string) (string, error) {
+	if sa.Type == "external_account" {
+		return gcpExternalAccountToken(ctx, sa.gcpExternalAccount, scope)
+	}
+	if sa.TokenURI == "" {
+		return "", fmt.Errorf("service account JSON is missing token_uri field")
+	}
+	if sa.ClientEmail == "" {
+		return "", fmt.Errorf("service account JSON is missing client_email field")
+	}
+	if sa.PrivateKey == "" {
+		return "", fmt.Errorf("service account JSON is missing private_key field")
+	}
 	jwt, err := gcpJWT(sa, scope)
-	if err != nil { return "", err }
+	if err != nil { return "", fmt.Errorf("failed to create JWT: %w", err) }
 	body := "grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Ajwt-bearer&assertion=" + jwt
 	req, err := http.NewRequestWithContext(ctx, "POST", sa.TokenURI, strings.NewReader(body))
 	if err != nil { return "", err }
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	resp, err := http.DefaultClient.Do(req)
-	if err != nil { return "", err }
+	if err != nil { return "", fmt.Errorf("token request to %s failed: %w", sa.TokenURI, err) }
 	defer resp.Body.Close()
 	respBody, _ := io.ReadAll(resp.Body)
-	if resp.StatusCode != 200 { return "", fmt.Errorf("auth failed: %s", string(respBody)) }
-	var result struct { AccessToken string `json:"access_token"` }
-	json.Unmarshal(respBody, &result)
+	if resp.StatusCode != 200 {
+		return "", fmt.Errorf("auth failed (HTTP %d): %s", resp.StatusCode, string(respBody))
+	}
+	var result struct {
+		AccessToken string `json:"access_token"`
+		TokenType   string `json:"token_type"`
+		Error       string `json:"error"`
+		ErrorDesc   string `json:"error_description"`
+	}
+	if err := json.Unmarshal(respBody, &result); err != nil {
+		return "", fmt.Errorf("failed to parse token response: %w", err)
+	}
+	if result.Error != "" {
+		return "", fmt.Errorf("token error: %s — %s", result.Error, result.ErrorDesc)
+	}
+	if result.AccessToken == "" {
+		return "", fmt.Errorf("token response did not contain an access_token (response: %s)", string(respBody)[:minInt(300, len(respBody))])
+	}
 	return result.AccessToken, nil
 }
 
@@ -371,6 +541,80 @@ func checkIAMBindings(ctx context.Context, token, projectID string) ([]CSPMFindi
 			passed++
 		}
 	}
+	// ── Privilege escalation: SA impersonation chains ────────────────────────
+	// Build map: serviceAccount email → roles it holds
+	saRoles := map[string][]string{} // sa email → roles
+	for _, binding := range policy.Bindings {
+		for _, member := range binding.Members {
+			if strings.HasPrefix(member, "serviceAccount:") {
+				email := strings.TrimPrefix(member, "serviceAccount:")
+				saRoles[email] = append(saRoles[email], binding.Role)
+			}
+		}
+	}
+	// Roles that allow impersonating / acting-as another SA
+	impersonationRoles := map[string]bool{
+		"roles/iam.serviceAccountTokenCreator": true,
+		"roles/iam.serviceAccountUser":         true,
+		"roles/iam.workloadIdentityUser":        true,
+	}
+	// High-privilege roles that make a SA a valuable target
+	highPrivRoles := map[string]bool{
+		"roles/owner":                                  true,
+		"roles/editor":                                 true,
+		"roles/iam.securityAdmin":                      true,
+		"roles/resourcemanager.projectIamAdmin":        true,
+		"roles/iam.serviceAccountAdmin":                true,
+	}
+	for _, binding := range policy.Bindings {
+		if !impersonationRoles[binding.Role] { continue }
+		for _, member := range binding.Members {
+			// Find all SAs that this member can impersonate (any SA in the project)
+			for targetSA, targetRoles := range saRoles {
+				_ = targetSA
+				for _, r := range targetRoles {
+					if highPrivRoles[r] {
+						findings = append(findings, CSPMFinding{
+							Title:        fmt.Sprintf("Privilege escalation path: %s can impersonate high-privilege SA", member),
+							Description:  fmt.Sprintf("%s has %s, allowing it to act as a service account that holds '%s'. This creates a privilege escalation path — the identity can gain elevated access without being directly granted high-privilege roles.", member, binding.Role, r),
+							Severity:     "critical",
+							Category:     "iam",
+							Resource:     member,
+							ResourceType: "iam_binding",
+							Remediation:  "Remove iam.serviceAccountTokenCreator/User from identities that do not explicitly require SA impersonation. Audit all SA impersonation grants regularly.",
+							MITRE:        "T1548.005",
+						})
+						break
+					}
+				}
+			}
+		}
+	}
+
+	// ── Cross-project SA access (lateral movement path) ───────────────────
+	for _, binding := range policy.Bindings {
+		for _, member := range binding.Members {
+			if !strings.HasPrefix(member, "serviceAccount:") { continue }
+			email := strings.TrimPrefix(member, "serviceAccount:")
+			if !strings.Contains(email, ".iam.gserviceaccount.com") { continue }
+			parts := strings.Split(email, "@")
+			if len(parts) != 2 { continue }
+			saProject := strings.TrimSuffix(parts[1], ".iam.gserviceaccount.com")
+			if saProject != "" && saProject != projectID {
+				findings = append(findings, CSPMFinding{
+					Title:        fmt.Sprintf("Cross-project SA '%s' has role '%s' in this project", email, binding.Role),
+					Description:  fmt.Sprintf("Service account from project '%s' has '%s' in project '%s'. Cross-project SA grants create implicit trust — compromise of the source project yields access here.", saProject, binding.Role, projectID),
+					Severity:     "medium",
+					Category:     "iam",
+					Resource:     email,
+					ResourceType: "iam_binding",
+					Remediation:  "Review cross-project SA grants. Prefer Workload Identity Federation with explicit audience restrictions.",
+					MITRE:        "T1078.004",
+				})
+			}
+		}
+	}
+
 	return findings, passed, nil
 }
 
@@ -417,7 +661,7 @@ func checkStorageBuckets(ctx context.Context, token, projectID string) ([]CSPMFi
 					Severity:     sev,
 					Category:     "storage",
 					Resource:     bucket.Name,
-					ResourceType: "storage_bucket",
+					ResourceType: "gcs_bucket",
 					Remediation:  "Enable Public Access Prevention and remove allUsers/allAuthenticatedUsers from bucket ACLs immediately.",
 					MITRE:        "T1530",
 				})
@@ -434,7 +678,7 @@ func checkStorageBuckets(ctx context.Context, token, projectID string) ([]CSPMFi
 					Severity:     "critical",
 					Category:     "storage",
 					Resource:     bucket.Name,
-					ResourceType: "storage_bucket",
+					ResourceType: "gcs_bucket",
 					Remediation:  "Remove public default object ACLs. Enable uniform bucket-level access.",
 					MITRE:        "T1530",
 				})
@@ -451,7 +695,7 @@ func checkStorageBuckets(ctx context.Context, token, projectID string) ([]CSPMFi
 				Severity:     "medium",
 				Category:     "storage",
 				Resource:     bucket.Name,
-				ResourceType: "storage_bucket",
+				ResourceType: "gcs_bucket",
 				Remediation:  "Set publicAccessPrevention to 'enforced' on all buckets not intentionally public.",
 				MITRE:        "T1530",
 			})
@@ -466,7 +710,7 @@ func checkStorageBuckets(ctx context.Context, token, projectID string) ([]CSPMFi
 				Severity:     "low",
 				Category:     "storage",
 				Resource:     bucket.Name,
-				ResourceType: "storage_bucket",
+				ResourceType: "gcs_bucket",
 				Remediation:  "Enable uniform bucket-level access to enforce consistent IAM policies across all objects.",
 				MITRE:        "T1530",
 			})
@@ -481,7 +725,7 @@ func checkStorageBuckets(ctx context.Context, token, projectID string) ([]CSPMFi
 				Severity:     "low",
 				Category:     "storage",
 				Resource:     bucket.Name,
-				ResourceType: "storage_bucket",
+				ResourceType: "gcs_bucket",
 				Remediation:  "Enable object versioning on buckets containing important data.",
 				MITRE:        "T1485",
 			})
@@ -496,7 +740,7 @@ func checkStorageBuckets(ctx context.Context, token, projectID string) ([]CSPMFi
 				Severity:     "medium",
 				Category:     "logging",
 				Resource:     bucket.Name,
-				ResourceType: "storage_bucket",
+				ResourceType: "gcs_bucket",
 				Remediation:  "Enable bucket access logs and send them to a dedicated logging bucket.",
 				MITRE:        "T1562.008",
 			})
@@ -857,10 +1101,61 @@ func checkAuditLogging(ctx context.Context, token, projectID string) ([]CSPMFind
 			passed++
 		}
 	}
+
+	// ── Log sink export check — ensure at least one sink exports outside project ──
+	sinksURL := fmt.Sprintf("https://logging.googleapis.com/v2/projects/%s/sinks", projectID)
+	var sinksResp struct {
+		Sinks []struct {
+			Name        string `json:"name"`
+			Destination string `json:"destination"` // storage.googleapis.com/bucket, bigquery.googleapis.com/..., pubsub.googleapis.com/...
+			Filter      string `json:"filter"`
+			Disabled    bool   `json:"disabled"`
+		} `json:"sinks"`
+	}
+	if err := gcpCSPMGet(ctx, token, sinksURL, &sinksResp); err == nil {
+		hasExportSink := false
+		hasUnfilteredSink := false
+		for _, sink := range sinksResp.Sinks {
+			if sink.Disabled { continue }
+			// Any sink to storage, bigquery, or pubsub is an export
+			if strings.Contains(sink.Destination, "storage.googleapis.com") ||
+				strings.Contains(sink.Destination, "bigquery.googleapis.com") ||
+				strings.Contains(sink.Destination, "pubsub.googleapis.com") {
+				hasExportSink = true
+			}
+			if sink.Filter == "" || sink.Filter == "true" {
+				hasUnfilteredSink = true
+			}
+		}
+		if !hasExportSink {
+			findings = append(findings, CSPMFinding{
+				Title:        "No log sink exports audit logs to external destination",
+				Description:  "No active log sink exports to Cloud Storage, BigQuery, or Pub/Sub. Audit logs are only available in Cloud Logging with a default 30-day retention. If an attacker deletes logs, there is no external copy.",
+				Severity:     "high",
+				Category:     "logging",
+				Resource:     projectID,
+				ResourceType: "log_sink",
+				Remediation:  "Create a log sink to Cloud Storage (for long-term archive) or BigQuery (for analysis) with no filter to export all audit logs. Target retention: ≥365 days.",
+				MITRE:        "T1562.008",
+			})
+		} else if !hasUnfilteredSink {
+			findings = append(findings, CSPMFinding{
+				Title:        "Log sinks use filters — some audit events may not be exported",
+				Description:  "All configured log sinks have filter expressions. Filtered sinks may miss audit events that fall outside the filter criteria. An unfiltered sink ensures complete log retention.",
+				Severity:     "medium",
+				Category:     "logging",
+				Resource:     projectID,
+				ResourceType: "log_sink",
+				Remediation:  "Add an unfiltered log sink (no filter expression) to capture all log entries including future new service audit events.",
+				MITRE:        "T1562.008",
+			})
+		} else {
+			passed++
+		}
+	}
+
 	return findings, passed, nil
 }
-
-// ── 7. SERVICE ACCOUNTS — KEY AGE + ADMIN GRANTS ─────────────────────────────
 func checkServiceAccounts(ctx context.Context, token, projectID string) ([]CSPMFinding, int, error) {
 	url := fmt.Sprintf("https://iam.googleapis.com/v1/projects/%s/serviceAccounts", projectID)
 	var resp struct {
@@ -896,12 +1191,13 @@ func checkServiceAccounts(ctx context.Context, token, projectID string) ([]CSPMF
 					created, err := time.Parse(time.RFC3339, key.ValidAfterTime)
 					if err == nil {
 						ageDays := int(time.Since(created).Hours() / 24)
-						if ageDays > 90 {
-							sev := "medium"
+						if ageDays > 60 {
+							sev := "low"
+							if ageDays > 90  { sev = "medium" }
 							if ageDays > 180 { sev = "high" }
 							findings = append(findings, CSPMFinding{
 								Title:        fmt.Sprintf("Service account '%s' has a key older than %d days", sa.Email, ageDays),
-								Description:  fmt.Sprintf("User-managed key created %d days ago. Long-lived keys increase the risk of compromise through leakage or theft.", ageDays),
+								Description:  fmt.Sprintf("User-managed key created %d days ago. Long-lived keys increase the risk of compromise through leakage or theft. Keys should be rotated every 90 days at most.", ageDays),
 								Severity:     sev,
 								Category:     "iam",
 								Resource:     sa.Email,
@@ -1131,5 +1427,1108 @@ func checkDNSLogging(ctx context.Context, token, projectID string) ([]CSPMFindin
 		passed++
 	}
 
+	return findings, passed, nil
+}
+
+// ── 11. GKE CLUSTERS ──────────────────────────────────────────────────────────
+func checkGKEClusters(ctx context.Context, token, projectID string) ([]CSPMFinding, int, error) {
+	url := fmt.Sprintf("https://container.googleapis.com/v1/projects/%s/locations/-/clusters", projectID)
+	var resp struct {
+		Clusters []struct {
+			Name                  string `json:"name"`
+			Location              string `json:"location"`
+			CurrentMasterVersion  string `json:"currentMasterVersion"`
+			LegacyAbac            struct{ Enabled bool `json:"enabled"` } `json:"legacyAbac"`
+			NetworkPolicy         struct{ Enabled bool `json:"enabled"` } `json:"networkPolicy"`
+			MasterAuthorizedNetworksConfig struct {
+				Enabled bool `json:"enabled"`
+			} `json:"masterAuthorizedNetworksConfig"`
+			PrivateClusterConfig struct {
+				EnablePrivateNodes    bool `json:"enablePrivateNodes"`
+				EnablePrivateEndpoint bool `json:"enablePrivateEndpoint"`
+			} `json:"privateClusterConfig"`
+			WorkloadIdentityConfig struct {
+				WorkloadPool string `json:"workloadPool"`
+			} `json:"workloadIdentityConfig"`
+			NodePools []struct {
+				Name   string `json:"name"`
+				Config struct {
+					OauthScopes    []string `json:"oauthScopes"`
+					ServiceAccount string   `json:"serviceAccount"`
+					ShieldedInstanceConfig struct {
+						EnableSecureBoot          bool `json:"enableSecureBoot"`
+						EnableIntegrityMonitoring bool `json:"enableIntegrityMonitoring"`
+					} `json:"shieldedInstanceConfig"`
+				} `json:"config"`
+				Management struct {
+					AutoUpgrade bool `json:"autoUpgrade"`
+					AutoRepair  bool `json:"autoRepair"`
+				} `json:"management"`
+			} `json:"nodePools"`
+			DatabaseEncryption struct{ State string `json:"state"` } `json:"databaseEncryption"`
+			EnableKubernetesAlpha bool `json:"enableKubernetesAlpha"`
+			BinaryAuthorization struct {
+				EvaluationMode string `json:"evaluationMode"` // DISABLED, PROJECT_SINGLETON_POLICY_ENFORCE
+			} `json:"binaryAuthorization"`
+			ReleaseChannel struct {
+				Channel string `json:"channel"` // RAPID, REGULAR, STABLE, UNSPECIFIED
+			} `json:"releaseChannel"`
+			NetworkConfig struct {
+				EnableIntraNodeVisibility bool `json:"enableIntraNodeVisibility"`
+			} `json:"networkConfig"`
+			MonitoringConfig struct {
+				ComponentConfig struct {
+					EnableComponents []string `json:"enableComponents"`
+				} `json:"componentConfig"`
+			} `json:"monitoringConfig"`
+		} `json:"clusters"`
+	}
+	if err := gcpCSPMGet(ctx, token, url, &resp); err != nil {
+		return nil, 0, err
+	}
+
+	var findings []CSPMFinding
+	passed := 0
+
+	for _, cluster := range resp.Clusters {
+		name := fmt.Sprintf("%s/%s", cluster.Location, cluster.Name)
+
+		if cluster.LegacyAbac.Enabled {
+			findings = append(findings, CSPMFinding{
+				Title:        fmt.Sprintf("GKE cluster '%s': Legacy ABAC enabled", name),
+				Description:  "Legacy ABAC (Attribute-Based Access Control) is enabled. It overrides RBAC policies and grants broad permissions, undermining fine-grained access control.",
+				Severity:     "high",
+				Category:     "compute",
+				Resource:     name,
+				ResourceType: "gke_cluster",
+				Remediation:  "Disable legacy ABAC: gcloud container clusters update <CLUSTER> --no-enable-legacy-authorization",
+				MITRE:        "T1078.004",
+			})
+		} else { passed++ }
+
+		if !cluster.NetworkPolicy.Enabled {
+			findings = append(findings, CSPMFinding{
+				Title:        fmt.Sprintf("GKE cluster '%s': Network policy not enabled", name),
+				Description:  "No Kubernetes NetworkPolicy is enforced. All pods can communicate freely, enabling lateral movement if a pod is compromised.",
+				Severity:     "medium",
+				Category:     "network",
+				Resource:     name,
+				ResourceType: "gke_cluster",
+				Remediation:  "Enable network policy: gcloud container clusters update <CLUSTER> --enable-network-policy",
+				MITRE:        "T1210",
+			})
+		} else { passed++ }
+
+		if !cluster.MasterAuthorizedNetworksConfig.Enabled {
+			findings = append(findings, CSPMFinding{
+				Title:        fmt.Sprintf("GKE cluster '%s': Master authorized networks not configured", name),
+				Description:  "The Kubernetes API server is accessible from any IP address. Restricting access to known CIDRs reduces the attack surface.",
+				Severity:     "high",
+				Category:     "network",
+				Resource:     name,
+				ResourceType: "gke_cluster",
+				Remediation:  "Configure authorized networks: gcloud container clusters update <CLUSTER> --enable-master-authorized-networks --master-authorized-networks <CIDR>",
+				MITRE:        "T1190",
+			})
+		} else { passed++ }
+
+		if !cluster.PrivateClusterConfig.EnablePrivateNodes {
+			findings = append(findings, CSPMFinding{
+				Title:        fmt.Sprintf("GKE cluster '%s': Nodes have public IPs", name),
+				Description:  "Cluster nodes are not configured as private. Public IPs on nodes expose them directly to the internet.",
+				Severity:     "medium",
+				Category:     "network",
+				Resource:     name,
+				ResourceType: "gke_cluster",
+				Remediation:  "Use private nodes to ensure nodes only have internal IP addresses.",
+				MITRE:        "T1190",
+			})
+		} else { passed++ }
+
+		if cluster.WorkloadIdentityConfig.WorkloadPool == "" {
+			findings = append(findings, CSPMFinding{
+				Title:        fmt.Sprintf("GKE cluster '%s': Workload Identity not enabled", name),
+				Description:  "Workload Identity is not enabled. Without it, pods use the node service account, which may have overly broad permissions and creates a lateral movement risk.",
+				Severity:     "medium",
+				Category:     "iam",
+				Resource:     name,
+				ResourceType: "gke_cluster",
+				Remediation:  "Enable Workload Identity to bind Kubernetes service accounts to GCP service accounts with minimal permissions.",
+				MITRE:        "T1078.004",
+			})
+		} else { passed++ }
+
+		if cluster.DatabaseEncryption.State != "ENCRYPTED" {
+			findings = append(findings, CSPMFinding{
+				Title:        fmt.Sprintf("GKE cluster '%s': etcd not encrypted with customer-managed key", name),
+				Description:  "Kubernetes secrets stored in etcd are not encrypted with a customer-managed encryption key (CMEK). Application-layer secrets encryption adds a layer of defense.",
+				Severity:     "low",
+				Category:     "kms",
+				Resource:     name,
+				ResourceType: "gke_cluster",
+				Remediation:  "Enable application-layer secrets encryption with a Cloud KMS key.",
+				MITRE:        "T1552.001",
+			})
+		} else { passed++ }
+
+		for _, np := range cluster.NodePools {
+			if !np.Management.AutoUpgrade {
+				findings = append(findings, CSPMFinding{
+					Title:        fmt.Sprintf("GKE cluster '%s', node pool '%s': Auto-upgrade disabled", name, np.Name),
+					Description:  "Node auto-upgrade is disabled. Nodes may run outdated Kubernetes versions with known vulnerabilities.",
+					Severity:     "medium",
+					Category:     "compute",
+					Resource:     fmt.Sprintf("%s/nodePools/%s", name, np.Name),
+					ResourceType: "gke_node_pool",
+					Remediation:  "Enable auto-upgrade for all node pools to keep nodes on a supported Kubernetes version.",
+					MITRE:        "T1190",
+				})
+			} else { passed++ }
+			// Check for default SA or cloud-platform scope
+			for _, scope := range np.Config.OauthScopes {
+				if scope == "https://www.googleapis.com/auth/cloud-platform" {
+					findings = append(findings, CSPMFinding{
+						Title:        fmt.Sprintf("GKE cluster '%s', node pool '%s': Full cloud-platform scope", name, np.Name),
+						Description:  "Nodes have the full cloud-platform OAuth scope, granting access to all GCP APIs. This is overly permissive.",
+						Severity:     "high",
+						Category:     "iam",
+						Resource:     fmt.Sprintf("%s/nodePools/%s", name, np.Name),
+						ResourceType: "gke_node_pool",
+						Remediation:  "Use Workload Identity and restrict node OAuth scopes to only those APIs the nodes need directly.",
+						MITRE:        "T1078.004",
+					})
+					break
+				}
+			}
+			if np.Config.ServiceAccount == "default" || np.Config.ServiceAccount == "" {
+				findings = append(findings, CSPMFinding{
+					Title:        fmt.Sprintf("GKE cluster '%s', node pool '%s': Using default Compute service account", name, np.Name),
+					Description:  "Node pool uses the default Compute Engine service account, which has broad Editor permissions across the project.",
+					Severity:     "high",
+					Category:     "iam",
+					Resource:     fmt.Sprintf("%s/nodePools/%s", name, np.Name),
+					ResourceType: "gke_node_pool",
+					Remediation:  "Create a dedicated, minimally-permissioned service account for this node pool.",
+					MITRE:        "T1078.004",
+				})
+			}
+
+			// Auto-repair check
+			if !np.Management.AutoRepair {
+				findings = append(findings, CSPMFinding{
+					Title:        fmt.Sprintf("GKE cluster '%s', node pool '%s': Auto-repair disabled", name, np.Name),
+					Description:  "Node auto-repair is disabled. Unhealthy nodes are not automatically replaced, leading to degraded cluster capacity and potential security gaps from misconfigured nodes.",
+					Severity:     "low",
+					Category:     "compute",
+					Resource:     fmt.Sprintf("%s/nodePools/%s", name, np.Name),
+					ResourceType: "gke_node_pool",
+					Remediation:  "Enable auto-repair for all node pools to ensure unhealthy nodes are automatically recreated.",
+					MITRE:        "T1499",
+				})
+			}
+		}
+
+		// Binary Authorization check
+		if cluster.BinaryAuthorization.EvaluationMode != "PROJECT_SINGLETON_POLICY_ENFORCE" {
+			findings = append(findings, CSPMFinding{
+				Title:        fmt.Sprintf("GKE cluster '%s': Binary Authorization not enforced", name),
+				Description:  "Binary Authorization is not set to enforcement mode. Without it, any container image — including unscanned, unsigned, or malicious images — can be deployed to this cluster. This is the primary supply chain control for GKE.",
+				Severity:     "high",
+				Category:     "compute",
+				Resource:     name,
+				ResourceType: "gke_cluster",
+				Remediation:  "Enable Binary Authorization in enforcement mode and create attestation policies requiring images to be scanned and signed before deployment.",
+				MITRE:        "T1195.001",
+			})
+		} else { passed++ }
+
+		// Release channel — RAPID in production is risky
+		if cluster.ReleaseChannel.Channel == "UNSPECIFIED" || cluster.ReleaseChannel.Channel == "" {
+			findings = append(findings, CSPMFinding{
+				Title:        fmt.Sprintf("GKE cluster '%s': Not enrolled in a release channel", name),
+				Description:  "The cluster is not enrolled in a GKE release channel. Without a channel, automatic security patch upgrades are not applied. Clusters on manual versions accumulate CVEs over time.",
+				Severity:     "medium",
+				Category:     "compute",
+				Resource:     name,
+				ResourceType: "gke_cluster",
+				Remediation:  "Enroll the cluster in the REGULAR or STABLE release channel to receive automatic security patches.",
+				MITRE:        "T1190",
+			})
+		} else if cluster.ReleaseChannel.Channel == "RAPID" {
+			findings = append(findings, CSPMFinding{
+				Title:        fmt.Sprintf("GKE cluster '%s': On RAPID release channel (pre-production only)", name),
+				Description:  "The RAPID channel receives new Kubernetes versions before they are production-ready. It is intended for testing only and may introduce instability or unvalidated security changes.",
+				Severity:     "low",
+				Category:     "compute",
+				Resource:     name,
+				ResourceType: "gke_cluster",
+				Remediation:  "Move production clusters to REGULAR or STABLE release channel.",
+				MITRE:        "T1190",
+			})
+		} else { passed++ }
+
+		// Intranode visibility — needed for VPC flow logs to capture pod traffic
+		if !cluster.NetworkConfig.EnableIntraNodeVisibility {
+			findings = append(findings, CSPMFinding{
+				Title:        fmt.Sprintf("GKE cluster '%s': Intranode visibility disabled", name),
+				Description:  "Intranode visibility is off. Traffic between pods on the same node bypasses VPC flow logs entirely, creating a blind spot for network forensics and east-west threat detection.",
+				Severity:     "low",
+				Category:     "logging",
+				Resource:     name,
+				ResourceType: "gke_cluster",
+				Remediation:  "Enable intranode visibility so all pod-to-pod traffic is captured in VPC flow logs.",
+				MITRE:        "T1562.008",
+			})
+		} else { passed++ }
+	}
+	return findings, passed, nil
+}
+
+// ── 12. BIGQUERY ──────────────────────────────────────────────────────────────
+func checkBigQuery(ctx context.Context, token, projectID string) ([]CSPMFinding, int, error) {
+	url := fmt.Sprintf("https://bigquery.googleapis.com/bigquery/v2/projects/%s/datasets", projectID)
+	var resp struct {
+		Datasets []struct {
+			DatasetReference struct {
+				DatasetID string `json:"datasetId"`
+				ProjectID string `json:"projectId"`
+			} `json:"datasetReference"`
+		} `json:"datasets"`
+	}
+	if err := gcpCSPMGet(ctx, token, url, &resp); err != nil {
+		return nil, 0, err
+	}
+
+	var findings []CSPMFinding
+	passed := 0
+
+	for _, ds := range resp.Datasets {
+		dsID := ds.DatasetReference.DatasetID
+		// Get full dataset metadata including ACL and encryption
+		detailURL := fmt.Sprintf("https://bigquery.googleapis.com/bigquery/v2/projects/%s/datasets/%s", projectID, dsID)
+		var detail struct {
+			Access []struct {
+				Role         string `json:"role"`
+				SpecialGroup string `json:"specialGroup"`
+				UserByEmail  string `json:"userByEmail"`
+				GroupByEmail string `json:"groupByEmail"`
+			} `json:"access"`
+			DefaultEncryptionConfiguration struct {
+				KmsKeyName string `json:"kmsKeyName"`
+			} `json:"defaultEncryptionConfiguration"`
+		}
+		if err := gcpCSPMGet(ctx, token, detailURL, &detail); err != nil {
+			continue
+		}
+
+		publicAccess := false
+		for _, acl := range detail.Access {
+			if acl.SpecialGroup == "allUsers" || acl.SpecialGroup == "allAuthenticatedUsers" {
+				publicAccess = true
+				findings = append(findings, CSPMFinding{
+					Title:        fmt.Sprintf("BigQuery dataset '%s': Public access (%s)", dsID, acl.SpecialGroup),
+					Description:  fmt.Sprintf("Dataset '%s' is accessible to %s. This exposes potentially sensitive data to anyone on the internet.", dsID, acl.SpecialGroup),
+					Severity:     "critical",
+					Category:     "storage",
+					Resource:     fmt.Sprintf("%s:%s", projectID, dsID),
+					ResourceType: "bigquery_dataset",
+					Remediation:  "Remove allUsers/allAuthenticatedUsers from the dataset ACL immediately.",
+					MITRE:        "T1530",
+				})
+			}
+		}
+		if !publicAccess { passed++ }
+
+		if detail.DefaultEncryptionConfiguration.KmsKeyName == "" {
+			findings = append(findings, CSPMFinding{
+				Title:        fmt.Sprintf("BigQuery dataset '%s': No customer-managed encryption key", dsID),
+				Description:  "Dataset uses Google-managed encryption. Customer-managed keys (CMEK) provide additional control over data access and the ability to revoke access by disabling the key.",
+				Severity:     "low",
+				Category:     "kms",
+				Resource:     fmt.Sprintf("%s:%s", projectID, dsID),
+				ResourceType: "bigquery_dataset",
+				Remediation:  "Configure a Cloud KMS key as the default encryption key for the dataset.",
+				MITRE:        "T1552.001",
+			})
+		} else { passed++ }
+
+		// Check for no row-level access policies (informational — indicates no fine-grained data control)
+		rlsURL := fmt.Sprintf("https://bigquery.googleapis.com/bigquery/v2/projects/%s/datasets/%s/tables", projectID, dsID)
+		var tablesResp struct {
+			Tables []struct {
+				TableReference struct{ TableID string `json:"tableId"` } `json:"tableReference"`
+			} `json:"tables"`
+		}
+		_ = gcpCSPMGet(ctx, token, rlsURL, &tablesResp)
+		if len(tablesResp.Tables) > 5 {
+			// Large dataset with no row-level security check — note it
+			findings = append(findings, CSPMFinding{
+				Title:        fmt.Sprintf("BigQuery dataset '%s': Row-level security not verified (%d tables)", dsID, len(tablesResp.Tables)),
+				Description:  fmt.Sprintf("Dataset '%s' has %d tables. Row-level security policies were not found. Without row-level access controls, all users with dataset access can read all rows.", dsID, len(tablesResp.Tables)),
+				Severity:     "info",
+				Category:     "storage",
+				Resource:     fmt.Sprintf("%s:%s", projectID, dsID),
+				ResourceType: "bigquery_dataset",
+				Remediation:  "Review whether row-level security policies are needed to limit data access based on user identity.",
+				MITRE:        "T1530",
+			})
+		}
+	}
+	return findings, passed, nil
+}
+
+// ── 13. SECRET MANAGER ────────────────────────────────────────────────────────
+func checkSecretManager(ctx context.Context, token, projectID string) ([]CSPMFinding, int, error) {
+	url := fmt.Sprintf("https://secretmanager.googleapis.com/v1/projects/%s/secrets", projectID)
+	var resp struct {
+		Secrets []struct {
+			Name       string            `json:"name"`
+			Labels     map[string]string `json:"labels"`
+			Replication struct {
+				Automatic *struct{} `json:"automatic"`
+				UserManaged *struct {
+					Replicas []struct {
+						CustomerManagedEncryption *struct {
+							KmsKeyName string `json:"kmsKeyName"`
+						} `json:"customerManagedEncryption"`
+					} `json:"replicas"`
+				} `json:"userManaged"`
+			} `json:"replication"`
+			Rotation *struct {
+				NextRotationTime string `json:"nextRotationTime"`
+				RotationPeriod   string `json:"rotationPeriod"`
+			} `json:"rotation"`
+		} `json:"secrets"`
+	}
+	if err := gcpCSPMGet(ctx, token, url, &resp); err != nil {
+		return nil, 0, err
+	}
+
+	var findings []CSPMFinding
+	passed := 0
+
+	for _, secret := range resp.Secrets {
+		parts := strings.Split(secret.Name, "/")
+		shortName := secret.Name
+		if len(parts) > 0 { shortName = parts[len(parts)-1] }
+
+		// Check for public IAM on the secret
+		iamURL := fmt.Sprintf("https://secretmanager.googleapis.com/v1/%s:getIamPolicy", secret.Name)
+		var iamResp struct {
+			Bindings []struct {
+				Role    string   `json:"role"`
+				Members []string `json:"members"`
+			} `json:"bindings"`
+		}
+		if err := gcpCSPMGet(ctx, token, iamURL, &iamResp); err == nil {
+			for _, binding := range iamResp.Bindings {
+				for _, member := range binding.Members {
+					if member == "allUsers" || member == "allAuthenticatedUsers" {
+						findings = append(findings, CSPMFinding{
+							Title:        fmt.Sprintf("Secret '%s': Public IAM access (%s)", shortName, member),
+							Description:  fmt.Sprintf("The secret '%s' has IAM role '%s' granted to %s. This exposes sensitive secret data to anyone.", shortName, binding.Role, member),
+							Severity:     "critical",
+							Category:     "storage",
+							Resource:     secret.Name,
+							ResourceType: "secret",
+							Remediation:  "Remove allUsers/allAuthenticatedUsers from all Secret Manager IAM policies immediately.",
+							MITRE:        "T1552.001",
+						})
+					}
+				}
+			}
+		}
+
+		// Check rotation policy
+		if secret.Rotation == nil {
+			findings = append(findings, CSPMFinding{
+				Title:        fmt.Sprintf("Secret '%s': No rotation policy configured", shortName),
+				Description:  "This secret has no automatic rotation policy. Long-lived secrets increase the risk of compromise going undetected.",
+				Severity:     "medium",
+				Category:     "storage",
+				Resource:     secret.Name,
+				ResourceType: "secret",
+				Remediation:  "Configure a rotation schedule and a Pub/Sub topic to trigger rotation. Target rotation period: 90 days or less.",
+				MITRE:        "T1552.001",
+			})
+		} else { passed++ }
+
+		// Check CMEK
+		cmekConfigured := false
+		if secret.Replication.UserManaged != nil {
+			for _, replica := range secret.Replication.UserManaged.Replicas {
+				if replica.CustomerManagedEncryption != nil && replica.CustomerManagedEncryption.KmsKeyName != "" {
+					cmekConfigured = true
+					break
+				}
+			}
+		}
+		if !cmekConfigured {
+			findings = append(findings, CSPMFinding{
+				Title:        fmt.Sprintf("Secret '%s': No customer-managed encryption key", shortName),
+				Description:  "Secret is encrypted with Google-managed keys. CMEK provides the ability to revoke access to all secret versions by disabling the KMS key.",
+				Severity:     "low",
+				Category:     "kms",
+				Resource:     secret.Name,
+				ResourceType: "secret",
+				Remediation:  "Configure a Cloud KMS key for customer-managed encryption on this secret.",
+				MITRE:        "T1552.001",
+			})
+		} else { passed++ }
+	}
+
+	// Check for excessive number of enabled versions (potential secret sprawl)
+	for _, secret := range resp.Secrets {
+		parts := strings.Split(secret.Name, "/")
+		shortName := secret.Name
+		if len(parts) > 0 { shortName = parts[len(parts)-1] }
+
+		versionsURL := fmt.Sprintf("https://secretmanager.googleapis.com/v1/%s/versions?filter=state%%3DENABLED", secret.Name)
+		var versResp struct {
+			Versions []struct{ Name string `json:"name"` } `json:"versions"`
+		}
+		if err := gcpCSPMGet(ctx, token, versionsURL, &versResp); err == nil {
+			if len(versResp.Versions) > 3 {
+				findings = append(findings, CSPMFinding{
+					Title:        fmt.Sprintf("Secret '%s': %d enabled versions (excessive)", shortName, len(versResp.Versions)),
+					Description:  fmt.Sprintf("Secret '%s' has %d active versions. Excessive enabled versions increase exposure — old secret values remain accessible to anyone with secretAccessor permission.", shortName, len(versResp.Versions)),
+					Severity:     "low",
+					Category:     "storage",
+					Resource:     secret.Name,
+					ResourceType: "secret",
+					Remediation:  "Disable all secret versions except the latest. Implement version cleanup as part of your rotation procedure.",
+					MITRE:        "T1552.001",
+				})
+			} else { passed++ }
+		}
+	}
+
+	return findings, passed, nil
+}
+
+// ── 14. ORG POLICIES ──────────────────────────────────────────────────────────
+func checkOrgPolicies(ctx context.Context, token, projectID string) ([]CSPMFinding, int, error) {
+	// Key org policy constraints and their security impact
+	type policyCheck struct {
+		Constraint  string
+		Title       string
+		Description string
+		Remediation string
+		Severity    string
+		MITRE       string
+		WantEnforce bool // true = finding if NOT enforced
+	}
+	checks := []policyCheck{
+		{
+			Constraint:  "constraints/iam.disableServiceAccountKeyCreation",
+			Title:       "Service account key creation not restricted",
+			Description: "User-managed service account keys can be created. These long-lived credentials are a common attack vector. The org policy constraint/iam.disableServiceAccountKeyCreation should be enforced.",
+			Remediation: "Enable constraints/iam.disableServiceAccountKeyCreation at the project or org level. Use Workload Identity instead of key files.",
+			Severity:    "high",
+			MITRE:       "T1552.004",
+			WantEnforce: true,
+		},
+		{
+			Constraint:  "constraints/compute.requireOsLogin",
+			Title:       "OS Login not enforced on Compute instances",
+			Description: "The requireOsLogin constraint is not enforced. SSH keys can be set per-instance or per-project without OS Login, making it harder to track and revoke SSH access centrally.",
+			Remediation: "Enforce constraints/compute.requireOsLogin to use IAM for SSH access management.",
+			Severity:    "medium",
+			MITRE:       "T1078.004",
+			WantEnforce: true,
+		},
+		{
+			Constraint:  "constraints/compute.restrictPublicIpAccess",
+			Title:       "Public IP creation not restricted",
+			Description: "No org policy restricts creation of public IP addresses on Compute instances. Any project member with Compute permissions can create internet-facing VMs.",
+			Remediation: "Enforce constraints/compute.restrictPublicIpAccess or use VPC Service Controls to limit public IP creation.",
+			Severity:    "medium",
+			MITRE:       "T1190",
+			WantEnforce: true,
+		},
+		{
+			Constraint:  "constraints/storage.uniformBucketLevelAccess",
+			Title:       "Uniform bucket-level access not enforced",
+			Description: "The org policy constraints/storage.uniformBucketLevelAccess is not enforced. Buckets can use legacy ACLs in addition to IAM, creating complex permission models that are difficult to audit.",
+			Remediation: "Enforce constraints/storage.uniformBucketLevelAccess to disable legacy ACLs across all buckets.",
+			Severity:    "low",
+			MITRE:       "T1530",
+			WantEnforce: true,
+		},
+		{
+			Constraint:  "constraints/iam.allowedPolicyMemberDomains",
+			Title:       "IAM domain restriction not configured",
+			Description: "No org policy restricts which domains can be granted IAM roles. External identities from any domain can be added to IAM policies.",
+			Remediation: "Configure constraints/iam.allowedPolicyMemberDomains to restrict IAM grants to your organization's domain(s).",
+			Severity:    "high",
+			MITRE:       "T1078.004",
+			WantEnforce: true,
+		},
+	}
+
+	var findings []CSPMFinding
+	passed := 0
+
+	for _, check := range checks {
+		url := fmt.Sprintf("https://cloudresourcemanager.googleapis.com/v1/projects/%s:getEffectiveOrgPolicy", projectID)
+		reqBody := fmt.Sprintf(`{"constraint": "%s"}`, check.Constraint)
+		req, err := http.NewRequestWithContext(ctx, "POST", url, strings.NewReader(reqBody))
+		if err != nil { continue }
+		req.Header.Set("Authorization", "Bearer "+token)
+		req.Header.Set("Content-Type", "application/json")
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil { continue }
+		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+
+		if resp.StatusCode == 403 || resp.StatusCode == 404 {
+			// Not accessible — skip silently
+			continue
+		}
+
+		var policy struct {
+			BooleanPolicy *struct {
+				Enforced bool `json:"enforced"`
+			} `json:"booleanPolicy"`
+			ListPolicy *struct {
+				AllowedValues []string `json:"allowedValues"`
+				DeniedValues  []string `json:"deniedValues"`
+				AllValues     string   `json:"allValues"`
+			} `json:"listPolicy"`
+			RestoreDefault *struct{} `json:"restoreDefault"`
+		}
+		if err := json.Unmarshal(body, &policy); err != nil { continue }
+
+		enforced := false
+		if policy.BooleanPolicy != nil {
+			enforced = policy.BooleanPolicy.Enforced
+		} else if policy.ListPolicy != nil && len(policy.ListPolicy.AllowedValues) > 0 {
+			enforced = true
+		} else if policy.RestoreDefault != nil {
+			enforced = false
+		}
+
+		if check.WantEnforce && !enforced {
+			findings = append(findings, CSPMFinding{
+				Title:        check.Title,
+				Description:  check.Description,
+				Severity:     check.Severity,
+				Category:     "iam",
+				Resource:     projectID,
+				ResourceType: "org_policy",
+				Remediation:  check.Remediation,
+				MITRE:        check.MITRE,
+			})
+		} else {
+			passed++
+		}
+	}
+	return findings, passed, nil
+}
+
+// ── CLOUD RUN ────────────────────────────────────────────────────────────────
+func checkCloudRun(ctx context.Context, token, projectID string) ([]CSPMFinding, int, error) {
+	url := fmt.Sprintf("https://run.googleapis.com/v2/projects/%s/locations/-/services", projectID)
+	var resp struct {
+		Services []struct {
+			Name   string `json:"name"`
+			Labels map[string]string `json:"labels"`
+			Ingress string `json:"ingress"` // INGRESS_TRAFFIC_ALL, INGRESS_TRAFFIC_INTERNAL_ONLY, INGRESS_TRAFFIC_INTERNAL_LOAD_BALANCER
+			Template struct {
+				ServiceAccount string `json:"serviceAccount"`
+				Containers []struct {
+					Image string `json:"image"`
+				} `json:"containers"`
+			} `json:"template"`
+		} `json:"services"`
+	}
+	if err := gcpCSPMGet(ctx, token, url, &resp); err != nil {
+		return nil, 0, err
+	}
+
+	var findings []CSPMFinding
+	passed := 0
+
+	for _, svc := range resp.Services {
+		shortName := svc.Name[strings.LastIndex(svc.Name, "/")+1:]
+		svcClean := true
+
+		// Check IAM policy for allUsers (unauthenticated invocations)
+		iamURL := fmt.Sprintf("https://run.googleapis.com/v2/%s:getIamPolicy", svc.Name)
+		var iamResp struct {
+			Bindings []struct {
+				Role    string   `json:"role"`
+				Members []string `json:"members"`
+			} `json:"bindings"`
+		}
+		if err := gcpCSPMGet(ctx, token, iamURL, &iamResp); err == nil {
+			for _, b := range iamResp.Bindings {
+				if b.Role == "roles/run.invoker" {
+					for _, m := range b.Members {
+						if m == "allUsers" || m == "allAuthenticatedUsers" {
+							sev := "critical"
+							if m == "allAuthenticatedUsers" { sev = "high" }
+							findings = append(findings, CSPMFinding{
+								Title:        fmt.Sprintf("Cloud Run service '%s' allows unauthenticated invocations (%s)", shortName, m),
+								Description:  fmt.Sprintf("The Cloud Run service grants roles/run.invoker to %s — anyone on the internet can invoke this service without authentication. This is the highest-severity serverless misconfiguration.", m),
+								Severity:     sev,
+								Category:     "compute",
+								Resource:     shortName,
+								ResourceType: "cloud_run_service",
+								Remediation:  "Remove allUsers/allAuthenticatedUsers from roles/run.invoker. Require authentication via Google identity or use Cloud Endpoints/API Gateway for controlled access.",
+								MITRE:        "T1190",
+							})
+							svcClean = false
+						}
+					}
+				}
+			}
+		}
+
+		// Ingress check — INGRESS_TRAFFIC_ALL means public internet can reach it
+		if svc.Ingress == "INGRESS_TRAFFIC_ALL" || svc.Ingress == "" {
+			findings = append(findings, CSPMFinding{
+				Title:        fmt.Sprintf("Cloud Run service '%s' ingress allows all traffic (internet-facing)", shortName),
+				Description:  "Ingress is set to allow all traffic from the internet. Services that only need internal or load-balancer access should restrict ingress to reduce attack surface.",
+				Severity:     "medium",
+				Category:     "compute",
+				Resource:     shortName,
+				ResourceType: "cloud_run_service",
+				Remediation:  "Set ingress to INGRESS_TRAFFIC_INTERNAL_ONLY or INGRESS_TRAFFIC_INTERNAL_LOAD_BALANCER unless the service must be publicly accessible.",
+				MITRE:        "T1190",
+			})
+			svcClean = false
+		}
+
+		// Default compute SA check
+		if strings.Contains(svc.Template.ServiceAccount, "-compute@developer.gserviceaccount.com") ||
+			svc.Template.ServiceAccount == "" {
+			findings = append(findings, CSPMFinding{
+				Title:        fmt.Sprintf("Cloud Run service '%s' uses default Compute service account", shortName),
+				Description:  "The service runs as the default Compute Engine service account which has Editor-level permissions across the project. A compromised service gets full project access.",
+				Severity:     "high",
+				Category:     "iam",
+				Resource:     shortName,
+				ResourceType: "cloud_run_service",
+				Remediation:  "Create a dedicated service account with only the IAM roles this service actually requires.",
+				MITRE:        "T1078.004",
+			})
+			svcClean = false
+		}
+
+		if svcClean { passed++ }
+	}
+	return findings, passed, nil
+}
+
+// ── ARTIFACT REGISTRY / GCR ──────────────────────────────────────────────────
+func checkArtifactRegistry(ctx context.Context, token, projectID string) ([]CSPMFinding, int, error) {
+	url := fmt.Sprintf("https://artifactregistry.googleapis.com/v1/projects/%s/locations/-/repositories", projectID)
+	var resp struct {
+		Repositories []struct {
+			Name   string `json:"name"`
+			Format string `json:"format"` // DOCKER, MAVEN, NPM, etc.
+			KmsKeyName string `json:"kmsKeyName"`
+		} `json:"repositories"`
+	}
+	if err := gcpCSPMGet(ctx, token, url, &resp); err != nil {
+		return nil, 0, err
+	}
+
+	var findings []CSPMFinding
+	passed := 0
+
+	for _, repo := range resp.Repositories {
+		shortName := repo.Name[strings.LastIndex(repo.Name, "/")+1:]
+		repoClean := true
+
+		// Check IAM for public access
+		iamURL := fmt.Sprintf("https://artifactregistry.googleapis.com/v1/%s:getIamPolicy", repo.Name)
+		var iamResp struct {
+			Bindings []struct {
+				Role    string   `json:"role"`
+				Members []string `json:"members"`
+			} `json:"bindings"`
+		}
+		if err := gcpCSPMGet(ctx, token, iamURL, &iamResp); err == nil {
+			for _, b := range iamResp.Bindings {
+				for _, m := range b.Members {
+					if m == "allUsers" || m == "allAuthenticatedUsers" {
+						findings = append(findings, CSPMFinding{
+							Title:        fmt.Sprintf("Artifact Registry '%s' is publicly accessible (%s)", shortName, m),
+							Description:  fmt.Sprintf("Registry %s grants access to %s. Public registries allow anyone to pull (and potentially push) container images, enabling supply chain attacks.", shortName, m),
+							Severity:     "critical",
+							Category:     "storage",
+							Resource:     shortName,
+							ResourceType: "artifact_registry",
+							Remediation:  "Remove allUsers/allAuthenticatedUsers from all Artifact Registry IAM bindings. Use private registries with explicit IAM grants.",
+							MITRE:        "T1195.001",
+						})
+						repoClean = false
+					}
+				}
+			}
+		}
+
+		// CMEK check for DOCKER repositories
+		if repo.Format == "DOCKER" && repo.KmsKeyName == "" {
+			findings = append(findings, CSPMFinding{
+				Title:        fmt.Sprintf("Artifact Registry '%s' (Docker) has no customer-managed encryption key", shortName),
+				Description:  "Docker image layers are encrypted with Google-managed keys. CMEK provides control over key lifecycle and the ability to revoke access to all stored images.",
+				Severity:     "low",
+				Category:     "kms",
+				Resource:     shortName,
+				ResourceType: "artifact_registry",
+				Remediation:  "Configure a Cloud KMS key for this Artifact Registry repository.",
+				MITRE:        "T1552.001",
+			})
+			repoClean = false
+		}
+
+		if repoClean { passed++ }
+	}
+	return findings, passed, nil
+}
+
+// ── CLOUD FUNCTIONS ──────────────────────────────────────────────────────────
+func checkCloudFunctions(ctx context.Context, token, projectID string) ([]CSPMFinding, int, error) {
+	// Cloud Functions Gen2 uses run.googleapis.com under the hood; Gen1 has its own API
+	url := fmt.Sprintf("https://cloudfunctions.googleapis.com/v2/projects/%s/locations/-/functions", projectID)
+	var resp struct {
+		Functions []struct {
+			Name        string `json:"name"`
+			Environment string `json:"environment"` // GEN_1 or GEN_2
+			BuildConfig struct {
+				Runtime string `json:"runtime"`
+			} `json:"buildConfig"`
+			ServiceConfig struct {
+				ServiceAccountEmail   string `json:"serviceAccountEmail"`
+				IngressSettings       string `json:"ingressSettings"` // ALLOW_ALL, ALLOW_INTERNAL_AND_GCLB, ALLOW_INTERNAL_ONLY
+				MaxInstanceCount      int    `json:"maxInstanceCount"`
+				VpcConnector          string `json:"vpcConnector"`
+			} `json:"serviceConfig"`
+		} `json:"functions"`
+	}
+	if err := gcpCSPMGet(ctx, token, url, &resp); err != nil {
+		return nil, 0, err
+	}
+
+	var findings []CSPMFinding
+	passed := 0
+
+	for _, fn := range resp.Functions {
+		shortName := fn.Name[strings.LastIndex(fn.Name, "/")+1:]
+		fnClean := true
+
+		// Check IAM for unauthenticated invocation
+		iamURL := fmt.Sprintf("https://cloudfunctions.googleapis.com/v2/%s:getIamPolicy", fn.Name)
+		var iamResp struct {
+			Bindings []struct {
+				Role    string   `json:"role"`
+				Members []string `json:"members"`
+			} `json:"bindings"`
+		}
+		if err := gcpCSPMGet(ctx, token, iamURL, &iamResp); err == nil {
+			for _, b := range iamResp.Bindings {
+				if b.Role == "roles/cloudfunctions.invoker" || b.Role == "roles/run.invoker" {
+					for _, m := range b.Members {
+						if m == "allUsers" || m == "allAuthenticatedUsers" {
+							findings = append(findings, CSPMFinding{
+								Title:        fmt.Sprintf("Cloud Function '%s' allows unauthenticated invocations", shortName),
+								Description:  fmt.Sprintf("Function grants invoker role to %s — publicly callable without any authentication. Functions with sensitive logic or data access are a critical attack surface when unauthenticated.", m),
+								Severity:     "critical",
+								Category:     "compute",
+								Resource:     shortName,
+								ResourceType: "cloud_function",
+								Remediation:  "Remove allUsers from invoker role. Require authentication via Google identity tokens or use Cloud Endpoints for API key control.",
+								MITRE:        "T1190",
+							})
+							fnClean = false
+						}
+					}
+				}
+			}
+		}
+
+		// Ingress — ALLOW_ALL means callable from internet
+		if fn.ServiceConfig.IngressSettings == "ALLOW_ALL" || fn.ServiceConfig.IngressSettings == "" {
+			findings = append(findings, CSPMFinding{
+				Title:        fmt.Sprintf("Cloud Function '%s' ingress allows all traffic", shortName),
+				Description:  "Ingress is set to ALLOW_ALL — the function endpoint is reachable from the public internet. Restrict to internal or load-balancer traffic where possible.",
+				Severity:     "medium",
+				Category:     "compute",
+				Resource:     shortName,
+				ResourceType: "cloud_function",
+				Remediation:  "Set ingressSettings to ALLOW_INTERNAL_ONLY or ALLOW_INTERNAL_AND_GCLB unless public access is intentional.",
+				MITRE:        "T1190",
+			})
+			fnClean = false
+		}
+
+		// Default SA check
+		if strings.Contains(fn.ServiceConfig.ServiceAccountEmail, "-compute@developer.gserviceaccount.com") ||
+			fn.ServiceConfig.ServiceAccountEmail == "" {
+			findings = append(findings, CSPMFinding{
+				Title:        fmt.Sprintf("Cloud Function '%s' uses default Compute service account", shortName),
+				Description:  "Using the default Compute Engine service account gives the function Editor-level permissions across the entire project — far more than any function should need.",
+				Severity:     "high",
+				Category:     "iam",
+				Resource:     shortName,
+				ResourceType: "cloud_function",
+				Remediation:  "Assign a dedicated service account with only the roles this function requires.",
+				MITRE:        "T1078.004",
+			})
+			fnClean = false
+		}
+
+		if fnClean { passed++ }
+	}
+	return findings, passed, nil
+}
+
+// ── PUB/SUB ──────────────────────────────────────────────────────────────────
+func checkPubSub(ctx context.Context, token, projectID string) ([]CSPMFinding, int, error) {
+	url := fmt.Sprintf("https://pubsub.googleapis.com/v1/projects/%s/topics", projectID)
+	var resp struct {
+		Topics []struct {
+			Name               string `json:"name"`
+			KmsKeyName         string `json:"kmsKeyName"`
+			MessageRetentionDuration string `json:"messageRetentionDuration"`
+		} `json:"topics"`
+	}
+	if err := gcpCSPMGet(ctx, token, url, &resp); err != nil {
+		return nil, 0, err
+	}
+
+	var findings []CSPMFinding
+	passed := 0
+
+	for _, topic := range resp.Topics {
+		shortName := topic.Name[strings.LastIndex(topic.Name, "/")+1:]
+		// Skip GCP internal topics
+		if strings.HasPrefix(shortName, "goog") { continue }
+		topicClean := true
+
+		// Check IAM for public access
+		iamURL := fmt.Sprintf("https://pubsub.googleapis.com/v1/%s:getIamPolicy", topic.Name)
+		var iamResp struct {
+			Bindings []struct {
+				Role    string   `json:"role"`
+				Members []string `json:"members"`
+			} `json:"bindings"`
+		}
+		if err := gcpCSPMGet(ctx, token, iamURL, &iamResp); err == nil {
+			for _, b := range iamResp.Bindings {
+				for _, m := range b.Members {
+					if m == "allUsers" || m == "allAuthenticatedUsers" {
+						sev := "critical"
+						if strings.Contains(b.Role, "viewer") || strings.Contains(b.Role, "subscriber") {
+							sev = "high"
+						}
+						findings = append(findings, CSPMFinding{
+							Title:        fmt.Sprintf("Pub/Sub topic '%s' grants public access (%s → %s)", shortName, b.Role, m),
+							Description:  fmt.Sprintf("Topic '%s' has role %s granted to %s. Public publish access enables message injection attacks; public subscribe access enables data exfiltration of all messages on this topic.", shortName, b.Role, m),
+							Severity:     sev,
+							Category:     "storage",
+							Resource:     shortName,
+							ResourceType: "pubsub_topic",
+							Remediation:  "Remove allUsers/allAuthenticatedUsers from all Pub/Sub IAM bindings. Grant access only to specific service accounts.",
+							MITRE:        "T1530",
+						})
+						topicClean = false
+					}
+				}
+			}
+		}
+
+		// CMEK check
+		if topic.KmsKeyName == "" {
+			findings = append(findings, CSPMFinding{
+				Title:        fmt.Sprintf("Pub/Sub topic '%s' has no customer-managed encryption key", shortName),
+				Description:  "Messages are encrypted with Google-managed keys. CMEK allows revoking access to message data by disabling the KMS key.",
+				Severity:     "low",
+				Category:     "kms",
+				Resource:     shortName,
+				ResourceType: "pubsub_topic",
+				Remediation:  "Configure a Cloud KMS key for this Pub/Sub topic using the kmsKeyName field.",
+				MITRE:        "T1552.001",
+			})
+			topicClean = false
+		}
+
+		if topicClean { passed++ }
+	}
+
+	// Check subscriptions for public access
+	subURL := fmt.Sprintf("https://pubsub.googleapis.com/v1/projects/%s/subscriptions", projectID)
+	var subResp struct {
+		Subscriptions []struct {
+			Name string `json:"name"`
+			ExpirationPolicy *struct {
+				Ttl string `json:"ttl"`
+			} `json:"expirationPolicy"`
+		} `json:"subscriptions"`
+	}
+	if err := gcpCSPMGet(ctx, token, subURL, &subResp); err == nil {
+		for _, sub := range subResp.Subscriptions {
+			shortSubName := sub.Name[strings.LastIndex(sub.Name, "/")+1:]
+			subIAMURL := fmt.Sprintf("https://pubsub.googleapis.com/v1/%s:getIamPolicy", sub.Name)
+			var subIAM struct {
+				Bindings []struct {
+					Role    string   `json:"role"`
+					Members []string `json:"members"`
+				} `json:"bindings"`
+			}
+			if err := gcpCSPMGet(ctx, token, subIAMURL, &subIAM); err == nil {
+				for _, b := range subIAM.Bindings {
+					for _, m := range b.Members {
+						if m == "allUsers" || m == "allAuthenticatedUsers" {
+							findings = append(findings, CSPMFinding{
+								Title:        fmt.Sprintf("Pub/Sub subscription '%s' grants public access", shortSubName),
+								Description:  fmt.Sprintf("Subscription '%s' has role %s granted to %s. Anyone can pull all messages from this subscription, enabling complete data exfiltration of the message stream.", shortSubName, b.Role, m),
+								Severity:     "critical",
+								Category:     "storage",
+								Resource:     shortSubName,
+								ResourceType: "pubsub_subscription",
+								Remediation:  "Remove allUsers/allAuthenticatedUsers from subscription IAM. Grant pull access only to specific service accounts.",
+								MITRE:        "T1530",
+							})
+						}
+					}
+				}
+			}
+		}
+	}
+
+	return findings, passed, nil
+}
+
+// ── ORG-LEVEL IAM ─────────────────────────────────────────────────────────────
+// Works when SCC is enabled (SA has org-level securitycenter.findingsViewer which implies
+// cloudresourcemanager.organizations.getIamPolicy) or when SA has resourcemanager.organizationAdmin.
+// Gracefully skips with no error if the SA lacks org-level visibility.
+func checkOrgLevelIAM(ctx context.Context, token, projectID string) ([]CSPMFinding, int, error) {
+	// Step 1: resolve org ID from project ancestry
+	ancestryURL := fmt.Sprintf("https://cloudresourcemanager.googleapis.com/v1/projects/%s:getAncestry", projectID)
+	req, err := http.NewRequestWithContext(ctx, "POST", ancestryURL, strings.NewReader("{}"))
+	if err != nil { return nil, 0, err }
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil { return nil, 0, err }
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode == 403 { return nil, 0, fmt.Errorf("403: no org ancestry visibility") }
+	if resp.StatusCode != 200 { return nil, 0, fmt.Errorf("ancestry API %d", resp.StatusCode) }
+
+	var ancestry struct {
+		Ancestor []struct {
+			ResourceID struct {
+				ID   string `json:"id"`
+				Type string `json:"type"`
+			} `json:"resourceId"`
+		} `json:"ancestor"`
+	}
+	if err := json.Unmarshal(body, &ancestry); err != nil { return nil, 0, err }
+
+	orgID := ""
+	for _, a := range ancestry.Ancestor {
+		if a.ResourceID.Type == "organization" {
+			orgID = a.ResourceID.ID
+			break
+		}
+	}
+	if orgID == "" {
+		// Project is not part of an org (personal/standalone project) — not an error
+		return nil, 0, fmt.Errorf("404: project has no parent organization")
+	}
+
+	// Step 2: get org-level IAM policy
+	orgIAMURL := fmt.Sprintf("https://cloudresourcemanager.googleapis.com/v1/organizations/%s:getIamPolicy", orgID)
+	orgReq, _ := http.NewRequestWithContext(ctx, "POST", orgIAMURL, strings.NewReader(`{"options":{"requestedPolicyVersion":3}}`))
+	orgReq.Header.Set("Authorization", "Bearer "+token)
+	orgReq.Header.Set("Content-Type", "application/json")
+	orgResp, err := http.DefaultClient.Do(orgReq)
+	if err != nil { return nil, 0, err }
+	defer orgResp.Body.Close()
+	orgBody, _ := io.ReadAll(orgResp.Body)
+	if orgResp.StatusCode == 403 { return nil, 0, fmt.Errorf("403: no org IAM visibility") }
+	if orgResp.StatusCode != 200 { return nil, 0, fmt.Errorf("org IAM API %d", orgResp.StatusCode) }
+
+	var orgPolicy struct {
+		Bindings []struct {
+			Role    string   `json:"role"`
+			Members []string `json:"members"`
+		} `json:"bindings"`
+	}
+	if err := json.Unmarshal(orgBody, &orgPolicy); err != nil { return nil, 0, err }
+
+	var findings []CSPMFinding
+	passed := 0
+
+	primitiveRoles := map[string]string{
+		"roles/owner":  "Owner",
+		"roles/editor": "Editor",
+	}
+	adminRoles := map[string]string{
+		"roles/resourcemanager.organizationAdmin": "Organization Admin",
+		"roles/iam.organizationRoleAdmin":         "Organization Role Admin",
+		"roles/billing.admin":                     "Billing Admin",
+		"roles/iam.securityAdmin":                 "Security Admin",
+	}
+
+	for _, b := range orgPolicy.Bindings {
+		for _, member := range b.Members {
+			// Primitive roles at org scope — catastrophic
+			if label, isPrim := primitiveRoles[b.Role]; isPrim {
+				sev := "critical"
+				findings = append(findings, CSPMFinding{
+					Title:        fmt.Sprintf("Org-level: primitive role '%s' granted to %s (org: %s)", label, member, orgID),
+					Description:  fmt.Sprintf("The %s role is granted to %s at the organization level. This grants unrestricted access to ALL projects, ALL resources, and ALL data in the entire organization — the highest possible blast radius.", label, member),
+					Severity:     sev,
+					Category:     "iam",
+					Resource:     fmt.Sprintf("organizations/%s", orgID),
+					ResourceType: "org_iam_binding",
+					Remediation:  "Remove primitive roles from org-level IAM immediately. Use specific predefined roles scoped to the minimum required resource.",
+					MITRE:        "T1078.004",
+				})
+				continue
+			}
+
+			// Highly privileged org-level roles granted to external users
+			if label, isAdmin := adminRoles[b.Role]; isAdmin {
+				isExternal := strings.HasPrefix(member, "user:") || strings.HasPrefix(member, "group:")
+				if isExternal {
+					findings = append(findings, CSPMFinding{
+						Title:        fmt.Sprintf("Org-level: '%s' role granted to external identity %s", label, member),
+						Description:  fmt.Sprintf("%s has %s at the organization level. Org admin roles should only be assigned to service accounts used for automation, not external users or groups.", member, label),
+						Severity:     "high",
+						Category:     "iam",
+						Resource:     fmt.Sprintf("organizations/%s", orgID),
+						ResourceType: "org_iam_binding",
+						Remediation:  "Review whether org-level admin access is justified. Use just-in-time access (short-lived tokens) rather than permanent org admin assignments.",
+						MITRE:        "T1078.004",
+					})
+					continue
+				}
+			}
+
+			// allUsers / allAuthenticatedUsers at org scope
+			if member == "allUsers" || member == "allAuthenticatedUsers" {
+				findings = append(findings, CSPMFinding{
+					Title:        fmt.Sprintf("Org-level: role '%s' granted to %s — ENTIRE ORG IS PUBLIC", b.Role, member),
+					Description:  fmt.Sprintf("The role %s is granted to %s at the organization level. This exposes all resources in all projects in this organization to the public internet.", b.Role, member),
+					Severity:     "critical",
+					Category:     "iam",
+					Resource:     fmt.Sprintf("organizations/%s", orgID),
+					ResourceType: "org_iam_binding",
+					Remediation:  "Remove allUsers/allAuthenticatedUsers from all organization-level IAM bindings immediately.",
+					MITRE:        "T1078.004",
+				})
+				continue
+			}
+			passed++
+		}
+	}
 	return findings, passed, nil
 }

@@ -70,8 +70,12 @@ func (r *RateLimiter) Allow(ev *schema.Event) bool {
 			s.windowStart = now
 			s.windowCount = 0
 		}
-		if s.windowCount >= r.cfg.MaxPerSecond {
+		// L-07: the per-source cap must never hide the activity that matters
+		// most. Process, logon and high-severity events bypass it, so a flood
+		// of low-value noise can't be used to bury an attack.
+		if s.windowCount >= r.cfg.MaxPerSecond && !isPriorityEvent(ev) {
 			GlobalHealth.EventsDropped.Add(1)
+			GlobalHealth.RateLimitDrops.Add(1)
 			return false
 		}
 		s.windowCount++
@@ -87,8 +91,27 @@ func FilteredChannel(in <-chan schema.Event, out chan<- schema.Event, limiter *R
 			select {
 			case out <- ev:
 			default:
-				GlobalHealth.EventsDropped.Add(1)
+				if isPriorityEvent(&ev) {
+					// Back-pressure instead of dropping priority events.
+					select {
+					case out <- ev:
+					case <-time.After(5 * time.Second):
+						GlobalHealth.EventsDropped.Add(1)
+					}
+				} else {
+					GlobalHealth.EventsDropped.Add(1)
+				}
 			}
 		}
 	}
+}
+
+// isPriorityEvent reports events that must not be rate-limited or dropped
+// under load (L-07).
+func isPriorityEvent(ev *schema.Event) bool {
+	switch ev.EventType {
+	case schema.EventTypeProcess, schema.EventTypeLogon:
+		return true
+	}
+	return ev.Severity >= schema.SeverityHigh
 }

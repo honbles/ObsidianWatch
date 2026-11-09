@@ -742,6 +742,25 @@ export default function Events() {
   const inputRef = useRef(null)
   const debounceRef = useRef(null)
 
+  const [nlQuestion, setNlQuestion] = useState('')
+  const [nlResult, setNlResult] = useState(null) // {q, since} proposed by AI, editable before applying
+  const [nlBusy, setNlBusy] = useState(false)
+  const [nlErr, setNlErr] = useState('')
+  const askNL = async () => {
+    if (!nlQuestion.trim()) return
+    setNlBusy(true); setNlErr(''); setNlResult(null)
+    try { setNlResult((await api.post('/api/v1/events/nl-query', { question: nlQuestion })).data) }
+    catch (e) { setNlErr(e.response?.data?.error || 'Could not generate a query') }
+    finally { setNlBusy(false) }
+  }
+  const applyNL = () => {
+    if (!nlResult?.q) return
+    const terms = nlResult.q.match(/-?"[^"]*"|\S+/g) || []
+    setTags(terms.map(raw => ({ id: Date.now() + Math.random(), ...classifyTerm(raw.replace(/^"|"$/g, '')) })).filter(t => t.field))
+    const ms = { '15m': 9e5, '1h': 36e5, '6h': 216e5, '24h': 864e5, '7d': 6048e5, '30d': 2592e6 }[nlResult.since] || 864e5
+    setSince(new Date(Date.now() - ms).toISOString().slice(0, 16)); setUntil('')
+  }
+
   const limit = 100
   const [savedQueries, setSavedQueries] = useState([])
   const [showSaveDialog, setShowSaveDialog] = useState(false)
@@ -1034,6 +1053,28 @@ export default function Events() {
               onClose={() => setShowSaved(false)}
             />
           )}
+
+          {/* Ask in plain English (P-14): AI proposes a query, user reviews/edits, then applies */}
+          <div className="space-y-1.5">
+            <div className="flex items-center gap-2">
+              <input className="flex-1 bg-siem-bg border border-siem-border rounded-lg px-3 py-1.5 text-xs text-siem-text focus:outline-none focus:border-siem-accent"
+                placeholder='Ask in plain English, e.g. "PowerShell spawned by Word in the last 7 days"'
+                maxLength={300} value={nlQuestion} onChange={e => setNlQuestion(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') askNL() }} />
+              <button onClick={askNL} disabled={nlBusy || !nlQuestion.trim()}
+                className="text-xs border border-siem-border rounded-lg px-3 py-1.5 text-siem-muted hover:text-siem-text disabled:opacity-40">{nlBusy ? 'Thinking…' : 'Ask'}</button>
+            </div>
+            {nlErr && <div className="text-xs text-red-400">{nlErr}</div>}
+            {nlResult && (
+              <div className="flex items-center gap-2 text-xs">
+                <span className="text-siem-muted">Proposed query (review before applying):</span>
+                <input className="flex-1 font-mono bg-siem-bg border border-siem-border rounded-lg px-2 py-1 text-siem-text"
+                  value={nlResult.q} onChange={e => setNlResult(r => ({ ...r, q: e.target.value }))} />
+                <span className="text-siem-muted">last {nlResult.since}</span>
+                <button onClick={applyNL} className="border border-siem-accent text-siem-accent rounded-lg px-3 py-1">Apply</button>
+              </div>
+            )}
+          </div>
 
           {/* Time range */}
           <div className="flex flex-wrap items-center gap-2">

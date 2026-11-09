@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+	"obsidianwatch/agent/internal/config"
 )
 
 // tlsConfigForCA builds a *tls.Config that trusts the given CA cert file.
@@ -68,26 +69,30 @@ func wsDialerForCA(caFile string) websocket.Dialer {
 }
 
 // tlsConfigForCAPEM builds TLS config from embedded PEM or file.
-func tlsConfigForCAPEM(caPEM, caFile string) *tls.Config {
+// W-05: hard-fails via config.BuildTLSConfig instead of silently setting
+// InsecureSkipVerify when neither a PEM nor a file is available.
+func tlsConfigForCAPEM(caPEM, caFile string, allowInsecure bool) *tls.Config {
 	var certBytes []byte
 	if caPEM != "" {
 		certBytes = []byte(caPEM)
 	} else if caFile != "" {
 		var err error
 		certBytes, err = os.ReadFile(caFile)
-		if err != nil { return &tls.Config{} }
-	} else {
-		return &tls.Config{InsecureSkipVerify: true}
+		if err != nil {
+			certBytes = nil
+		}
 	}
-	pool := x509.NewCertPool()
-	pool.AppendCertsFromPEM(certBytes)
-	return &tls.Config{RootCAs: pool}
+	tlsCfg, err := config.BuildTLSConfig(certBytes, allowInsecure)
+	if err != nil {
+		return &tls.Config{} // fail closed — verification will fail, not be skipped
+	}
+	return tlsCfg
 }
 
 // wsDialerForCAPEM returns a WebSocket dialer trusting the given CA PEM or file.
-func wsDialerForCAPEM(caPEM, caFile string) websocket.Dialer {
+func wsDialerForCAPEM(caPEM, caFile string, allowInsecure bool) websocket.Dialer {
 	return websocket.Dialer{
 		HandshakeTimeout: 10 * time.Second,
-		TLSClientConfig:  tlsConfigForCAPEM(caPEM, caFile),
+		TLSClientConfig:  tlsConfigForCAPEM(caPEM, caFile, allowInsecure),
 	}
 }

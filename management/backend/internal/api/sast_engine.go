@@ -20,9 +20,11 @@ import (
 	"io/fs"
 	"log/slog"
 	"net/http"
+	neturl "net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -32,8 +34,10 @@ import (
 )
 
 const (
-	maxFilesPerRepo = 300
-	maxFileBytes    = 100000
+	// SA-04: raised from 300 files / 100 KB; files beyond the cap are chosen by
+	// risk priority (see sastFilePriority) instead of arbitrary tree order.
+	maxFilesPerRepo = 1000
+	maxFileBytes    = 300000
 )
 
 // SASTFinding is a unified finding from either semgrep or our built-in rules
@@ -154,6 +158,7 @@ func runCodeQL(ctx context.Context, repoDir, repoName string, logger *slog.Logge
 		"--overwrite",
 		"--no-tracing",
 	)
+	createCmd.Env = scannerEnv() // H-4: no app secrets in scanner env
 	if out, err := createCmd.CombinedOutput(); err != nil {
 		logger.Warn("sast: codeql database create failed", "repo", repoName, "lang", lang, "err", string(out))
 		return nil, err
@@ -172,6 +177,7 @@ func runCodeQL(ctx context.Context, repoDir, repoName string, logger *slog.Logge
 		"--sarif-add-snippets",
 		packName,
 	)
+	analyzeCmd.Env = scannerEnv()
 	if out, err := analyzeCmd.CombinedOutput(); err != nil {
 		logger.Warn("sast: codeql analyze failed", "repo", repoName, "err", string(out))
 		return nil, err
@@ -305,12 +311,14 @@ func runSemgrep(ctx context.Context, dir string, logger *slog.Logger) ([]semgrep
 		"--json",
 		"--no-rewrite-rule-ids",
 		"--quiet",
+		"--metrics=off", // SA-05: no telemetry about customer code
 		"--max-memory", "1000", // 1GB max
 		"--timeout", "30",      // 30s per file
 		"--jobs", "2",          // 2 parallel workers
 		dir,
 	)
 
+	cmd.Env = scannerEnv()
 	out, err := cmd.Output()
 	if err != nil {
 		// semgrep exits non-zero when it finds issues — that's expected
@@ -479,8 +487,14 @@ func fetchGitHubTree(ctx context.Context, token, owner, repo, branch string) ([]
 	return tree.Tree, nil
 }
 
-func fetchGitHubFileContent(ctx context.Context, token, owner, repo, path string) (string, error) {
-	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/contents/%s", owner, repo, path)
+// SA-02: ref is passed so the content matches the branch whose file tree
+// was listed (previously the default branch's content was fetched against
+// another branch's file list). "HEAD"/"" means the default branch.
+func fetchGitHubFileContent(ctx context.Context, token, owner, repo, path, ref string) (string, error) {
+	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/contents/%s", owner, repo, escapePathSegments(path))
+	if ref != "" && ref != "HEAD" && ref != "unknown" {
+		url += "?ref=" + neturl.QueryEscape(ref)
+	}
 	req, _ := http.NewRequestWithContext(ctx, "GET", url, nil)
 	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("Accept", "application/vnd.github+json")
@@ -677,13 +691,18 @@ func handleSAST(cfg *config.Config, db *store.DB, logger *slog.Logger) http.Hand
 			var sourceFiles []ghTreeEntry
 			for _, f := range tree {
 				if f.Type != "blob" { continue }
-				if f.Size > maxFileBytes { continue }
+				if f.Size > sastSizeLimit(f.Path) { continue }
 				if isVendorPath(f.Path) { continue }
 				if isSourceFile(f.Path) {
 					sourceFiles = append(sourceFiles, f)
 				}
 			}
 			if len(sourceFiles) > maxFilesPerRepo {
+				sort.SliceStable(sourceFiles, func(i, j int) bool {
+					return sastFilePriority(sourceFiles[i].Path) < sastFilePriority(sourceFiles[j].Path)
+				})
+				logger.Warn("sast: repo exceeds file cap; scanning highest-risk files only",
+					"repo", repo, "total", len(sourceFiles), "scanned", maxFilesPerRepo)
 				sourceFiles = sourceFiles[:maxFilesPerRepo]
 			}
 
@@ -693,6 +712,21 @@ func handleSAST(cfg *config.Config, db *store.DB, logger *slog.Logger) http.Hand
 			if err := os.MkdirAll(repoDir, 0755); err != nil { continue }
 
 			logger.Info("sast: fetching repo", "repo", repo, "files", len(sourceFiles))
+
+			// SA-02: GitHub repos come down as a single tarball; fall back to
+			// per-file fetching only if that fails.
+			if conn.Provider != "gitlab" && conn.Provider != "azuredevops" {
+				want := make(map[string]bool, len(sourceFiles))
+				for _, f := range sourceFiles {
+					want[f.Path] = true
+				}
+				if n, tarErr := fetchGitHubTarballFiles(ctx, token, owner, repoName, branch, repoDir, want); tarErr == nil && n > 0 {
+					scannedFiles += n
+					sourceFiles = nil
+				} else if tarErr != nil {
+					logger.Warn("sast: tarball fetch failed, falling back to per-file", "repo", repo, "err", tarErr)
+				}
+			}
 
 			// Fetch and write all files to disk
 			for _, f := range sourceFiles {
@@ -710,12 +744,18 @@ func handleSAST(cfg *config.Config, db *store.DB, logger *slog.Logger) http.Hand
 					content, fetchErr = fetchAzureFileContent(ctx, token,
 						azOrg2, azProj2, azRepo2, f.Path, branch)
 				} else {
-					content, fetchErr = fetchGitHubFileContent(ctx, token, owner, repoName, f.Path)
+					content, fetchErr = fetchGitHubFileContent(ctx, token, owner, repoName, f.Path, branch)
 				}
 				if fetchErr != nil { continue }
 
 				// Write file preserving directory structure
 				filePath := filepath.Join(repoDir, f.Path)
+				// SA-03: paths come from a provider API (possibly a self-hosted
+				// server we don't control) — never write outside repoDir.
+				if rel, relErr := filepath.Rel(repoDir, filePath); relErr != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) || filepath.IsAbs(f.Path) {
+					logger.Warn("sast: skipping file with unsafe path", "path", f.Path)
+					continue
+				}
 				if err := os.MkdirAll(filepath.Dir(filePath), 0755); err != nil { continue }
 				if err := os.WriteFile(filePath, []byte(content), 0644); err != nil { continue }
 				scannedFiles++
@@ -734,6 +774,14 @@ func handleSAST(cfg *config.Config, db *store.DB, logger *slog.Logger) http.Hand
 					findings := convertSemgrepFindings(results, repo, repoDir)
 					allFindings = append(allFindings, findings...)
 				}
+			}
+
+			// Scan 1b (SA-06): dependency scan of manifests/lockfiles against OSV.
+			if scaFindingsList, scaErr := runSCAOnDir(ctx, repo, repoDir); scaErr != nil {
+				logger.Warn("sast: dependency scan failed", "repo", repo, "err", scaErr)
+			} else if len(scaFindingsList) > 0 {
+				logger.Info("sast: dependency findings", "repo", repo, "count", len(scaFindingsList))
+				allFindings = append(allFindings, scaFindingsList...)
 			}
 
 			// Scan 2: Built-in regex rules — always run (catches secrets, hardcoded creds, etc.)
@@ -1042,6 +1090,10 @@ func handleSASTAI(cfg *config.Config, db *store.DB) http.HandlerFunc {
 			return
 		}
 
+		if !sourceAILimiter.Allow("sast") {
+			writeJSON(w, 429, map[string]string{"error": "AI analysis rate limit reached; try again later"})
+			return
+		}
 		groqKey := cfg.Groq.APIKey
 		anthropicKey := cfg.Anthropic.APIKey
 		if s, err2 := db.GetSettingsPrefix(r.Context(), "ai"); err2 == nil {
@@ -1079,13 +1131,21 @@ func handleSASTAI(cfg *config.Config, db *store.DB) http.HandlerFunc {
 			Snippet string `json:"snippet,omitempty"`
 			Engine  string `json:"engine"`
 		}
+		withSnippets := aiSourceSnippetsAllowed(r.Context(), db)
 		compact := make([]cf, 0, len(findings))
 		for _, f := range findings {
-			compact = append(compact, cf{f.RuleID, f.Severity, f.CWE, f.Title, f.File, f.Line, f.Snippet, f.Engine})
+			if len(compact) >= aiMaxFindings {
+				break
+			}
+			snip := ""
+			if withSnippets {
+				snip = truncateRunes(f.Snippet, aiMaxSnippetRune)
+			}
+			compact = append(compact, cf{f.RuleID, f.Severity, f.CWE, f.Title, f.File, f.Line, snip, f.Engine})
 		}
 		compactJSON, _ := json.Marshal(compact)
 
-		prompt := fmt.Sprintf(`You are a senior application security engineer reviewing SAST findings.
+		prompt := promptInjectionGuard + "\n\n" + fmt.Sprintf(`You are a senior application security engineer reviewing SAST findings.
 These findings were produced by Semgrep (where engine="semgrep") and/or built-in rules.
 Semgrep findings are generally high quality. Built-in findings may have more false positives.
 
@@ -1102,8 +1162,8 @@ Return ONLY this JSON — no markdown:
   "developer_training": ["..."]
 }
 
-SAST findings (%d total):
-%s`, len(findings), string(compactJSON))
+SAST findings (%d total, %d shown):
+%s`, len(findings), len(compact), fenceUntrusted("sast_findings", string(compactJSON)))
 
 		aiCtx, cancel := context.WithTimeout(r.Context(), 45*time.Second)
 		defer cancel()
@@ -1125,31 +1185,75 @@ SAST findings (%d total):
 
 func isSourceFile(path string) bool {
 	exts := []string{
-		".py", ".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs",
-		".go", ".java", ".kt", ".kts", ".php",
+		".py", ".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs", ".vue", ".svelte",
+		".go", ".java", ".kt", ".kts", ".scala", ".groovy", ".swift", ".m", ".mm", ".php",
 		".c", ".cpp", ".cc", ".cxx", ".h", ".hpp",
-		".rb", ".cs", ".rs", ".tf", ".yaml", ".yml",
+		".rb", ".cs", ".rs", ".lua", ".pl", ".pm", ".r", ".dart",
+		".tf", ".tfvars", ".yaml", ".yml", ".toml", ".sql",
+		".sh", ".bash", ".zsh", ".ps1", ".bat", ".cmd", ".gradle", ".cfg", ".ini", ".properties", ".conf",
 	}
 	lower := strings.ToLower(path)
+	base := lower
+	if i := strings.LastIndex(base, "/"); i >= 0 {
+		base = base[i+1:]
+	}
+	// Files identified by name rather than extension.
+	switch {
+	case base == "dockerfile" || strings.HasPrefix(base, "dockerfile."), base == "makefile", base == "jenkinsfile",
+		base == "gemfile", base == "package.json", base == "requirements.txt", base == "go.mod",
+		base == "package-lock.json", base == "cargo.lock", base == "composer.lock",
+		base == "pipfile.lock", base == "poetry.lock", base == "yarn.lock", base == "pom.xml",
+		base == "composer.json", base == "pipfile", base == "procfile", base == "vagrantfile",
+		base == ".env" || strings.HasPrefix(base, ".env."), strings.HasSuffix(base, ".env"):
+		return true
+	}
 	for _, ext := range exts {
-		if strings.HasSuffix(lower, ext) { return true }
+		if strings.HasSuffix(lower, ext) {
+			return true
+		}
 	}
 	return false
 }
 
+// isVendorPath skips third-party/dependency trees only. SA-04: matching is on
+// whole path segments (a substring match skipped legitimate directories like
+// config/env/), and attacker-controllable directories such as dist/, build/,
+// testdata/, fixtures/ and mocks/ are now scanned.
 func isVendorPath(path string) bool {
-	skip := []string{
-		"vendor/", "node_modules/", ".git/", "dist/", "build/",
-		"__pycache__/", ".venv/", "venv/", "env/",
-		"target/", ".gradle/", "bin/obj/",
-		"testdata/", "fixtures/", "mocks/",
-		".min.js", "bundle.js",
+	skipDirs := map[string]bool{
+		"vendor": true, "node_modules": true, ".git": true, "__pycache__": true,
+		".venv": true, "venv": true, ".gradle": true, "site-packages": true, "bower_components": true,
 	}
 	lower := strings.ToLower(path)
-	for _, s := range skip {
-		if strings.Contains(lower, s) { return true }
+	for _, seg := range strings.Split(lower, "/") {
+		if skipDirs[seg] {
+			return true
+		}
 	}
-	return false
+	return strings.HasSuffix(lower, ".min.js") || strings.HasSuffix(lower, ".bundle.js") || strings.HasSuffix(lower, "/bundle.js")
+}
+
+// sastFilePriority ranks files so that, when a repo exceeds maxFilesPerRepo,
+// the highest-risk ones are scanned first (lower number = scan first).
+func sastFilePriority(path string) int {
+	l := strings.ToLower(path)
+	base := l
+	if i := strings.LastIndex(base, "/"); i >= 0 {
+		base = base[i+1:]
+	}
+	switch {
+	case strings.HasPrefix(l, ".github/workflows/"), base == ".gitlab-ci.yml", base == "jenkinsfile",
+		base == "azure-pipelines.yml", strings.HasPrefix(l, ".circleci/"):
+		return 0
+	case base == "dockerfile" || strings.HasPrefix(base, "dockerfile."), strings.HasPrefix(base, ".env"),
+		strings.HasSuffix(l, ".sh"), strings.HasSuffix(l, ".ps1"), strings.HasSuffix(l, ".tf"):
+		return 1
+	case base == "package.json", base == "requirements.txt", base == "go.mod", base == "pom.xml":
+		return 2
+	case strings.Contains(l, "test") || strings.Contains(l, "mock") || strings.Contains(l, "fixture"):
+		return 4
+	}
+	return 3
 }
 
 func deduplicateSASTFindings(findings []SASTFinding) []SASTFinding {
@@ -1194,4 +1298,21 @@ func deduplicateSASTFindings(findings []SASTFinding) []SASTFinding {
 		}
 	}
 	return out
+}
+
+// escapePathSegments URL-escapes each segment of a slash-separated path.
+func escapePathSegments(p string) string {
+	segs := strings.Split(p, "/")
+	for i, sg := range segs {
+		segs[i] = neturl.PathEscape(sg)
+	}
+	return strings.Join(segs, "/")
+}
+
+// sastSizeLimit allows dependency lockfiles to be larger than source files.
+func sastSizeLimit(path string) int {
+	if isScaManifest(path) {
+		return 5 << 20
+	}
+	return maxFileBytes
 }

@@ -2,8 +2,11 @@ package store
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"time"
 )
 
@@ -51,17 +54,11 @@ func (db *DB) ListDevOpsConnectors(ctx context.Context) ([]DevOpsConnector, erro
 			c.LastError = &lastError.String
 		}
 		json.Unmarshal(credsJSON, &c.Credentials)
-		// Mask token in API responses
-		safe := map[string]string{}
-		for k, v := range c.Credentials {
-			if k == "token" || k == "client_secret" || k == "pat" {
-				if v != "" {
-					safe[k] = "••••••••"
-				}
-			} else {
-				safe[k] = v
-			}
-		}
+		openCreds(c.Credentials)
+		c.WebhookSecret = openString(c.WebhookSecret)
+		// Mask secrets in API responses (the webhook secret is shown once, at creation).
+		safe := maskCreds(c.Credentials)
+		c.WebhookSecret = ""
 		c.Credentials = safe
 		out = append(out, c)
 	}
@@ -90,16 +87,19 @@ func (db *DB) GetDevOpsConnectorRaw(ctx context.Context, id int64) (*DevOpsConne
 		c.LastError = &lastError.String
 	}
 	json.Unmarshal(credsJSON, &c.Credentials)
+	openCreds(c.Credentials)
+	c.WebhookSecret = openString(c.WebhookSecret)
 	return &c, nil
 }
 
 func (db *DB) UpsertDevOpsConnector(ctx context.Context, provider, org, label string, creds map[string]string, webhookSecret string) (int64, error) {
-	credsJSON, _ := json.Marshal(creds)
+	credsJSON, _ := json.Marshal(sealCreds(creds)) // CC-07 / DO-10: encrypt at rest
+	webhookSecret = sealString(webhookSecret)
 	var id int64
 	err := db.QueryRowContext(ctx, `
 		INSERT INTO devops_connectors (provider, org, label, credentials, status, webhook_secret)
 		VALUES ($1, $2, $3, $4, 'pending', $5)
-		ON CONFLICT DO NOTHING
+		ON CONFLICT (provider, org) DO NOTHING
 		RETURNING id`,
 		provider, org, label, credsJSON, webhookSecret,
 	).Scan(&id)
@@ -127,6 +127,12 @@ func (db *DB) UpdateDevOpsConnectorStatus(ctx context.Context, id int64, status,
 			    event_count=event_count+$2, sync_cursor=$3
 			WHERE id=$4`, status, ingested, cursor, id)
 	}
+}
+
+// SetDevOpsConnectorNote stores a non-fatal coverage note (DO-05) in
+// last_error without changing the connector status.
+func (db *DB) SetDevOpsConnectorNote(ctx context.Context, id int64, note string) {
+	db.ExecContext(ctx, `UPDATE devops_connectors SET last_error=$1 WHERE id=$2`, note, id)
 }
 
 func (db *DB) DeleteDevOpsConnector(ctx context.Context, id int64) error {
@@ -162,7 +168,15 @@ type CommitFileDiff struct {
 	Patch     string `json:"patch,omitempty"`
 }
 
+// commitKey scopes a commit id to (connector, repo) so identical SHAs in
+// forks, mirrors or two connectors no longer overwrite each other (DO-09).
+func commitKey(c DevOpsCommit) string {
+	sum := sha256.Sum256([]byte(c.Repo))
+	return fmt.Sprintf("%d:%s:%s", c.ConnectorID, hex.EncodeToString(sum[:4]), c.ID)
+}
+
 func (db *DB) UpsertDevOpsCommit(ctx context.Context, c DevOpsCommit) error {
+	c.ID = commitKey(c)
 	_, err := db.ExecContext(ctx, `
 		INSERT INTO devops_commits
 		  (id, connector_id, repo, branch, author_name, author_email, author_username,
@@ -253,6 +267,8 @@ func (db *DB) ListDevOpsConnectorsRaw(ctx context.Context) ([]DevOpsConnector, e
 		if lastSync.Valid { c.LastSync = &lastSync.Time }
 		if lastError.Valid { c.LastError = &lastError.String }
 		json.Unmarshal(credsJSON, &c.Credentials)
+		openCreds(c.Credentials)
+		c.WebhookSecret = openString(c.WebhookSecret)
 		out = append(out, c)
 	}
 	return out, rows.Err()

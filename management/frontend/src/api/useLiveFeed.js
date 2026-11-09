@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
+import { getWSTicket } from './client'
 
 export function useLiveFeed(maxEvents = 200) {
   const [events, setEvents] = useState([])
@@ -6,13 +7,21 @@ export function useLiveFeed(maxEvents = 200) {
   const wsRef = useRef(null)
   const reconnectRef = useRef(null)
 
-  const connect = useCallback(() => {
+  const stoppedRef = useRef(false)
+
+  const connect = useCallback(async () => {
     const token = localStorage.getItem('token')
-    if (!token) return
+    if (!token || stoppedRef.current) return
+    let ticket
+    try { ticket = await getWSTicket() } catch {
+      if (!stoppedRef.current) reconnectRef.current = setTimeout(connect, 5000)
+      return
+    }
+    if (stoppedRef.current) return
 
     const proto = window.location.protocol === 'https:' ? 'wss' : 'ws'
     const host = window.location.host
-    const ws = new WebSocket(`${proto}://${host}/ws/events?token=${token}`)
+    const ws = new WebSocket(`${proto}://${host}/ws/events?ticket=${encodeURIComponent(ticket)}`)
     wsRef.current = ws
 
     ws.onopen = () => {
@@ -42,8 +51,10 @@ export function useLiveFeed(maxEvents = 200) {
   }, [maxEvents])
 
   useEffect(() => {
+    stoppedRef.current = false
     connect()
     return () => {
+      stoppedRef.current = true
       if (wsRef.current) wsRef.current.close()
       if (reconnectRef.current) clearTimeout(reconnectRef.current)
     }

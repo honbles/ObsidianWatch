@@ -30,6 +30,10 @@ func main() {
 	logger := buildLogger(cfg.Log.Level, cfg.Log.Format)
 
 	// Management database
+	if err := store.RequireSecretsKey(); err != nil {
+		logger.Error("startup refused", "err", err)
+		os.Exit(1)
+	}
 	db, err := store.Connect(cfg.Database, logger)
 	if err != nil {
 		logger.Error("management db connection failed", "err", err)
@@ -43,10 +47,20 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Seed default admin user if no users exist yet
-	if err := db.SeedAdmin(ctx); err != nil {
+	// Seed default admin user if no users exist yet (M-06: random one-time password)
+	seededPassword, err := db.SeedAdmin(ctx)
+	if err != nil {
 		logger.Error("seed admin failed", "err", err)
 		os.Exit(1)
+	}
+	if seededPassword != "" {
+		fmt.Println("=================================================================")
+		fmt.Println("  First-run admin account created:")
+		fmt.Println("    username: admin")
+		fmt.Printf("    password: %s\n", seededPassword)
+		fmt.Println("  This password is shown only once and is not stored anywhere.")
+		fmt.Println("  Log in and change it immediately.")
+		fmt.Println("=================================================================")
 	}
 
 	// Auto-populate Agent Builder defaults from cert-init metadata

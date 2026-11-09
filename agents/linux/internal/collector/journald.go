@@ -23,6 +23,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"os/exec"
 	"strings"
@@ -57,24 +58,61 @@ func (j *JournaldCollector) Run(ctx context.Context) error {
 	if !j.cfg.Enabled {
 		return nil
 	}
+	// journalctl can exit (journald restart, OOM-kill) or the stream can break
+	// on an oversized entry. Previously that ended journal collection silently
+	// until the agent was restarted, which is exactly what an attacker who can
+	// crash or flood the journal wants. Restart it, resuming after the last
+	// cursor seen so the gap is small.
+	cursor := ""
+	backoff := 2 * time.Second
+	for ctx.Err() == nil {
+		started := time.Now()
+		ran, dropCursor := j.runOnce(ctx, &cursor)
+		if !ran || ctx.Err() != nil {
+			return nil // journalctl not available, or shutting down
+		}
+		if dropCursor {
+			cursor = "" // the entry after the cursor broke the stream; skip past it
+		}
+		if time.Since(started) > 30*time.Second {
+			backoff = 2 * time.Second
+		}
+		j.logger.Warn("journald: journalctl stream ended, restarting", "after", backoff)
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-time.After(backoff):
+		}
+		if backoff < time.Minute {
+			backoff *= 2
+		}
+	}
+	return nil
+}
 
-	// Run journalctl in follow mode, output JSON, start from current cursor
-	cmd := exec.CommandContext(ctx,
-		"journalctl",
-		"--output=json",
-		"--follow",
-		"--no-pager",
-		"--since=now",
-	)
+// journalArgs builds the journalctl command line, resuming after cursor when set.
+func journalArgs(cursor string) []string {
+	args := []string{"--output=json", "--follow", "--no-pager"}
+	if cursor != "" {
+		return append(args, "--after-cursor="+cursor)
+	}
+	return append(args, "--since=now")
+}
+
+// runOnce runs one journalctl process until it exits. ran=false means
+// journalctl could not be started at all (do not retry). dropCursor=true means
+// the stream broke on an over-long entry, so resuming from the cursor would
+// hit the same entry again.
+func (j *JournaldCollector) runOnce(ctx context.Context, cursor *string) (ran, dropCursor bool) {
+	cmd := exec.CommandContext(ctx, "journalctl", journalArgs(*cursor)...)
 
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
-		return err
+		return false, false
 	}
-
 	if err := cmd.Start(); err != nil {
 		j.logger.Warn("journald: journalctl not available, skipping", "err", err)
-		return nil
+		return false, false
 	}
 
 	j.logger.Info("journald: following systemd journal")
@@ -86,7 +124,8 @@ func (j *JournaldCollector) Run(ctx context.Context) error {
 		select {
 		case <-ctx.Done():
 			cmd.Process.Kill()
-			return nil
+			cmd.Wait()
+			return true, false
 		default:
 		}
 
@@ -98,6 +137,9 @@ func (j *JournaldCollector) Run(ctx context.Context) error {
 		var entry map[string]interface{}
 		if err := json.Unmarshal([]byte(line), &entry); err != nil {
 			continue
+		}
+		if c := getString(entry, "__CURSOR"); c != "" {
+			*cursor = c
 		}
 
 		ev := j.mapEntry(entry)
@@ -111,9 +153,14 @@ func (j *JournaldCollector) Run(ctx context.Context) error {
 			GlobalHealth.EventsDropped.Add(1)
 		}
 	}
+	if err := sc.Err(); err != nil {
+		j.logger.Warn("journald: read error", "err", err)
+		dropCursor = errors.Is(err, bufio.ErrTooLong)
+		cmd.Process.Kill()
+	}
 
 	cmd.Wait()
-	return nil
+	return true, dropCursor
 }
 
 func (j *JournaldCollector) mapEntry(entry map[string]interface{}) *schema.Event {

@@ -2,7 +2,7 @@ server:
   # Address and port to listen on.
   listen_addr: ":8443"
 
-  # TLS — required. Generate certs with the instructions in docs/tls-setup.md
+  # TLS — required. Certificates are generated automatically by cert-init (see README.md)
   tls_cert_file: "certs/server.crt"
   tls_key_file:  "certs/server.key"
 

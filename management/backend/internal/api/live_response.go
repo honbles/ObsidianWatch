@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"sync"
@@ -18,10 +19,20 @@ import (
 // ── WebSocket upgrader ────────────────────────────────────────────────────────
 
 var lrUpgrader = websocket.Upgrader{
-	CheckOrigin:     func(r *http.Request) bool { return true },
+	CheckOrigin:     checkWSOrigin,
 	ReadBufferSize:  32 * 1024,
 	WriteBufferSize: 32 * 1024,
 }
+
+// lrMaxSession is the hard cap on a live-response session (F-04).
+const lrMaxSession = 60 * time.Minute
+
+// Maximum single WebSocket frame sizes. Analyst input is keystrokes/resize
+// messages; agent frames carry terminal output and file chunks.
+const (
+	lrAnalystMaxFrame = 64 << 10
+	lrAgentMaxFrame   = 4 << 20
+)
 
 // ── Agent tunnel registry ─────────────────────────────────────────────────────
 
@@ -52,6 +63,16 @@ func (r *TunnelRegistry) Register(agentID string, t *agentTunnel) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.tunnels[agentID] = t
+}
+
+// UnregisterIf removes the entry only if it is still t, so an old handler
+// exiting after a reconnect can't delete the newer, live tunnel (F-05).
+func (r *TunnelRegistry) UnregisterIf(agentID string, t *agentTunnel) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.tunnels[agentID] == t {
+		delete(r.tunnels, agentID)
+	}
 }
 
 func (r *TunnelRegistry) Unregister(agentID string) {
@@ -92,11 +113,22 @@ type wireMsg struct {
 // Agent connects here to establish its control tunnel.
 // URL: GET /api/v1/live-response/agent-tunnel?agent_id=HOSTNAME
 
-func handleAgentTunnel(db *store.DB, registry *TunnelRegistry, logger *slog.Logger) http.HandlerFunc {
+func handleAgentTunnel(db *store.DB, registry *TunnelRegistry, logger *slog.Logger, agentAPIKey string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		agentID := r.URL.Query().Get("agent_id")
 		if agentID == "" {
 			http.Error(w, "agent_id required", 400)
+			return
+		}
+		// M-02: without this check, any caller could open a tunnel claiming
+		// to be any agent_id, hijacking live-response sessions meant for a
+		// real endpoint.
+		if !validAgentAPIKey(agentAPIKey, r) {
+			http.Error(w, "invalid or missing X-API-Key", 401)
+			return
+		}
+		if _, err := db.GetAgent(r.Context(), agentID); err != nil {
+			http.Error(w, "unknown agent_id", 401)
 			return
 		}
 
@@ -104,6 +136,14 @@ func handleAgentTunnel(db *store.DB, registry *TunnelRegistry, logger *slog.Logg
 		if err != nil {
 			logger.Warn("lr: agent tunnel upgrade failed", "agent", agentID, "err", err)
 			return
+		}
+		conn.SetReadLimit(lrAgentMaxFrame) // bound a single inbound frame
+
+		// Close any stale tunnel already registered for this agent before
+		// replacing it, so a crashed/reconnecting agent doesn't leave a
+		// dead entry that silently blocks the new, real connection.
+		if old, ok := registry.Get(agentID); ok && old != nil {
+			old.conn.Close()
 		}
 
 		tunnel := &agentTunnel{
@@ -114,8 +154,34 @@ func handleAgentTunnel(db *store.DB, registry *TunnelRegistry, logger *slog.Logg
 		registry.Register(agentID, tunnel)
 		logger.Info("lr: agent tunnel connected", "agent", agentID)
 
+		// F-05: heartbeat. Ping every 30s; if no pong (or any frame) arrives
+		// within 75s the read fails and the stale tunnel is cleaned up, so a
+		// silently-dead TCP connection can't show as "connected".
+		const pongWait = 75 * time.Second
+		conn.SetReadDeadline(time.Now().Add(pongWait))
+		conn.SetPongHandler(func(string) error {
+			return conn.SetReadDeadline(time.Now().Add(pongWait))
+		})
+		stopPing := make(chan struct{})
+		go func() {
+			tk := time.NewTicker(30 * time.Second)
+			defer tk.Stop()
+			for {
+				select {
+				case <-stopPing:
+					return
+				case <-tk.C:
+					if err := conn.WriteControl(websocket.PingMessage, nil, time.Now().Add(10*time.Second)); err != nil {
+						conn.Close()
+						return
+					}
+				}
+			}
+		}()
+
 		defer func() {
-			registry.Unregister(agentID)
+			close(stopPing)
+			registry.UnregisterIf(agentID, tunnel)
 			conn.Close()
 			logger.Info("lr: agent tunnel disconnected", "agent", agentID)
 		}()
@@ -126,6 +192,7 @@ func handleAgentTunnel(db *store.DB, registry *TunnelRegistry, logger *slog.Logg
 			if err != nil {
 				break
 			}
+			conn.SetReadDeadline(time.Now().Add(pongWait))
 			var env wireMsg
 			if err := json.Unmarshal(msg, &env); err != nil {
 				continue
@@ -159,18 +226,15 @@ func handleAgentTunnel(db *store.DB, registry *TunnelRegistry, logger *slog.Logg
 
 			case "register_credentials":
 				var creds struct {
-					Username     string `json:"username"`
-					PasswordHash string `json:"password_hash"`
-					Password     string `json:"password"`
-					Mode         string `json:"mode"`
+					Username string `json:"username"`
+					Mode     string `json:"mode"`
 				}
+				// M-05: the agent used to also send password/password_hash
+				// here and we persisted them centrally; neither was ever
+				// read back, so we no longer ask for or store a secret at
+				// all — only which mode this agent's sessions use.
 				if err := json.Unmarshal(env.Payload, &creds); err == nil {
-					// Direct-shell mode: no password needed — agent spawns shell directly
-					if creds.Mode == "direct-shell" {
-						creds.PasswordHash = "direct-shell"
-						creds.Password = "direct-shell"
-					}
-					db.UpsertLRCredential(r.Context(), agentID, creds.Username, creds.PasswordHash, creds.Password)
+					db.UpsertLRCredential(r.Context(), agentID, creds.Username, creds.Mode)
 					logger.Info("lr: credentials registered", "agent", agentID, "user", creds.Username, "mode", creds.Mode)
 				}
 			}
@@ -199,7 +263,7 @@ func handleInitiateSession(db *store.DB, registry *TunnelRegistry, logger *slog.
 		}
 
 		// Check credentials are registered
-		username, _, _, err := db.GetLRCredential(r.Context(), req.AgentID)
+		username, _, err := db.GetLRCredential(r.Context(), req.AgentID)
 		if err != nil {
 			writeJSON(w, 503, map[string]string{
 				"error": "Agent has no live response credentials. Ensure agent is running and has connected at least once.",
@@ -233,6 +297,8 @@ func handleInitiateSession(db *store.DB, registry *TunnelRegistry, logger *slog.
 			return
 		}
 
+		db.WriteAudit(r.Context(), initiatedBy, "live_response_initiate", "agent:"+req.AgentID,
+			fmt.Sprintf("session=%d", sessionID), clientIP(r))
 		logger.Info("lr: session initiated",
 			"agent", req.AgentID, "session", sessionID, "by", initiatedBy)
 
@@ -271,11 +337,24 @@ func handleSessionTerminal(db *store.DB, registry *TunnelRegistry, logger *slog.
 			http.Error(w, "invalid or expired session", 400)
 			return
 		}
-		if session.Status == "closed" || session.Status == "failed" {
-			logger.Warn("lr: terminal - session already closed", "token", token[:8]+"...", "status", session.Status)
-			http.Error(w, "session already closed", 400)
+		// F-04: the token is bound to the analyst who created the session…
+		actor := ""
+		if c := auth.GetClaims(r); c != nil {
+			actor = c.Username
+		}
+		if actor == "" || actor != session.InitiatedBy {
+			logger.Warn("lr: terminal - token used by a different user", "token", token[:8]+"...", "by", actor)
+			http.Error(w, "forbidden", 403)
 			return
 		}
+		// …and is single-use: claim pending→active atomically.
+		if ok, err := db.ClaimLRSession(r.Context(), token); err != nil || !ok {
+			logger.Warn("lr: terminal - session not claimable", "token", token[:8]+"...", "status", session.Status)
+			http.Error(w, "session already used or closed", 400)
+			return
+		}
+		db.WriteAudit(r.Context(), actor, "live_response_start", "agent:"+session.AgentID,
+			fmt.Sprintf("session=%d", session.ID), clientIP(r))
 
 		logger.Info("lr: terminal - session found", "agent", session.AgentID, "status", session.Status)
 
@@ -295,6 +374,7 @@ func handleSessionTerminal(db *store.DB, registry *TunnelRegistry, logger *slog.
 			return
 		}
 		defer analystConn.Close()
+		analystConn.SetReadLimit(lrAnalystMaxFrame)
 
 		// Register data channel on the agent tunnel BEFORE telling the agent to open
 		dataCh := make(chan []byte, 512)
@@ -307,6 +387,8 @@ func handleSessionTerminal(db *store.DB, registry *TunnelRegistry, logger *slog.
 			delete(tunnel.sessions, token)
 			tunnel.mu.Unlock()
 			db.UpdateLRSessionStatus(context.Background(), token, "closed")
+			db.WriteAudit(context.Background(), actor, "live_response_end", "agent:"+session.AgentID,
+				fmt.Sprintf("session=%d", session.ID), clientIP(r))
 			logger.Info("lr: terminal session closed", "token", token[:8]+"...")
 		}()
 
@@ -322,17 +404,26 @@ func handleSessionTerminal(db *store.DB, registry *TunnelRegistry, logger *slog.
 			return
 		}
 
-		db.UpdateLRSessionStatus(r.Context(), token, "active")
 		logger.Info("lr: terminal connected", "agent", session.AgentID)
 
 		// Analyst → Agent
 		// xterm.js sends raw bytes; we JSON-encode them so the agent can json.Unmarshal(payload, &raw)
 		go func() {
 			for {
-				_, msg, err := analystConn.ReadMessage()
+				mt, msg, err := analystConn.ReadMessage()
 				if err != nil {
 					return
 				}
+				// Resize arrives as a TEXT frame; keystrokes are BINARY frames.
+				if mt == websocket.TextMessage {
+					if cols, rows, ok := parseResizeFrame(msg); ok {
+						tunnel.sendJSON(map[string]interface{}{
+							"type": "resize", "token": token, "cols": cols, "rows": rows,
+						})
+					}
+					continue
+				}
+				db.AppendLRTranscript(context.Background(), session.ID, "in", msg)
 				// JSON-encode the raw bytes so agent can decode with json.Unmarshal(&[]byte)
 				encoded, _ := json.Marshal(msg)
 				env := map[string]interface{}{
@@ -345,6 +436,11 @@ func handleSessionTerminal(db *store.DB, registry *TunnelRegistry, logger *slog.
 				}
 			}
 		}()
+
+		// Hard maximum session length (F-04): previously a 30-minute *idle*
+		// timer that reset on every message, so an active session never ended.
+		maxLife := time.NewTimer(lrMaxSession)
+		defer maxLife.Stop()
 
 		// Agent → Analyst
 		// Agent sends json.RawMessage(json.Marshal([]byte{...})) — decode and forward raw bytes
@@ -360,10 +456,12 @@ func handleSessionTerminal(db *store.DB, registry *TunnelRegistry, logger *slog.
 					// Fallback: send as-is
 					raw = rawPayload
 				}
+				db.AppendLRTranscript(context.Background(), session.ID, "out", raw)
 				if err := analystConn.WriteMessage(websocket.BinaryMessage, raw); err != nil {
 					return
 				}
-			case <-time.After(30 * time.Minute):
+			case <-maxLife.C:
+				analystConn.WriteMessage(websocket.TextMessage, []byte(`{"error":"session reached maximum duration"}`))
 				return
 			}
 		}
@@ -456,4 +554,20 @@ func isWindows(os string) bool {
 		}
 	}
 	return false
+}
+
+// parseResizeFrame validates an analyst terminal-resize message.
+func parseResizeFrame(msg []byte) (cols, rows int, ok bool) {
+	var m struct {
+		Type string `json:"type"`
+		Cols int    `json:"cols"`
+		Rows int    `json:"rows"`
+	}
+	if json.Unmarshal(msg, &m) != nil || m.Type != "resize" {
+		return 0, 0, false
+	}
+	if m.Cols < 10 || m.Cols > 500 || m.Rows < 5 || m.Rows > 200 {
+		return 0, 0, false
+	}
+	return m.Cols, m.Rows, true
 }

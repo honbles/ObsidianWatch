@@ -33,9 +33,11 @@ package api
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"strings"
+	"sync"
 	"time"
 
 	"obsidianwatch/management/internal/notify"
@@ -57,36 +59,75 @@ type ThreatSig struct {
 // ── Field extractors (all return lowercase) ───────────────────────────────────
 
 func cl(ev store.Event) string {
-	if ev.CommandLine == nil { return "" }
+	if ev.CommandLine == nil {
+		return ""
+	}
 	return strings.ToLower(*ev.CommandLine)
 }
 func proc(ev store.Event) string {
-	if ev.ProcessName == nil { return "" }
+	if ev.ProcessName == nil {
+		return ""
+	}
 	return strings.ToLower(*ev.ProcessName)
 }
 func img(ev store.Event) string {
-	if ev.ImagePath == nil { return "" }
+	if ev.ImagePath == nil {
+		return ""
+	}
 	return strings.ToLower(*ev.ImagePath)
 }
 func fp(ev store.Event) string {
-	if ev.FilePath == nil { return "" }
+	if ev.FilePath == nil {
+		return ""
+	}
 	return strings.ToLower(*ev.FilePath)
 }
 func rk(ev store.Event) string {
-	if ev.RegKey == nil { return "" }
+	if ev.RegKey == nil {
+		return ""
+	}
 	return strings.ToLower(*ev.RegKey)
 }
 func dstip(ev store.Event) string {
-	if ev.DstIP == nil { return "" }
+	if ev.DstIP == nil {
+		return ""
+	}
 	return strings.ToLower(*ev.DstIP)
 }
+// G-12: rawStr lower-cases the full raw JSON; it is called by hundreds of
+// rules per event, so memoise the most recent conversion (keyed by the raw
+// buffer's address + length). Events are evaluated one at a time against all
+// rules, so a single-entry cache removes nearly all repeats.
+var (
+	rawCacheMu  sync.Mutex
+	rawCachePtr *byte
+	rawCacheLen int
+	rawCacheVal string
+)
+
 func rawStr(ev store.Event) string {
-	if ev.Raw == nil { return "" }
-	return strings.ToLower(string(ev.Raw))
+	if len(ev.Raw) == 0 {
+		return ""
+	}
+	p := &ev.Raw[0]
+	rawCacheMu.Lock()
+	if rawCachePtr == p && rawCacheLen == len(ev.Raw) {
+		v := rawCacheVal
+		rawCacheMu.Unlock()
+		return v
+	}
+	rawCacheMu.Unlock()
+	v := strings.ToLower(string(ev.Raw))
+	rawCacheMu.Lock()
+	rawCachePtr, rawCacheLen, rawCacheVal = p, len(ev.Raw), v
+	rawCacheMu.Unlock()
+	return v
 }
 func containsAny(s string, subs ...string) bool {
 	for _, sub := range subs {
-		if strings.Contains(s, strings.ToLower(sub)) { return true }
+		if strings.Contains(s, strings.ToLower(sub)) {
+			return true
+		}
 	}
 	return false
 }
@@ -100,9 +141,11 @@ var linuxSignatures = []ThreatSig{
 	{
 		ID: "L-T1059.004a", Name: "Shell Suspicious Execution",
 		Description: "Shell running a suspicious inline command — common dropper and execution technique.",
-		Severity: 4, MITRE: "T1059.004", Category: "Execution",
+		Severity:    4, MITRE: "T1059.004", Category: "Execution",
 		Match: func(ev store.Event) bool {
-			if ev.EventType != "process" { return false }
+			if ev.EventType != "process" {
+				return false
+			}
 			isShell := containsAny(proc(ev), "bash", "sh", "zsh", "dash", "ksh", "fish")
 			// Match shells running -c with suspicious content (pipe content IS in -c argument)
 			// OR shells running from suspicious paths
@@ -116,7 +159,7 @@ var linuxSignatures = []ThreatSig{
 	{
 		ID: "L-T1059.004b", Name: "Executable Run from /tmp or /dev/shm",
 		Description: "Process spawned from /tmp, /dev/shm, or /var/tmp — common malware staging.",
-		Severity: 5, MITRE: "T1059.004", Category: "Execution",
+		Severity:    5, MITRE: "T1059.004", Category: "Execution",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "process" && containsAny(img(ev)+cl(ev), "/tmp/", "/dev/shm/", "/var/tmp/")
 		},
@@ -124,9 +167,11 @@ var linuxSignatures = []ThreatSig{
 	{
 		ID: "L-T1059.006", Name: "Python/Perl/Ruby Reverse Shell",
 		Description: "Interpreter running inline code with socket/exec — reverse shell technique.",
-		Severity: 5, MITRE: "T1059.006", Category: "Execution",
+		Severity:    5, MITRE: "T1059.006", Category: "Execution",
 		Match: func(ev store.Event) bool {
-			if ev.EventType != "process" { return false }
+			if ev.EventType != "process" {
+				return false
+			}
 			isInterp := containsAny(proc(ev), "python", "python3", "perl", "ruby", "php", "node")
 			// -c flag with socket/exec content is visible in /proc/cmdline
 			return isInterp && containsAny(cl(ev),
@@ -138,7 +183,7 @@ var linuxSignatures = []ThreatSig{
 	{
 		ID: "L-T1059.004c", Name: "Netcat Reverse Shell",
 		Description: "Netcat with -e or -c flag — classic reverse shell payload.",
-		Severity: 5, MITRE: "T1059.004", Category: "Execution",
+		Severity:    5, MITRE: "T1059.004", Category: "Execution",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "process" &&
 				containsAny(proc(ev), "nc", "ncat", "netcat") &&
@@ -148,9 +193,11 @@ var linuxSignatures = []ThreatSig{
 	{
 		ID: "L-T1105", Name: "curl/wget Suspicious Download",
 		Description: "curl or wget downloading from internet to stdout or temp location — dropper technique.",
-		Severity: 4, MITRE: "T1105", Category: "Execution",
+		Severity:    4, MITRE: "T1105", Category: "Execution",
 		Match: func(ev store.Event) bool {
-			if ev.EventType != "process" { return false }
+			if ev.EventType != "process" {
+				return false
+			}
 			isFetcher := containsAny(proc(ev), "curl", "wget")
 			// Downloading to stdout (-o- or no -o flag with URL) or to /tmp
 			return isFetcher && containsAny(cl(ev),
@@ -165,7 +212,7 @@ var linuxSignatures = []ThreatSig{
 	{
 		ID: "L-T1087.001", Name: "Linux User Enumeration",
 		Description: "Commands enumerating local users and sudo privileges.",
-		Severity: 2, MITRE: "T1087.001", Category: "Discovery",
+		Severity:    2, MITRE: "T1087.001", Category: "Discovery",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "process" && containsAny(cl(ev),
 				"cat /etc/passwd", "getent passwd", "id -a", "sudo -l",
@@ -175,7 +222,7 @@ var linuxSignatures = []ThreatSig{
 	{
 		ID: "L-T1046", Name: "Network Scanning Tool",
 		Description: "nmap, masscan, or similar scanner detected.",
-		Severity: 3, MITRE: "T1046", Category: "Discovery",
+		Severity:    3, MITRE: "T1046", Category: "Discovery",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "process" && containsAny(proc(ev)+cl(ev), "nmap", "masscan", "zmap", "arp-scan", "netdiscover")
 		},
@@ -183,7 +230,7 @@ var linuxSignatures = []ThreatSig{
 	{
 		ID: "L-T1592", Name: "Packet Capture Tool",
 		Description: "tcpdump or tshark running — may capture credentials.",
-		Severity: 4, MITRE: "T1592", Category: "Reconnaissance",
+		Severity:    4, MITRE: "T1592", Category: "Reconnaissance",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "process" && containsAny(proc(ev)+cl(ev), "tcpdump", "tshark", "wireshark", "dumpcap")
 		},
@@ -191,7 +238,7 @@ var linuxSignatures = []ThreatSig{
 	{
 		ID: "L-T1590", Name: "DNS/Domain Reconnaissance",
 		Description: "dig, nslookup, or dnsrecon used for domain enumeration.",
-		Severity: 2, MITRE: "T1590", Category: "Reconnaissance",
+		Severity:    2, MITRE: "T1590", Category: "Reconnaissance",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "process" && containsAny(proc(ev), "dig", "nslookup", "host", "dnsenum", "dnsrecon", "fierce", "whois")
 		},
@@ -201,7 +248,7 @@ var linuxSignatures = []ThreatSig{
 	{
 		ID: "L-T1548.001a", Name: "SUID Bit Set (chmod +s)",
 		Description: "chmod setting SUID bit — privilege escalation vector.",
-		Severity: 4, MITRE: "T1548.001", Category: "Privilege Escalation",
+		Severity:    4, MITRE: "T1548.001", Category: "Privilege Escalation",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "process" && containsAny(proc(ev), "chmod") &&
 				containsAny(cl(ev), "+s", "4755", "4777", "u+s")
@@ -210,7 +257,7 @@ var linuxSignatures = []ThreatSig{
 	{
 		ID: "L-T1548.001b", Name: "Sudo Root Shell",
 		Description: "sudo used to spawn an interactive root shell.",
-		Severity: 4, MITRE: "T1548.001", Category: "Privilege Escalation",
+		Severity:    4, MITRE: "T1548.001", Category: "Privilege Escalation",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "process" && containsAny(proc(ev), "sudo") &&
 				containsAny(cl(ev), "sudo su", "sudo bash", "sudo sh", "sudo -s", "sudo -i")
@@ -219,7 +266,7 @@ var linuxSignatures = []ThreatSig{
 	{
 		ID: "L-T1547.006", Name: "Kernel Module Loaded",
 		Description: "insmod or modprobe executed — possible rootkit installation.",
-		Severity: 5, MITRE: "T1547.006", Category: "Privilege Escalation",
+		Severity:    5, MITRE: "T1547.006", Category: "Privilege Escalation",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "process" && containsAny(proc(ev), "insmod", "modprobe")
 		},
@@ -227,7 +274,7 @@ var linuxSignatures = []ThreatSig{
 	{
 		ID: "L-T1611", Name: "Container Escape Indicator",
 		Description: "docker.sock accessed or container escape tools detected.",
-		Severity: 5, MITRE: "T1611", Category: "Privilege Escalation",
+		Severity:    5, MITRE: "T1611", Category: "Privilege Escalation",
 		Match: func(ev store.Event) bool {
 			return containsAny(fp(ev)+cl(ev)+proc(ev), "docker.sock", "/var/run/docker.sock",
 				"nsenter", "--privileged", "cap_sys_admin", "pivot_root", "deepce", "amicontained")
@@ -238,7 +285,7 @@ var linuxSignatures = []ThreatSig{
 	{
 		ID: "L-T1003.008", Name: "/etc/shadow Read",
 		Description: "Direct read of /etc/shadow — password hash dumping.",
-		Severity: 5, MITRE: "T1003.008", Category: "Credential Access",
+		Severity:    5, MITRE: "T1003.008", Category: "Credential Access",
 		Match: func(ev store.Event) bool {
 			return containsAny(fp(ev)+cl(ev)+rk(ev), "/etc/shadow", "/etc/gshadow") ||
 				(ev.EventType == "process" && containsAny(cl(ev), "unshadow", "hashcat", "john --"))
@@ -247,7 +294,7 @@ var linuxSignatures = []ThreatSig{
 	{
 		ID: "L-T1110.001", Name: "SSH Brute Force (journald)",
 		Description: "Repeated SSH authentication failures in journald — brute force detected.",
-		Severity: 4, MITRE: "T1110.001", Category: "Credential Access",
+		Severity:    4, MITRE: "T1110.001", Category: "Credential Access",
 		Match: func(ev store.Event) bool {
 			// journald sets EventType="logon", CommandLine=full sshd message
 			return ev.EventType == "logon" && containsAny(cl(ev),
@@ -258,7 +305,7 @@ var linuxSignatures = []ThreatSig{
 	{
 		ID: "L-T1552.004", Name: "SSH Private Key Access",
 		Description: "SSH private key file accessed — credential theft.",
-		Severity: 4, MITRE: "T1552.004", Category: "Credential Access",
+		Severity:    4, MITRE: "T1552.004", Category: "Credential Access",
 		Match: func(ev store.Event) bool {
 			return containsAny(fp(ev)+cl(ev), "id_rsa", "id_ed25519", "id_ecdsa", "/.ssh/", ".pem")
 		},
@@ -266,7 +313,7 @@ var linuxSignatures = []ThreatSig{
 	{
 		ID: "L-T1552.005", Name: "Cloud Credential File Access",
 		Description: "AWS, GCP, or Azure credential files read — cloud credential theft.",
-		Severity: 5, MITRE: "T1552.005", Category: "Credential Access",
+		Severity:    5, MITRE: "T1552.005", Category: "Credential Access",
 		Match: func(ev store.Event) bool {
 			return containsAny(fp(ev)+cl(ev), ".aws/credentials", ".aws/config",
 				".config/gcloud", "application_default_credentials.json",
@@ -278,7 +325,7 @@ var linuxSignatures = []ThreatSig{
 	{
 		ID: "L-T1053.003", Name: "Cron Persistence",
 		Description: "Crontab file written — common Linux persistence mechanism.",
-		Severity: 4, MITRE: "T1053.003", Category: "Persistence",
+		Severity:    4, MITRE: "T1053.003", Category: "Persistence",
 		Match: func(ev store.Event) bool {
 			// configmon emits EventType="registry" for config file changes on Linux
 			return (ev.EventType == "file" || ev.EventType == "registry") &&
@@ -288,7 +335,7 @@ var linuxSignatures = []ThreatSig{
 	{
 		ID: "L-T1543.002", Name: "New Systemd Service",
 		Description: "Systemd unit file written to system directories — persistence.",
-		Severity: 4, MITRE: "T1543.002", Category: "Persistence",
+		Severity:    4, MITRE: "T1543.002", Category: "Persistence",
 		Match: func(ev store.Event) bool {
 			return (ev.EventType == "file" || ev.EventType == "registry") &&
 				containsAny(fp(ev)+rk(ev), "/etc/systemd/system/", "/usr/lib/systemd/", "/lib/systemd/") &&
@@ -298,7 +345,7 @@ var linuxSignatures = []ThreatSig{
 	{
 		ID: "L-T1546.004", Name: "Shell Profile Modified",
 		Description: ".bashrc, .profile, or /etc/profile written — shell-based persistence.",
-		Severity: 4, MITRE: "T1546.004", Category: "Persistence",
+		Severity:    4, MITRE: "T1546.004", Category: "Persistence",
 		Match: func(ev store.Event) bool {
 			return (ev.EventType == "file" || ev.EventType == "registry") &&
 				containsAny(fp(ev)+rk(ev), ".bashrc", ".bash_profile", ".zshrc", "/etc/profile", "/etc/bash.bashrc")
@@ -307,7 +354,7 @@ var linuxSignatures = []ThreatSig{
 	{
 		ID: "L-T1574.006", Name: "LD_PRELOAD Hijacking",
 		Description: "LD_PRELOAD or /etc/ld.so.preload set — shared library hijacking.",
-		Severity: 5, MITRE: "T1574.006", Category: "Persistence",
+		Severity:    5, MITRE: "T1574.006", Category: "Persistence",
 		Match: func(ev store.Event) bool {
 			return containsAny(fp(ev)+rk(ev)+cl(ev)+rawStr(ev), "ld_preload", "ld.so.preload")
 		},
@@ -317,7 +364,7 @@ var linuxSignatures = []ThreatSig{
 	{
 		ID: "L-T1070.002", Name: "Log File Deletion or History Wipe",
 		Description: "System logs deleted or shell history cleared — covering tracks.",
-		Severity: 5, MITRE: "T1070.002", Category: "Defence Evasion",
+		Severity:    5, MITRE: "T1070.002", Category: "Defence Evasion",
 		Match: func(ev store.Event) bool {
 			if ev.EventType == "process" {
 				return containsAny(cl(ev), "rm /var/log", "rm -rf /var/log", "> /var/log",
@@ -330,7 +377,7 @@ var linuxSignatures = []ThreatSig{
 	{
 		ID: "L-T1222.002", Name: "World-Writable File (chmod 777)",
 		Description: "chmod 777 or a+w executed — permissive file created.",
-		Severity: 3, MITRE: "T1222.002", Category: "Defence Evasion",
+		Severity:    3, MITRE: "T1222.002", Category: "Defence Evasion",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "process" && containsAny(proc(ev), "chmod") &&
 				containsAny(cl(ev), "777", "a+w", "o+w")
@@ -341,7 +388,7 @@ var linuxSignatures = []ThreatSig{
 	{
 		ID: "L-T1021.004", Name: "SSH Tunnel / Port Forward",
 		Description: "SSH -L/-R/-D flag — tunnelling or SOCKS proxy.",
-		Severity: 4, MITRE: "T1021.004", Category: "Lateral Movement",
+		Severity:    4, MITRE: "T1021.004", Category: "Lateral Movement",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "process" && containsAny(proc(ev), "ssh") &&
 				containsAny(cl(ev), " -l ", " -r ", " -d ", "-nfl", "-nfr", "-nfd")
@@ -352,7 +399,7 @@ var linuxSignatures = []ThreatSig{
 	{
 		ID: "L-T1572", Name: "DNS Tunnelling Indicator",
 		Description: "Unusually long DNS hostname — possible DNS tunnelling for C2.",
-		Severity: 4, MITRE: "T1572", Category: "Command and Control",
+		Severity:    4, MITRE: "T1572", Category: "Command and Control",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "dns" && ev.DstIP != nil && len(*ev.DstIP) > 60
 		},
@@ -360,7 +407,7 @@ var linuxSignatures = []ThreatSig{
 	{
 		ID: "L-T1219", Name: "Remote Access Tool",
 		Description: "Known commercial remote access tool detected.",
-		Severity: 3, MITRE: "T1219", Category: "Command and Control",
+		Severity:    3, MITRE: "T1219", Category: "Command and Control",
 		Match: func(ev store.Event) bool {
 			return containsAny(proc(ev)+cl(ev), "anydesk", "teamviewer", "rustdesk", "screenconnect", "logmein")
 		},
@@ -368,7 +415,7 @@ var linuxSignatures = []ThreatSig{
 	{
 		ID: "L-T1090.003", Name: "Tor / Proxy Tool",
 		Description: "Tor or proxychains detected — anonymous communication channel.",
-		Severity: 4, MITRE: "T1090.003", Category: "Command and Control",
+		Severity:    4, MITRE: "T1090.003", Category: "Command and Control",
 		Match: func(ev store.Event) bool {
 			return containsAny(proc(ev)+cl(ev)+fp(ev), "tor ", "torsocks", "proxychains", "proxifier")
 		},
@@ -376,7 +423,7 @@ var linuxSignatures = []ThreatSig{
 	{
 		ID: "L-T1078.004", Name: "Cloud Metadata Service Access",
 		Description: "Access to 169.254.169.254 — instance credential theft.",
-		Severity: 4, MITRE: "T1078.004", Category: "Credential Access",
+		Severity:    4, MITRE: "T1078.004", Category: "Credential Access",
 		Match: func(ev store.Event) bool {
 			return containsAny(dstip(ev)+cl(ev), "169.254.169.254", "metadata.google.internal")
 		},
@@ -386,7 +433,7 @@ var linuxSignatures = []ThreatSig{
 	{
 		ID: "L-T1048", Name: "curl POST Data Exfiltration",
 		Description: "curl sending data with POST or upload flags — possible exfiltration.",
-		Severity: 3, MITRE: "T1048", Category: "Exfiltration",
+		Severity:    3, MITRE: "T1048", Category: "Exfiltration",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "process" && containsAny(proc(ev), "curl") &&
 				containsAny(cl(ev), " -d ", " --data ", " -f ", " -t ", "--upload-file", "-x post")
@@ -395,7 +442,7 @@ var linuxSignatures = []ThreatSig{
 	{
 		ID: "L-T1560", Name: "Archive of Sensitive Directory",
 		Description: "tar/zip archiving /etc, /home, or sensitive directories — staging for exfil.",
-		Severity: 3, MITRE: "T1560.001", Category: "Exfiltration",
+		Severity:    3, MITRE: "T1560.001", Category: "Exfiltration",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "process" && containsAny(proc(ev), "tar", "zip", "7z", "gzip") &&
 				containsAny(cl(ev), "/home/", "/etc/", "/root/", "database", ".sql", "backup", "dump")
@@ -404,7 +451,7 @@ var linuxSignatures = []ThreatSig{
 	{
 		ID: "L-T1567", Name: "Paste/File Sharing Service Contact",
 		Description: "Connection to known paste or file-sharing site — C2 or exfil channel.",
-		Severity: 4, MITRE: "T1567.001", Category: "Exfiltration",
+		Severity:    4, MITRE: "T1567.001", Category: "Exfiltration",
 		Match: func(ev store.Event) bool {
 			return containsAny(dstip(ev)+cl(ev), "pastebin.com", "paste.ee", "hastebin.com",
 				"wetransfer.com", "mega.nz", "transfer.sh", "0x0.st", "gofile.io")
@@ -413,7 +460,7 @@ var linuxSignatures = []ThreatSig{
 	{
 		ID: "L-DLP-010", Name: "Database Dump Command",
 		Description: "mysqldump, pg_dump, or mongodump executed — bulk data extraction.",
-		Severity: 4, MITRE: "T1005", Category: "Data Loss Prevention",
+		Severity:    4, MITRE: "T1005", Category: "Data Loss Prevention",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "process" && containsAny(proc(ev),
 				"mysqldump", "pg_dump", "pg_dumpall", "mongodump", "mongoexport", "sqlite3", "expdp")
@@ -424,13 +471,34 @@ var linuxSignatures = []ThreatSig{
 // ══════════════════════════════════════════════════════════════════════════════
 // WINDOWS SIGNATURES
 // ══════════════════════════════════════════════════════════════════════════════
+// endpointAgentSignatures apply to every endpoint OS (agent-originated events
+// such as tamper and posture regressions).
+var endpointAgentSignatures = []ThreatSig{
+	{
+		ID: "AGENT-TAMPER-001", Name: "ObsidianWatch Agent Stopping (Possible Tamper)",
+		Description: "The agent reported a shutdown/stop request before exiting. Expected during maintenance or upgrades; otherwise indicates an attempt to blind the host. Correlate with a following silent-agent alert.",
+		Severity:    4, MITRE: "T1562.001", Category: "Defence Evasion",
+		Match: func(ev store.Event) bool {
+			return ev.EventType == "agent.tamper"
+		},
+	},
+	{
+		ID: "M-POSTURE-001", Name: "macOS Security Control Disabled (Posture Regression)",
+		Description: "A macOS hardening control (SIP, Gatekeeper, FileVault or the application firewall) was turned off since the previous scan.",
+		Severity:    4, MITRE: "T1562.001", Category: "Defence Evasion",
+		Match: func(ev store.Event) bool {
+			return ev.EventType == "config.posture_regression"
+		},
+	},
+}
+
 var windowsSignatures = []ThreatSig{
 
 	// ── Execution ────────────────────────────────────────────────────────────
 	{
 		ID: "W-T1059.001a", Name: "PowerShell Encoded Command",
 		Description: "PowerShell -EncodedCommand flag — common malware obfuscation.",
-		Severity: 4, MITRE: "T1059.001", Category: "Execution",
+		Severity:    4, MITRE: "T1059.001", Category: "Execution",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "process" && containsAny(cl(ev), "-enc ", "-encodedcommand", "-e jab", "-e sqb")
 		},
@@ -438,7 +506,7 @@ var windowsSignatures = []ThreatSig{
 	{
 		ID: "W-T1059.001b", Name: "PowerShell Download Cradle",
 		Description: "PowerShell downloading and executing code from internet.",
-		Severity: 5, MITRE: "T1059.001", Category: "Execution",
+		Severity:    5, MITRE: "T1059.001", Category: "Execution",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "process" && containsAny(cl(ev),
 				"downloadstring", "downloadfile", "iex(", "invoke-expression",
@@ -448,7 +516,7 @@ var windowsSignatures = []ThreatSig{
 	{
 		ID: "W-T1059.003", Name: "Suspicious CMD Execution",
 		Description: "cmd.exe running reconnaissance or download commands.",
-		Severity: 3, MITRE: "T1059.003", Category: "Execution",
+		Severity:    3, MITRE: "T1059.003", Category: "Execution",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "process" && containsAny(proc(ev), "cmd.exe", "cmd") &&
 				containsAny(cl(ev), "/c whoami", "/c net ", "/c ipconfig", "certutil", "bitsadmin")
@@ -457,7 +525,7 @@ var windowsSignatures = []ThreatSig{
 	{
 		ID: "W-T1218.011", Name: "Rundll32 Suspicious Execution",
 		Description: "rundll32.exe executing JavaScript, VBScript, or remote content — LOLBAS.",
-		Severity: 4, MITRE: "T1218.011", Category: "Execution",
+		Severity:    4, MITRE: "T1218.011", Category: "Execution",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "process" && containsAny(proc(ev), "rundll32") &&
 				containsAny(cl(ev), "javascript:", "vbscript:", "shell32", ",control_rundll", "http")
@@ -466,7 +534,7 @@ var windowsSignatures = []ThreatSig{
 	{
 		ID: "W-T1218.005", Name: "MSHTA Execution",
 		Description: "mshta.exe executing HTA file — frequently used for initial access.",
-		Severity: 4, MITRE: "T1218.005", Category: "Execution",
+		Severity:    4, MITRE: "T1218.005", Category: "Execution",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "process" && containsAny(proc(ev), "mshta")
 		},
@@ -474,7 +542,7 @@ var windowsSignatures = []ThreatSig{
 	{
 		ID: "W-T1218.010", Name: "Regsvr32 Squiblydoo Bypass",
 		Description: "regsvr32.exe loading a remote scriptlet — AppLocker bypass.",
-		Severity: 5, MITRE: "T1218.010", Category: "Execution",
+		Severity:    5, MITRE: "T1218.010", Category: "Execution",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "process" && containsAny(proc(ev), "regsvr32") &&
 				containsAny(cl(ev), "http", "/u ", "/s ", "scrobj")
@@ -483,7 +551,7 @@ var windowsSignatures = []ThreatSig{
 	{
 		ID: "W-T1059.005", Name: "WScript/CScript Execution",
 		Description: "Windows Script Host executing a script.",
-		Severity: 3, MITRE: "T1059.005", Category: "Execution",
+		Severity:    3, MITRE: "T1059.005", Category: "Execution",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "process" && containsAny(proc(ev), "wscript.exe", "cscript.exe")
 		},
@@ -491,7 +559,7 @@ var windowsSignatures = []ThreatSig{
 	{
 		ID: "W-T1197", Name: "BITS Job Abuse",
 		Description: "bitsadmin used to download or execute — LOLBAS technique.",
-		Severity: 4, MITRE: "T1197", Category: "Execution",
+		Severity:    4, MITRE: "T1197", Category: "Execution",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "process" && containsAny(proc(ev)+cl(ev), "bitsadmin", "start-bitstransfer") &&
 				containsAny(cl(ev), "/transfer", "/addfile", "/setnotifycmdline", "http")
@@ -500,7 +568,7 @@ var windowsSignatures = []ThreatSig{
 	{
 		ID: "W-T1047", Name: "WMI Remote Execution",
 		Description: "WMI used for remote code execution.",
-		Severity: 4, MITRE: "T1047", Category: "Execution",
+		Severity:    4, MITRE: "T1047", Category: "Execution",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "process" && containsAny(proc(ev)+cl(ev), "wmic", "wmiexec", "invoke-wmimethod") &&
 				containsAny(cl(ev), "/node:", "process call create", "win32_process")
@@ -509,7 +577,7 @@ var windowsSignatures = []ThreatSig{
 	{
 		ID: "W-T1218.007", Name: "Msiexec Remote Install",
 		Description: "msiexec installing a package from URL — malware delivery.",
-		Severity: 4, MITRE: "T1218.007", Category: "Execution",
+		Severity:    4, MITRE: "T1218.007", Category: "Execution",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "process" && containsAny(proc(ev), "msiexec") &&
 				containsAny(cl(ev), "http://", "https://", "/i ", "/q ")
@@ -518,11 +586,15 @@ var windowsSignatures = []ThreatSig{
 	{
 		ID: "W-T1566.001", Name: "Shell Spawned with Office-Related Arguments",
 		Description: "cmd/PowerShell/script host spawned with document-related paths or macro keywords — possible Office macro execution.",
-		Severity: 5, MITRE: "T1566.001", Category: "Initial Access",
+		Severity:    5, MITRE: "T1566.001", Category: "Initial Access",
 		Match: func(ev store.Event) bool {
-			if ev.EventType != "process" { return false }
+			if ev.EventType != "process" {
+				return false
+			}
 			isShellChild := containsAny(proc(ev), "cmd.exe", "powershell", "wscript", "cscript", "mshta", "rundll32", "regsvr32")
-			if !isShellChild { return false }
+			if !isShellChild {
+				return false
+			}
 			// Sysmon: parent image contains Office app
 			if containsAny(img(ev)+rawStr(ev), "winword.exe", "excel.exe", "powerpnt.exe", "outlook.exe", "onenote.exe") {
 				return true
@@ -536,7 +608,7 @@ var windowsSignatures = []ThreatSig{
 	{
 		ID: "W-T1057", Name: "Process Discovery",
 		Description: "tasklist or Get-Process — reconnaissance.",
-		Severity: 2, MITRE: "T1057", Category: "Discovery",
+		Severity:    2, MITRE: "T1057", Category: "Discovery",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "process" && containsAny(cl(ev), "tasklist", "get-process", "qprocess")
 		},
@@ -544,7 +616,7 @@ var windowsSignatures = []ThreatSig{
 	{
 		ID: "W-T1016", Name: "Network Configuration Discovery",
 		Description: "ipconfig, netstat, arp — network enumeration.",
-		Severity: 2, MITRE: "T1016", Category: "Discovery",
+		Severity:    2, MITRE: "T1016", Category: "Discovery",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "process" && containsAny(cl(ev), "ipconfig", "netstat", "arp -a", "route print", "nslookup", "net view")
 		},
@@ -552,7 +624,7 @@ var windowsSignatures = []ThreatSig{
 	{
 		ID: "W-T1087", Name: "Account Enumeration",
 		Description: "net user, net localgroup, or Get-ADUser — account discovery.",
-		Severity: 3, MITRE: "T1087", Category: "Discovery",
+		Severity:    3, MITRE: "T1087", Category: "Discovery",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "process" && containsAny(cl(ev),
 				"net user", "net localgroup", "net group", "get-aduser", "whoami /all", "query user")
@@ -561,7 +633,7 @@ var windowsSignatures = []ThreatSig{
 	{
 		ID: "W-T1595", Name: "Port Scanning Tool",
 		Description: "nmap or masscan on a Windows host.",
-		Severity: 3, MITRE: "T1595.001", Category: "Reconnaissance",
+		Severity:    3, MITRE: "T1595.001", Category: "Reconnaissance",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "process" && containsAny(proc(ev)+cl(ev), "nmap", "masscan", "rustscan", "nessus", "nikto")
 		},
@@ -571,7 +643,7 @@ var windowsSignatures = []ThreatSig{
 	{
 		ID: "W-T1548.002", Name: "UAC Bypass Technique",
 		Description: "Known UAC bypass tool or technique detected.",
-		Severity: 5, MITRE: "T1548.002", Category: "Privilege Escalation",
+		Severity:    5, MITRE: "T1548.002", Category: "Privilege Escalation",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "process" && containsAny(cl(ev), "eventvwr", "fodhelper", "sdclt", "computerdefaults", "bypassuac", "cmstp")
 		},
@@ -579,7 +651,7 @@ var windowsSignatures = []ThreatSig{
 	{
 		ID: "W-T1055", Name: "Process Injection",
 		Description: "Known process injection API calls or tools detected.",
-		Severity: 5, MITRE: "T1055", Category: "Privilege Escalation",
+		Severity:    5, MITRE: "T1055", Category: "Privilege Escalation",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "process" && containsAny(cl(ev),
 				"virtualalloc", "writeprocessmemory", "createremotethread", "mimikatz", "procdump", "reflectiveload")
@@ -588,7 +660,7 @@ var windowsSignatures = []ThreatSig{
 	{
 		ID: "W-T1134", Name: "Token Impersonation",
 		Description: "Token manipulation — privilege escalation via token theft.",
-		Severity: 5, MITRE: "T1134", Category: "Privilege Escalation",
+		Severity:    5, MITRE: "T1134", Category: "Privilege Escalation",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "process" && containsAny(cl(ev),
 				"impersonateloggedonuser", "duplicatetoken", "adjusttokenprivileges",
@@ -600,7 +672,7 @@ var windowsSignatures = []ThreatSig{
 	{
 		ID: "W-T1003.001", Name: "LSASS Memory Dump",
 		Description: "Attempt to dump LSASS memory — credential harvesting.",
-		Severity: 5, MITRE: "T1003.001", Category: "Credential Access",
+		Severity:    5, MITRE: "T1003.001", Category: "Credential Access",
 		Match: func(ev store.Event) bool {
 			return containsAny(cl(ev)+fp(ev)+rawStr(ev), "lsass", "procdump", "comsvcs.dll,minidump", "sekurlsa")
 		},
@@ -608,7 +680,7 @@ var windowsSignatures = []ThreatSig{
 	{
 		ID: "W-T1003.002", Name: "SAM Database Access",
 		Description: "Attempt to access the SAM database — Windows password hashes.",
-		Severity: 5, MITRE: "T1003.002", Category: "Credential Access",
+		Severity:    5, MITRE: "T1003.002", Category: "Credential Access",
 		Match: func(ev store.Event) bool {
 			return containsAny(fp(ev)+rk(ev)+cl(ev),
 				`system\currentcontrolset\control\lsa`, `sam\sam\domains`, `reg save hklm\sam`)
@@ -617,7 +689,7 @@ var windowsSignatures = []ThreatSig{
 	{
 		ID: "W-T1110", Name: "Failed Logon (EventID 4625)",
 		Description: "Windows failed logon — possible brute force.",
-		Severity: 3, MITRE: "T1110", Category: "Credential Access",
+		Severity:    3, MITRE: "T1110", Category: "Credential Access",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "logon" && ev.EventID != nil && *ev.EventID == 4625
 		},
@@ -625,7 +697,7 @@ var windowsSignatures = []ThreatSig{
 	{
 		ID: "W-T1552.001", Name: "Credential Search in Files",
 		Description: "findstr searching for passwords in files.",
-		Severity: 3, MITRE: "T1552.001", Category: "Credential Access",
+		Severity:    3, MITRE: "T1552.001", Category: "Credential Access",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "process" && containsAny(cl(ev),
 				"findstr /si password", ".kdbx", "unattend.xml", "credential", "vault")
@@ -634,7 +706,7 @@ var windowsSignatures = []ThreatSig{
 	{
 		ID: "W-T1552.005", Name: "Cloud Credential File Access",
 		Description: "AWS, Azure, or GCP credential files accessed — cloud credential theft.",
-		Severity: 5, MITRE: "T1552.005", Category: "Credential Access",
+		Severity:    5, MITRE: "T1552.005", Category: "Credential Access",
 		Match: func(ev store.Event) bool {
 			// FIM file event (if watched path) OR process reading credential file in cl/raw
 			return containsAny(fp(ev)+cl(ev)+rawStr(ev),
@@ -649,7 +721,7 @@ var windowsSignatures = []ThreatSig{
 	{
 		ID: "W-T1547.001", Name: "Run Key Persistence",
 		Description: "Registry Run key modified — common Windows persistence.",
-		Severity: 4, MITRE: "T1547.001", Category: "Persistence",
+		Severity:    4, MITRE: "T1547.001", Category: "Persistence",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "registry" && containsAny(rk(ev),
 				`\currentversion\run`, `\currentversion\runonce`, `policies\explorer\run`)
@@ -658,7 +730,7 @@ var windowsSignatures = []ThreatSig{
 	{
 		ID: "W-T1053.005", Name: "Scheduled Task Created",
 		Description: "New scheduled task — persistence or lateral movement.",
-		Severity: 3, MITRE: "T1053.005", Category: "Persistence",
+		Severity:    3, MITRE: "T1053.005", Category: "Persistence",
 		Match: func(ev store.Event) bool {
 			return (ev.EventType == "process" && containsAny(cl(ev), "schtasks /create", "new-scheduledtask")) ||
 				(ev.EventID != nil && (*ev.EventID == 4698 || *ev.EventID == 4702))
@@ -667,7 +739,7 @@ var windowsSignatures = []ThreatSig{
 	{
 		ID: "W-T1543.003", Name: "New Service Created",
 		Description: "New Windows service installed via sc.exe or PowerShell.",
-		Severity: 4, MITRE: "T1543.003", Category: "Persistence",
+		Severity:    4, MITRE: "T1543.003", Category: "Persistence",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "process" && containsAny(cl(ev), "sc create", "new-service", "sc.exe create")
 		},
@@ -675,7 +747,7 @@ var windowsSignatures = []ThreatSig{
 	{
 		ID: "W-T1546.003", Name: "WMI Event Subscription",
 		Description: "WMI event subscription created — fileless persistence.",
-		Severity: 5, MITRE: "T1546.003", Category: "Persistence",
+		Severity:    5, MITRE: "T1546.003", Category: "Persistence",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "process" && containsAny(cl(ev),
 				"__eventfilter", "__eventconsumer", "commandlineeventconsumer", "activescripteventconsumer")
@@ -684,7 +756,7 @@ var windowsSignatures = []ThreatSig{
 	{
 		ID: "W-T1546.012", Name: "IFEO Debugger Hijack",
 		Description: "Image File Execution Options debugger key set — process hijacking.",
-		Severity: 5, MITRE: "T1546.012", Category: "Persistence",
+		Severity:    5, MITRE: "T1546.012", Category: "Persistence",
 		Match: func(ev store.Event) bool {
 			return containsAny(rk(ev), "image file execution options", `\ifeo\`) &&
 				containsAny(rk(ev)+rawStr(ev), "debugger", "globalflag")
@@ -695,7 +767,7 @@ var windowsSignatures = []ThreatSig{
 	{
 		ID: "W-T1562.001a", Name: "Security Tool Disabled",
 		Description: "Windows Defender or firewall disabled via command line.",
-		Severity: 5, MITRE: "T1562.001", Category: "Defence Evasion",
+		Severity:    5, MITRE: "T1562.001", Category: "Defence Evasion",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "process" && containsAny(cl(ev),
 				"set-mppreference -disablerealtime", "netsh advfirewall set allprofiles state off",
@@ -703,9 +775,27 @@ var windowsSignatures = []ThreatSig{
 		},
 	},
 	{
+		ID: "W-T1562.001c", Name: "Defender Protection Disabled or Exclusion Added",
+		Description: "Windows Defender operational log reports real-time protection/scanning disabled (5001, 5010, 5012) or a configuration change that adds an exclusion (5007).",
+		Severity:    4, MITRE: "T1562.001", Category: "Defence Evasion",
+		Match: func(ev store.Event) bool {
+			if ev.EventID == nil || ev.Channel == nil ||
+				!strings.Contains(strings.ToLower(*ev.Channel), "windows defender") {
+				return false
+			}
+			switch *ev.EventID {
+			case 5001, 5010, 5012:
+				return true
+			case 5007:
+				return strings.Contains(rawStr(ev), "\\\\exclusions\\\\") || strings.Contains(rawStr(ev), "\\exclusions\\")
+			}
+			return false
+		},
+	},
+	{
 		ID: "W-T1070.001", Name: "Event Log Cleared",
 		Description: "Windows event log cleared — attacker covering tracks.",
-		Severity: 5, MITRE: "T1070.001", Category: "Defence Evasion",
+		Severity:    5, MITRE: "T1070.001", Category: "Defence Evasion",
 		Match: func(ev store.Event) bool {
 			return (ev.EventID != nil && (*ev.EventID == 1102 || *ev.EventID == 104)) ||
 				containsAny(cl(ev), "wevtutil cl", "clear-eventlog", "clearev")
@@ -714,17 +804,16 @@ var windowsSignatures = []ThreatSig{
 	{
 		ID: "W-T1027", Name: "Obfuscated Command",
 		Description: "Base64 decode or heavy obfuscation in command line.",
-		Severity: 4, MITRE: "T1027", Category: "Defence Evasion",
+		Severity:    4, MITRE: "T1027", Category: "Defence Evasion",
 		Match: func(ev store.Event) bool {
-			return ev.EventType == "process" && (
-				containsAny(cl(ev), "frombase64string", "[convert]::", "char(", "chr(", "`i`e`x", "iex(") ||
-					strings.Count(cl(ev), "^") > 5)
+			return ev.EventType == "process" && (containsAny(cl(ev), "frombase64string", "[convert]::", "char(", "chr(", "`i`e`x", "iex(") ||
+				strings.Count(cl(ev), "^") > 5)
 		},
 	},
 	{
 		ID: "W-T1036", Name: "Process Name Masquerading",
 		Description: "Known system process running from unexpected path.",
-		Severity: 4, MITRE: "T1036", Category: "Defence Evasion",
+		Severity:    4, MITRE: "T1036", Category: "Defence Evasion",
 		Match: func(ev store.Event) bool {
 			trusted := []string{"svchost.exe", "lsass.exe", "explorer.exe", "winlogon.exe", "csrss.exe"}
 			p := proc(ev)
@@ -740,7 +829,7 @@ var windowsSignatures = []ThreatSig{
 	{
 		ID: "W-T1562.001b", Name: "AMSI Bypass Attempt",
 		Description: "Antimalware Scan Interface bypass technique detected.",
-		Severity: 5, MITRE: "T1562.001", Category: "Defence Evasion",
+		Severity:    5, MITRE: "T1562.001", Category: "Defence Evasion",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "process" && containsAny(cl(ev),
 				"amsiutils", "amsi.dll", "[ref].assembly", "amsicontext", "amsiinitmemfailed")
@@ -749,7 +838,7 @@ var windowsSignatures = []ThreatSig{
 	{
 		ID: "W-T1574.002", Name: "DLL in User-Writable Path",
 		Description: "DLL placed in AppData or Temp — search order hijacking.",
-		Severity: 4, MITRE: "T1574.002", Category: "Defence Evasion",
+		Severity:    4, MITRE: "T1574.002", Category: "Defence Evasion",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "file" && containsAny(fp(ev), ".dll") &&
 				containsAny(fp(ev), `\appdata\`, `\temp\`, `\downloads\`, `\desktop\`, `\programdata\`)
@@ -760,7 +849,7 @@ var windowsSignatures = []ThreatSig{
 	{
 		ID: "W-T1021.001", Name: "RDP Lateral Movement",
 		Description: "mstsc or RDP connection detected.",
-		Severity: 3, MITRE: "T1021.001", Category: "Lateral Movement",
+		Severity:    3, MITRE: "T1021.001", Category: "Lateral Movement",
 		Match: func(ev store.Event) bool {
 			return (ev.EventType == "logon" && ev.EventID != nil && *ev.EventID == 4648 &&
 				containsAny(rawStr(ev), "3389", "termserv", "mstsc")) ||
@@ -770,7 +859,7 @@ var windowsSignatures = []ThreatSig{
 	{
 		ID: "W-T1570", Name: "PsExec / Remote Execution Tool",
 		Description: "PsExec or similar remote execution tool detected.",
-		Severity: 4, MITRE: "T1570", Category: "Lateral Movement",
+		Severity:    4, MITRE: "T1570", Category: "Lateral Movement",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "process" && containsAny(proc(ev)+cl(ev), "psexec", "paexec", "wmiexec", "winrm")
 		},
@@ -780,7 +869,7 @@ var windowsSignatures = []ThreatSig{
 	{
 		ID: "W-T1490", Name: "Shadow Copy Deletion",
 		Description: "Volume Shadow Copy deletion — ransomware pre-cursor.",
-		Severity: 5, MITRE: "T1490", Category: "Impact",
+		Severity:    5, MITRE: "T1490", Category: "Impact",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "process" && containsAny(cl(ev),
 				"vssadmin delete shadows", "wmic shadowcopy delete",
@@ -790,7 +879,7 @@ var windowsSignatures = []ThreatSig{
 	{
 		ID: "W-T1486", Name: "Ransomware File Extension",
 		Description: "Files renamed to known ransomware extensions.",
-		Severity: 5, MITRE: "T1486", Category: "Impact",
+		Severity:    5, MITRE: "T1486", Category: "Impact",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "file" && containsAny(fp(ev), ".locked", ".encrypted", ".crypto", ".crypt", ".enc", ".ransom", ".locky")
 		},
@@ -804,7 +893,7 @@ var dcSignatures = []ThreatSig{
 	{
 		ID: "DC-T1003.006", Name: "DCSync Attack Detected",
 		Description: "A non-DC account performed AD replication (DS-Replication-Get-Changes-All). This is the core primitive of DCSync — used to dump all domain password hashes without touching LSASS.",
-		Severity: 5, MITRE: "T1003.006", Category: "Credential Access",
+		Severity:    5, MITRE: "T1003.006", Category: "Credential Access",
 		Match: func(ev store.Event) bool {
 			if ev.EventType != "ad_object_access" {
 				return false
@@ -831,7 +920,7 @@ var dcSignatures = []ThreatSig{
 	{
 		ID: "DC-T1558.003", Name: "Kerberoasting — RC4 Service Ticket Request",
 		Description: "A Kerberos service ticket was requested using RC4 encryption (0x17). Attackers request tickets for service accounts to crack offline. Modern systems use AES; RC4 requests are suspicious.",
-		Severity: 4, MITRE: "T1558.003", Category: "Credential Access",
+		Severity:    4, MITRE: "T1558.003", Category: "Credential Access",
 		Match: func(ev store.Event) bool {
 			if ev.EventType != "kerberos" || ev.EventID == nil || *ev.EventID != 4769 {
 				return false
@@ -848,7 +937,7 @@ var dcSignatures = []ThreatSig{
 	{
 		ID: "DC-T1558.004", Name: "AS-REP Roasting — Pre-Auth Not Required",
 		Description: "Kerberos AS-REP returned without pre-authentication (error 0x0 with no pre-auth). Accounts with DONT_REQUIRE_PREAUTH set are vulnerable to offline password cracking.",
-		Severity: 4, MITRE: "T1558.004", Category: "Credential Access",
+		Severity:    4, MITRE: "T1558.004", Category: "Credential Access",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "kerberos" && ev.EventID != nil && *ev.EventID == 4768 &&
 				ev.Severity >= 3
@@ -858,7 +947,7 @@ var dcSignatures = []ThreatSig{
 	{
 		ID: "DC-T1558.001", Name: "Possible Golden Ticket Usage",
 		Description: "Kerberos TGT request anomaly — ticket lifetime or encryption inconsistent with domain policy. Golden tickets are forged TGTs signed with the krbtgt hash.",
-		Severity: 5, MITRE: "T1558.001", Category: "Credential Access",
+		Severity:    5, MITRE: "T1558.001", Category: "Credential Access",
 		Match: func(ev store.Event) bool {
 			// 4769 for krbtgt service = golden ticket usage
 			if ev.EventType != "kerberos" || ev.EventID == nil || *ev.EventID != 4769 {
@@ -871,7 +960,7 @@ var dcSignatures = []ThreatSig{
 	{
 		ID: "DC-T1484.001", Name: "Domain Policy Modified",
 		Description: "Domain-wide security policy was changed (Event 4739). Attackers modify domain policies to weaken security, disable lockouts, or set minimum password age to 0.",
-		Severity: 5, MITRE: "T1484.001", Category: "Defense Evasion",
+		Severity:    5, MITRE: "T1484.001", Category: "Defense Evasion",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "ad_change" && ev.EventID != nil && *ev.EventID == 4739
 		},
@@ -880,7 +969,7 @@ var dcSignatures = []ThreatSig{
 	{
 		ID: "DC-T1078.002", Name: "AdminSDHolder Modification",
 		Description: "The AdminSDHolder object was modified in Active Directory. Attackers modify AdminSDHolder to persist privileged access — SDProp propagates the ACL to all protected accounts every 60 minutes.",
-		Severity: 5, MITRE: "T1078.002", Category: "Persistence",
+		Severity:    5, MITRE: "T1078.002", Category: "Persistence",
 		Match: func(ev store.Event) bool {
 			if ev.EventType != "ad_change" {
 				return false
@@ -892,7 +981,7 @@ var dcSignatures = []ThreatSig{
 	{
 		ID: "DC-T1484.001b", Name: "Group Policy Object Modified",
 		Description: "A Group Policy Object was created or modified (Event 5136/5137 on groupPolicyContainer). Attackers tamper with GPOs for lateral movement, persistence, or disabling defences.",
-		Severity: 4, MITRE: "T1484.001", Category: "Defense Evasion",
+		Severity:    4, MITRE: "T1484.001", Category: "Defense Evasion",
 		Match: func(ev store.Event) bool {
 			if ev.EventType != "ad_change" {
 				return false
@@ -904,7 +993,7 @@ var dcSignatures = []ThreatSig{
 	{
 		ID: "DC-T1136.002", Name: "Domain Admin Account Created",
 		Description: "A new account was added to Domain Admins, Enterprise Admins, or Schema Admins (Events 4728/4732/4756 on privileged groups). Immediate investigation required.",
-		Severity: 5, MITRE: "T1136.002", Category: "Persistence",
+		Severity:    5, MITRE: "T1136.002", Category: "Persistence",
 		Match: func(ev store.Event) bool {
 			if ev.EventID == nil {
 				return false
@@ -927,7 +1016,7 @@ var dcSignatures = []ThreatSig{
 	{
 		ID: "DC-T1110.003", Name: "Kerberos Password Spray",
 		Description: "Multiple Kerberos pre-authentication failures (4771) from the same source IP within a short window — consistent with password spraying against the domain.",
-		Severity: 4, MITRE: "T1110.003", Category: "Credential Access",
+		Severity:    4, MITRE: "T1110.003", Category: "Credential Access",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "kerberos" && ev.EventID != nil && *ev.EventID == 4771
 		},
@@ -943,7 +1032,7 @@ var macosSignatures = []ThreatSig{
 	{
 		ID: "M-T1059.002a", Name: "osascript AppleScript Abuse",
 		Description: "osascript executing AppleScript — UI automation attack or privilege escalation.",
-		Severity: 4, MITRE: "T1059.002", Category: "Execution",
+		Severity:    4, MITRE: "T1059.002", Category: "Execution",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "process" && containsAny(proc(ev), "osascript") &&
 				containsAny(cl(ev), "-e ", "do shell script", "administrator privileges", "keystroke", "with administrator")
@@ -952,7 +1041,7 @@ var macosSignatures = []ThreatSig{
 	{
 		ID: "M-T1059.002b", Name: "osascript Credential Phishing Prompt",
 		Description: "osascript displaying password dialog — social engineering to harvest credentials.",
-		Severity: 5, MITRE: "T1059.002", Category: "Execution",
+		Severity:    5, MITRE: "T1059.002", Category: "Execution",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "process" && containsAny(proc(ev), "osascript") &&
 				containsAny(cl(ev), "display dialog", "password", "default answer")
@@ -961,9 +1050,11 @@ var macosSignatures = []ThreatSig{
 	{
 		ID: "M-T1059.004", Name: "Shell Pipe to Interpreter",
 		Description: "Shell executing piped commands — dropper technique.",
-		Severity: 4, MITRE: "T1059.004", Category: "Execution",
+		Severity:    4, MITRE: "T1059.004", Category: "Execution",
 		Match: func(ev store.Event) bool {
-			if ev.EventType != "process" { return false }
+			if ev.EventType != "process" {
+				return false
+			}
 			isShell := containsAny(proc(ev), "bash", "sh", "zsh", "dash")
 			return isShell && containsAny(cl(ev), "| bash", "|bash", "| sh", "|sh", "/tmp/", "/var/tmp/", "http://", "https://")
 		},
@@ -971,7 +1062,7 @@ var macosSignatures = []ThreatSig{
 	{
 		ID: "M-T1059.004b", Name: "Executable Run from /tmp",
 		Description: "Process spawned from /tmp — common macOS malware staging.",
-		Severity: 5, MITRE: "T1059.004", Category: "Execution",
+		Severity:    5, MITRE: "T1059.004", Category: "Execution",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "process" && containsAny(cl(ev), "/tmp/", "/var/tmp/", "/private/tmp/")
 		},
@@ -979,7 +1070,7 @@ var macosSignatures = []ThreatSig{
 	{
 		ID: "M-T1105", Name: "curl/wget Pipe to Shell",
 		Description: "curl or wget piped to shell — dropper technique.",
-		Severity: 5, MITRE: "T1105", Category: "Execution",
+		Severity:    5, MITRE: "T1105", Category: "Execution",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "process" && containsAny(proc(ev), "curl", "wget") &&
 				containsAny(cl(ev), "| bash", "|bash", "| sh", "|sh", "| python", "exec(")
@@ -988,7 +1079,7 @@ var macosSignatures = []ThreatSig{
 	{
 		ID: "M-T1218.001", Name: "Compiled AppleScript Execution",
 		Description: "Compiled .scpt file executed — common in macOS malware.",
-		Severity: 3, MITRE: "T1218.001", Category: "Execution",
+		Severity:    3, MITRE: "T1218.001", Category: "Execution",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "process" && containsAny(cl(ev), ".scpt", ".applescript") &&
 				containsAny(proc(ev), "osascript", "osacompile")
@@ -999,7 +1090,7 @@ var macosSignatures = []ThreatSig{
 	{
 		ID: "M-T1087.001", Name: "macOS User Enumeration",
 		Description: "dscl, dscacheutil, or id used to enumerate users.",
-		Severity: 2, MITRE: "T1087.001", Category: "Discovery",
+		Severity:    2, MITRE: "T1087.001", Category: "Discovery",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "process" && containsAny(cl(ev),
 				"dscl . list /users", "dscacheutil -q user", "finger ", "id -a", "dsmemberutil")
@@ -1008,7 +1099,7 @@ var macosSignatures = []ThreatSig{
 	{
 		ID: "M-T1082", Name: "macOS System Info Enumeration",
 		Description: "system_profiler, sw_vers, or ioreg used for system profiling.",
-		Severity: 2, MITRE: "T1082", Category: "Discovery",
+		Severity:    2, MITRE: "T1082", Category: "Discovery",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "process" && containsAny(proc(ev)+cl(ev),
 				"system_profiler", "sw_vers", "ioreg -rd1", "nvram -p", "sysctl -a")
@@ -1017,7 +1108,7 @@ var macosSignatures = []ThreatSig{
 	{
 		ID: "M-T1046", Name: "Network Scanning Tool",
 		Description: "nmap or arp-scan on macOS — internal reconnaissance.",
-		Severity: 3, MITRE: "T1046", Category: "Discovery",
+		Severity:    3, MITRE: "T1046", Category: "Discovery",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "process" && containsAny(proc(ev)+cl(ev), "nmap", "masscan", "arp-scan", "netdiscover")
 		},
@@ -1025,7 +1116,7 @@ var macosSignatures = []ThreatSig{
 	{
 		ID: "M-T1592", Name: "Packet Capture Tool",
 		Description: "tcpdump or Wireshark running on macOS.",
-		Severity: 4, MITRE: "T1592", Category: "Reconnaissance",
+		Severity:    4, MITRE: "T1592", Category: "Reconnaissance",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "process" && containsAny(proc(ev)+cl(ev), "tcpdump", "tshark", "wireshark", "dumpcap")
 		},
@@ -1035,7 +1126,7 @@ var macosSignatures = []ThreatSig{
 	{
 		ID: "M-T1548.001", Name: "SUID Bit Set",
 		Description: "chmod +s — SUID privilege escalation.",
-		Severity: 4, MITRE: "T1548.001", Category: "Privilege Escalation",
+		Severity:    4, MITRE: "T1548.001", Category: "Privilege Escalation",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "process" && containsAny(proc(ev), "chmod") &&
 				containsAny(cl(ev), "+s", "4755", "4777", "u+s")
@@ -1044,7 +1135,7 @@ var macosSignatures = []ThreatSig{
 	{
 		ID: "M-T1548.004", Name: "macOS Sudo Root Shell",
 		Description: "sudo spawning a root shell on macOS.",
-		Severity: 4, MITRE: "T1548.004", Category: "Privilege Escalation",
+		Severity:    4, MITRE: "T1548.004", Category: "Privilege Escalation",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "process" && containsAny(proc(ev), "sudo") &&
 				containsAny(cl(ev), "sudo su", "sudo bash", "sudo sh", "sudo -s", "sudo -i")
@@ -1053,7 +1144,7 @@ var macosSignatures = []ThreatSig{
 	{
 		ID: "M-T1553.001", Name: "Gatekeeper Bypass via xattr",
 		Description: "xattr removing quarantine attribute — Gatekeeper bypass.",
-		Severity: 4, MITRE: "T1553.001", Category: "Defence Evasion",
+		Severity:    4, MITRE: "T1553.001", Category: "Defence Evasion",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "process" && containsAny(proc(ev), "xattr") &&
 				containsAny(cl(ev), "com.apple.quarantine", "-d ", "-c ")
@@ -1062,7 +1153,7 @@ var macosSignatures = []ThreatSig{
 	{
 		ID: "M-T1562.001", Name: "SIP Tamper Attempt",
 		Description: "csrutil used to disable System Integrity Protection.",
-		Severity: 5, MITRE: "T1562.001", Category: "Defence Evasion",
+		Severity:    5, MITRE: "T1562.001", Category: "Defence Evasion",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "process" && containsAny(proc(ev)+cl(ev),
 				"csrutil disable", "csrutil enable --without", "nvram boot-args")
@@ -1073,7 +1164,7 @@ var macosSignatures = []ThreatSig{
 	{
 		ID: "M-T1555.001a", Name: "Keychain Dump via security Command",
 		Description: "security command extracting keychain passwords — credential theft.",
-		Severity: 5, MITRE: "T1555.001", Category: "Credential Access",
+		Severity:    5, MITRE: "T1555.001", Category: "Credential Access",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "process" && containsAny(proc(ev), "security") &&
 				containsAny(cl(ev), "find-generic-password", "find-internet-password", "dump-keychain", "login.keychain")
@@ -1082,7 +1173,7 @@ var macosSignatures = []ThreatSig{
 	{
 		ID: "M-T1555.001b", Name: "Keychain File Direct Access",
 		Description: "Direct access to keychain database files.",
-		Severity: 5, MITRE: "T1555.001", Category: "Credential Access",
+		Severity:    5, MITRE: "T1555.001", Category: "Credential Access",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "file" && containsAny(fp(ev), "login.keychain", "system.keychain", "library/keychains/")
 		},
@@ -1090,7 +1181,7 @@ var macosSignatures = []ThreatSig{
 	{
 		ID: "M-T1110.001", Name: "SSH Brute Force (syslog)",
 		Description: "Repeated SSH authentication failures in syslog.",
-		Severity: 4, MITRE: "T1110.001", Category: "Credential Access",
+		Severity:    4, MITRE: "T1110.001", Category: "Credential Access",
 		Match: func(ev store.Event) bool {
 			// macOS syslog: EventType="syslog", CommandLine=message body
 			return (ev.EventType == "syslog" || ev.EventType == "logon") &&
@@ -1100,7 +1191,7 @@ var macosSignatures = []ThreatSig{
 	{
 		ID: "M-T1552.004", Name: "SSH Private Key Access",
 		Description: "SSH private key file accessed on macOS.",
-		Severity: 4, MITRE: "T1552.004", Category: "Credential Access",
+		Severity:    4, MITRE: "T1552.004", Category: "Credential Access",
 		Match: func(ev store.Event) bool {
 			return containsAny(fp(ev)+cl(ev), "id_rsa", "id_ed25519", "/.ssh/", ".pem")
 		},
@@ -1108,7 +1199,7 @@ var macosSignatures = []ThreatSig{
 	{
 		ID: "M-T1552.005", Name: "Cloud Credential File Access",
 		Description: "AWS, GCP, or Azure credential files accessed on macOS.",
-		Severity: 5, MITRE: "T1552.005", Category: "Credential Access",
+		Severity:    5, MITRE: "T1552.005", Category: "Credential Access",
 		Match: func(ev store.Event) bool {
 			return containsAny(fp(ev)+cl(ev), ".aws/credentials", ".aws/config",
 				".config/gcloud", "application_default_credentials.json", ".azure/", "terraform.tfstate")
@@ -1119,7 +1210,7 @@ var macosSignatures = []ThreatSig{
 	{
 		ID: "M-T1543.004", Name: "LaunchDaemon/LaunchAgent Written",
 		Description: "New plist written to LaunchDaemons or LaunchAgents — macOS persistence.",
-		Severity: 4, MITRE: "T1543.004", Category: "Persistence",
+		Severity:    4, MITRE: "T1543.004", Category: "Persistence",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "file" && containsAny(fp(ev),
 				"/library/launchdaemons/", "/library/launchagents/", "~/library/launchagents/")
@@ -1128,7 +1219,7 @@ var macosSignatures = []ThreatSig{
 	{
 		ID: "M-T1546.004", Name: "Shell Profile Modified",
 		Description: ".bashrc, .zshrc, or /etc/profile modified — shell persistence.",
-		Severity: 4, MITRE: "T1546.004", Category: "Persistence",
+		Severity:    4, MITRE: "T1546.004", Category: "Persistence",
 		Match: func(ev store.Event) bool {
 			return (ev.EventType == "file" || ev.EventType == "registry") &&
 				containsAny(fp(ev)+rk(ev), ".bashrc", ".zshrc", ".bash_profile", "/etc/profile", "/etc/bash.bashrc")
@@ -1137,7 +1228,7 @@ var macosSignatures = []ThreatSig{
 	{
 		ID: "M-T1547.015", Name: "macOS Login Hook Set",
 		Description: "defaults writing LoginHook — persistent code execution on login.",
-		Severity: 4, MITRE: "T1547.015", Category: "Persistence",
+		Severity:    4, MITRE: "T1547.015", Category: "Persistence",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "process" && containsAny(proc(ev), "defaults") &&
 				containsAny(cl(ev), "loginhook", "logouthook", "com.apple.loginwindow")
@@ -1146,7 +1237,7 @@ var macosSignatures = []ThreatSig{
 	{
 		ID: "M-T1053.003", Name: "Cron Modified on macOS",
 		Description: "Crontab written — persistence mechanism.",
-		Severity: 4, MITRE: "T1053.003", Category: "Persistence",
+		Severity:    4, MITRE: "T1053.003", Category: "Persistence",
 		Match: func(ev store.Event) bool {
 			return (ev.EventType == "file" || ev.EventType == "registry") &&
 				containsAny(fp(ev)+rk(ev), "/etc/cron", "/var/spool/cron", "crontab")
@@ -1157,7 +1248,7 @@ var macosSignatures = []ThreatSig{
 	{
 		ID: "M-T1070.002", Name: "macOS Log Cleared",
 		Description: "System log deleted or cleared — attacker covering tracks.",
-		Severity: 4, MITRE: "T1070.002", Category: "Defence Evasion",
+		Severity:    4, MITRE: "T1070.002", Category: "Defence Evasion",
 		Match: func(ev store.Event) bool {
 			if ev.EventType == "process" {
 				return containsAny(cl(ev), "log erase", "syslog -c", "rm /var/log/", "rm /private/var/log/", "> /var/log/system.log")
@@ -1168,7 +1259,7 @@ var macosSignatures = []ThreatSig{
 	{
 		ID: "M-T1574.006", Name: "DYLD_INSERT_LIBRARIES Injection",
 		Description: "macOS shared library hijacking via DYLD_INSERT_LIBRARIES.",
-		Severity: 5, MITRE: "T1574.006", Category: "Defence Evasion",
+		Severity:    5, MITRE: "T1574.006", Category: "Defence Evasion",
 		Match: func(ev store.Event) bool {
 			return containsAny(cl(ev)+rawStr(ev), "dyld_insert_libraries", "dyld_force_flat_namespace")
 		},
@@ -1178,7 +1269,7 @@ var macosSignatures = []ThreatSig{
 	{
 		ID: "M-T1021.004", Name: "SSH Tunnel / Port Forward",
 		Description: "SSH -L/-R/-D flag — tunnelling or SOCKS proxy.",
-		Severity: 4, MITRE: "T1021.004", Category: "Lateral Movement",
+		Severity:    4, MITRE: "T1021.004", Category: "Lateral Movement",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "process" && containsAny(proc(ev), "ssh") &&
 				containsAny(cl(ev), " -l ", " -r ", " -d ", "-nfl", "-nfr", "-nfd")
@@ -1187,7 +1278,7 @@ var macosSignatures = []ThreatSig{
 	{
 		ID: "M-T1572", Name: "DNS Tunnelling Indicator",
 		Description: "Unusually long DNS query — possible DNS tunnelling.",
-		Severity: 4, MITRE: "T1572", Category: "Command and Control",
+		Severity:    4, MITRE: "T1572", Category: "Command and Control",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "dns" && ev.DstIP != nil && len(*ev.DstIP) > 60
 		},
@@ -1195,7 +1286,7 @@ var macosSignatures = []ThreatSig{
 	{
 		ID: "M-T1219", Name: "Remote Access Tool",
 		Description: "Commercial remote access tool detected on macOS.",
-		Severity: 3, MITRE: "T1219", Category: "Command and Control",
+		Severity:    3, MITRE: "T1219", Category: "Command and Control",
 		Match: func(ev store.Event) bool {
 			return containsAny(proc(ev)+cl(ev), "anydesk", "teamviewer", "rustdesk", "screenconnect", "logmein", "splashtop")
 		},
@@ -1203,7 +1294,7 @@ var macosSignatures = []ThreatSig{
 	{
 		ID: "M-T1048", Name: "curl POST Exfiltration",
 		Description: "curl sending data via POST on macOS — possible exfiltration.",
-		Severity: 3, MITRE: "T1048", Category: "Exfiltration",
+		Severity:    3, MITRE: "T1048", Category: "Exfiltration",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "process" && containsAny(proc(ev), "curl") &&
 				containsAny(cl(ev), " -d ", " --data ", " -f ", "--upload-file", "-x post")
@@ -1212,7 +1303,7 @@ var macosSignatures = []ThreatSig{
 	{
 		ID: "M-T1560", Name: "Archive of Sensitive Directory",
 		Description: "tar or zip archiving /Users or sensitive paths.",
-		Severity: 3, MITRE: "T1560.001", Category: "Exfiltration",
+		Severity:    3, MITRE: "T1560.001", Category: "Exfiltration",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "process" && containsAny(proc(ev), "tar", "zip", "7z", "gzip") &&
 				containsAny(cl(ev), "/users/", "documents", "desktop", "/etc/", ".sql", "backup")
@@ -1221,7 +1312,7 @@ var macosSignatures = []ThreatSig{
 	{
 		ID: "M-T1090.003", Name: "Tor / Proxy Tool",
 		Description: "Tor or proxychains detected on macOS.",
-		Severity: 4, MITRE: "T1090.003", Category: "Command and Control",
+		Severity:    4, MITRE: "T1090.003", Category: "Command and Control",
 		Match: func(ev store.Event) bool {
 			return containsAny(proc(ev)+cl(ev)+fp(ev), "tor ", "torsocks", "proxychains", "proxifier")
 		},
@@ -1233,7 +1324,7 @@ var dnsCatSignatures = []ThreatSig{
 	{
 		ID: "DNS-CAT-001", Name: "Malware C2 Domain Contact",
 		Description: "DNS query to a domain flagged as malware C2 by Quad9/SURBL/Spamhaus.",
-		Severity: 5, MITRE: "T1071.001", Category: "Command and Control",
+		Severity:    5, MITRE: "T1071.001", Category: "Command and Control",
 		Match: func(ev store.Event) bool {
 			return (ev.EventType == "dns" || ev.EventType == "network") &&
 				ev.DstIP != nil && domainHasCategory(*ev.DstIP, "malware", "botnet_cc")
@@ -1242,7 +1333,7 @@ var dnsCatSignatures = []ThreatSig{
 	{
 		ID: "DNS-CAT-002", Name: "Phishing Domain Contact",
 		Description: "DNS query to a domain flagged as phishing.",
-		Severity: 4, MITRE: "T1566.002", Category: "Initial Access",
+		Severity:    4, MITRE: "T1566.002", Category: "Initial Access",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "dns" && ev.DstIP != nil && domainHasCategory(*ev.DstIP, "phishing")
 		},
@@ -1250,7 +1341,7 @@ var dnsCatSignatures = []ThreatSig{
 	{
 		ID: "DNS-CAT-003", Name: "Malicious Domain (Quad9 Block)",
 		Description: "DNS query to a domain blocked by Quad9 threat intelligence.",
-		Severity: 4, MITRE: "T1071.001", Category: "Command and Control",
+		Severity:    4, MITRE: "T1071.001", Category: "Command and Control",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "dns" && ev.DstIP != nil && domainHasCategory(*ev.DstIP, "malicious")
 		},
@@ -1258,7 +1349,7 @@ var dnsCatSignatures = []ThreatSig{
 	{
 		ID: "DNS-CAT-004", Name: "Spam Infrastructure Domain",
 		Description: "DNS query to a spam-flagged domain — possible exfil relay.",
-		Severity: 3, MITRE: "T1048", Category: "Exfiltration",
+		Severity:    3, MITRE: "T1048", Category: "Exfiltration",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "dns" && ev.DstIP != nil && domainHasCategory(*ev.DstIP, "spam")
 		},
@@ -1270,56 +1361,82 @@ var dnsCatCache = make(map[string][]string)
 func domainHasCategory(domain string, categories ...string) bool {
 	domain = strings.ToLower(domain)
 	cats, ok := dnsCatCache[domain]
-	if !ok { return false }
+	if !ok {
+		return false
+	}
 	for _, want := range categories {
 		for _, have := range cats {
-			if have == want { return true }
+			if have == want {
+				return true
+			}
 		}
 	}
 	return false
 }
 
-
 // ── Detection Engine ─────────────────────────────────────────────────────────
 
 type DetectionEngine struct {
-	db     *store.DB
-	mailer *notify.Mailer
-	logger *slog.Logger
+	db         *store.DB
+	mailer     *notify.Mailer
+	logger     *slog.Logger
+	suppressor *GCPSuppressor
+	auth       *authCorrelator
+	seq        *seqCorrelator
+	geo        *entraGeoTracker
 }
 
 func NewDetectionEngine(db *store.DB, mailer *notify.Mailer, logger *slog.Logger) *DetectionEngine {
-	return &DetectionEngine{db: db, mailer: mailer, logger: logger}
+	return &DetectionEngine{db: db, mailer: mailer, logger: logger, suppressor: NewGCPSuppressor(db), auth: newAuthCorrelator(), seq: newSeqCorrelator(), geo: newEntraGeoTracker()}
 }
 
 func (e *DetectionEngine) Run(ctx context.Context) {
-	// Standard 2h catch-up for agent events
-	e.evaluateSince(ctx, time.Now().Add(-2*time.Hour))
-	// Extended 7-day catch-up for DevOps events (syncs can bring in old commits)
-	e.evaluateDevOpsSince(ctx, time.Now().Add(-7*24*time.Hour))
+	// First run per cursor falls back to these lookback windows; every run
+	// after that resumes exactly from the persisted cursor regardless of
+	// how long the gap since the last poll was.
+	loadCorrelatorState(ctx, e.db, e.auth, e.seq) // D-07
+	e.runCursor(ctx)
+	e.runDevOpsCursor(ctx)
 	ticker := time.NewTicker(45 * time.Second)
 	defer ticker.Stop()
 	for {
 		select {
 		case <-ctx.Done():
+			saveCorrelatorState(context.Background(), e.db, e.auth, e.seq)
 			return
 		case <-ticker.C:
-			e.evaluateSince(ctx, time.Now().Add(-2*time.Minute))
+			e.runCursor(ctx)
+			e.runDevOpsCursor(ctx)
+			saveCorrelatorState(ctx, e.db, e.auth, e.seq)
 		}
 	}
 }
 
-func (e *DetectionEngine) evaluateDevOpsSince(ctx context.Context, since time.Time) {
-	f := store.EventFilter{Since: since, Limit: 2000, OS: "devops"}
-	events, _, err := e.db.QueryEvents(ctx, f)
-	if err != nil || len(events) == 0 { return }
+// runDevOpsCursor (D-01/D-02): DevOps events arrive via periodic connector
+// syncs (not live agent push), which can backfill commits/PRs that are
+// hours or days old — a wall-clock window on `time` would miss those
+// entirely. Its own cursor + a generous 7-day initial lookback covers it.
+func (e *DetectionEngine) runDevOpsCursor(ctx context.Context) {
+	events, err := pageEventCursor(ctx, e.db, "detection-devops", store.EventFilter{OS: "devops"}, 7*24*time.Hour, 2000)
+	if err != nil {
+		e.logger.Warn("detection: devops cursor query failed", "err", err)
+		return
+	}
+	if len(events) == 0 {
+		return
+	}
 	e.logger.Info("detection: devops catch-up", "events", len(events))
 	created := 0
 	for _, ev := range events {
 		for _, sig := range devopsSignatures {
-			if !sig.Match(ev) { continue }
+			if !azureStatusAllows(sig, ev) || !awsErrorAllows(sig, ev) {
+				continue
+			}
+			if !sig.Match(ev) {
+				continue
+			}
 			day := ev.Time.UTC().Format("20060102")
-			dedupKey := fmt.Sprintf("sig:%s:host:%s:d:%s", sig.ID, ev.Host, day)
+			dedupKey := fmt.Sprintf("sig:%s:host:%s:d:%s:e:%s", sig.ID, ev.Host, day, alertEntityKey(ev)) // D-06: entity fingerprint folded in
 			alert := store.Alert{
 				Title:         fmt.Sprintf("[%s] %s", sig.MITRE, sig.Name),
 				Description:   fmt.Sprintf("%s\n\nMITRE: %s | Host: %s", sig.Description, sig.MITRE, ev.Host),
@@ -1334,24 +1451,42 @@ func (e *DetectionEngine) evaluateDevOpsSince(ctx context.Context, since time.Ti
 			}
 		}
 	}
-	if created > 0 { e.logger.Info("detection: devops catch-up alerts created", "count", created) }
+	if created > 0 {
+		e.logger.Info("detection: devops catch-up alerts created", "count", created)
+	}
 }
 
-func (e *DetectionEngine) evaluateSince(ctx context.Context, since time.Time) {
-	events, _, err := e.db.QueryEvents(ctx, store.EventFilter{Since: since, Limit: 5000})
+// runCursor (D-01/D-02): replaces the old evaluateSince(time.Now().Add(-N))
+// wall-clock polling with cursor-based paging over events.ingested_at — see
+// pageEventCursor for why this matters (a backlogged/reconnecting agent's
+// events used to be able to fall permanently outside every future window).
+func (e *DetectionEngine) runCursor(ctx context.Context) {
+	events, err := pageEventCursor(ctx, e.db, "detection", store.EventFilter{}, 2*time.Hour, 5000)
 	if err != nil {
-		e.logger.Warn("detection: query failed", "err", err)
+		e.logger.Warn("detection: cursor query failed", "err", err)
 		return
 	}
+	e.evaluateEvents(ctx, events)
+}
+
+func (e *DetectionEngine) evaluateEvents(ctx context.Context, events []store.Event) {
 	if len(events) > 0 {
-		e.logger.Info("detection: evaluating events", "count", len(events), "since", since.Format("15:04:05"))
+		e.logger.Info("detection: evaluating events", "count", len(events))
 	}
 
-
-	states, _     := e.db.GetSignatureStates(ctx)
-	ipIOCs, _     := e.db.GetAllIOCsOfType(ctx, "ip")
+	e.recordPrevalence(events)
+	e.alertRareBinaries(ctx, events)
+	refreshBusinessHours(ctx, e.db)
+	refreshGCPInternalDomains(ctx, e.db)
+	refreshEndpointSuppressions(ctx, e.db)
+	// Refresh suppression rules before this evaluation cycle
+	if e.suppressor != nil {
+		e.suppressor.Refresh(ctx)
+	}
+	states, _ := e.db.GetSignatureStates(ctx)
+	ipIOCs, _ := e.db.GetAllIOCsOfType(ctx, "ip")
 	domainIOCs, _ := e.db.GetAllIOCsOfType(ctx, "domain")
-	hashIOCs, _   := e.db.GetAllIOCsOfType(ctx, "hash")
+	hashIOCs, _ := e.db.GetAllIOCsOfType(ctx, "hash")
 
 	// Refresh DNS blocklist cache
 	domainCats, _ := e.db.GetAllIOCsOfType(ctx, "domain_category")
@@ -1370,16 +1505,32 @@ func (e *DetectionEngine) evaluateSince(ctx context.Context, since time.Time) {
 	// Load enabled Sigma rules — pre-index by category for performance
 	// Avoids O(events * 1211 rules) — instead O(events * relevant_rules_for_os)
 	allSigmaRules, _ := e.db.ListSigmaRules(ctx, true)
-	if !sigmaGlobalEnabled { allSigmaRules = nil }
+	if !sigmaGlobalEnabled {
+		allSigmaRules = nil
+	}
 	sigmaByCategory := make(map[string][]store.SigmaRule)
 	for _, r := range allSigmaRules {
 		cat := strings.ToLower(r.Category)
 		sigmaByCategory[cat] = append(sigmaByCategory[cat], r)
 	}
 
-
 	created := 0
 	for _, ev := range events {
+		if e.auth != nil {
+			if hits := e.auth.Observe(ev); len(hits) > 0 {
+				e.raiseAuthHits(ctx, ev, hits)
+			}
+		}
+		if e.geo != nil {
+			if hits := e.geo.observe(ev, dbGeoSeed(ctx, e.db)); len(hits) > 0 {
+				e.raiseAuthHits(ctx, ev, hits)
+			}
+		}
+		if e.seq != nil {
+			if hits := e.seq.Observe(ev); len(hits) > 0 {
+				e.raiseAuthHits(ctx, ev, hits)
+			}
+		}
 
 		// Skip events generated by ObsidianWatch itself to prevent self-alerting:
 		// 1. Vuln scanner events and health checks
@@ -1391,8 +1542,7 @@ func (e *DetectionEngine) evaluateSince(ctx context.Context, since time.Time) {
 			continue
 		}
 		// Skip if the process IS the ObsidianWatch agent binary
-		if ev.ProcessName != nil && containsAny(strings.ToLower(*ev.ProcessName),
-			"obsidianwatch", "obsidian-watch", "ow-agent") {
+		if isOwnAgentProcess(ev) {
 			continue
 		}
 
@@ -1400,14 +1550,20 @@ func (e *DetectionEngine) evaluateSince(ctx context.Context, since time.Time) {
 		var sigs []ThreatSig
 		switch strings.ToLower(ev.OS) {
 		case "windows":
-			sigs = append(windowsSignatures, dnsCatSignatures...)
+			sigs = append(append([]ThreatSig{}, windowsSignatures...), dnsCatSignatures...)
+			sigs = append(sigs, windowsTamperSignatures...)
+			sigs = append(sigs, windowsUSBSignatures...)
+			sigs = append(sigs, windowsAccountSignatures...)
+			sigs = append(sigs, remoteSessionSignatures...)
+			sigs = append(sigs, endpointAgentSignatures...)
 			// DC events (ad_object_access, ad_change, kerberos) always get DC sigs
 			if ev.EventType == "ad_object_access" || ev.EventType == "ad_change" ||
 				ev.EventType == "kerberos" {
 				sigs = append(sigs, dcSignatures...)
 			}
 		case "macos", "darwin":
-			sigs = append(macosSignatures, dnsCatSignatures...)
+			sigs = append(append(append([]ThreatSig{}, macosSignatures...), usbSignatures...), dnsCatSignatures...)
+			sigs = append(sigs, endpointAgentSignatures...)
 		case "devops":
 			// DevOps events — only apply devops sigs, skip endpoint sigs entirely
 			sigs = append(sigs, devopsSignatures...)
@@ -1416,16 +1572,54 @@ func (e *DetectionEngine) evaluateSince(ctx context.Context, since time.Time) {
 			sigs = append(sigs, networkSignatures...)
 		default:
 			// linux or unknown
-			sigs = append(linuxSignatures, dnsCatSignatures...)
+			sigs = append(append(append(append([]ThreatSig{}, linuxSignatures...), usbSignatures...), linuxAccountSignatures...), dnsCatSignatures...)
+			sigs = append(sigs, softwareSignatures...)
+			sigs = append(sigs, endpointAgentSignatures...)
 		}
 
 		// Cloud events get the extended cloud signature set regardless of OS
 		if isCloudEvent(ev) {
+			// CC-03: cloud events no longer run the Linux endpoint rules (OS
+			// "gcp"/"aws"/"azure" used to fall into the default branch) nor
+			// every other provider's rule set; dispatch by provider.
+			sigs = nil
+			provider := strings.ToLower(ev.OS)
+			if provider != "gcp" && provider != "azure" && provider != "aws" {
+				provider = cloudProviderFromEventType(strings.ToLower(string(ev.EventType)))
+			}
 			sigs = append(sigs, cloudSignaturesExtended...)
 			sigs = append(sigs, cloudReconSignatures...)
 			sigs = append(sigs, cloudNetworkSignatures...)
 			sigs = append(sigs, cloudLateralSignatures...)
 			sigs = append(sigs, cloudComputeAbuseSignatures...)
+			sigs = append(sigs, awsExtraSignatures...)
+			if provider == "gcp" || provider == "cloud" {
+				// GCP-specific extended rules
+				sigs = append(sigs, gcpIAMSignatures...)
+				sigs = append(sigs, gcpCredentialSignatures...)
+				sigs = append(sigs, gcpComputeSignatures...)
+				sigs = append(sigs, gcpDataSignatures...)
+				sigs = append(sigs, gcpNetworkSignatures...)
+				sigs = append(sigs, gcpDefenseEvasionSignatures...)
+				sigs = append(sigs, gcpPersistenceSignatures...)
+				sigs = append(sigs, gcpSCCSignatures...)
+				sigs = append(sigs, gcpNewSignatures...)
+				sigs = append(sigs, gcpPolicySignatures...)
+				sigs = append(sigs, gcpEscalationSignatures...)
+			sigs = append(sigs, gcpTelemetrySignatures...)
+			}
+			if provider == "azure" || provider == "cloud" {
+				// Azure-specific extended rules
+				sigs = append(sigs, azureIAMSignatures...)
+				sigs = append(sigs, entraIdentitySignatures...)
+				sigs = append(sigs, azureComputeSignatures...)
+				sigs = append(sigs, azureDataSignatures...)
+				sigs = append(sigs, azureNetworkSignatures...)
+				sigs = append(sigs, azureDefenseEvasionSignatures...)
+				sigs = append(sigs, azureDefenderSignatures...)
+				sigs = append(sigs, azureResourceSignatures...)
+				sigs = append(sigs, azureAuditSignatures...)
+			}
 		}
 		// Network events also get cloud network sigs (metadata endpoint access)
 		if ev.EventType == "network" {
@@ -1437,7 +1631,14 @@ func (e *DetectionEngine) evaluateSince(ctx context.Context, since time.Time) {
 		}
 		// Signature matching
 		for _, sig := range sigs {
+			if retiredSigIDs[sig.ID] || endpointSuppressed(sig.ID, ev) {
+				continue
+			}
 			if state, ok := states[sig.ID]; ok && !state.Enabled {
+				continue
+			}
+			// Check suppression rules for GCP events
+			if isCloudEvent(ev) && e.suppressor != nil && e.suppressor.IsSuppressed(sig.ID, ev) {
 				continue
 			}
 			sev := sig.Severity
@@ -1476,18 +1677,23 @@ func (e *DetectionEngine) evaluateSince(ctx context.Context, since time.Time) {
 				created++
 				alert.CreatedAt = time.Now()
 				if e.mailer.Enabled() && sev >= e.mailer.MinSeverity() {
-					go func(a store.Alert, aid int64) {
-						a.ID = aid
-						e.mailer.SendAlert(a)
-					}(alert, id)
+					alert.ID = id
+					e.mailer.QueueAlert(alert)
 				}
 			}
 		}
 
 		// IOC matching
-		if ioc := e.matchIOC(ev, ipIOCs, domainIOCs, hashIOCs); ioc != nil {
+		if ioc := e.matchIOC(ev, ipIOCs, domainIOCs, hashIOCs); ioc != nil && ioc.Confidence >= 0 && !(ioc.Confidence > 0 && ioc.Confidence < 25) {
+			// D-14: confidence weighting. IOCs under 25% confidence are
+			// ignored (noise); 25-49% are alerted one level lower.
+			if ioc.Confidence > 0 && ioc.Confidence < 50 && ioc.Severity > 2 {
+				adj := *ioc
+				adj.Severity--
+				ioc = &adj
+			}
 			hour := ev.Time.UTC().Format("2006010215")
-			dedupKey := fmt.Sprintf("ioc:%s:%s:host:%s:h:%s", ioc.Source, ioc.Value, ev.Host, hour)
+			dedupKey := fmt.Sprintf("ioc:%s:%s:host:%s:h:%s:e:%s", ioc.Source, ioc.Value, ev.Host, hour, alertEntityKey(ev)) // D-06: entity fingerprint folded in
 			source := strings.ToUpper(ioc.Source)
 			desc := fmt.Sprintf(
 				"[%s] Matched known malicious %s: %s\n\nMalware: %s | Threat: %s | Confidence: %d%%\nHost: %s | OS: %s | Process: %s",
@@ -1508,10 +1714,8 @@ func (e *DetectionEngine) evaluateSince(ctx context.Context, since time.Time) {
 				created++
 				alert.CreatedAt = time.Now()
 				if e.mailer.Enabled() && ioc.Severity >= e.mailer.MinSeverity() {
-					go func(a store.Alert, aid int64) {
-						a.ID = aid
-						e.mailer.SendAlert(a)
-					}(alert, id)
+					alert.ID = id
+					e.mailer.QueueAlert(alert)
 				}
 			}
 		}
@@ -1525,11 +1729,13 @@ func (e *DetectionEngine) evaluateSince(ctx context.Context, since time.Time) {
 			}
 
 			hour := ev.Time.UTC().Format("2006010215")
-			dedupKey := fmt.Sprintf("sig:sigma:%s:host:%s:h:%s", rule.ID, ev.Host, hour)
+			dedupKey := fmt.Sprintf("sig:sigma:%s:host:%s:h:%s:e:%s", rule.ID, ev.Host, hour, alertEntityKey(ev)) // D-06: entity fingerprint folded in
 			mitre := rule.MITRE
-			if mitre == "" { mitre = "Sigma" }
+			if mitre == "" {
+				mitre = "Sigma"
+			}
 			alert := store.Alert{
-				Title:       fmt.Sprintf("[Sigma] %s", rule.Title),
+				Title: fmt.Sprintf("[Sigma] %s", rule.Title),
 				Description: fmt.Sprintf("%s\n\nRule: %s | Level: %s | Category: %s\nMITRE: %s\nHost: %s | OS: %s | Process: %s | Command: %s",
 					rule.Description, rule.Title, rule.Level, rule.Category,
 					mitre, ev.Host, ev.OS, strOrDash(ev.ProcessName), strOrDash(ev.CommandLine)),
@@ -1544,10 +1750,8 @@ func (e *DetectionEngine) evaluateSince(ctx context.Context, since time.Time) {
 				created++
 				alert.CreatedAt = time.Now()
 				if e.mailer.Enabled() && rule.Severity >= e.mailer.MinSeverity() {
-					go func(a store.Alert, aid int64) {
-						a.ID = aid
-						e.mailer.SendAlert(a)
-					}(alert, id)
+					alert.ID = id
+					e.mailer.QueueAlert(alert)
 				}
 			}
 		}
@@ -1557,7 +1761,7 @@ func (e *DetectionEngine) evaluateSince(ctx context.Context, since time.Time) {
 	}
 }
 
-// sigmaRelevantRules returns Sigma rules relevant to a given event — 
+// sigmaRelevantRules returns Sigma rules relevant to a given event —
 // pre-filters by OS/category to avoid evaluating all 1200+ rules per event.
 func sigmaRelevantRules(byCategory map[string][]store.SigmaRule, ev store.Event) []store.SigmaRule {
 	evOS := strings.ToLower(ev.OS)
@@ -1566,12 +1770,20 @@ func sigmaRelevantRules(byCategory map[string][]store.SigmaRule, ev store.Event)
 	add := func(cats ...string) {
 		for _, cat := range cats {
 			for _, r := range byCategory[cat] {
-				if seen[r.ID] { continue }
+				if seen[r.ID] {
+					continue
+				}
 				// Skip rules that target a different OS
 				ls := strings.ToLower(r.LogSource)
-				if strings.Contains(ls, "product: windows") && evOS != "windows" { continue }
-				if strings.Contains(ls, "product: linux") && evOS != "linux" { continue }
-				if strings.Contains(ls, "product: macos") && evOS != "macos" && evOS != "darwin" { continue }
+				if strings.Contains(ls, "product: windows") && evOS != "windows" {
+					continue
+				}
+				if strings.Contains(ls, "product: linux") && evOS != "linux" {
+					continue
+				}
+				if strings.Contains(ls, "product: macos") && evOS != "macos" && evOS != "darwin" {
+					continue
+				}
 				seen[r.ID] = true
 				rules = append(rules, r)
 			}
@@ -1638,36 +1850,122 @@ func buildEventText(ev store.Event) string {
 		strOrDash(ev.UserName), strOrDash(ev.FilePath), strOrDash(ev.FileHash),
 		strOrDash(ev.DstIP), strOrDash(ev.SrcIP), strOrDash(ev.RegKey),
 	}
-	if ev.Raw != nil { fields = append(fields, strings.ToLower(string(ev.Raw))) }
+	if ev.Raw != nil {
+		fields = append(fields, strings.ToLower(string(ev.Raw)))
+	}
 	return strings.ToLower(strings.Join(fields, " "))
 }
 
-// matchSigmaRule evaluates a Sigma rule detection block against an event.
-// Handles the standard Sigma YAML structure:
-//   detection:           <- outer container (indent 0)
-//       selection:       <- selection name (indent 4)
-//           Image: ...   <- field (indent 8)
-//       condition: sel
-func matchSigmaRule(rule store.SigmaRule, ev store.Event) bool {
-	if rule.Detection == "" { return false }
-	fields := []string{
-		ev.EventType, ev.OS, ev.Host, ev.Source,
-		strOrDash(ev.ProcessName), strOrDash(ev.CommandLine), strOrDash(ev.ImagePath),
-		strOrDash(ev.UserName), strOrDash(ev.FilePath), strOrDash(ev.FileHash),
-		strOrDash(ev.DstIP), strOrDash(ev.SrcIP), strOrDash(ev.RegKey),
-	}
-	if ev.Raw != nil { fields = append(fields, strings.ToLower(string(ev.Raw))) }
-	eventText := strings.ToLower(strings.Join(fields, " "))
+// sigmaEntry and compiledSigmaRule (D-05): matchSigmaRule used to re-parse
+// a rule's YAML detection block from scratch for every single event it was
+// checked against — with N events and M rules that's an O(N*M) re-parse of
+// the same M rule bodies, which dominates detection latency once there are
+// more than a handful of Sigma rules. Parsing is now split from
+// evaluation: compileSigmaDetection runs once per rule body and the result
+// is cached in sigmaCompileCache, keyed by rule ID + UpdatedAt so an edited
+// rule is recompiled but an unchanged one never is. Only eval() runs on
+// the hot per-event path now.
+type sigmaEntry struct {
+	field    string
+	patterns []string
+}
 
-	type entry struct{ field string; patterns []string }
-	selections := make(map[string][]entry)
+type compiledSigmaRule struct {
+	selections map[string][]sigmaEntry
+	condition  string
+	// supported (D-04 interim fix) is false when condition uses syntax this
+	// home-made parser cannot evaluate correctly (boolean combinators like
+	// "and"/"or"/"not", parenthesised groups, multi-selection conditions,
+	// etc). Previously an unsupported condition either silently matched
+	// every event ("all of them" fell through to a vacuous `return true`
+	// because no selection name actually starts with the literal string
+	// "them") or silently matched nothing — both are worse than simply not
+	// firing. eval() now refuses to evaluate unsupported rules at all.
+	supported bool
+}
+
+// sigmaSupportedCondition reports whether cond (already lowercased and
+// trimmed) is one of the forms eval() implements correctly: a bare
+// selection name, "N of <selection>", "N of <prefix>*", or either of those
+// with "them" in place of a selection (meaning "every/any selection in the
+// rule", not a literal selection named "them").
+func sigmaSupportedCondition(cond string, selections map[string][]sigmaEntry) bool {
+	if cond == "" {
+		return true // defaults to AND of all selections — eval() handles this directly
+	}
+	// Reject anything using boolean combinators or grouping this parser
+	// does not implement — matching on these used to silently produce a
+	// wrong answer instead of visibly doing nothing.
+	for _, tok := range []string{" and ", " or ", " not ", "(", ")"} {
+		if strings.Contains(" "+cond+" ", tok) {
+			return false
+		}
+	}
+	for name := range selections {
+		if strings.ToLower(name) == cond {
+			return true // bare selection name
+		}
+	}
+	rest := cond
+	hasPrefix := false
+	if strings.HasPrefix(rest, "1 of ") {
+		rest = strings.TrimPrefix(rest, "1 of ")
+		hasPrefix = true
+	} else if strings.HasPrefix(rest, "all of ") {
+		rest = strings.TrimPrefix(rest, "all of ")
+		hasPrefix = true
+	}
+	if !hasPrefix {
+		return false
+	}
+	rest = strings.TrimSuffix(rest, "*")
+	if rest == "them" {
+		return true
+	}
+	// "N of <prefix>*" or "N of <name>" — supported as long as what's left
+	// is a single identifier, not a further expression.
+	return rest != "" && !strings.ContainsAny(rest, " \t")
+}
+
+var sigmaCompileCache sync.Map // key: rule.ID+"@"+rule.UpdatedAt -> *compiledSigmaRule
+
+func getCompiledSigmaRule(rule store.SigmaRule) *compiledSigmaRule {
+	key := rule.ID + "@" + rule.UpdatedAt.String()
+	if v, ok := sigmaCompileCache.Load(key); ok {
+		return v.(*compiledSigmaRule)
+	}
+	c := compileSigmaDetection(rule.Detection)
+	sigmaCompileCache.Store(key, c)
+	return c
+}
+
+// matchSigmaRule evaluates a Sigma rule detection block against an event,
+// using the cached compiled form (see getCompiledSigmaRule).
+func matchSigmaRule(rule store.SigmaRule, ev store.Event) bool {
+	if rule.Detection == "" {
+		return false
+	}
+	return getCompiledSigmaRule(rule).eval(ev)
+}
+
+// compileSigmaDetection parses a Sigma rule's YAML detection block once.
+// Handles the standard Sigma YAML structure:
+//
+//	detection:           <- outer container (indent 0)
+//	    selection:       <- selection name (indent 4)
+//	        Image: ...   <- field (indent 8)
+//	    condition: sel
+func compileSigmaDetection(detection string) *compiledSigmaRule {
+	selections := make(map[string][]sigmaEntry)
 	var condition, currentSel, currentField string
 	detectionIndent := -1
 	selectionIndent := -1
 
-	for _, line := range strings.Split(rule.Detection, "\n") {
+	for _, line := range strings.Split(detection, "\n") {
 		trimmed := strings.TrimSpace(line)
-		if trimmed == "" || strings.HasPrefix(trimmed, "#") { continue }
+		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
+			continue
+		}
 		indent := len(line) - len(strings.TrimLeft(line, " \t"))
 
 		// Find "detection:" container
@@ -1677,15 +1975,21 @@ func matchSigmaRule(rule store.SigmaRule, ev store.Event) bool {
 		}
 
 		// Other top-level keys (logsource, title, etc.) — skip
-		if indent == 0 { continue }
+		if indent == 0 {
+			continue
+		}
 
 		// At detection+N indent: selection names or condition
 		if detectionIndent >= 0 && selectionIndent < 0 {
 			// First indented key under detection — this is the selection indent level
 			if strings.Contains(trimmed, ":") {
 				k, v, _ := strings.Cut(trimmed, ":")
-				k = strings.TrimSpace(k); v = strings.TrimSpace(v)
-				if k == "condition" { condition = v; continue }
+				k = strings.TrimSpace(k)
+				v = strings.TrimSpace(v)
+				if k == "condition" {
+					condition = v
+					continue
+				}
 				if v == "" && !strings.Contains(k, "|") {
 					// New named selection
 					selectionIndent = indent
@@ -1701,8 +2005,12 @@ func matchSigmaRule(rule store.SigmaRule, ev store.Event) bool {
 		if indent == selectionIndent {
 			if strings.Contains(trimmed, ":") {
 				k, v, _ := strings.Cut(trimmed, ":")
-				k = strings.TrimSpace(k); v = strings.TrimSpace(v)
-				if k == "condition" { condition = v; continue }
+				k = strings.TrimSpace(k)
+				v = strings.TrimSpace(v)
+				if k == "condition" {
+					condition = v
+					continue
+				}
 				if v == "" && !strings.Contains(k, "|") {
 					currentSel = k
 					currentField = ""
@@ -1713,82 +2021,187 @@ func matchSigmaRule(rule store.SigmaRule, ev store.Event) bool {
 		}
 
 		// Deeper indent: field definitions and values
-		if currentSel == "" { continue }
+		if currentSel == "" {
+			continue
+		}
 
 		if strings.HasPrefix(trimmed, "- ") {
 			val := strings.ToLower(strings.Trim(strings.TrimPrefix(trimmed, "- "), `'"`))
-			if val == "" || val == "null" { continue }
-			if currentField == "" { currentField = "*" }
+			if val == "" || val == "null" {
+				continue
+			}
+			if currentField == "" {
+				currentField = "*"
+			}
 			sels := selections[currentSel]
 			added := false
-			for i := len(sels)-1; i >= 0; i-- {
-				if sels[i].field == currentField { sels[i].patterns = append(sels[i].patterns, val); selections[currentSel] = sels; added = true; break }
+			for i := len(sels) - 1; i >= 0; i-- {
+				if sels[i].field == currentField {
+					sels[i].patterns = append(sels[i].patterns, val)
+					selections[currentSel] = sels
+					added = true
+					break
+				}
 			}
-			if !added { selections[currentSel] = append(selections[currentSel], entry{currentField, []string{val}}) }
+			if !added {
+				selections[currentSel] = append(selections[currentSel], sigmaEntry{currentField, []string{val}})
+			}
 		} else if strings.Contains(trimmed, ":") {
 			k, v, _ := strings.Cut(trimmed, ":")
-			k = strings.TrimSpace(k); v = strings.TrimSpace(v)
-			if k == "condition" { condition = v; continue }
+			k = strings.TrimSpace(k)
+			v = strings.TrimSpace(v)
+			if k == "condition" {
+				condition = v
+				continue
+			}
 			if v == "" && !strings.Contains(k, "|") {
 				// Sub-selection or nested key — treat as new field group
 				currentField = k
 				continue
 			}
 			currentField = k
-			if idx := strings.Index(currentField, "|"); idx >= 0 { currentField = currentField[:idx] }
-			if v != "" && v != "null" { selections[currentSel] = append(selections[currentSel], entry{currentField, []string{strings.ToLower(strings.Trim(v, `'"`))}})}
+			if idx := strings.Index(currentField, "|"); idx >= 0 {
+				currentField = currentField[:idx]
+			}
+			if v != "" && v != "null" {
+				selections[currentSel] = append(selections[currentSel], sigmaEntry{currentField, []string{strings.ToLower(strings.Trim(v, `'"`))}})
+			}
 		}
 	}
 
-	if len(selections) == 0 { return false }
+	cond := strings.TrimSpace(strings.ToLower(condition))
+	return &compiledSigmaRule{
+		selections: selections,
+		condition:  condition,
+		supported:  sigmaSupportedCondition(cond, selections),
+	}
+}
+
+// eval runs a compiled rule against one event — this is the hot per-event
+// path, with no YAML/string parsing in it.
+func (c *compiledSigmaRule) eval(ev store.Event) bool {
+	if len(c.selections) == 0 {
+		return false
+	}
+	// D-04 interim fix: a condition this parser can't actually evaluate
+	// (boolean combinators, grouping, etc.) must never fire — it used to
+	// either vacuously match every event or vacuously match none, silently.
+	if !c.supported {
+		return false
+	}
+
+	fields := []string{
+		ev.EventType, ev.OS, ev.Host, ev.Source,
+		strOrDash(ev.ProcessName), strOrDash(ev.CommandLine), strOrDash(ev.ImagePath),
+		strOrDash(ev.UserName), strOrDash(ev.FilePath), strOrDash(ev.FileHash),
+		strOrDash(ev.DstIP), strOrDash(ev.SrcIP), strOrDash(ev.RegKey),
+	}
+	if ev.Raw != nil {
+		fields = append(fields, strings.ToLower(string(ev.Raw)))
+	}
+	eventText := strings.ToLower(strings.Join(fields, " "))
+
 	selResults := make(map[string]bool)
-	for name, entries := range selections {
+	for name, entries := range c.selections {
 		allMatch := len(entries) > 0
 		for _, e := range entries {
 			ft := eventText
 			switch strings.ToLower(e.field) {
-			case "commandline", "command_line": ft = strings.ToLower(strOrDash(ev.CommandLine))
-			case "image", "imagepath": ft = strings.ToLower(strOrDash(ev.ImagePath))
-			case "processname", "process_name": ft = strings.ToLower(strOrDash(ev.ProcessName))
-			case "parentimage", "parentprocessname": ft = strings.ToLower(strOrDash(ev.ProcessName))
-			case "username", "user": ft = strings.ToLower(strOrDash(ev.UserName))
-			case "targetfilename", "filepath": ft = strings.ToLower(strOrDash(ev.FilePath))
-			case "queryname", "destinationhostname": ft = strings.ToLower(strOrDash(ev.DstIP))
-			case "regkey", "targetobject": ft = strings.ToLower(strOrDash(ev.RegKey))
+			case "commandline", "command_line":
+				ft = strings.ToLower(strOrDash(ev.CommandLine))
+			case "image", "imagepath":
+				ft = strings.ToLower(strOrDash(ev.ImagePath))
+			case "processname", "process_name":
+				ft = strings.ToLower(strOrDash(ev.ProcessName))
+			case "parentimage", "parentprocessname":
+				ft = strings.ToLower(strOrDash(ev.ProcessName))
+			case "username", "user":
+				ft = strings.ToLower(strOrDash(ev.UserName))
+			case "targetfilename", "filepath":
+				ft = strings.ToLower(strOrDash(ev.FilePath))
+			case "queryname", "destinationhostname":
+				ft = strings.ToLower(strOrDash(ev.DstIP))
+			case "regkey", "targetobject":
+				ft = strings.ToLower(strOrDash(ev.RegKey))
 			case "eventid":
-				if ev.EventID != nil { ft = fmt.Sprintf("%d", *ev.EventID) } else { ft = "" }
+				if ev.EventID != nil {
+					ft = fmt.Sprintf("%d", *ev.EventID)
+				} else {
+					ft = ""
+				}
 			}
 			matched := false
 			for _, pat := range e.patterns {
 				if strings.HasPrefix(pat, "*") && strings.HasSuffix(pat, "*") {
-					if strings.Contains(ft, strings.Trim(pat, "*")) { matched = true; break }
+					if strings.Contains(ft, strings.Trim(pat, "*")) {
+						matched = true
+						break
+					}
 				} else if strings.HasPrefix(pat, "*") {
-					if strings.HasSuffix(ft, strings.TrimPrefix(pat, "*")) { matched = true; break }
+					if strings.HasSuffix(ft, strings.TrimPrefix(pat, "*")) {
+						matched = true
+						break
+					}
 				} else if strings.HasSuffix(pat, "*") {
-					if strings.HasPrefix(ft, strings.TrimSuffix(pat, "*")) { matched = true; break }
-				} else if strings.Contains(ft, pat) { matched = true; break }
+					if strings.HasPrefix(ft, strings.TrimSuffix(pat, "*")) {
+						matched = true
+						break
+					}
+				} else if strings.Contains(ft, pat) {
+					matched = true
+					break
+				}
 			}
-			if !matched { allMatch = false; break }
+			if !matched {
+				allMatch = false
+				break
+			}
 		}
 		selResults[name] = allMatch
 	}
-	if condition == "" {
-		for _, v := range selResults { if !v { return false } }
+	if c.condition == "" {
+		for _, v := range selResults {
+			if !v {
+				return false
+			}
+		}
 		return true
 	}
-	cond := strings.TrimSpace(strings.ToLower(condition))
+	cond := strings.TrimSpace(strings.ToLower(c.condition))
 	if strings.HasPrefix(cond, "1 of ") {
 		prefix := strings.TrimSuffix(strings.TrimPrefix(cond, "1 of "), "*")
-		for n, v := range selResults { if strings.HasPrefix(strings.ToLower(n), prefix) && v { return true } }
+		// "them" means every selection in the rule, not a literal prefix —
+		// matching it as a string prefix meant no selection ever matched,
+		// so "1 of them" vacuously evaluated to false for every event.
+		all := prefix == "them"
+		for n, v := range selResults {
+			if (all || strings.HasPrefix(strings.ToLower(n), prefix)) && v {
+				return true
+			}
+		}
 		return false
 	}
 	if strings.HasPrefix(cond, "all of ") {
 		prefix := strings.TrimSuffix(strings.TrimPrefix(cond, "all of "), "*")
-		for n, v := range selResults { if strings.HasPrefix(strings.ToLower(n), prefix) && !v { return false } }
+		// Same "them" fix as above — matching it as a literal prefix meant
+		// no selection ever matched the prefix, so the "return false" path
+		// was never reached and this vacuously evaluated to true for every
+		// event regardless of the rule's actual selections.
+		all := prefix == "them"
+		for n, v := range selResults {
+			if (all || strings.HasPrefix(strings.ToLower(n), prefix)) && !v {
+				return false
+			}
+		}
 		return true
 	}
 	// Simple condition: just a selection name
-	return selResults[cond]
+	for n, v := range selResults {
+		if strings.ToLower(n) == cond {
+			return v
+		}
+	}
+	return false
 }
 
 func (e *DetectionEngine) matchIOC(ev store.Event,
@@ -1824,6 +2237,31 @@ func (e *DetectionEngine) matchIOC(ev store.Event,
 		}
 	}
 
+	// G-08: outbound VPC-flow destinations and GCP DNS query names.
+	if (ev.EventType == "cloud.gcp_vpc_flow" || ev.EventType == "cloud.gcp_dns") && len(ev.Raw) > 0 {
+		var f struct {
+			DstIP     string `json:"dst_ip"`
+			QueryName string `json:"query_name"`
+		}
+		if json.Unmarshal(ev.Raw, &f) == nil {
+			if f.DstIP != "" {
+				if ioc, ok := ipIOCs[strings.ToLower(f.DstIP)]; ok {
+					return &ioc
+				}
+			}
+			if q := strings.ToLower(strings.TrimSuffix(f.QueryName, ".")); q != "" {
+				if ioc, ok := domainIOCs[q]; ok {
+					return &ioc
+				}
+				if parts := strings.SplitN(q, ".", 2); len(parts) == 2 {
+					if ioc, ok := domainIOCs[parts[1]]; ok {
+						return &ioc
+					}
+				}
+			}
+		}
+	}
+
 	// Hash match — file events
 	if ev.EventType == "file" && ev.FileHash != nil {
 		for _, part := range strings.Split(*ev.FileHash, ",") {
@@ -1831,7 +2269,9 @@ func (e *DetectionEngine) matchIOC(ev store.Event,
 			if idx := strings.Index(hash, "="); idx >= 0 {
 				hash = hash[idx+1:]
 			}
-			if hash == "" { continue }
+			if hash == "" {
+				continue
+			}
 			if ioc, ok := hashIOCs[hash]; ok {
 				return &ioc
 			}
@@ -1841,11 +2281,57 @@ func (e *DetectionEngine) matchIOC(ev store.Event,
 }
 
 func strOrDash(s *string) string {
-	if s == nil || *s == "" { return "—" }
+	if s == nil || *s == "" {
+		return "—"
+	}
 	return *s
 }
 
 func titleCase(s string) string {
-	if s == "" { return "" }
+	if s == "" {
+		return ""
+	}
 	return strings.ToUpper(s[:1]) + s[1:]
+}
+
+// ownAgentBinaries are the exact process names our agents run as.
+var ownAgentBinaries = map[string]bool{
+	"obsidianwatch-agent":         true,
+	"obsidianwatch-agent.exe":     true,
+	"obsidianwatch-network-probe": true,
+}
+
+// ownAgentDirs are the install locations (lower-case, normalised to "/").
+var ownAgentDirs = []string{
+	"/usr/local/bin/",
+	"/library/obsidianwatch/",
+	"/opt/obsidianwatch/",
+	"c:/program files/obsidianwatch/",
+}
+
+// isOwnAgentProcess reports whether a process event is one of our own agents
+// (D-03). It used to skip any process whose name merely *contained*
+// "obsidianwatch" / "ow-agent", so malware could evade every rule by naming
+// itself that. Now the name must match exactly and, when the event carries
+// an image path, that path must be inside an install directory — a binary
+// called obsidianwatch-agent running from /tmp is NOT exempt. (Events with
+// no image path fall back to the exact-name check; hash/signature
+// verification is the stronger follow-up.)
+func isOwnAgentProcess(ev store.Event) bool {
+	if ev.ProcessName == nil {
+		return false
+	}
+	if !ownAgentBinaries[strings.ToLower(strings.TrimSpace(*ev.ProcessName))] {
+		return false
+	}
+	if ev.ImagePath == nil || strings.TrimSpace(*ev.ImagePath) == "" {
+		return true
+	}
+	p := strings.ToLower(strings.ReplaceAll(*ev.ImagePath, "\\", "/"))
+	for _, d := range ownAgentDirs {
+		if strings.HasPrefix(p, d) {
+			return true
+		}
+	}
+	return false
 }

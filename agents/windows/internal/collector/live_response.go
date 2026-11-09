@@ -30,23 +30,25 @@ import (
 const lrReconnectInterval = 15 * time.Second
 
 type LiveResponseCollector struct {
-	agentID       string
-	hostname      string
-	managementURL string
-	apiKey        string
-	caFile        string
-	caPEM         string
-	logger        *slog.Logger
+	agentID          string
+	hostname         string
+	managementURL    string
+	apiKey           string
+	caFile           string
+	caPEM            string
+	allowInsecureTLS bool
+	logger           *slog.Logger
 }
 
-func NewLiveResponseCollector(agentID, hostname, managementURL, apiKey, caFile, managementCAFile string, logger *slog.Logger) *LiveResponseCollector {
+func NewLiveResponseCollector(agentID, hostname, managementURL, apiKey, caFile, managementCAFile string, allowInsecureTLS bool, logger *slog.Logger) *LiveResponseCollector {
 	return &LiveResponseCollector{
-		agentID:       agentID,
-		hostname:      hostname,
-		managementURL: managementURL,
-		apiKey:        apiKey,
-		caFile:        resolveCAFile(managementCAFile, caFile),
-		logger:        logger,
+		agentID:          agentID,
+		hostname:         hostname,
+		managementURL:    managementURL,
+		apiKey:           apiKey,
+		caFile:           resolveCAFile(managementCAFile, caFile),
+		allowInsecureTLS: allowInsecureTLS,
+		logger:           logger,
 	}
 }
 
@@ -69,11 +71,14 @@ func (c *LiveResponseCollector) Run(ctx context.Context) error {
 
 func (c *LiveResponseCollector) runTunnel(ctx context.Context) error {
 	mgmt := strings.TrimRight(c.managementURL, "/")
-	wsURL := strings.Replace(mgmt, "https://", "wss://", 1)
-	wsURL = strings.Replace(wsURL, "http://", "ws://", 1)
+	// C-1: the tunnel carries the API key and a remote shell; never cleartext.
+	if !strings.HasPrefix(strings.ToLower(mgmt), "https://") {
+		return fmt.Errorf("live-response: refusing non-https management URL %q (tunnel requires wss)", mgmt)
+	}
+	wsURL := "wss://" + mgmt[len("https://"):]
 	wsURL += fmt.Sprintf("/api/v1/live-response/agent-tunnel?agent_id=%s", c.agentID)
 
-	dialer := wsDialerForCAPEM(c.caPEM, c.caFile)
+	dialer := wsDialerForCAPEM(c.caPEM, c.caFile, c.allowInsecureTLS)
 	headers := http.Header{}
 	headers.Set("X-API-Key", c.apiKey)
 
@@ -82,6 +87,7 @@ func (c *LiveResponseCollector) runTunnel(ctx context.Context) error {
 		return fmt.Errorf("dial: %w", err)
 	}
 	defer conn.Close()
+	conn.SetReadLimit(1 << 20) // server frames are commands/keystrokes; bound them
 
 	c.logger.Info("live-response: tunnel connected")
 
@@ -236,6 +242,9 @@ func (c *LiveResponseCollector) handleSession(ctx context.Context, token string,
 	case <-ctx.Done():
 		cmd.Process.Kill()
 	}
-	go func() { for range inCh {} }()
+	go func() {
+		for range inCh {
+		}
+	}()
 	cmd.Wait()
 }

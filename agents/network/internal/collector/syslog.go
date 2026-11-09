@@ -81,6 +81,9 @@ func (c *SyslogCollector) listenUDP(ctx context.Context) {
 	}
 }
 
+// tcpSlots caps concurrent syslog-over-TCP connections.
+var tcpSlots = make(chan struct{}, 256)
+
 func (c *SyslogCollector) listenTCP(ctx context.Context) {
 	ln, err := net.Listen("tcp", c.cfg.TCPAddr)
 	if err != nil {
@@ -98,9 +101,19 @@ func (c *SyslogCollector) listenTCP(ctx context.Context) {
 		}
 		conn, err := ln.Accept()
 		if err != nil {
+			time.Sleep(100 * time.Millisecond) // don't spin on a persistent accept error
 			continue
 		}
-		go c.handleTCPConn(ctx, conn)
+		// Bound concurrent senders: each holds a goroutine and a read buffer.
+		select {
+		case tcpSlots <- struct{}{}:
+			go func() {
+				defer func() { <-tcpSlots }()
+				c.handleTCPConn(ctx, conn)
+			}()
+		default:
+			conn.Close()
+		}
 	}
 }
 
@@ -108,22 +121,22 @@ func (c *SyslogCollector) handleTCPConn(ctx context.Context, conn net.Conn) {
 	defer conn.Close()
 	srcIP, _, _ := net.SplitHostPort(conn.RemoteAddr().String())
 	ip := net.ParseIP(srcIP)
-	buf := make([]byte, 65536)
-	for {
-		conn.SetReadDeadline(time.Now().Add(30 * time.Second))
-		n, err := conn.Read(buf)
-		if err != nil {
-			return
-		}
-		for _, line := range strings.Split(string(buf[:n]), "\n") {
-			line = strings.TrimSpace(line)
-			if line == "" {
-				continue
-			}
-			msg := parser.ParseSyslog(line, ip)
-			c.process(ctx, msg)
-		}
-	}
+	// Refresh the idle deadline on every Read so a silent peer is dropped
+	// after 30s but a steady sender is not cut off.
+	r := deadlineReader{conn: conn, idle: 30 * time.Second}
+	_ = parser.ScanSyslogLines(r, func(line string) {
+		c.process(ctx, parser.ParseSyslog(line, ip))
+	})
+}
+
+type deadlineReader struct {
+	conn net.Conn
+	idle time.Duration
+}
+
+func (d deadlineReader) Read(p []byte) (int, error) {
+	d.conn.SetReadDeadline(time.Now().Add(d.idle))
+	return d.conn.Read(p)
 }
 
 func (c *SyslogCollector) process(ctx context.Context, msg parser.SyslogMessage) {

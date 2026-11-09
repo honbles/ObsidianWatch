@@ -1,6 +1,8 @@
 package config
 
 import (
+	"crypto/tls"
+	"crypto/x509"
 	"fmt"
 	"os"
 	"strings"
@@ -10,11 +12,12 @@ import (
 )
 
 type Config struct {
-	Agent     AgentConfig     `yaml:"agent"`
-	Collector CollectorConfig `yaml:"collector"`
-	Forwarder ForwarderConfig `yaml:"forwarder"`
-	Queue     QueueConfig     `yaml:"queue"`
-	Log       LogConfig       `yaml:"log"`
+	LiveResponse LiveResponseConfig `yaml:"live_response"` // H-2: opt-in remote shell
+	Agent        AgentConfig        `yaml:"agent"`
+	Collector    CollectorConfig    `yaml:"collector"`
+	Forwarder    ForwarderConfig    `yaml:"forwarder"`
+	Queue        QueueConfig        `yaml:"queue"`
+	Log          LogConfig          `yaml:"log"`
 }
 
 type AgentConfig struct {
@@ -23,16 +26,20 @@ type AgentConfig struct {
 }
 
 type CollectorConfig struct {
-	EventLog EventLogConfig `yaml:"event_log"`
-	Sysmon   SysmonConfig   `yaml:"sysmon"`
-	Network  NetworkConfig  `yaml:"network"`
-	Process  ProcessConfig  `yaml:"process"`
-	Registry RegistryConfig `yaml:"registry"`
-	DNS      DNSConfig      `yaml:"dns"`
-	FIM      FIMConfig      `yaml:"fim"`
-	Health   HealthConfig   `yaml:"health"`
-	AppLogs  []AppLogConfig `yaml:"app_logs"`
+	EventLog  EventLogConfig  `yaml:"event_log"`
+	Sysmon    SysmonConfig    `yaml:"sysmon"`
+	Network   NetworkConfig   `yaml:"network"`
+	Process   ProcessConfig   `yaml:"process"`
+	Registry  RegistryConfig  `yaml:"registry"`
+	DNS       DNSConfig       `yaml:"dns"`
+	FIM       FIMConfig       `yaml:"fim"`
+	Health    HealthConfig    `yaml:"health"`
+	AppLogs   []AppLogConfig  `yaml:"app_logs"`
 	RateLimit RateLimitConfig `yaml:"rate_limit"`
+	// LocationPrecisePositioning (F-16): gates GPS/WiFi positioning (via the
+	// Windows Location API), which is far more precise/invasive than IP
+	// geolocation. Defaults to false — IP-only — unless explicitly enabled.
+	LocationPrecisePositioning bool `yaml:"location_precise_positioning"`
 }
 
 type EventLogConfig struct {
@@ -64,8 +71,8 @@ type DNSConfig struct {
 }
 
 type FIMConfig struct {
-	Enabled bool            `yaml:"enabled"`
-	Dirs    []FIMDirConfig  `yaml:"dirs"`
+	Enabled bool           `yaml:"enabled"`
+	Dirs    []FIMDirConfig `yaml:"dirs"`
 }
 
 type FIMDirConfig struct {
@@ -83,7 +90,7 @@ type HealthConfig struct {
 type AppLogConfig struct {
 	Name      string `yaml:"name"`
 	Path      string `yaml:"path"`
-	Format    string `yaml:"format"`    // json | text | combined
+	Format    string `yaml:"format"` // json | text | combined
 	EventType string `yaml:"event_type"`
 	Severity  int    `yaml:"severity"`
 }
@@ -96,18 +103,23 @@ type RateLimitConfig struct {
 }
 
 type ForwarderConfig struct {
-	InstallKey    string `yaml:"install_key"`     // tamper protection key
-	ManagementURL string `yaml:"management_url"`  // ObsidianWatch management platform URL e.g. http://192.168.1.140
-	BackendURL    string        `yaml:"backend_url"`
-	BatchSize     int           `yaml:"batch_size"`
-	FlushInterval time.Duration `yaml:"flush_interval"`
-	CertFile      string        `yaml:"cert_file"`
-	KeyFile       string        `yaml:"key_file"`
-	CAFile           string        `yaml:"ca_file"`           // CA cert for backend :8443
-	CACertPEM        string        `yaml:"ca_cert_pem"`        // CA cert PEM inline (used when config is embedded in binary)
-	ManagementCAFile string        `yaml:"management_ca_file"` // CA cert for management :443 (if HTTPS; falls back to ca_file if empty)
-	ManagementCACertPEM string     `yaml:"management_ca_cert_pem"` // inline PEM for management CA (embedded binary)
-	APIKey           string        `yaml:"api_key"`
+	InstallKey          string        `yaml:"install_key"`    // tamper protection key
+	ManagementURL       string        `yaml:"management_url"` // ObsidianWatch management platform URL e.g. http://192.168.1.140
+	BackendURL          string        `yaml:"backend_url"`
+	BatchSize           int           `yaml:"batch_size"`
+	FlushInterval       time.Duration `yaml:"flush_interval"`
+	CertFile            string        `yaml:"cert_file"`
+	KeyFile             string        `yaml:"key_file"`
+	CAFile              string        `yaml:"ca_file"`                // CA cert for backend :8443
+	CACertPEM           string        `yaml:"ca_cert_pem"`            // CA cert PEM inline (used when config is embedded in binary)
+	ManagementCAFile    string        `yaml:"management_ca_file"`     // CA cert for management :443 (if HTTPS; falls back to ca_file if empty)
+	ManagementCACertPEM string        `yaml:"management_ca_cert_pem"` // inline PEM for management CA (embedded binary)
+	APIKey              string        `yaml:"api_key"`
+	// AllowInsecureTLS (W-05): must be explicitly opted into. Without a CA
+	// configured, BuildTLSConfig now hard-fails rather than silently
+	// falling back to InsecureSkipVerify, which previously made the agent
+	// accept ANY cert for every backend connection whenever the CA was unset.
+	AllowInsecureTLS bool `yaml:"allow_insecure_tls"`
 }
 
 type QueueConfig struct {
@@ -143,7 +155,7 @@ func defaults() *Config {
 		Collector: CollectorConfig{
 			EventLog: EventLogConfig{
 				Enabled:      true,
-				Channels:     []string{"Security", "System", "Application"},
+				Channels:     []string{"Security", "System", "Application", "Microsoft-Windows-Windows Defender/Operational", "Microsoft-Windows-WMI-Activity/Operational", "Microsoft-Windows-DriverFrameworks-UserMode/Operational"},
 				PollInterval: 5 * time.Second,
 			},
 			Sysmon:  SysmonConfig{Enabled: true},
@@ -156,6 +168,21 @@ func defaults() *Config {
 					`HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\RunOnce`,
 					`HKLM\SYSTEM\CurrentControlSet\Services`,
 					`HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\Run`,
+					`HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options`,
+					`HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon`,
+					`HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Windows`,
+					`HKLM\SYSTEM\CurrentControlSet\Control\Session Manager`,
+					`HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer\Run`,
+					`HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\RunOnce`,
+					`HKLM\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Run`,
+					`HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Schedule\TaskCache\Tree`,
+					`HKLM\SYSTEM\CurrentControlSet\Control\Lsa`,
+					`HKLM\SYSTEM\CurrentControlSet\Control\Print\Monitors`,
+					`HKLM\SYSTEM\CurrentControlSet\Control\Terminal Server\Wds\rdpwd\StartupPrograms`,
+					`HKLM\SOFTWARE\Microsoft\Active Setup\Installed Components`,
+					`HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\User Shell Folders`,
+					`HKLM\SYSTEM\CurrentControlSet\Control\SecurityProviders`,
+					`HKLM\SOFTWARE\Microsoft\Windows Defender\Exclusions`,
 				},
 			},
 			DNS: DNSConfig{Enabled: true},
@@ -164,7 +191,21 @@ func defaults() *Config {
 				Dirs: []FIMDirConfig{
 					{Path: `C:\Windows\System32`, Recursive: false,
 						Exclude: []string{"*.log", "*.tmp", "*.etl"}},
+					{Path: `C:\Windows\System32\Tasks`, Recursive: true,
+						Exclude: []string{"*.log", "*.tmp", "*.etl"}},
+					{Path: `C:\Windows\System32\drivers`, Recursive: false,
+						Exclude: []string{"*.log", "*.tmp", "*.etl"}},
+					{Path: `C:\Windows\System32\wbem`, Recursive: false,
+						Exclude: []string{"*.log", "*.tmp", "*.etl"}},
 					{Path: `C:\Windows\SysWOW64`, Recursive: false,
+						Exclude: []string{"*.log", "*.tmp", "*.etl"}},
+					{Path: `C:\ProgramData\Microsoft\Windows\Start Menu\Programs\StartUp`, Recursive: true,
+						Exclude: []string{"*.log", "*.tmp", "*.etl"}},
+					{Path: `C:\Windows\Tasks`, Recursive: true,
+						Exclude: []string{"*.log", "*.tmp", "*.etl"}},
+					{Path: `C:\Windows\System32\GroupPolicy`, Recursive: true,
+						Exclude: []string{"*.log", "*.tmp", "*.etl"}},
+					{Path: `C:\Windows\System32\GroupPolicyUsers`, Recursive: true,
 						Exclude: []string{"*.log", "*.tmp", "*.etl"}},
 				},
 			},
@@ -237,5 +278,28 @@ func ReadInstallKey() (string, error) {
 	return strings.TrimSpace(string(data)), nil
 }
 
-func installKeyDir() string { return `C:\ProgramData\ObsidianWatch` }
+func installKeyDir() string  { return `C:\ProgramData\ObsidianWatch` }
 func InstallKeyFile() string { return installKeyFile }
+
+// BuildTLSConfig (W-05) builds a *tls.Config trusting caPEM if provided.
+// If caPEM is empty and allowInsecure is false, it HARD-FAILS instead of
+// the old behavior of silently setting InsecureSkipVerify: true.
+func BuildTLSConfig(caPEM []byte, allowInsecure bool) (*tls.Config, error) {
+	if len(caPEM) > 0 {
+		pool := x509.NewCertPool()
+		if !pool.AppendCertsFromPEM(caPEM) {
+			return nil, fmt.Errorf("tls: failed to parse CA certificate")
+		}
+		return &tls.Config{RootCAs: pool}, nil
+	}
+	if allowInsecure {
+		return &tls.Config{InsecureSkipVerify: true}, nil
+	}
+	return nil, fmt.Errorf("tls: no CA certificate configured and allow_insecure_tls is false — refusing to connect without verifying the server certificate")
+}
+
+// LiveResponseConfig gates the analyst remote-shell tunnel. Off unless the
+// agent was built (or configured) with live_response.enabled: true.
+type LiveResponseConfig struct {
+	Enabled bool `yaml:"enabled"`
+}

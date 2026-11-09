@@ -13,6 +13,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"log/slog"
@@ -205,8 +206,19 @@ func runProbe() {
 	// ── Graceful shutdown ──────────────────────────────────────────────────
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
-	<-sig
+	got := <-sig
 	logger.Info("shutting down...")
+	finalRaw, _ := json.Marshal(map[string]interface{}{
+		"reason": "signal", "signal": got.String(), "probe_id": probeID,
+	})
+	fwd.SendFinal(schema.ProbeEvent{
+		ID:        fmt.Sprintf("tamper:%s:%d", probeID, time.Now().UnixNano()),
+		OS:        "network-probe",
+		EventType: "probe.tamper",
+		Severity:  schema.SevHigh,
+		Source:    "probe",
+		Raw:       finalRaw,
+	})
 	cancel()
 	time.Sleep(3 * time.Second)
 }
@@ -386,6 +398,12 @@ AmbientCapabilities=CAP_NET_BIND_SERVICE CAP_NET_RAW
 # Protect rest of system
 ProtectSystem=strict
 ReadWritePaths=/var/lib/obsidianwatch-probe /etc/obsidianwatch-probe
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+RestrictSUIDSGID=true
+LockPersonality=true
+MemoryMax=512M
 
 [Install]
 WantedBy=multi-user.target
@@ -463,13 +481,15 @@ func loadOrCreateID(path string) string {
 		return strings.TrimSpace(string(data))
 	}
 	id := fmt.Sprintf("netprobe-%d", time.Now().UnixNano())
-	os.MkdirAll(filepath.Dir(path), 0755)
+	os.MkdirAll(filepath.Dir(path), 0700)
 	os.WriteFile(path, []byte(id), 0600)
 	return id
 }
 
 func mustMkdir(path string) {
-	if err := os.MkdirAll(path, 0755); err != nil {
+	// Holds the flow database and probe config (SNMP communities, API key):
+	// root-only.
+	if err := os.MkdirAll(path, 0700); err != nil {
 		fatalf("cannot create directory %s: %v\n", path, err)
 	}
 }

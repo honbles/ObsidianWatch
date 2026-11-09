@@ -38,6 +38,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"os"
 	"strings"
 	"time"
 
@@ -64,7 +65,7 @@ func CategorizeDomain(ctx context.Context, domain string, db *store.DB) (*Domain
 	if net.ParseIP(domain) != nil {
 		return nil, nil
 	}
-	if strings.HasSuffix(domain, ".local") || strings.HasSuffix(domain, ".internal") {
+	if isInternalDomain(domain) {
 		return nil, nil
 	}
 
@@ -203,7 +204,7 @@ func checkSURBL(ctx context.Context, domain string) ([]string, int) {
 		PreferGo: true,
 		Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
 			d := net.Dialer{Timeout: 3 * time.Second}
-			return d.DialContext(ctx, "udp", "8.8.8.8:53") // use public resolver for blocklist queries
+			return d.DialContext(ctx, "udp", dnsblResolverAddr())
 		},
 	}
 
@@ -217,7 +218,10 @@ func checkSURBL(ctx context.Context, domain string) ([]string, int) {
 	maxSev := 0
 	for _, ip := range ips {
 		parts := strings.Split(ip, ".")
-		if len(parts) != 4 || parts[0] != "127" {
+		// F-19: only 127.0.0.x are category codes. Anything else under 127/8
+		// (notably 127.255.255.x) is an error/refusal answer (e.g. query via
+		// a public resolver) and must not be read as a bit field.
+		if len(parts) != 4 || parts[0] != "127" || parts[1] != "0" || parts[2] != "0" {
 			continue
 		}
 		// Parse last octet as bit flags
@@ -245,7 +249,7 @@ func checkSpamhausDBL(ctx context.Context, domain string) ([]string, int) {
 		PreferGo: true,
 		Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
 			d := net.Dialer{Timeout: 3 * time.Second}
-			return d.DialContext(ctx, "udp", "8.8.8.8:53")
+			return d.DialContext(ctx, "udp", dnsblResolverAddr())
 		},
 	}
 
@@ -257,6 +261,9 @@ func checkSpamhausDBL(ctx context.Context, domain string) ([]string, int) {
 	var cats []string
 	maxSev := 0
 	for _, ip := range ips {
+		if strings.HasPrefix(ip, "127.255.255.") {
+			continue // Spamhaus error/refusal codes, not a listing
+		}
 		switch ip {
 		case "127.0.1.2": cats = append(cats, "spam"); if 2 > maxSev { maxSev = 2 }
 		case "127.0.1.4": cats = append(cats, "phishing"); if 4 > maxSev { maxSev = 4 }
@@ -384,4 +391,35 @@ func (w *DomainCategorizationWorker) categorizeRecentDomains(ctx context.Context
 		// Rate limit — be a good citizen with free DNS services
 		time.Sleep(200 * time.Millisecond)
 	}
+}
+
+// internalSuffixes are never sent to third-party blocklists (F-19): they
+// would leak internal hostnames and can never be listed anyway.
+var internalSuffixes = []string{
+	".local", ".internal", ".lan", ".home", ".corp", ".intranet", ".localdomain",
+	".home.arpa", ".test", ".invalid", ".localhost", ".in-addr.arpa", ".ip6.arpa",
+	".compute.internal", ".svc.cluster.local",
+}
+
+func isInternalDomain(domain string) bool {
+	d := strings.ToLower(strings.TrimSuffix(domain, "."))
+	if !strings.Contains(d, ".") {
+		return true // single-label names are always internal
+	}
+	for _, suf := range internalSuffixes {
+		if strings.HasSuffix(d, suf) {
+			return true
+		}
+	}
+	return false
+}
+
+// dnsblResolverAddr is the resolver used for DNSBL queries. Spamhaus and
+// SURBL refuse queries relayed through big public resolvers, so deployments
+// should point this at their own recursive resolver (OW_DNSBL_RESOLVER=host:53).
+func dnsblResolverAddr() string {
+	if v := strings.TrimSpace(os.Getenv("OW_DNSBL_RESOLVER")); v != "" {
+		return v
+	}
+	return "8.8.8.8:53"
 }

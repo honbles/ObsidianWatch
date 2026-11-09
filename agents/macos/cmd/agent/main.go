@@ -4,6 +4,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"log/slog"
@@ -58,6 +59,7 @@ func main() {
 			ManagementCACertPEM: cfg.Forwarder.ManagementCACertPEM,
 			AgentID:             agentID,
 			Hostname:            hostname,
+			APIKey:              cfg.Forwarder.APIKey,
 		})
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Install failed: %v\n", err)
@@ -66,7 +68,7 @@ func main() {
 		return
 
 	case "uninstall":
-		err := service.Uninstall(cfg.Forwarder.ManagementURL, cfg.Forwarder.CAFile, agentID)
+		err := service.Uninstall(cfg.Forwarder.ManagementURL, cfg.Forwarder.CAFile, uninstallCA(cfg.Forwarder.ManagementCACertPEM, cfg.Forwarder.CACertPEM), cfg.Forwarder.APIKey, agentID)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Uninstall failed: %v\n", err)
 			os.Exit(1)
@@ -165,6 +167,10 @@ func main() {
 			Enabled: true, PollInterval: cfg.Collector.Process.PollInterval,
 		}, agentID, hostname, rawCh, logger)
 		go func() { p.Run(ctx) }()
+		// A-01 interim: Endpoint Security exec events via eslogger (macOS 13+),
+		// catching short-lived processes the poller misses. Falls back silently.
+		es := collector.NewESExecCollector(agentID, hostname, rawCh, logger)
+		go func() { es.Run(ctx) }()
 	}
 
 	if cfg.Collector.Network.Enabled {
@@ -173,6 +179,12 @@ func main() {
 			Enabled: true, PollInterval: cfg.Collector.Network.PollInterval,
 		}, agentID, hostname, rawCh, logger)
 		go func() { n.Run(ctx) }()
+	}
+
+	{
+		activeCollectors = append(activeCollectors, "usb")
+		u := collector.NewUSBCollector(agentID, hostname, rawCh, logger)
+		go func() { u.Run(ctx) }()
 	}
 
 	if cfg.Collector.DNS.Enabled {
@@ -232,14 +244,15 @@ func main() {
 			agentID, hostname,
 			cfg.Forwarder.BackendURL, cfg.Forwarder.APIKey,
 			cfg.Forwarder.CAFile, cfg.Forwarder.CACertPEM,
+			cfg.Forwarder.AllowInsecureTLS,
 			rawCh, logger,
 		)
 		go func() { loc.Run(ctx) }()
 		activeCollectors = append(activeCollectors, "location")
 	}
 
-	// Live Response — SSH tunnel for analyst terminal access
-	{
+	// Live Response — analyst terminal access. H-2: opt-in only.
+	if cfg.LiveResponse.Enabled {
 		lr := collector.NewLiveResponseCollector(
 			agentID, hostname,
 			cfg.Forwarder.ManagementURL,
@@ -257,6 +270,22 @@ func main() {
 	logger.Info("All collectors running", "count", len(activeCollectors), "collectors", activeCollectors)
 	<-ctx.Done()
 	logger.Info("Shutting down...")
+	// D-12: tell the server we are going away before we do. The signal reaching
+	// us means a stop/kill-TERM was requested (service stop, uninstall, or a
+	// deliberate attempt to blind the host).
+	{
+		raw, _ := json.Marshal(map[string]interface{}{
+			"reason": "shutdown signal received", "pid": os.Getpid(), "agent_version": agentVersion,
+		})
+		fwd.SendFinal(schema.Event{
+			ID:        fmt.Sprintf("agent-tamper:%s:%d", agentID, time.Now().UnixNano()),
+			OS:        "darwin",
+			EventType: "agent.tamper",
+			Severity:  schema.Severity(4),
+			Source:    "agent",
+			Raw:       raw,
+		})
+	}
 }
 
 func buildLogger(level string) *slog.Logger {
@@ -294,4 +323,11 @@ func resolveAgentID(hostname string) string {
 	return hostname
 }
 
-
+// uninstallCA picks the CA PEM for management-server calls: the management CA
+// if embedded, otherwise the backend CA.
+func uninstallCA(mgmtCA, backendCA string) string {
+	if mgmtCA != "" {
+		return mgmtCA
+	}
+	return backendCA
+}

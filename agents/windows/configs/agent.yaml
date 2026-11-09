@@ -12,6 +12,10 @@ collector:
       - System
       - Application
       - Microsoft-Windows-PowerShell/Operational
+      # W-08: Defender detections (1116/1117) and posture/exclusion changes (5001/5007/5010/5012)
+      - Microsoft-Windows-Windows Defender/Operational
+      # W-07: WMI event subscription persistence (5861)
+      - Microsoft-Windows-WMI-Activity/Operational
       # Domain Controller channels (silently skipped if not a DC)
       - Directory Service
       - DNS Server
@@ -39,6 +43,21 @@ collector:
       - HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\RunOnce
       - HKLM\SYSTEM\CurrentControlSet\Services
       - HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\Run
+      - HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options
+      - HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon
+      - HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Windows
+      - HKLM\SYSTEM\CurrentControlSet\Control\Session Manager
+      - HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer\Run
+      - HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\RunOnce
+      - HKLM\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Run
+      - HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Schedule\TaskCache\Tree
+      - HKLM\SYSTEM\CurrentControlSet\Control\Lsa
+      - HKLM\SYSTEM\CurrentControlSet\Control\Print\Monitors
+      - HKLM\SYSTEM\CurrentControlSet\Control\Terminal Server\Wds\rdpwd\StartupPrograms
+      - HKLM\SOFTWARE\Microsoft\Active Setup\Installed Components
+      - HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\User Shell Folders
+      - HKLM\SYSTEM\CurrentControlSet\Control\SecurityProviders
+      - HKLM\SOFTWARE\Microsoft\Windows Defender\Exclusions
 
   # DNS query/response telemetry via Microsoft-Windows-DNS-Client/Operational.
   # No Sysmon required. The agent auto-enables this channel if it is off.
@@ -55,8 +74,50 @@ collector:
           - "*.log"
           - "*.tmp"
           - "*.etl"
+      - path: "C:\\Windows\\System32\\Tasks"
+        recursive: true
+        exclude:
+          - "*.log"
+          - "*.tmp"
+          - "*.etl"
+      - path: "C:\\Windows\\System32\\drivers"
+        recursive: false
+        exclude:
+          - "*.log"
+          - "*.tmp"
+          - "*.etl"
+      - path: "C:\\Windows\\System32\\wbem"
+        recursive: false
+        exclude:
+          - "*.log"
+          - "*.tmp"
+          - "*.etl"
       - path: "C:\\Windows\\SysWOW64"
         recursive: false
+        exclude:
+          - "*.log"
+          - "*.tmp"
+          - "*.etl"
+      - path: "C:\\ProgramData\\Microsoft\\Windows\\Start Menu\\Programs\\StartUp"
+        recursive: true
+        exclude:
+          - "*.log"
+          - "*.tmp"
+          - "*.etl"
+      - path: "C:\\Windows\\Tasks"
+        recursive: true
+        exclude:
+          - "*.log"
+          - "*.tmp"
+          - "*.etl"
+      - path: "C:\\Windows\\System32\\GroupPolicy"
+        recursive: true
+        exclude:
+          - "*.log"
+          - "*.tmp"
+          - "*.etl"
+      - path: "C:\\Windows\\System32\\GroupPolicyUsers"
+        recursive: true
         exclude:
           - "*.log"
           - "*.tmp"
@@ -117,7 +178,7 @@ collector:
 
 forwarder:
   backend_url: "https://192.168.1.140:8443"
-  management_url: "http://192.168.1.140"
+  management_url: "https://192.168.1.140"
   batch_size: 200
   flush_interval: 5s
   # mTLS - comment out to use API key auth
@@ -142,3 +203,7 @@ queue:
 log:
   level: "info"
   format: "json"
+
+# Remote analyst shell. Off by default; enable only where you accept remote command execution.
+live_response:
+  enabled: false

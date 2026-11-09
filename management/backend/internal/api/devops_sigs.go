@@ -1,6 +1,7 @@
 package api
 
 import (
+	"encoding/json"
 	"strings"
 	"obsidianwatch/management/internal/store"
 )
@@ -41,9 +42,13 @@ var devopsSignatures = []ThreatSig{
 		Description: "A new self-hosted GitHub Actions or GitLab runner was registered. Attackers register runners to execute pipeline jobs in their own environment, exfiltrating secrets and build artifacts.",
 		Severity: 4, MITRE: "T1195.002", Category: "Supply Chain",
 		Match: func(ev store.Event) bool {
-			return isDevOpsEvent(ev) &&
-				containsAny(strings.ToLower(rawStr(ev)), "runners.create", "runner_registered",
-					"\"type\":\"self-hosted\"", "self_hosted")
+			if !isDevOpsEvent(ev) {
+				return false
+			}
+			t := devopsParse(ev)
+			return t.is(ev, "runners.create", "runner_registered", "enterprise.register_self_hosted_runner",
+				"org.register_self_hosted_runner", "repo.register_self_hosted_runner") ||
+				(t.Type == "self-hosted" && t.is(ev, "runner", "runner_created", "runners.create"))
 		},
 	},
 	{
@@ -68,11 +73,13 @@ var devopsSignatures = []ThreatSig{
 		Description: "A repository was changed from private to public — all code, commit history, and any hardcoded secrets are now publicly accessible.",
 		Severity: 5, MITRE: "T1530", Category: "Exfiltration",
 		Match: func(ev store.Event) bool {
-			return isDevOpsEvent(ev) &&
-				containsAny(strings.ToLower(rawStr(ev)),
-					"repo_publicized", "repo.publicized", "made_public",
-					"\"action\":\"publicized\"", "visibility_change",
-					"changed_visibility_to_public")
+			if !isDevOpsEvent(ev) {
+				return false
+			}
+			t := devopsParse(ev)
+			return t.is(ev, "repo_publicized", "repo.publicized", "repository.publicized", "made_public",
+				"publicized", "visibility_change", "changed_visibility_to_public") ||
+				(t.is(ev, "repo.access", "repository.access") && t.Visibility == "public")
 		},
 	},
 	{
@@ -81,9 +88,8 @@ var devopsSignatures = []ThreatSig{
 		Severity: 4, MITRE: "T1485", Category: "Impact",
 		Match: func(ev store.Event) bool {
 			return isDevOpsEvent(ev) &&
-				containsAny(strings.ToLower(rawStr(ev)),
-					"repo_destroy", "repo.destroy", "\"action\":\"deleted\"",
-					"repository_deleted", "repo_deleted")
+				devopsParse(ev).is(ev, "repo.destroy", "repo_destroy", "repository.deleted",
+					"repository_deleted", "repo_deleted", "deleted")
 		},
 	},
 	{
@@ -92,9 +98,8 @@ var devopsSignatures = []ThreatSig{
 		Severity: 4, MITRE: "T1537", Category: "Exfiltration",
 		Match: func(ev store.Event) bool {
 			return isDevOpsEvent(ev) &&
-				containsAny(strings.ToLower(rawStr(ev)),
-					"repo.transfer", "repo_transfer", "\"action\":\"transferred\"",
-					"transfer_start", "repository_transferred")
+				devopsParse(ev).is(ev, "repo.transfer", "repo_transfer", "repository.transferred",
+					"repository_transferred", "transfer_start", "transferred")
 		},
 	},
 
@@ -104,12 +109,13 @@ var devopsSignatures = []ThreatSig{
 		Description: "A user was granted Owner or Admin role in the organization. This is the highest privilege level and provides full access to all repositories, secrets, and billing.",
 		Severity: 5, MITRE: "T1098", Category: "Persistence",
 		Match: func(ev store.Event) bool {
-			return isDevOpsEvent(ev) &&
-				containsAny(strings.ToLower(rawStr(ev)),
-					"org.add_member", "org_add_member", "member_added",
-					"\"role\":\"owner\"", "\"role\":\"admin\"",
-					"added_to_org", "org.update_member") &&
-				containsAny(strings.ToLower(rawStr(ev)), "owner", "admin")
+			if !isDevOpsEvent(ev) {
+				return false
+			}
+			t := devopsParse(ev)
+			return t.is(ev, "org.add_member", "org_add_member", "member_added", "added_to_org",
+				"org.update_member", "member.added", "org.invite_member") &&
+				(t.Role == "owner" || t.Role == "admin")
 		},
 	},
 	{
@@ -118,11 +124,8 @@ var devopsSignatures = []ThreatSig{
 		Severity: 4, MITRE: "T1098", Category: "Persistence",
 		Match: func(ev store.Event) bool {
 			return isDevOpsEvent(ev) &&
-				containsAny(strings.ToLower(rawStr(ev)),
-					"personal_access_token.created", "pat.created",
-					"access_token_created", "create_pat",
-					"\"action\":\"created\"") &&
-				containsAny(strings.ToLower(rawStr(ev)), "token", "pat", "access_key")
+				devopsParse(ev).is(ev, "personal_access_token.created", "pat.created",
+					"access_token_created", "create_pat", "personal_access_token.access_granted")
 		},
 	},
 	{
@@ -131,10 +134,7 @@ var devopsSignatures = []ThreatSig{
 		Severity: 3, MITRE: "T1098.004", Category: "Persistence",
 		Match: func(ev store.Event) bool {
 			return isDevOpsEvent(ev) &&
-				containsAny(strings.ToLower(rawStr(ev)),
-					"deploy_key.create", "deploy_key_added",
-					"\"action\":\"create\"") &&
-				containsAny(strings.ToLower(rawStr(ev)), "deploy_key", "deploykey")
+				devopsParse(ev).is(ev, "deploy_key.create", "deploy_key_added", "repo.add_deploy_key")
 		},
 	},
 	{
@@ -143,10 +143,8 @@ var devopsSignatures = []ThreatSig{
 		Severity: 4, MITRE: "T1550.001", Category: "Persistence",
 		Match: func(ev store.Event) bool {
 			return isDevOpsEvent(ev) &&
-				containsAny(strings.ToLower(rawStr(ev)),
-					"oauth_application.create", "integration_installation.create",
-					"app_installation", "github_app_installed",
-					"oauth_access.create")
+				devopsParse(ev).is(ev, "oauth_application.create", "integration_installation.create",
+					"app_installation", "github_app_installed", "oauth_access.create")
 		},
 	},
 
@@ -156,12 +154,19 @@ var devopsSignatures = []ThreatSig{
 		Description: "Branch protection rules were removed or relaxed on a protected branch (main/master). This allows force pushes, bypasses required reviews, and opens the door to supply chain attacks.",
 		Severity: 4, MITRE: "T1562", Category: "Defense Evasion",
 		Match: func(ev store.Event) bool {
-			return isDevOpsEvent(ev) &&
-				containsAny(strings.ToLower(rawStr(ev)),
-					"protected_branch.destroy", "protected_branch_deleted",
-					"branch_protection_rule_deleted", "remove_branch_protection",
-					"update_admin_enforcement", "require_code_owner_reviews") &&
-				!containsAny(strings.ToLower(rawStr(ev)), "create", "add", "enable")
+			if !isDevOpsEvent(ev) {
+				return false
+			}
+			t := devopsParse(ev)
+			if t.is(ev, "protected_branch.destroy", "protected_branch_deleted",
+				"branch_protection_rule_deleted", "remove_branch_protection") {
+				return true
+			}
+			// These actions fire on both tightening and loosening; only the
+			// loosening direction counts.
+			return t.is(ev, "protected_branch.update_admin_enforcement", "protected_branch.dismiss_stale_reviews",
+				"protected_branch.update_require_code_owner_review") &&
+				containsAny(rawStr(ev), "disabled", "\"enabled\":false", "\"value\":false")
 		},
 	},
 	{
@@ -169,10 +174,22 @@ var devopsSignatures = []ThreatSig{
 		Description: "A force push was made directly to main/master or another protected branch — rewrites history and can remove evidence of malicious commits.",
 		Severity: 4, MITRE: "T1562", Category: "Defense Evasion",
 		Match: func(ev store.Event) bool {
-			return isDevOpsEvent(ev) &&
-				containsAny(strings.ToLower(rawStr(ev)), "force_push", "forced_push",
-					"\"forced\":true") &&
-				containsAny(strings.ToLower(rawStr(ev)), "main", "master", "develop", "release")
+			if !isDevOpsEvent(ev) {
+				return false
+			}
+			raw := strings.ToLower(rawStr(ev))
+			// Webhook pushes carry explicit flags + branch (DS-02).
+			var m struct {
+				Forced  bool   `json:"forced"`
+				Deleted bool   `json:"deleted"`
+				Branch  string `json:"branch"`
+			}
+			if json.Unmarshal([]byte(rawStr(ev)), &m) == nil && m.Branch != "" {
+				return (m.Forced || m.Deleted) && isProtectedBranch(m.Branch)
+			}
+			// Audit-log style events (no explicit branch field).
+			return containsAny(raw, "force_push", "forced_push", "protected_branch.destroy") &&
+				containsAny(raw, "main", "master", "develop", "release")
 		},
 	},
 	{
@@ -181,9 +198,8 @@ var devopsSignatures = []ThreatSig{
 		Severity: 5, MITRE: "T1562.008", Category: "Defense Evasion",
 		Match: func(ev store.Event) bool {
 			return isDevOpsEvent(ev) &&
-				containsAny(strings.ToLower(rawStr(ev)),
-					"audit_log_streaming.disabled", "audit_stream_delete",
-					"log_streaming_disabled", "stream_key.destroy")
+				devopsParse(ev).is(ev, "audit_log_streaming.disabled", "audit_stream_delete",
+					"log_streaming_disabled", "stream_key.destroy", "audit_log_streaming.destroy")
 		},
 	},
 	{
@@ -192,9 +208,8 @@ var devopsSignatures = []ThreatSig{
 		Severity: 3, MITRE: "T1071.001", Category: "Command and Control",
 		Match: func(ev store.Event) bool {
 			return isDevOpsEvent(ev) &&
-				containsAny(strings.ToLower(rawStr(ev)),
-					"hook.create", "webhook_created", "org_webhook_add",
-					"project_hook_add")
+				devopsParse(ev).is(ev, "hook.create", "webhook_created", "org_webhook_add",
+					"project_hook_add", "org.add_webhook")
 		},
 	},
 
@@ -207,10 +222,36 @@ var devopsSignatures = []ThreatSig{
 			if !isDevOpsEvent(ev) {
 				return false
 			}
-			hour := ev.Time.UTC().Hour()
-			isOutside := hour < 6 || hour >= 22
+			isOutside := outsideBusinessHours(ev.Time)
 			return isOutside && containsAny(strings.ToLower(rawStr(ev)),
 				"publicized", "made_public", "visibility_change")
+		},
+	},
+	{
+		ID: "DEV-019", Name: "Mass Deletion Commit",
+		Description: "A single commit deleted 1,000+ lines with far fewer additions — possible sabotage, history laundering or removal of evidence.",
+		Severity: 3, MITRE: "T1485", Category: "Impact",
+		Match: func(ev store.Event) bool { return ev.EventType == "devops.mass_deletion" },
+	},
+	{
+		ID: "DEV-020", Name: "Dependency Manifest Modified",
+		Description: "A dependency manifest or lockfile changed — review for dependency confusion, typosquatted or malicious packages.",
+		Severity: 2, MITRE: "T1195.001", Category: "Initial Access",
+		Match: func(ev store.Event) bool { return ev.EventType == "devops.dependency_change" },
+	},
+	{
+		ID: "DEV-021", Name: "Commit Committer/Author Mismatch Without Signature",
+		Description: "The committer differs from the author and the commit is not signature-verified — possible forged authorship or rewritten history.",
+		Severity: 3, MITRE: "T1565", Category: "Defense Evasion",
+		Match: func(ev store.Event) bool {
+			if ev.EventType != "devops.push" {
+				return false
+			}
+			var m struct {
+				Mismatch bool `json:"committer_mismatch"`
+				Verified bool `json:"verified"`
+			}
+			return json.Unmarshal(ev.Raw, &m) == nil && m.Mismatch && !m.Verified
 		},
 	},
 	{
@@ -221,8 +262,7 @@ var devopsSignatures = []ThreatSig{
 			if !isDevOpsEvent(ev) {
 				return false
 			}
-			hour := ev.Time.UTC().Hour()
-			isOutside := hour < 6 || hour >= 22
+			isOutside := outsideBusinessHours(ev.Time)
 			return isOutside && containsAny(strings.ToLower(rawStr(ev)),
 				"org.add_member", "member_added", "org_admin") &&
 				containsAny(strings.ToLower(rawStr(ev)), "owner", "admin")

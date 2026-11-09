@@ -2,7 +2,9 @@ package store
 
 import (
 	"context"
+	"crypto/rand"
 	"database/sql"
+	"encoding/base64"
 	"fmt"
 	"time"
 
@@ -101,25 +103,38 @@ func (db *DB) DeleteUser(ctx context.Context, id int64) error {
 	return err
 }
 
-// SeedAdmin creates the default admin user if no users exist.
-func (db *DB) SeedAdmin(ctx context.Context) error {
+// SeedAdmin creates the default admin user if no users exist. M-06: the
+// seeded password is a random, one-time-use value rather than a predictable
+// "changeme" — a fixed default password is effectively no authentication at
+// all for any instance the operator hasn't logged into yet. The generated
+// password is returned so the caller can print it once; it is never stored
+// or logged anywhere, only its bcrypt hash is persisted.
+func (db *DB) SeedAdmin(ctx context.Context) (string, error) {
 	var count int
 	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM users`).Scan(&count); err != nil {
-		return err
+		return "", err
 	}
 	if count > 0 {
-		return nil
+		return "", nil
 	}
-	hash, err := bcrypt.GenerateFromPassword([]byte("changeme"), 12)
+	randBytes := make([]byte, 20)
+	if _, err := rand.Read(randBytes); err != nil {
+		return "", err
+	}
+	password := base64.RawURLEncoding.EncodeToString(randBytes)
+	hash, err := bcrypt.GenerateFromPassword([]byte(password), 12)
 	if err != nil {
-		return err
+		return "", err
 	}
 	_, err = db.ExecContext(ctx, `
 		INSERT INTO users (username, password_hash, role, password_changed)
 		VALUES ('admin', $1, 'admin', FALSE)
 		ON CONFLICT (username) DO NOTHING
 	`, string(hash))
-	return err
+	if err != nil {
+		return "", err
+	}
+	return password, nil
 }
 
 func HashPassword(password string) (string, error) {

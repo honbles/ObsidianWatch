@@ -26,8 +26,19 @@ const PLATFORMS = [
     adminNote: 'Run as Administrator',
   },
   {
+    id: 'macos-arm64',
+    label: 'macOS (Apple Silicon)',
+    icon: '🍎',
+    desc: 'M1/M2/M3 Macs · macOS 12+',
+    sub: 'Native arm64 build. Installs as launchd daemon',
+    installCmd: 'chmod +x obsidianwatch-macos-agent && sudo ./obsidianwatch-macos-agent install',
+    uninstallCmd: 'sudo ./obsidianwatch-macos-agent uninstall',
+    binary: 'obsidianwatch-macos-agent',
+    color: 'purple',
+  },
+  {
     id: 'macos',
-    label: 'macOS',
+    label: 'macOS (Intel)',
     icon: '🍎',
     desc: 'macOS 12 Monterey+',
     sub: 'Installs as launchd daemon',
@@ -179,7 +190,7 @@ function PlatformCard({ platform, status, form, onBuild, onDownloadCached, build
 export default function AgentBuilder() {
   const [form, setForm] = useState({
     backend_url: '', management_url: '', agent_api_key: '',
-    ca_cert: '', management_ca_cert: '',
+    ca_cert: '', management_ca_cert: '', enable_live_response: false,
   })
   const [buildStatus, setBuildStatus] = useState({})
   const [savedKeys, setSavedKeys]     = useState({})
@@ -284,6 +295,12 @@ export default function AgentBuilder() {
               {group.note && <span className="text-xs text-siem-muted/60">{group.note}</span>}
             </div>
             <div className="p-5 space-y-4">
+              {group.title === 'Connection' && (
+                <label className="flex items-start gap-2 text-xs text-siem-muted">
+                  <input type="checkbox" checked={!!form.enable_live_response} onChange={e => setForm(f => ({ ...f, enable_live_response: e.target.checked }))} />
+                  <span><b className="text-siem-text">Enable Live Response (remote shell)</b> — off by default. Agents built with this on accept analyst terminal sessions as root/SYSTEM.</span>
+                </label>
+              )}
               {group.fields.map(field => {
                 const isSaved = savedKeys[`has_${field.key}`]
                 return (

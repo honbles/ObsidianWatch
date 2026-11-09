@@ -51,6 +51,7 @@ func (c *DNSCollector) Run(ctx context.Context) {
 	if !c.cfg.Enabled {
 		return
 	}
+	go c.runNames(ctx) // A-02: real query names via tcpdump
 	ticker := time.NewTicker(10 * time.Second)
 	defer ticker.Stop()
 	for {

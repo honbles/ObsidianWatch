@@ -310,7 +310,7 @@ export function Navbar({ user }) {
         </NavDropdownWithClose>
 
         {/* Detection */}
-        <NavDropdownWithClose label="Detection" icon={Shield} isActive={isPath('/detections', '/alert-rules')}>
+        <NavDropdownWithClose label="Detection" icon={Shield} isActive={isPath('/detections', '/alert-rules', '/insights')}>
           {(close) => (
             <>
               <div className={`dropdown-item ${isPath('/detections') ? 'active' : ''}`}
@@ -322,6 +322,11 @@ export function Navbar({ user }) {
                 onClick={() => { close(); navigate('/alert-rules') }}>
                 <BookOpen size={13} style={{ color: 'var(--text3)' }}/>
                 <span>Alert Rules</span>
+              </div>
+              <div className={`dropdown-item ${isPath('/insights') ? 'active' : ''}`}
+                onClick={() => { close(); navigate('/insights') }}>
+                <Activity size={13} style={{ color: 'var(--text3)' }}/>
+                <span>Insights</span>
               </div>
             </>
           )}
