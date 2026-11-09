@@ -8,26 +8,28 @@ import (
 )
 
 type Alert struct {
-	ID             int64      `json:"id"`
-	CreatedAt      time.Time  `json:"created_at"`
-	Title          string     `json:"title"`
-	Description    string     `json:"description"`
-	Severity       int        `json:"severity"`
-	Status         string     `json:"status"`
-	AgentID        string     `json:"agent_id"`
-	Host           string     `json:"host"`
-	EventType      string     `json:"event_type"`
-	EventID        string     `json:"event_id"`
-	SourceEventID  string     `json:"source_event_id,omitempty"`
-	AcknowledgedBy *string    `json:"acknowledged_by,omitempty"`
-	AcknowledgedAt *time.Time `json:"acknowledged_at,omitempty"`
-	AssignedTo     *string    `json:"assigned_to,omitempty"`
-	CaseNotes      *string    `json:"case_notes,omitempty"`
-	ClosedBy       *string    `json:"closed_by,omitempty"`
-	ClosedAt       *time.Time `json:"closed_at,omitempty"`
-	ReviewComment  *string    `json:"review_comment,omitempty"`
-	AIAnalysis     *string    `json:"ai_analysis,omitempty"`
-	AIAnalysedAt   *string    `json:"ai_analysed_at,omitempty"`
+	ID              int64      `json:"id"`
+	CreatedAt       time.Time  `json:"created_at"`
+	Title           string     `json:"title"`
+	Description     string     `json:"description"`
+	Severity        int        `json:"severity"`
+	Status          string     `json:"status"`
+	AgentID         string     `json:"agent_id"`
+	Host            string     `json:"host"`
+	EventType       string     `json:"event_type"`
+	EventID         string     `json:"event_id"`
+	SourceEventID   string     `json:"source_event_id,omitempty"`
+	AcknowledgedBy  *string    `json:"acknowledged_by,omitempty"`
+	AcknowledgedAt  *time.Time `json:"acknowledged_at,omitempty"`
+	AssignedTo      *string    `json:"assigned_to,omitempty"`
+	CaseNotes       *string    `json:"case_notes,omitempty"`
+	ClosedBy        *string    `json:"closed_by,omitempty"`
+	ClosedAt        *time.Time `json:"closed_at,omitempty"`
+	ReviewComment   *string    `json:"review_comment,omitempty"`
+	AIAnalysis      *string    `json:"ai_analysis,omitempty"`
+	AIAnalysedAt    *string    `json:"ai_analysed_at,omitempty"`
+	OccurrenceCount int        `json:"occurrence_count,omitempty"`
+	LastSeen        time.Time  `json:"last_seen,omitempty"`
 }
 
 func (db *DB) ListAlerts(ctx context.Context, status string, limit int) ([]Alert, error) {
@@ -62,7 +64,7 @@ func (db *DB) ListAlerts(ctx context.Context, status string, limit int) ([]Alert
 			&a.AgentID, &a.Host, &a.EventType, &a.EventID, &a.SourceEventID,
 			&a.AcknowledgedBy, &a.AcknowledgedAt,
 			&a.AssignedTo, &a.CaseNotes, &a.ClosedBy, &a.ClosedAt, &a.ReviewComment,
-		&a.AIAnalysis, &a.AIAnalysedAt,
+			&a.AIAnalysis, &a.AIAnalysedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -72,6 +74,7 @@ func (db *DB) ListAlerts(ctx context.Context, status string, limit int) ([]Alert
 }
 
 func (db *DB) CreateAlert(ctx context.Context, a Alert) (int64, error) {
+	a = db.weighAlert(ctx, a)
 	var id int64
 	err := db.QueryRowContext(ctx, `
 		INSERT INTO alerts (title, description, severity, status, agent_id, host, event_type, event_id, source_event_id)
@@ -132,28 +135,50 @@ func (db *DB) AlertExists(ctx context.Context, eventID string) (bool, error) {
 	return count > 0, err
 }
 
-// CreateAlertDeduped inserts an alert only if no alert with the same event_id exists.
-// Returns (id, true, nil) if created, (0, false, nil) if duplicate, (0, false, err) on error.
-// This is atomic via INSERT ... ON CONFLICT DO NOTHING — safe against race conditions.
+// CreateAlertDeduped inserts an alert for event_id, or — D-06 — if one
+// already exists for that exact key (same rule, same host, same hour, AND
+// same entity fingerprint, since callers now fold alertEntityKey() into
+// event_id) bumps its occurrence_count/last_seen instead of discarding the
+// new occurrence entirely. Genuinely distinct activity gets a distinct
+// event_id (different entity fingerprint) and therefore its own alert row
+// — it no longer silently vanishes into an unrelated earlier match.
+// Returns (id, true, nil) if a NEW alert row was created, (id, false, nil)
+// if an existing one was bumped, (0, false, err) on error.
+// AlertCreatedHook (P-08) is invoked once for every newly inserted (not
+// deduplicated) alert, from whichever engine created it. It is set at server
+// start to fan alerts out to webhook channels (Slack/Teams/generic); it must
+// not block.
+var AlertCreatedHook func(a Alert)
+
 func (db *DB) CreateAlertDeduped(ctx context.Context, a Alert) (int64, bool, error) {
+	a = db.weighAlert(ctx, a)
 	var id int64
+	var inserted bool
 	err := db.QueryRowContext(ctx, `
-		INSERT INTO alerts (title, description, severity, status, agent_id, host, event_type, event_id, source_event_id)
-		VALUES ($1,$2,$3,'open',$4,$5,$6,$7,$8)
-		ON CONFLICT (event_id) WHERE event_id IS NOT NULL AND event_id != '' DO NOTHING
-		RETURNING id
+		INSERT INTO alerts (title, description, severity, status, agent_id, host, event_type, event_id, source_event_id, occurrence_count, last_seen)
+		VALUES ($1,$2,$3,'open',$4,$5,$6,$7,$8,1,NOW())
+		ON CONFLICT (event_id) WHERE event_id IS NOT NULL AND event_id != '' DO UPDATE SET
+			occurrence_count = alerts.occurrence_count + 1,
+			last_seen        = NOW()
+		RETURNING id, (xmax = 0)
 	`, a.Title, a.Description, a.Severity,
 		nullableStr(a.AgentID), nullableStr(a.Host), nullableStr(a.EventType),
 		nullableStr(a.EventID), nullableStr(a.SourceEventID),
-	).Scan(&id)
+	).Scan(&id, &inserted)
 	if err != nil {
-		// sql.ErrNoRows means ON CONFLICT DO NOTHING fired — it's a duplicate, not an error
 		if err == sql.ErrNoRows {
 			return 0, false, nil
 		}
 		return 0, false, err
 	}
-	return id, true, nil
+	if inserted && AlertCreatedHook != nil {
+		a.ID = id
+		if a.CreatedAt.IsZero() {
+			a.CreatedAt = time.Now()
+		}
+		AlertCreatedHook(a)
+	}
+	return id, inserted, nil
 }
 
 // GetAlert fetches a single alert by ID.
@@ -248,7 +273,7 @@ func (db *DB) ListAlertsForHost(ctx context.Context, host string, since time.Tim
 			&a.AgentID, &a.Host, &a.EventType, &a.EventID, &a.SourceEventID,
 			&a.AcknowledgedBy, &a.AcknowledgedAt,
 			&a.AssignedTo, &a.CaseNotes, &a.ClosedBy, &a.ClosedAt, &a.ReviewComment,
-		&a.AIAnalysis, &a.AIAnalysedAt,
+			&a.AIAnalysis, &a.AIAnalysedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -266,4 +291,15 @@ func (db *DB) SaveAlertAIAnalysis(ctx context.Context, id int64, analysisJSON st
 		analysisJSON, id,
 	)
 	return err
+}
+
+// weighAlert applies host criticality (P-03) before an alert is stored.
+func (db *DB) weighAlert(ctx context.Context, a Alert) Alert {
+	if crit := db.GetHostCriticality(ctx, a.Host); crit == "critical" {
+		if w := WeightedSeverity(a.Severity, crit); w != a.Severity {
+			a.Severity = w
+			a.Description += "\n\n[Host criticality: critical — severity raised by one]"
+		}
+	}
+	return a
 }

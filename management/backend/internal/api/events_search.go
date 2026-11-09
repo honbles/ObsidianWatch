@@ -1,13 +1,23 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
 
+	"obsidianwatch/management/internal/auth"
 	"obsidianwatch/management/internal/store"
+)
+
+// F-06: hard caps so a single search request can't force an unbounded
+// full-table scan ("since=all" or an old explicit date) or hang a
+// connection indefinitely.
+const (
+	eventSearchMaxLookback = 90 * 24 * time.Hour
+	eventSearchTimeout     = 10 * time.Second
 )
 
 // handleEventSearch — tokenized full-text search across all events
@@ -19,66 +29,48 @@ func handleEventSearch(db *store.DB) http.HandlerFunc {
 
 		// Parse search query — split on whitespace into tokens
 		raw := strings.TrimSpace(q.Get("q"))
-		var tokens []string
-		var specialFilters []func(*store.EventFilter)
-
-		if raw != "" {
-			for _, tok := range strings.Fields(raw) {
-				tok = strings.TrimSpace(tok)
-				if tok == "" { continue }
-
-				// Special prefix filters: host:lab, type:process, sev:4, src:1.2.3.4
-				if strings.Contains(tok, ":") {
-					parts := strings.SplitN(tok, ":", 2)
-					key, val := strings.ToLower(parts[0]), parts[1]
-					switch key {
-					case "host":
-						specialFilters = append(specialFilters, func(f *store.EventFilter) { f.Host = val })
-					case "type", "event_type":
-						specialFilters = append(specialFilters, func(f *store.EventFilter) { f.EventType = val })
-					case "sev", "severity":
-						if n, err := strconv.Atoi(val); err == nil {
-							specialFilters = append(specialFilters, func(f *store.EventFilter) { f.Severity = n })
-						}
-					case "src", "src_ip":
-						specialFilters = append(specialFilters, func(f *store.EventFilter) { f.SrcIP = val })
-					case "dst", "dst_ip":
-						specialFilters = append(specialFilters, func(f *store.EventFilter) { f.DstIP = val })
-					case "user":
-						specialFilters = append(specialFilters, func(f *store.EventFilter) { f.UserName = val })
-					case "proc", "process":
-						specialFilters = append(specialFilters, func(f *store.EventFilter) { f.ProcessName = val })
-					case "os":
-						specialFilters = append(specialFilters, func(f *store.EventFilter) { f.OS = val })
-					case "source":
-						specialFilters = append(specialFilters, func(f *store.EventFilter) { f.Source = val })
-					default:
-						// Unknown prefix — treat as regular token
-						tokens = append(tokens, tok)
-					}
-				} else {
-					tokens = append(tokens, tok)
-				}
-			}
-		}
+		tokens, notTokens, specialFilters := parseSearchQuery(raw)
 
 		// Time range
 		since := time.Now().Add(-24 * time.Hour) // default: last 24 hours
 		if s := q.Get("since"); s != "" {
 			switch s {
-			case "15m":  since = time.Now().Add(-15 * time.Minute)
-			case "1h":   since = time.Now().Add(-1 * time.Hour)
-			case "6h":   since = time.Now().Add(-6 * time.Hour)
-			case "24h":  since = time.Now().Add(-24 * time.Hour)
-			case "7d":   since = time.Now().Add(-7 * 24 * time.Hour)
-			case "30d":  since = time.Now().Add(-30 * 24 * time.Hour)
-			case "all":  since = time.Time{} // no time filter
+			case "15m":
+				since = time.Now().Add(-15 * time.Minute)
+			case "1h":
+				since = time.Now().Add(-1 * time.Hour)
+			case "6h":
+				since = time.Now().Add(-6 * time.Hour)
+			case "24h":
+				since = time.Now().Add(-24 * time.Hour)
+			case "7d":
+				since = time.Now().Add(-7 * 24 * time.Hour)
+			case "30d":
+				since = time.Now().Add(-30 * 24 * time.Hour)
+			case "all":
+				since = time.Time{} // capped below, not truly unbounded
 			default:
 				if t, err := time.Parse(time.RFC3339, s); err == nil {
 					since = t
 				}
 			}
 		}
+		// F-06: "since=all" or an old explicit date used to bypass any
+		// bound at all, letting a single request force a full-table scan.
+		// Clamp the effective lookback to eventSearchMaxLookback.
+		if minSince := time.Now().Add(-eventSearchMaxLookback); since.Before(minSince) {
+			since = minSince
+		}
+		// F-07: optional upper bound (RFC3339).
+		var until time.Time
+		if u := q.Get("until"); u != "" && u != "now" {
+			if t, err := time.Parse(time.RFC3339, u); err == nil {
+				until = t
+			}
+		}
+		queryCtx, cancel := context.WithTimeout(ctx, eventSearchTimeout)
+		defer cancel()
+		ctx = queryCtx
 
 		limit := 200
 		if l := q.Get("limit"); l != "" {
@@ -88,9 +80,11 @@ func handleEventSearch(db *store.DB) http.HandlerFunc {
 		}
 
 		f := store.EventFilter{
-			Tokens: tokens,
-			Since:  since,
-			Limit:  limit,
+			Tokens:    tokens,
+			NotTokens: notTokens,
+			Since:     since,
+			Until:     until,
+			Limit:     limit,
 		}
 		for _, apply := range specialFilters {
 			apply(&f)
@@ -112,6 +106,102 @@ func handleEventSearch(db *store.DB) http.HandlerFunc {
 	}
 }
 
+// parseSearchQuery turns the search box syntax (terms, "phrases", -exclusions,
+// prefix:filters) into an EventFilter's tokens and field filters. Shared by
+// interactive search and scheduled searches (P-07).
+func parseSearchQuery(raw string) (tokens, notTokens []string, specialFilters []func(*store.EventFilter)) {
+	if raw != "" {
+		for _, tok := range splitSearchTerms(raw) {
+			tok = strings.TrimSpace(tok)
+			if tok == "" {
+				continue
+			}
+			// F-07: -term excludes events containing term.
+			if strings.HasPrefix(tok, "-") && len(tok) > 1 {
+				notTokens = append(notTokens, strings.Trim(tok[1:], `"`))
+				continue
+			}
+			// Quoted phrase: matched literally as a single token.
+			if strings.HasPrefix(tok, `"`) {
+				if t := strings.Trim(tok, `"`); t != "" {
+					tokens = append(tokens, t)
+				}
+				continue
+			}
+
+			// Special prefix filters: host:lab, type:process, sev:4, src:1.2.3.4
+			if strings.Contains(tok, ":") {
+				parts := strings.SplitN(tok, ":", 2)
+				key, val := strings.ToLower(parts[0]), parts[1]
+				switch key {
+				case "host":
+					specialFilters = append(specialFilters, func(f *store.EventFilter) { f.Host = val })
+				case "type", "event_type":
+					specialFilters = append(specialFilters, func(f *store.EventFilter) { f.EventType = val })
+				case "sev", "severity":
+					if n, err := strconv.Atoi(val); err == nil {
+						specialFilters = append(specialFilters, func(f *store.EventFilter) { f.Severity = n })
+					}
+				case "src", "src_ip":
+					specialFilters = append(specialFilters, func(f *store.EventFilter) { f.SrcIP = val })
+				case "dst", "dst_ip":
+					specialFilters = append(specialFilters, func(f *store.EventFilter) { f.DstIP = val })
+				case "user":
+					specialFilters = append(specialFilters, func(f *store.EventFilter) { f.UserName = val })
+				case "proc", "process":
+					specialFilters = append(specialFilters, func(f *store.EventFilter) { f.ProcessName = val })
+				case "reg", "regkey":
+					specialFilters = append(specialFilters, func(f *store.EventFilter) { f.RegKey = val })
+				case "file", "path":
+					specialFilters = append(specialFilters, func(f *store.EventFilter) { f.FilePath = val })
+				case "cmd", "cmdline":
+					specialFilters = append(specialFilters, func(f *store.EventFilter) { f.CommandLine = val })
+				case "os":
+					specialFilters = append(specialFilters, func(f *store.EventFilter) { f.OS = val })
+				case "source":
+					specialFilters = append(specialFilters, func(f *store.EventFilter) { f.Source = val })
+				default:
+					// Unknown prefix — treat as regular token
+					tokens = append(tokens, tok)
+				}
+			} else {
+				tokens = append(tokens, tok)
+			}
+		}
+	}
+	return
+}
+
+// splitSearchTerms splits on whitespace but keeps "quoted phrases" (with
+// their quotes, so the caller can tell them apart) as single terms.
+func splitSearchTerms(s string) []string {
+	var out []string
+	var cur strings.Builder
+	inQ := false
+	flush := func() {
+		if cur.Len() > 0 {
+			out = append(out, cur.String())
+			cur.Reset()
+		}
+	}
+	for _, r := range s {
+		switch {
+		case r == '"':
+			cur.WriteRune(r)
+			if inQ {
+				flush()
+			}
+			inQ = !inQ
+		case (r == ' ' || r == '\t') && !inQ:
+			flush()
+		default:
+			cur.WriteRune(r)
+		}
+	}
+	flush()
+	return out
+}
+
 // handleSavedQueries — CRUD for saved search queries
 // GET  /api/v1/events/saved-queries
 // POST /api/v1/events/saved-queries
@@ -119,10 +209,20 @@ func handleEventSearch(db *store.DB) http.HandlerFunc {
 func handleSavedQueries(db *store.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
+		// F-09: queries are scoped to their owner (or explicitly shared).
+		owner := ""
+		if c := auth.GetClaims(r); c != nil {
+			owner = c.Username
+		}
+		if owner == "" {
+			writeJSON(w, 401, map[string]string{"error": "authentication required"})
+			return
+		}
 		switch r.Method {
 		case http.MethodGet:
 			rows, err := db.QueryContext(ctx,
-				`SELECT id, name, query, created_at FROM saved_event_queries ORDER BY created_at DESC`)
+				`SELECT id, name, query, created_at FROM saved_event_queries
+				 WHERE owner = $1 OR shared = true ORDER BY created_at DESC LIMIT 500`, owner)
 			if err != nil {
 				writeJSON(w, 500, map[string]string{"error": err.Error()})
 				return
@@ -133,27 +233,43 @@ func handleSavedQueries(db *store.DB) http.HandlerFunc {
 				var id int64
 				var name, query string
 				var createdAt time.Time
-				if err := rows.Scan(&id, &name, &query, &createdAt); err != nil { continue }
+				if err := rows.Scan(&id, &name, &query, &createdAt); err != nil {
+					continue
+				}
 				queries = append(queries, map[string]interface{}{
 					"id": id, "name": name, "query": query, "created_at": createdAt,
 				})
 			}
-			if queries == nil { queries = []map[string]interface{}{} }
+			if queries == nil {
+				queries = []map[string]interface{}{}
+			}
 			writeJSON(w, 200, map[string]interface{}{"queries": queries})
 
 		case http.MethodPost:
 			var req struct {
-				Name  string `json:"name"`
-				Query string `json:"query"`
+				Name   string `json:"name"`
+				Query  string `json:"query"`
+				Shared bool   `json:"shared"`
 			}
+			r.Body = http.MaxBytesReader(w, r.Body, 64<<10)
 			if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Name == "" || req.Query == "" {
 				writeJSON(w, 400, map[string]string{"error": "name and query required"})
 				return
 			}
+			if len(req.Name) > 200 || len(req.Query) > 8000 {
+				writeJSON(w, 400, map[string]string{"error": "name (max 200) or query (max 8000) too long"})
+				return
+			}
+			var cnt int
+			db.QueryRowContext(ctx, `SELECT COUNT(*) FROM saved_event_queries WHERE owner=$1`, owner).Scan(&cnt)
+			if cnt >= 200 {
+				writeJSON(w, 400, map[string]string{"error": "saved query limit reached"})
+				return
+			}
 			var id int64
 			err := db.QueryRowContext(ctx,
-				`INSERT INTO saved_event_queries (name, query) VALUES ($1, $2) RETURNING id`,
-				req.Name, req.Query,
+				`INSERT INTO saved_event_queries (name, query, owner, shared) VALUES ($1, $2, $3, $4) RETURNING id`,
+				req.Name, req.Query, owner, req.Shared,
 			).Scan(&id)
 			if err != nil {
 				writeJSON(w, 500, map[string]string{"error": err.Error()})
@@ -169,7 +285,7 @@ func handleSavedQueries(db *store.DB) http.HandlerFunc {
 				writeJSON(w, 400, map[string]string{"error": "invalid id"})
 				return
 			}
-			db.ExecContext(ctx, `DELETE FROM saved_event_queries WHERE id = $1`, id)
+			db.ExecContext(ctx, `DELETE FROM saved_event_queries WHERE id = $1 AND owner = $2`, id, owner)
 			writeJSON(w, 200, map[string]string{"status": "deleted"})
 		}
 	}

@@ -284,6 +284,9 @@ export default function Alerts() {
   const [selectedId, setSelectedId] = useState(null)
   const [users, setUsers]           = useState([])
   const [search, setSearch]         = useState('')
+  const [checked, setChecked]       = useState(() => new Set())
+  const [bulkBusy, setBulkBusy]     = useState(false)
+  const [sla, setSla]               = useState(null)
   const [searchParams] = useSearchParams()
   const hostParam = searchParams.get('host') || ''
   const [hostFilter, setHostFilter] = useState(hostParam)
@@ -306,6 +309,20 @@ export default function Alerts() {
   }, [])
 
   useEffect(() => { load() }, [load])
+  useEffect(() => { setChecked(new Set()) }, [filter, hostFilter])
+  useEffect(() => { api.get('/api/v1/alerts/sla').then(r => setSla(r.data)).catch(() => {}) }, [alerts])
+
+  const bulk = async (action) => {
+    if (checked.size === 0) return
+    if (action === 'close' && !window.confirm(`Close ${checked.size} alert(s)?`)) return
+    setBulkBusy(true)
+    try {
+      await api.post('/api/v1/alerts/bulk', { ids: [...checked], action })
+      setChecked(new Set())
+      await load()
+    } catch (e) { window.alert(e.response?.data?.error || 'Bulk action failed') }
+    finally { setBulkBusy(false) }
+  }
 
   const filtered = search
     ? alerts.filter(a => (a.title + a.description + a.host).toLowerCase().includes(search.toLowerCase()))
@@ -416,10 +433,42 @@ export default function Alerts() {
               </div>
             </div>
           ) : (
-            filtered.map(alert => (
-              <AlertRow key={alert.id} alert={alert} selected={selectedId}
-                onClick={id => setSelectedId(id === selectedId ? null : id)}/>
-            ))
+            <>
+              {sla && (sla.breached || []).length > 0 && (
+                <div className="px-4 py-2 text-xs text-red-300 bg-red-950/30 border-b border-red-900/40">
+                  {sla.breached.length} open alert(s) past response SLA
+                  {' '}({Object.entries(sla.by_severity || {}).sort((a, b) => b[0] - a[0]).map(([s, n]) => `sev ${s}: ${n}`).join(', ')}).
+                  {' '}Targets: sev 5 → 1h, sev 4 → 4h, sev 3 → 24h, sev 2 → 72h.
+                </div>
+              )}
+              <div className="flex items-center gap-3 px-4 py-2 text-xs text-siem-muted border-b border-siem-border/50">
+                <label className="flex items-center gap-1.5">
+                  <input type="checkbox"
+                    checked={filtered.length > 0 && filtered.every(a => checked.has(a.id))}
+                    onChange={e => setChecked(e.target.checked ? new Set(filtered.map(a => a.id)) : new Set())}/>
+                  Select all ({filtered.length})
+                </label>
+                {checked.size > 0 && (
+                  <>
+                    <span>{checked.size} selected</span>
+                    <button disabled={bulkBusy} onClick={() => bulk('acknowledge')} className="border border-siem-border rounded px-2 py-0.5 hover:text-siem-text">Acknowledge</button>
+                    <button disabled={bulkBusy} onClick={() => bulk('close')} className="border border-siem-border rounded px-2 py-0.5 hover:text-siem-text">Close</button>
+                  </>
+                )}
+              </div>
+              {filtered.map(alert => (
+                <div key={alert.id} className="flex items-stretch">
+                  <label className="pl-4 flex items-center">
+                    <input type="checkbox" checked={checked.has(alert.id)}
+                      onChange={e => setChecked(c => { const n = new Set(c); e.target.checked ? n.add(alert.id) : n.delete(alert.id); return n })}/>
+                  </label>
+                  <div className="flex-1 min-w-0">
+                    <AlertRow alert={alert} selected={selectedId}
+                      onClick={id => setSelectedId(id === selectedId ? null : id)}/>
+                  </div>
+                </div>
+              ))}
+            </>
           )}
         </div>
       </div>

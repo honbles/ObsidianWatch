@@ -30,48 +30,54 @@ import (
 // Any outbound connection to these ports creates an explicit IP node in the graph
 // regardless of severity, because they are almost never legitimate.
 var wellKnownShellPorts = map[int]bool{
-	4444: true, // Metasploit default
-	1337: true, // Leet/hacker port, common in CTFs and malware
+	4444:  true, // Metasploit default
+	1337:  true, // Leet/hacker port, common in CTFs and malware
 	31337: true, // Elite/back orifice
-	9001: true,  // Tor, also common in malware
-	6666: true,  // IRC, used by botnets
-	6667: true,  // IRC, used by botnets
-	6668: true,  // IRC
-	6669: true,  // IRC
+	9001:  true, // Tor, also common in malware
+	6666:  true, // IRC, used by botnets
+	6667:  true, // IRC, used by botnets
+	6668:  true, // IRC
+	6669:  true, // IRC
 }
 
 // ── Graph types ──────────────────────────────────────────────────────────────
 
 type GraphNode struct {
-	ID          string                 `json:"id"`
-	Type        string                 `json:"type"`        // process, dns, ip, file, registry, logon, host
-	Label       string                 `json:"label"`
-	Severity    int                    `json:"severity"`
-	EventCount  int                    `json:"event_count"`
-	Meta        map[string]interface{} `json:"meta"`
-	Suspicious  bool                   `json:"suspicious"`
-	FirstSeen   time.Time              `json:"first_seen"`
-	LastSeen    time.Time              `json:"last_seen"`
+	ID         string                 `json:"id"`
+	Type       string                 `json:"type"` // process, dns, ip, file, registry, logon, host
+	Label      string                 `json:"label"`
+	Severity   int                    `json:"severity"`
+	EventCount int                    `json:"event_count"`
+	Meta       map[string]interface{} `json:"meta"`
+	Suspicious bool                   `json:"suspicious"`
+	FirstSeen  time.Time              `json:"first_seen"`
+	LastSeen   time.Time              `json:"last_seen"`
 }
 
 type GraphEdge struct {
 	ID        string    `json:"id"`
 	Source    string    `json:"source"`
 	Target    string    `json:"target"`
-	Type      string    `json:"type"`   // spawned, queried, connected, wrote, deleted, modified, executed
+	Type      string    `json:"type"` // spawned, queried, connected, wrote, deleted, modified, executed
 	Count     int       `json:"count"`
 	Severity  int       `json:"severity"`
 	FirstSeen time.Time `json:"first_seen"`
 	LastSeen  time.Time `json:"last_seen"`
+	// F-13: Inferred is true when the edge was attached by time/user
+	// proximity rather than an explicit PID, with Confidence 0-100.
+	Inferred   bool `json:"inferred,omitempty"`
+	Confidence int  `json:"confidence,omitempty"`
 }
 
 type EndpointGraph struct {
-	Nodes    []GraphNode `json:"nodes"`
-	Edges    []GraphEdge `json:"edges"`
-	Meta     struct {
+	Nodes []GraphNode `json:"nodes"`
+	Edges []GraphEdge `json:"edges"`
+	Meta  struct {
 		Host       string    `json:"host"`
 		Since      time.Time `json:"since"`
+		Until      time.Time `json:"until,omitempty"`
 		EventCount int       `json:"event_count"`
+		Truncated  bool      `json:"truncated,omitempty"` // F-12: hit the event cap, older/newer events omitted
 		OS         string    `json:"os"`
 		AgentID    string    `json:"agent_id"`
 	} `json:"meta"`
@@ -87,13 +93,14 @@ type agentInfo struct {
 // ── Graph builder ─────────────────────────────────────────────────────────────
 
 type graphBuilder struct {
-	nodes    map[string]*GraphNode
-	edges    map[string]*GraphEdge
-	pidProc  map[int]*GraphNode  // pid → process node
-	pidName  map[int]string      // pid → name (for enrichment)
-	host     string
-	os       string
-	agentID  string
+	nodes   map[string]*GraphNode
+	edges   map[string]*GraphEdge
+	pidProc map[int]*GraphNode // pid → process node
+	pidName map[int]string     // pid → name (for enrichment)
+	guidProc map[string]*GraphNode // F-11: stable process GUID → node
+	host    string
+	os      string
+	agentID string
 }
 
 func newGraphBuilder(host string) *graphBuilder {
@@ -102,6 +109,7 @@ func newGraphBuilder(host string) *graphBuilder {
 		edges:   make(map[string]*GraphEdge),
 		pidProc: make(map[int]*GraphNode),
 		pidName: make(map[int]string),
+		guidProc: make(map[string]*GraphNode),
 		host:    host,
 	}
 }
@@ -170,12 +178,17 @@ func (g *graphBuilder) edgeAt(srcID, dstID, typ string, sev int, t time.Time) {
 	}
 	if !t.IsZero() {
 		e.FirstSeen = t
-		e.LastSeen  = t
+		e.LastSeen = t
 	}
 	g.edges[id] = e
 }
 
 func (g *graphBuilder) processEvents(events []store.Event) {
+	// F-11: PIDs are reused, so parent lookups must follow time. Work on a
+	// time-ordered copy so "latest process with this PID" means "latest
+	// before this event".
+	events = append([]store.Event(nil), events...)
+	sort.SliceStable(events, func(i, j int) bool { return events[i].Time.Before(events[j].Time) })
 	// First pass: build PID→name cache from all process events
 	for _, ev := range events {
 		if ev.ProcessName != nil && ev.PID != nil && *ev.PID > 0 {
@@ -264,19 +277,27 @@ func (g *graphBuilder) handleProcess(ev store.Event) {
 		n.Meta["event_ids"] = ids
 	}
 
-	// Track pid→node mapping
+	// Parent→child spawn edge. Prefer the stable GUID (Sysmon ProcessGuid /
+	// ParentProcessGuid, F-11); fall back to the most recent process seen with
+	// that PID before this event.
+	guid, parentGUID := procGUIDs(ev)
+	var parent *GraphNode
+	if parentGUID != "" {
+		parent = g.guidProc[parentGUID]
+	}
+	if parent == nil && ppid > 0 {
+		parent = g.pidProc[ppid]
+	}
+	if parent != nil && parent.ID != nodeID {
+		g.edgeAt(parent.ID, nodeID, "spawned", int(ev.Severity), ev.Time)
+	}
+
+	// Track pid→node and guid→node mappings (after the parent lookup).
 	if pid > 0 {
 		g.pidProc[pid] = n
 	}
-
-	// Parent→child spawn edge
-	if ppid > 0 {
-		if parentName, ok := g.pidName[ppid]; ok {
-			parentID := fmt.Sprintf("proc-%s-%d", strings.ToLower(parentName), ppid)
-			if _, exists := g.nodes[parentID]; exists {
-				g.edgeAt(parentID, nodeID, "spawned", int(ev.Severity), ev.Time)
-			}
-		}
+	if guid != "" {
+		g.guidProc[guid] = n
 	}
 
 	// Suspicious flagging deferred to detection engine alerts
@@ -299,7 +320,7 @@ func (g *graphBuilder) handleNetwork(ev store.Event) {
 	}
 
 	isExt := isExternal(dstIP)
-	sev    := int(ev.Severity)
+	sev := int(ev.Severity)
 	if isExt && sev < 2 {
 		sev = 2
 	}
@@ -313,12 +334,12 @@ func (g *graphBuilder) handleNetwork(ev store.Event) {
 	createNode := sev >= 4 || wellKnownShellPorts[dstPort]
 
 	if createNode {
-		ipLabel  := fmt.Sprintf("%s:%d", dstIP, dstPort)
+		ipLabel := fmt.Sprintf("%s:%d", dstIP, dstPort)
 		ipNodeID := fmt.Sprintf("ip-%s-%d", dstIP, dstPort)
-		ipNode   := g.node(ipNodeID, "ip", ipLabel, sev)
+		ipNode := g.node(ipNodeID, "ip", ipLabel, sev)
 		g.nodeAt(ipNode, ev.Time)
-		ipNode.Meta["ip"]          = dstIP
-		ipNode.Meta["port"]        = dstPort
+		ipNode.Meta["ip"] = dstIP
+		ipNode.Meta["port"] = dstPort
 		ipNode.Meta["is_external"] = isExt
 		if ev.Proto != nil {
 			ipNode.Meta["proto"] = *ev.Proto
@@ -409,10 +430,10 @@ func (g *graphBuilder) handleFile(ev store.Event) {
 	// Skip virtual/kernel filesystems — cross-platform, path-prefix based only.
 	pathLow := strings.ToLower(path)
 	skipPrefixes := []string{
-		"/proc/",  // Linux kernel virtual fs
-		"/sys/",   // Linux sysfs
-		"/dev/",   // Linux devices
-		"/run/",   // Linux runtime sockets/pids
+		"/proc/", // Linux kernel virtual fs
+		"/sys/",  // Linux sysfs
+		"/dev/",  // Linux devices
+		"/run/",  // Linux runtime sockets/pids
 	}
 	for _, p := range skipPrefixes {
 		if strings.HasPrefix(pathLow, p) {
@@ -570,12 +591,18 @@ func (g *graphBuilder) proximityMatch(events []store.Event) {
 	// Build process time windows: pid → {start, lastSeen}
 	procWindows := make(map[int]*procAt)
 	for _, ev := range events {
-		if ev.ProcessName == nil || ev.PID == nil { continue }
+		if ev.ProcessName == nil || ev.PID == nil {
+			continue
+		}
 		pid := *ev.PID
-		if pid == 0 { continue }
+		if pid == 0 {
+			continue
+		}
 		name := *ev.ProcessName
 		if p, ok := procWindows[pid]; ok {
-			if ev.Time.After(p.lastSeen) { p.lastSeen = ev.Time }
+			if ev.Time.After(p.lastSeen) {
+				p.lastSeen = ev.Time
+			}
 		} else {
 			procWindows[pid] = &procAt{
 				pid: pid, name: name, start: ev.Time, lastSeen: ev.Time,
@@ -606,16 +633,28 @@ func (g *graphBuilder) proximityMatch(events []store.Event) {
 		for _, p := range procTimeline {
 			// Process must have been running at the time of the file event
 			// (started before evTime + window, still alive after evTime - window)
-			if p.start.After(evTime.Add(window)) { continue }
-			if p.lastSeen.Before(evTime.Add(-window)) { continue }
+			if p.start.After(evTime.Add(window)) {
+				continue
+			}
+			if p.lastSeen.Before(evTime.Add(-window)) {
+				continue
+			}
 
 			score := 0
-			if evUser != "" && p.user == evUser { score += 10 }
+			if evUser != "" && p.user == evUser {
+				score += 10
+			}
 			// Closer in time = better
 			delta := evTime.Sub(p.start)
-			if delta < 0 { delta = -delta }
-			if delta < 5*time.Second { score += 5 }
-			if delta < 15*time.Second { score += 3 }
+			if delta < 0 {
+				delta = -delta
+			}
+			if delta < 5*time.Second {
+				score += 5
+			}
+			if delta < 15*time.Second {
+				score += 3
+			}
 
 			if score > bestScore {
 				bestScore = score
@@ -623,7 +662,9 @@ func (g *graphBuilder) proximityMatch(events []store.Event) {
 			}
 		}
 
-		if best != nil {
+		// Require some corroboration (same user, or within 15s): a bare "was
+		// running nearby" match is a coin flip and is not drawn.
+		if best != nil && bestScore >= 3 {
 			procNodeID := fmt.Sprintf("proc-%s-%d", strings.ToLower(best.name), best.pid)
 			if _, exists := g.nodes[procNodeID]; exists {
 				edgeType := "modified"
@@ -633,6 +674,14 @@ func (g *graphBuilder) proximityMatch(events []store.Event) {
 					}
 				}
 				g.edge(procNodeID, node.ID, edgeType, node.Severity)
+				if e, ok := g.edges[fmt.Sprintf("%s→%s[%s]", procNodeID, node.ID, edgeType)]; ok {
+					e.Inferred = true
+					conf := bestScore * 100 / 18
+					if conf > 95 {
+						conf = 95
+					}
+					e.Confidence = conf
+				}
 			}
 		}
 
@@ -714,6 +763,9 @@ func (g *graphBuilder) build() EndpointGraph {
 
 // ── Handler ───────────────────────────────────────────────────────────────────
 
+// graphEventCap bounds events loaded for a graph; Meta.Truncated tells the UI.
+const graphEventCap = 10000
+
 func handleEndpointGraph(db *store.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		host := r.PathValue("host")
@@ -729,9 +781,28 @@ func handleEndpointGraph(db *store.DB) http.HandlerFunc {
 
 		since := time.Now().Add(-time.Duration(hours) * time.Hour)
 		filter := store.EventFilter{
-			Host:  host,
-			Since: since,
-			Limit: 10000,
+			// F-10: exact match — this endpoint is scoped to one specific
+			// host, so a substring match would silently pull in events
+			// from unrelated hosts (e.g. "web" matching "web-prod").
+			HostExact: host,
+			Since:     since,
+			Limit:     graphEventCap,
+		}
+		// F-12: ?around=<RFC3339>&window=<minutes> builds the graph around an
+		// alert's time (+/- window, default 30, max 720) instead of the newest
+		// N events, so the start of a long attack chain isn't cut off.
+		var until time.Time
+		if a := r.URL.Query().Get("around"); a != "" {
+			if at, err := time.Parse(time.RFC3339, a); err == nil {
+				win := 30
+				if wv, err := strconv.Atoi(r.URL.Query().Get("window")); err == nil && wv > 0 && wv <= 720 {
+					win = wv
+				}
+				since = at.Add(-time.Duration(win) * time.Minute)
+				until = at.Add(time.Duration(win) * time.Minute)
+				filter.Since = since
+				filter.Until = until
+			}
 		}
 		if processFilter != "" {
 			filter.ProcessName = processFilter
@@ -746,7 +817,9 @@ func handleEndpointGraph(db *store.DB) http.HandlerFunc {
 		builder.processEvents(events)
 		graph := builder.build()
 		graph.Meta.Since = since
+		graph.Meta.Until = until
 		graph.Meta.EventCount = len(events)
+		graph.Meta.Truncated = len(events) >= graphEventCap
 
 		// Correlate detection engine alerts — mark nodes suspicious based on real alerts
 		// not heuristics. Pull open alerts for this host in the time window.
@@ -886,7 +959,9 @@ func buildCloudGraph(events []store.Event, since time.Time) CloudGraph {
 	addNode := func(id, typ, label string, sev int) *GraphNode {
 		if n, ok := nodes[id]; ok {
 			n.EventCount++
-			if sev > n.Severity { n.Severity = sev }
+			if sev > n.Severity {
+				n.Severity = sev
+			}
 			return n
 		}
 		n := &GraphNode{ID: id, Type: typ, Label: label, Severity: sev,
@@ -896,13 +971,18 @@ func buildCloudGraph(events []store.Event, since time.Time) CloudGraph {
 	}
 	addEdge := func(src, dst, typ string, sev int) {
 		id := fmt.Sprintf("%s→%s[%s]", src, dst, typ)
-		if e, ok := edges[id]; ok { e.Count++; return }
+		if e, ok := edges[id]; ok {
+			e.Count++
+			return
+		}
 		edges[id] = &GraphEdge{ID: id, Source: src, Target: dst, Type: typ, Count: 1, Severity: sev}
 	}
 
 	for _, ev := range events {
 		raw := rawToMap(ev.Raw)
-		if raw == nil { continue }
+		if raw == nil {
+			continue
+		}
 
 		provider := cloudProviderFromEventType(ev.EventType)
 		accountID, _ := raw["account_id"].(string)
@@ -924,10 +1004,16 @@ func buildCloudGraph(events []store.Event, since time.Time) CloudGraph {
 		// Identity node
 		identity := strOrEmpty(ev.UserName)
 		if identity == "" {
-			if caller, ok := raw["caller"].(string); ok { identity = caller }
-			if username, ok := raw["username"].(string); ok { identity = username }
+			if caller, ok := raw["caller"].(string); ok {
+				identity = caller
+			}
+			if username, ok := raw["username"].(string); ok {
+				identity = username
+			}
 		}
-		if identity == "" { identity = "unknown" }
+		if identity == "" {
+			identity = "unknown"
+		}
 
 		// Scope identity to account to avoid collapsing different accounts' users
 		identityNodeID := fmt.Sprintf("identity-%s-%s", accountID, strings.ToLower(identity))
@@ -938,18 +1024,30 @@ func buildCloudGraph(events []store.Event, since time.Time) CloudGraph {
 
 		// Action / operation node
 		operation := ""
-		if evName, ok := raw["event_name"].(string); ok { operation = evName }
-		if opName, ok := raw["operation_name"].(string); ok { operation = opName }
-		if method, ok := raw["method_name"].(string); ok { operation = method }
-		if findType, ok := raw["finding_type"].(string); ok { operation = findType }
-		if operation == "" { continue }
+		if evName, ok := raw["event_name"].(string); ok {
+			operation = evName
+		}
+		if opName, ok := raw["operation_name"].(string); ok {
+			operation = opName
+		}
+		if method, ok := raw["method_name"].(string); ok {
+			operation = method
+		}
+		if findType, ok := raw["finding_type"].(string); ok {
+			operation = findType
+		}
+		if operation == "" {
+			continue
+		}
 
 		// Scope operation to identity so same op by different users shows separately
 		opNodeID := fmt.Sprintf("op-%s-%s-%s", provider, strings.ToLower(identity), strings.ToLower(operation))
 		opNode := addNode(opNodeID, "api_call", operation, int(ev.Severity))
 		opNode.Meta["provider"] = provider
 		opNode.Meta["source"] = ev.Source
-		if ev.Severity >= 4 { opNode.Suspicious = true }
+		if ev.Severity >= 4 {
+			opNode.Suspicious = true
+		}
 		addEdge(identityNodeID, opNodeID, "called", int(ev.Severity))
 
 		// Source IP node
@@ -963,13 +1061,19 @@ func buildCloudGraph(events []store.Event, since time.Time) CloudGraph {
 
 		// Resource node (AWS resource ARN, Azure resource ID, GCP resource)
 		resource := ""
-		if resID, ok := raw["resource_id"].(string); ok { resource = resID }
+		if resID, ok := raw["resource_id"].(string); ok {
+			resource = resID
+		}
 		if res, ok := raw["resource"].(map[string]interface{}); ok {
-			if resType, ok := res["ResourceType"].(string); ok { resource = resType }
+			if resType, ok := res["ResourceType"].(string); ok {
+				resource = resType
+			}
 		}
 		if resource != "" && len(resource) < 100 {
 			resLabel := resource
-			if len(resLabel) > 50 { resLabel = "..." + resLabel[len(resLabel)-47:] }
+			if len(resLabel) > 50 {
+				resLabel = "..." + resLabel[len(resLabel)-47:]
+			}
 			resNodeID := fmt.Sprintf("resource-%s", strings.ToLower(resource))
 			addNode(resNodeID, "resource", resLabel, int(ev.Severity))
 			addEdge(opNodeID, resNodeID, "accessed", int(ev.Severity))
@@ -979,8 +1083,12 @@ func buildCloudGraph(events []store.Event, since time.Time) CloudGraph {
 	graph := CloudGraph{}
 	graph.Meta.Since = since
 	graph.Meta.EventCount = len(events)
-	for _, n := range nodes { graph.Nodes = append(graph.Nodes, *n) }
-	for _, e := range edges { graph.Edges = append(graph.Edges, *e) }
+	for _, n := range nodes {
+		graph.Nodes = append(graph.Nodes, *n)
+	}
+	for _, e := range edges {
+		graph.Edges = append(graph.Edges, *e)
+	}
 	return graph
 }
 
@@ -1002,7 +1110,9 @@ func buildNetworkGraph(events []store.Event, since time.Time, agentsByHost map[s
 	addNode := func(id, typ, label string, sev int) *GraphNode {
 		if n, ok := nodes[id]; ok {
 			n.EventCount++
-			if sev > n.Severity { n.Severity = sev }
+			if sev > n.Severity {
+				n.Severity = sev
+			}
 			return n
 		}
 		n := &GraphNode{ID: id, Type: typ, Label: label, Severity: sev,
@@ -1012,7 +1122,13 @@ func buildNetworkGraph(events []store.Event, since time.Time, agentsByHost map[s
 	}
 	addEdge := func(src, dst, typ string, sev int) {
 		id := fmt.Sprintf("%s→%s[%s]", src, dst, typ)
-		if e, ok := edges[id]; ok { e.Count++; if sev > e.Severity { e.Severity = sev }; return }
+		if e, ok := edges[id]; ok {
+			e.Count++
+			if sev > e.Severity {
+				e.Severity = sev
+			}
+			return
+		}
 		edges[id] = &GraphEdge{ID: id, Source: src, Target: dst, Type: typ, Count: 1, Severity: sev}
 	}
 
@@ -1054,10 +1170,14 @@ func buildNetworkGraph(events []store.Event, since time.Time, agentsByHost map[s
 
 	// Connection edges
 	for _, ev := range events {
-		if ev.DstIP == nil || *ev.DstIP == "" { continue }
+		if ev.DstIP == nil || *ev.DstIP == "" {
+			continue
+		}
 		dstIP := *ev.DstIP
 		dstPort := 0
-		if ev.DstPort != nil { dstPort = *ev.DstPort }
+		if ev.DstPort != nil {
+			dstPort = *ev.DstPort
+		}
 		sev := int(ev.Severity)
 
 		srcDeviceID := fmt.Sprintf("device-%s", ev.Host)
@@ -1083,7 +1203,9 @@ func buildNetworkGraph(events []store.Event, since time.Time, agentsByHost map[s
 			if dstPort == 445 || dstPort == 3389 || dstPort == 22 || dstPort == 5985 || dstPort == 5986 {
 				if e, ok := edges[edgeID]; ok {
 					e.Type = "lateral"
-					if e.Severity < 3 { e.Severity = 3 }
+					if e.Severity < 3 {
+						e.Severity = 3
+					}
 				}
 			}
 		} else if !isLoopback(dstIP) && isExternal(dstIP) {
@@ -1107,8 +1229,12 @@ func buildNetworkGraph(events []store.Event, since time.Time, agentsByHost map[s
 	graph := NetworkGraph{}
 	graph.Meta.Since = since
 	graph.Meta.EventCount = len(events)
-	for _, n := range nodes { graph.Nodes = append(graph.Nodes, *n) }
-	for _, e := range edges { graph.Edges = append(graph.Edges, *e) }
+	for _, n := range nodes {
+		graph.Nodes = append(graph.Nodes, *n)
+	}
+	for _, e := range edges {
+		graph.Edges = append(graph.Edges, *e)
+	}
 	return graph
 }
 
@@ -1120,11 +1246,15 @@ func isLoopback(ip string) bool {
 
 func isInternal(ip string) bool {
 	parsed := net.ParseIP(ip)
-	if parsed == nil { return false }
+	if parsed == nil {
+		return false
+	}
 	private := []string{"10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "169.254.0.0/16"}
 	for _, cidr := range private {
 		_, network, _ := net.ParseCIDR(cidr)
-		if network != nil && network.Contains(parsed) { return true }
+		if network != nil && network.Contains(parsed) {
+			return true
+		}
 	}
 	return false
 }
@@ -1184,17 +1314,23 @@ func isPersistenceKey(key string) bool {
 	}
 	keyLower := strings.ToLower(key)
 	for _, p := range persistence {
-		if strings.Contains(keyLower, strings.ToLower(p)) { return true }
+		if strings.Contains(keyLower, strings.ToLower(p)) {
+			return true
+		}
 	}
 	return false
 }
 
 func fileActionToEdgeType(action string) string {
 	switch action {
-	case "create", "creat": return "created"
-	case "delete", "deleted", "unlink": return "deleted"
-	case "exec", "executed": return "executed"
-	default: return "wrote"
+	case "create", "creat":
+		return "created"
+	case "delete", "deleted", "unlink":
+		return "deleted"
+	case "exec", "executed":
+		return "executed"
+	default:
+		return "wrote"
 	}
 }
 
@@ -1218,14 +1354,20 @@ func nodeEventIDs(n *GraphNode) []string {
 }
 
 func strOrEmpty(s *string) string {
-	if s == nil { return "" }
+	if s == nil {
+		return ""
+	}
 	return *s
 }
 
 func rawToMap(raw []byte) map[string]interface{} {
-	if raw == nil { return nil }
+	if raw == nil {
+		return nil
+	}
 	var m map[string]interface{}
-	if err := json.Unmarshal(raw, &m); err != nil { return nil }
+	if err := json.Unmarshal(raw, &m); err != nil {
+		return nil
+	}
 	return m
 }
 
@@ -1248,14 +1390,16 @@ func parseQueryResults(results string) []string {
 
 func cloudProviderFromEventType(et string) string {
 	switch {
-	case strings.Contains(et, "cloudtrail") || strings.Contains(et, "guardduty"): return "aws"
-	case strings.Contains(et, "azure") || strings.Contains(et, "entra"): return "azure"
-	case strings.Contains(et, "gcp"): return "gcp"
-	default: return "cloud"
+	case strings.Contains(et, "cloudtrail") || strings.Contains(et, "guardduty"):
+		return "aws"
+	case strings.Contains(et, "azure") || strings.Contains(et, "entra"):
+		return "azure"
+	case strings.Contains(et, "gcp"):
+		return "gcp"
+	default:
+		return "cloud"
 	}
 }
-
-
 
 // handleEndpointProcesses returns a list of unique processes seen on a host
 // with their event counts, severity, and suspicious flag
@@ -1271,28 +1415,36 @@ func handleEndpointProcesses(db *store.DB) http.HandlerFunc {
 
 		since := time.Now().Add(-time.Duration(hours) * time.Hour)
 
-		// Get all events for this host
+		// Get all events for this host (F-10: exact match)
 		events, _, err := db.QueryEvents(r.Context(), store.EventFilter{
-			Host:  host,
-			Since: since,
-			Limit: 20000,
+			HostExact: host,
+			Since:     since,
+			Limit:     20000,
 		})
 		if err != nil {
 			writeJSON(w, 500, map[string]string{"error": "query failed"})
 			return
 		}
 
-		// Get alerts for this host to mark suspicious processes
+		// F-14: link alerts to processes through the event that raised them
+		// (previously keyed by host but looked up by process name, so it
+		// never matched).
 		alerts, _ := db.ListAlertsForHost(r.Context(), host, since)
-		suspiciousProcesses := map[string]bool{}
-		alertsByProcess := map[string]string{}
+		alertedEvents := map[string]bool{}
 		for _, a := range alerts {
-			if a.EventType == "process" || a.Title != "" {
-				// Extract process name from alert if available
-				suspiciousProcesses[a.Host] = true
+			if a.EventID != "" {
+				alertedEvents[a.EventID] = true
+			}
+			if a.SourceEventID != "" {
+				alertedEvents[a.SourceEventID] = true
 			}
 		}
-		_ = alertsByProcess
+		suspiciousProcesses := map[string]bool{}
+		for _, ev := range events {
+			if ev.ProcessName != nil && *ev.ProcessName != "" && alertedEvents[ev.ID] {
+				suspiciousProcesses[*ev.ProcessName] = true
+			}
+		}
 
 		type ProcessInfo struct {
 			Name        string    `json:"name"`
@@ -1328,32 +1480,33 @@ func handleEndpointProcesses(db *store.DB) http.HandlerFunc {
 			if ev.Severity > p.MaxSeverity {
 				p.MaxSeverity = ev.Severity
 			}
-			if ev.Time.Before(p.FirstSeen) { p.FirstSeen = ev.Time }
-			if ev.Time.After(p.LastSeen)  { p.LastSeen  = ev.Time }
+			if ev.Time.Before(p.FirstSeen) {
+				p.FirstSeen = ev.Time
+			}
+			if ev.Time.After(p.LastSeen) {
+				p.LastSeen = ev.Time
+			}
 			typeSeen[name][ev.EventType] = true
-			if ev.Severity >= 4 { p.Suspicious = true }
 		}
 
 		// Build result list sorted by event count descending
 		var result []ProcessInfo
 		for name, p := range procs {
-			for t := range typeSeen[name] { p.Types = append(p.Types, t) }
-			if suspiciousProcesses[name] { p.Suspicious = true }
+			for t := range typeSeen[name] {
+				p.Types = append(p.Types, t)
+			}
+			if suspiciousProcesses[name] {
+				p.Suspicious = true
+			}
 			result = append(result, *p)
 		}
 		// Sort: suspicious first, then by event count
-		for i := 0; i < len(result)-1; i++ {
-			for j := i + 1; j < len(result); j++ {
-				a, b := result[i], result[j]
-				aScore := a.EventCount
-				if a.Suspicious { aScore += 100000 }
-				bScore := b.EventCount
-				if b.Suspicious { bScore += 100000 }
-				if bScore > aScore {
-					result[i], result[j] = result[j], result[i]
-				}
+		sort.Slice(result, func(i, j int) bool {
+			if result[i].Suspicious != result[j].Suspicious {
+				return result[i].Suspicious
 			}
-		}
+			return result[i].EventCount > result[j].EventCount
+		})
 
 		writeJSON(w, 200, map[string]interface{}{
 			"host":      host,
@@ -1362,4 +1515,34 @@ func handleEndpointProcesses(db *store.DB) http.HandlerFunc {
 			"since":     since,
 		})
 	}
+}
+
+// procGUIDs extracts a stable process GUID and parent GUID from the event's
+// raw payload when the agent supplied them (Sysmon ProcessGuid, or an agent
+// emitted process_guid / parent_process_guid).
+func procGUIDs(ev store.Event) (string, string) {
+	if len(ev.Raw) == 0 {
+		return "", ""
+	}
+	var m map[string]interface{}
+	if json.Unmarshal(ev.Raw, &m) != nil {
+		return "", ""
+	}
+	look := func(keys ...string) string {
+		for _, k := range keys {
+			if v, ok := m[k].(string); ok && v != "" {
+				return v
+			}
+		}
+		if d, ok := m["event_data"].(map[string]interface{}); ok {
+			for _, k := range keys {
+				if v, ok := d[k].(string); ok && v != "" {
+					return v
+				}
+			}
+		}
+		return ""
+	}
+	return look("process_guid", "ProcessGuid", "ProcessGUID"),
+		look("parent_process_guid", "ParentProcessGuid", "ParentProcessGUID")
 }

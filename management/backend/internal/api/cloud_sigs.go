@@ -8,6 +8,8 @@ import (
 // cloudSignaturesExtended adds 80 more cloud detection rules covering:
 // AWS (30), Azure (25), GCP (15), cross-cloud (10)
 // Combined with cloudSignatures (20) = 100 total cloud rules.
+// See cloud_gcp_sigs.go for an additional 61 GCP-specific rules (C-GCP-021 to C-GCP-073, C-SCC-001 to C-SCC-008).
+// Grand total: 161+ cloud detection rules.
 var cloudSignaturesExtended = []ThreatSig{
 
 	// ══════════════════════════════════════════════════════════════════════════
@@ -21,7 +23,7 @@ var cloudSignaturesExtended = []ThreatSig{
 		Severity: 4, MITRE: "T1537", Category: "Exfiltration",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "cloud.cloudtrail" &&
-				containsAny(strings.ToLower(rawStr(ev)), "putbucketreplication") &&
+				awsActionHas(ev, "putbucketreplication") &&
 				containsAny(strings.ToLower(rawStr(ev)), "destinationbucketarn")
 		},
 	},
@@ -31,7 +33,7 @@ var cloudSignaturesExtended = []ThreatSig{
 		Severity: 3, MITRE: "T1485", Category: "Impact",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "cloud.cloudtrail" &&
-				containsAny(strings.ToLower(rawStr(ev)), "putbucketversioning") &&
+				awsActionHas(ev, "putbucketversioning") &&
 				containsAny(strings.ToLower(rawStr(ev)), "suspended")
 		},
 	},
@@ -43,7 +45,7 @@ var cloudSignaturesExtended = []ThreatSig{
 			// Only fire when logging is being REMOVED (LoggingEnabled absent = disabled)
 			// PutBucketLogging with an empty body disables logging
 			return ev.EventType == "cloud.cloudtrail" &&
-				containsAny(strings.ToLower(rawStr(ev)), "putbucketlogging") &&
+				awsActionHas(ev, "putbucketlogging") &&
 				!containsAny(strings.ToLower(rawStr(ev)), "loggingenabled", "targetbucket")
 		},
 	},
@@ -53,7 +55,7 @@ var cloudSignaturesExtended = []ThreatSig{
 		Severity: 3, MITRE: "T1530", Category: "Collection",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "cloud.cloudtrail" &&
-				containsAny(strings.ToLower(rawStr(ev)), "getobject") &&
+				awsActionHas(ev, "getobject") &&
 				ev.Severity >= 3
 		},
 	},
@@ -63,7 +65,7 @@ var cloudSignaturesExtended = []ThreatSig{
 		Severity: 3, MITRE: "T1486", Category: "Impact",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "cloud.cloudtrail" &&
-				containsAny(strings.ToLower(rawStr(ev)), "deletebucketencryption")
+				awsActionHas(ev, "deletebucketencryption")
 		},
 	},
 
@@ -74,7 +76,7 @@ var cloudSignaturesExtended = []ThreatSig{
 		Severity: 2, MITRE: "T1136.003", Category: "Persistence",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "cloud.cloudtrail" &&
-				containsAny(strings.ToLower(rawStr(ev)), "createuser") &&
+				awsActionHas(ev, "createuser") &&
 				!containsAny(strings.ToLower(rawStr(ev)), "errorcode")
 		},
 	},
@@ -84,7 +86,7 @@ var cloudSignaturesExtended = []ThreatSig{
 		Severity: 4, MITRE: "T1078.004", Category: "Privilege Escalation",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "cloud.cloudtrail" &&
-				containsAny(strings.ToLower(rawStr(ev)), "addusertogroup") &&
+				awsActionHas(ev, "addusertogroup") &&
 				containsAny(strings.ToLower(rawStr(ev)), "admin", "administrator", "poweruser")
 		},
 	},
@@ -94,7 +96,7 @@ var cloudSignaturesExtended = []ThreatSig{
 		Severity: 3, MITRE: "T1556", Category: "Credential Access",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "cloud.cloudtrail" &&
-				containsAny(strings.ToLower(rawStr(ev)), "updateaccountpasswordpolicy", "deleteaccountpasswordpolicy")
+				awsActionHas(ev, "updateaccountpasswordpolicy", "deleteaccountpasswordpolicy")
 		},
 	},
 	{
@@ -103,7 +105,7 @@ var cloudSignaturesExtended = []ThreatSig{
 		Severity: 4, MITRE: "T1556.006", Category: "Defense Evasion",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "cloud.cloudtrail" &&
-				containsAny(strings.ToLower(rawStr(ev)), "deactivatemfadevice", "deletevirtualmfadevice")
+				awsActionHas(ev, "deactivatemfadevice", "deletevirtualmfadevice")
 		},
 	},
 	{
@@ -112,7 +114,7 @@ var cloudSignaturesExtended = []ThreatSig{
 		Severity: 3, MITRE: "T1199", Category: "Initial Access",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "cloud.cloudtrail" &&
-				containsAny(strings.ToLower(rawStr(ev)), "assumerole") &&
+				awsActionHas(ev, "assumerole") &&
 				containsAny(strings.ToLower(rawStr(ev)), "rolearn") &&
 				!containsAny(strings.ToLower(rawStr(ev)), "errorcode")
 		},
@@ -125,7 +127,7 @@ var cloudSignaturesExtended = []ThreatSig{
 		Severity: 2, MITRE: "T1583.003", Category: "Resource Development",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "cloud.cloudtrail" &&
-				containsAny(strings.ToLower(rawStr(ev)), "runinstances") &&
+				awsActionHas(ev, "runinstances") &&
 				containsAny(strings.ToLower(rawStr(ev)), "publicipaddress", "associatepublicipaddress\":true")
 		},
 	},
@@ -135,7 +137,7 @@ var cloudSignaturesExtended = []ThreatSig{
 		Severity: 4, MITRE: "T1530", Category: "Collection",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "cloud.cloudtrail" &&
-				containsAny(strings.ToLower(rawStr(ev)), "modifysnapshotattribute") &&
+				awsActionHas(ev, "modifysnapshotattribute") &&
 				containsAny(strings.ToLower(rawStr(ev)), "group", "all")
 		},
 	},
@@ -145,7 +147,7 @@ var cloudSignaturesExtended = []ThreatSig{
 		Severity: 4, MITRE: "T1530", Category: "Collection",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "cloud.cloudtrail" &&
-				containsAny(strings.ToLower(rawStr(ev)), "modifyimageattribute") &&
+				awsActionHas(ev, "modifyimageattribute") &&
 				containsAny(strings.ToLower(rawStr(ev)), "launchpermission", "all")
 		},
 	},
@@ -155,7 +157,7 @@ var cloudSignaturesExtended = []ThreatSig{
 		Severity: 4, MITRE: "T1562.008", Category: "Defense Evasion",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "cloud.cloudtrail" &&
-				containsAny(strings.ToLower(rawStr(ev)), "deleteflowlogs")
+				awsActionHas(ev, "deleteflowlogs")
 		},
 	},
 	{
@@ -164,7 +166,7 @@ var cloudSignaturesExtended = []ThreatSig{
 		Severity: 3, MITRE: "T1098", Category: "Persistence",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "cloud.cloudtrail" &&
-				containsAny(strings.ToLower(rawStr(ev)), "createkeypair", "importkeypair")
+				awsActionHas(ev, "createkeypair", "importkeypair")
 		},
 	},
 
@@ -175,7 +177,7 @@ var cloudSignaturesExtended = []ThreatSig{
 		Severity: 3, MITRE: "T1552.001", Category: "Credential Access",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "cloud.cloudtrail" &&
-				containsAny(strings.ToLower(rawStr(ev)), "getsecretvalue")
+				awsActionHas(ev, "getsecretvalue")
 		},
 	},
 	{
@@ -184,7 +186,7 @@ var cloudSignaturesExtended = []ThreatSig{
 		Severity: 4, MITRE: "T1485", Category: "Impact",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "cloud.cloudtrail" &&
-				containsAny(strings.ToLower(rawStr(ev)), "deletesecret")
+				awsActionHas(ev, "deletesecret")
 		},
 	},
 	{
@@ -193,7 +195,7 @@ var cloudSignaturesExtended = []ThreatSig{
 		Severity: 3, MITRE: "T1552.001", Category: "Credential Access",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "cloud.cloudtrail" &&
-				containsAny(strings.ToLower(rawStr(ev)), "getparameter") &&
+				awsActionHas(ev, "getparameter") &&
 				containsAny(strings.ToLower(rawStr(ev)), "withdecryption\":true", "securestring")
 		},
 	},
@@ -236,6 +238,24 @@ var cloudSignaturesExtended = []ThreatSig{
 		},
 	},
 
+	// ── Security Hub ─────────────────────────────────────────────────────────
+	{
+		ID: "C-AWS-048", Name: "Security Hub Critical Finding",
+		Description: "AWS Security Hub reported an active CRITICAL finding from an integrated product or standard.",
+		Severity: 5, MITRE: "T1190", Category: "Initial Access",
+		Match: func(ev store.Event) bool {
+			return ev.EventType == "cloud.securityhub" && strings.Contains(rawStr(ev), `"severity_label":"critical"`)
+		},
+	},
+	{
+		ID: "C-AWS-049", Name: "Security Hub High Finding",
+		Description: "AWS Security Hub reported an active HIGH finding from an integrated product or standard.",
+		Severity: 4, MITRE: "T1190", Category: "Initial Access",
+		Match: func(ev store.Event) bool {
+			return ev.EventType == "cloud.securityhub" && strings.Contains(rawStr(ev), `"severity_label":"high"`)
+		},
+	},
+
 	// ── Lambda / Serverless ───────────────────────────────────────────────────
 	{
 		ID: "C-AWS-033", Name: "Lambda Function Policy Made Public",
@@ -243,7 +263,7 @@ var cloudSignaturesExtended = []ThreatSig{
 		Severity: 4, MITRE: "T1190", Category: "Initial Access",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "cloud.cloudtrail" &&
-				containsAny(strings.ToLower(rawStr(ev)), "addpermission") &&
+				awsActionHas(ev, "addpermission") &&
 				containsAny(strings.ToLower(rawStr(ev)), "lambda") &&
 				containsAny(strings.ToLower(rawStr(ev)), "principal\":\"*\"", "principal\": \"*\"")
 		},
@@ -254,7 +274,7 @@ var cloudSignaturesExtended = []ThreatSig{
 		Severity: 3, MITRE: "T1525", Category: "Persistence",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "cloud.cloudtrail" &&
-				containsAny(strings.ToLower(rawStr(ev)), "updatefunctionconfiguration") &&
+				awsActionHas(ev, "updatefunctionconfiguration") &&
 				containsAny(strings.ToLower(rawStr(ev)), "environment", "variables")
 		},
 	},
@@ -266,7 +286,7 @@ var cloudSignaturesExtended = []ThreatSig{
 		Severity: 3, MITRE: "T1485", Category: "Impact",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "cloud.cloudtrail" &&
-				containsAny(strings.ToLower(rawStr(ev)), "deletestack")
+				awsActionHas(ev, "deletestack")
 		},
 	},
 	{
@@ -275,7 +295,7 @@ var cloudSignaturesExtended = []ThreatSig{
 		Severity: 4, MITRE: "T1562.008", Category: "Defense Evasion",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "cloud.cloudtrail" &&
-				containsAny(strings.ToLower(rawStr(ev)), "stopconfigurationrecorder", "deleteconfigurationrecorder")
+				awsActionHas(ev, "stopconfigurationrecorder", "deleteconfigurationrecorder")
 		},
 	},
 	{
@@ -284,7 +304,7 @@ var cloudSignaturesExtended = []ThreatSig{
 		Severity: 4, MITRE: "T1584.002", Category: "Resource Development",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "cloud.cloudtrail" &&
-				containsAny(strings.ToLower(rawStr(ev)), "changeresourcerecordsets")
+				awsActionHas(ev, "changeresourcerecordsets")
 		},
 	},
 	{
@@ -293,7 +313,7 @@ var cloudSignaturesExtended = []ThreatSig{
 		Severity: 3, MITRE: "T1562.001", Category: "Defense Evasion",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "cloud.cloudtrail" &&
-				containsAny(strings.ToLower(rawStr(ev)), "deletealarms")
+				awsActionHas(ev, "deletealarms")
 		},
 	},
 	{
@@ -312,7 +332,7 @@ var cloudSignaturesExtended = []ThreatSig{
 		Severity: 5, MITRE: "T1530", Category: "Collection",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "cloud.cloudtrail" &&
-				containsAny(strings.ToLower(rawStr(ev)), "modifydbsnapshotattribute") &&
+				awsActionHas(ev, "modifydbsnapshotattribute") &&
 				containsAny(strings.ToLower(rawStr(ev)), "valuestoadd", "valuetoadd")
 		},
 	},
@@ -328,7 +348,7 @@ var cloudSignaturesExtended = []ThreatSig{
 		Severity: 4, MITRE: "T1530", Category: "Collection",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "cloud.azure_activity" &&
-				containsAny(strings.ToLower(rawStr(ev)), "blobcontainers/write", "blobservices/write")
+				azureOpHas(ev, "blobcontainers/write", "blobservices/write")
 		},
 	},
 	{
@@ -337,7 +357,7 @@ var cloudSignaturesExtended = []ThreatSig{
 		Severity: 4, MITRE: "T1562.007", Category: "Defense Evasion",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "cloud.azure_activity" &&
-				containsAny(strings.ToLower(rawStr(ev)), "storageaccounts/write") &&
+				azureOpHas(ev, "storageaccounts/write") &&
 				containsAny(strings.ToLower(rawStr(ev)), "allowblobpublicaccess\":true", "defaultaction\":\"allow\"")
 		},
 	},
@@ -368,7 +388,7 @@ var cloudSignaturesExtended = []ThreatSig{
 		Severity: 2, MITRE: "T1136.003", Category: "Persistence",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "cloud.azure_activity" &&
-				containsAny(strings.ToLower(rawStr(ev)), "microsoft.aad/users/write", "microsoft.directory/users/create")
+				azureOpHas(ev, "microsoft.aad/users/write", "microsoft.directory/users/create")
 		},
 	},
 	{
@@ -387,7 +407,7 @@ var cloudSignaturesExtended = []ThreatSig{
 		Severity: 3, MITRE: "T1550.001", Category: "Defense Evasion",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "cloud.azure_activity" &&
-				containsAny(strings.ToLower(rawStr(ev)), "microsoft.aad/applications/write", "applications/create")
+				azureOpHas(ev, "microsoft.aad/applications/write", "applications/create")
 		},
 	},
 	{
@@ -426,7 +446,7 @@ var cloudSignaturesExtended = []ThreatSig{
 		Severity: 5, MITRE: "T1562.007", Category: "Defense Evasion",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "cloud.azure_activity" &&
-				containsAny(strings.ToLower(rawStr(ev)), "azurefirewalls/delete", "firewalls/delete")
+				azureOpHas(ev, "azurefirewalls/delete", "firewalls/delete")
 		},
 	},
 	{
@@ -435,7 +455,7 @@ var cloudSignaturesExtended = []ThreatSig{
 		Severity: 3, MITRE: "T1562.001", Category: "Defense Evasion",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "cloud.azure_activity" &&
-				containsAny(strings.ToLower(rawStr(ev)), "ddosprotectionplans/delete", "ddoscustompolicies/delete")
+				azureOpHas(ev, "ddosprotectionplans/delete", "ddoscustompolicies/delete")
 		},
 	},
 	{
@@ -444,7 +464,7 @@ var cloudSignaturesExtended = []ThreatSig{
 		Severity: 3, MITRE: "T1572", Category: "Command and Control",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "cloud.azure_activity" &&
-				containsAny(strings.ToLower(rawStr(ev)), "virtualnetworkgateways/write", "vpngateways/write")
+				azureOpHas(ev, "virtualnetworkgateways/write", "vpngateways/write")
 		},
 	},
 	{
@@ -453,7 +473,7 @@ var cloudSignaturesExtended = []ThreatSig{
 		Severity: 2, MITRE: "T1583.003", Category: "Resource Development",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "cloud.azure_activity" &&
-				containsAny(strings.ToLower(rawStr(ev)), "publicipaddresses/write")
+				azureOpHas(ev, "publicipaddresses/write")
 		},
 	},
 
@@ -464,7 +484,7 @@ var cloudSignaturesExtended = []ThreatSig{
 		Severity: 3, MITRE: "T1059", Category: "Execution",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "cloud.azure_activity" &&
-				containsAny(strings.ToLower(rawStr(ev)), "virtualmachines/extensions/write")
+				azureOpHas(ev, "virtualmachines/extensions/write")
 		},
 	},
 	{
@@ -473,7 +493,7 @@ var cloudSignaturesExtended = []ThreatSig{
 		Severity: 3, MITRE: "T1537", Category: "Exfiltration",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "cloud.azure_activity" &&
-				containsAny(strings.ToLower(rawStr(ev)), "snapshots/write", "snapshots/begingetaccess")
+				azureOpHas(ev, "snapshots/write", "snapshots/begingetaccess")
 		},
 	},
 	{
@@ -482,7 +502,7 @@ var cloudSignaturesExtended = []ThreatSig{
 		Severity: 3, MITRE: "T1053.005", Category: "Persistence",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "cloud.azure_activity" &&
-				containsAny(strings.ToLower(rawStr(ev)), "automationaccounts/runbooks/write")
+				azureOpHas(ev, "automationaccounts/runbooks/write")
 		},
 	},
 
@@ -493,7 +513,7 @@ var cloudSignaturesExtended = []ThreatSig{
 		Severity: 4, MITRE: "T1562.008", Category: "Defense Evasion",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "cloud.azure_activity" &&
-				containsAny(strings.ToLower(rawStr(ev)), "diagnosticsettings/delete")
+				azureOpHas(ev, "diagnosticsettings/delete")
 		},
 	},
 	{
@@ -502,7 +522,7 @@ var cloudSignaturesExtended = []ThreatSig{
 		Severity: 3, MITRE: "T1562.001", Category: "Defense Evasion",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "cloud.azure_activity" &&
-				containsAny(strings.ToLower(rawStr(ev)), "alertrules/delete", "metricalerts/delete")
+				azureOpHas(ev, "alertrules/delete", "metricalerts/delete")
 		},
 	},
 	{
@@ -511,7 +531,7 @@ var cloudSignaturesExtended = []ThreatSig{
 		Severity: 3, MITRE: "T1562.001", Category: "Defense Evasion",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "cloud.azure_activity" &&
-				containsAny(strings.ToLower(rawStr(ev)), "policyassignments/delete")
+				azureOpHas(ev, "policyassignments/delete")
 		},
 	},
 	{
@@ -520,7 +540,7 @@ var cloudSignaturesExtended = []ThreatSig{
 		Severity: 3, MITRE: "T1190", Category: "Initial Access",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "cloud.azure_activity" &&
-				containsAny(strings.ToLower(rawStr(ev)), "firewallrules/write") &&
+				azureOpHas(ev, "firewallrules/write") &&
 				containsAny(strings.ToLower(rawStr(ev)), "sql", "servers")
 		},
 	},
@@ -530,7 +550,7 @@ var cloudSignaturesExtended = []ThreatSig{
 		Severity: 5, MITRE: "T1078.004", Category: "Privilege Escalation",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "cloud.azure_activity" &&
-				containsAny(strings.ToLower(rawStr(ev)), "roleassignments/write") &&
+				azureOpHas(ev, "roleassignments/write") &&
 				containsAny(strings.ToLower(rawStr(ev)), "owner", "subscriptions/")
 		},
 	},
@@ -583,7 +603,7 @@ var cloudSignaturesExtended = []ThreatSig{
 		Severity: 4, MITRE: "T1562.007", Category: "Defense Evasion",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "cloud.gcp_audit" &&
-				containsAny(strings.ToLower(rawStr(ev)), "compute.firewalls.insert", "compute.firewalls.update") &&
+				gcpMethodHas(ev, "compute.firewalls.insert", "compute.firewalls.update") &&
 				containsAny(strings.ToLower(rawStr(ev)), "0.0.0.0/0", "::/0") &&
 				containsAny(strings.ToLower(rawStr(ev)), "all", "ipprotocol")
 		},
@@ -594,7 +614,7 @@ var cloudSignaturesExtended = []ThreatSig{
 		Severity: 3, MITRE: "T1562.007", Category: "Defense Evasion",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "cloud.gcp_audit" &&
-				containsAny(strings.ToLower(rawStr(ev)), "compute.firewalls.delete")
+				gcpMethodHas(ev, "compute.firewalls.delete")
 		},
 	},
 	{
@@ -621,7 +641,7 @@ var cloudSignaturesExtended = []ThreatSig{
 		Severity: 4, MITRE: "T1190", Category: "Initial Access",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "cloud.gcp_audit" &&
-				containsAny(strings.ToLower(rawStr(ev)), "cloudsql.instances.update") &&
+				gcpMethodHas(ev, "cloudsql.instances.update") &&
 				containsAny(strings.ToLower(rawStr(ev)), "authorizednetworks", "0.0.0.0/0", "requiressl\":false")
 		},
 	},
@@ -631,7 +651,7 @@ var cloudSignaturesExtended = []ThreatSig{
 		Severity: 3, MITRE: "T1078.004", Category: "Privilege Escalation",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "cloud.gcp_audit" &&
-				containsAny(strings.ToLower(rawStr(ev)), "compute.instances.insert") &&
+				gcpMethodHas(ev, "compute.instances.insert") &&
 				containsAny(strings.ToLower(rawStr(ev)), "developer.gserviceaccount.com") &&
 				containsAny(strings.ToLower(rawStr(ev)), "cloud-platform")
 		},
@@ -642,7 +662,7 @@ var cloudSignaturesExtended = []ThreatSig{
 		Severity: 3, MITRE: "T1530", Category: "Collection",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "cloud.gcp_audit" &&
-				containsAny(strings.ToLower(rawStr(ev)), "pubsub.subscriptions.setiampolicy") &&
+				gcpMethodHas(ev, "pubsub.subscriptions.setiampolicy") &&
 				containsAny(strings.ToLower(rawStr(ev)), "allusers")
 		},
 	},
@@ -652,7 +672,7 @@ var cloudSignaturesExtended = []ThreatSig{
 		Severity: 4, MITRE: "T1530", Category: "Collection",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "cloud.gcp_audit" &&
-				containsAny(strings.ToLower(rawStr(ev)), "bigquery.datasets.update", "bigquery.setiampolicy") &&
+				gcpMethodHas(ev, "bigquery.datasets.update", "bigquery.setiampolicy") &&
 				containsAny(strings.ToLower(rawStr(ev)), "allusers", "allauthenticatedusers")
 		},
 	},
@@ -671,7 +691,7 @@ var cloudSignaturesExtended = []ThreatSig{
 		Severity: 2, MITRE: "T1525", Category: "Persistence",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "cloud.gcp_audit" &&
-				containsAny(strings.ToLower(rawStr(ev)), "cloudfunctions.functions.create", "cloudfunctions.functions.update")
+				gcpMethodHas(ev, "cloudfunctions.functions.create", "cloudfunctions.functions.update")
 		},
 	},
 	{
@@ -680,7 +700,7 @@ var cloudSignaturesExtended = []ThreatSig{
 		Severity: 2, MITRE: "T1053", Category: "Persistence",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "cloud.gcp_audit" &&
-				containsAny(strings.ToLower(rawStr(ev)), "cloudscheduler.jobs.create")
+				gcpMethodHas(ev, "cloudscheduler.jobs.create")
 		},
 	},
 	{
@@ -689,7 +709,7 @@ var cloudSignaturesExtended = []ThreatSig{
 		Severity: 4, MITRE: "T1190", Category: "Initial Access",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "cloud.gcp_audit" &&
-				containsAny(strings.ToLower(rawStr(ev)), "container.clusters.create") &&
+				gcpMethodHas(ev, "container.clusters.create") &&
 				containsAny(strings.ToLower(rawStr(ev)), "masterauth", "legacyabac", "enabled\":true")
 		},
 	},
@@ -699,7 +719,7 @@ var cloudSignaturesExtended = []ThreatSig{
 		Severity: 3, MITRE: "T1190", Category: "Initial Access",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "cloud.gcp_audit" &&
-				containsAny(strings.ToLower(rawStr(ev)), "run.services.setiampolicy") &&
+				gcpMethodHas(ev, "run.services.setiampolicy") &&
 				containsAny(strings.ToLower(rawStr(ev)), "allusers", "run.invoker")
 		},
 	},
@@ -722,8 +742,10 @@ var cloudSignaturesExtended = []ThreatSig{
 		Description: "Cloud management API called from a country outside your normal operating regions.",
 		Severity: 3, MITRE: "T1078.004", Category: "Initial Access",
 		Match: func(ev store.Event) bool {
-			return isCloudEvent(ev) && ev.Severity >= 3 &&
-				containsAny(strings.ToLower(rawStr(ev)), "\"country", "location")
+			// CC-02: disabled until a real GeoIP source exists. The old
+			// match fired on any sev>=3 cloud event whose raw JSON merely
+			// contained "location" (every Azure resource property bag).
+			return false
 		},
 	},
 	{
@@ -861,7 +883,7 @@ var cloudReconSignatures = []ThreatSig{
 		Severity: 3, MITRE: "T1087.004", Category: "Discovery",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "cloud.cloudtrail" &&
-				containsAny(strings.ToLower(rawStr(ev)), "generatecredentialreport", "getcredentialreport")
+				awsActionHas(ev, "generatecredentialreport", "getcredentialreport")
 		},
 	},
 	{

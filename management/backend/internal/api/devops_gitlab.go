@@ -114,6 +114,17 @@ func syncGitLab(ctx context.Context, conn *store.DevOpsConnector, db *store.DB, 
 	}
 	if true {
 		for _, proj := range projects {
+			// DO-11: pipeline runs and tier-independent project events.
+			var pipes []glPipeline
+			if client.getJSON(ctx, fmt.Sprintf("/api/v4/projects/%d/pipelines?per_page=50&updated_after=%s", proj.ID, sinceStr), &pipes) == nil {
+				n, _ := ingestCloudEvents(ctx, eventDB, gitlabPipelinesToEvents(pipes, proj.PathWithNamespace, conn))
+				total += n
+			}
+			var pevents []map[string]interface{}
+			if client.getJSON(ctx, fmt.Sprintf("/api/v4/projects/%d/events?per_page=100&after=%s", proj.ID, since.AddDate(0, 0, -1).Format("2006-01-02")), &pevents) == nil {
+				n, _ := ingestCloudEvents(ctx, eventDB, gitlabProjectEventsToEvents(pevents, proj.PathWithNamespace, conn))
+				total += n
+			}
 			commitsPath := fmt.Sprintf("/api/v4/projects/%d/repository/commits?per_page=20&since=%s", proj.ID, sinceStr)
 			var commits []struct {
 				ID             string `json:"id"`
@@ -166,18 +177,15 @@ func syncGitLab(ctx context.Context, conn *store.DevOpsConnector, db *store.DB, 
 						Additions: adds,
 						Deletions: dels,
 						Status:    status,
-						Patch:     truncatePatch(d.Diff, 2000),
+						Patch:     truncatePatch(redactSecrets(d.Diff), 2000),
 					})
 
 					for _, line := range strings.Split(d.Diff, "\n") {
 						if !strings.HasPrefix(line, "+") {
 							continue
 						}
-						for _, pat := range secretPatterns {
-							if pat.MatchString(line) {
-								secretsFound = append(secretsFound, d.NewPath)
-								break
-							}
+						if lineHasSecret(line) {
+							secretsFound = append(secretsFound, d.NewPath)
 						}
 					}
 
@@ -187,7 +195,7 @@ func syncGitLab(ctx context.Context, conn *store.DevOpsConnector, db *store.DB, 
 						}
 					}
 					for _, sf := range sensitiveFilePatterns {
-						if matchesGlob(d.NewPath, sf) {
+						if !d.DeletedFile && matchesGlob(d.NewPath, sf) {
 							sensitiveModified = true
 						}
 					}
@@ -228,7 +236,7 @@ func syncGitLab(ctx context.Context, conn *store.DevOpsConnector, db *store.DB, 
 				})
 				ingestCloudEvents(ctx, eventDB, []CloudEvent{{
 					ID:        "devops:gl:" + c.ID + ":push",
-					Time:      time.Now().UTC(),
+					Time:      commitEventTime(pushedAt),
 					AgentID:   fmt.Sprintf("devops:%d", conn.ID),
 					Host:      conn.Org,
 					OS:        "devops",

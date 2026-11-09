@@ -1,11 +1,12 @@
 import { Terminal as XTerm } from '@xterm/xterm'
+import { FitAddon } from '@xterm/addon-fit'
 import '@xterm/xterm/css/xterm.css'
 import { useEffect, useState, useRef, useCallback } from 'react'
 import { Terminal, Monitor, Server, Globe, Wifi, WifiOff,
          Play, Square, Clock, User, Shield, AlertTriangle, RefreshCw,
          ChevronRight, X, Activity } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
-import api from '../api/client'
+import api, { getWSTicket } from '../api/client'
 
 // ── OS helpers ────────────────────────────────────────────────────────────────
 function OSIcon({ os }) {
@@ -43,57 +44,66 @@ function SSHTerminal({ session, onClose }) {
     let term = null
     let ws   = null
     let dead = false
+    let ro   = null
 
     // ── 1. Open WebSocket IMMEDIATELY — do not wait for xterm ──────────────
     // The terminal WS must open as fast as possible so the server sends
     // open_session to the agent before the agent-side tunnel times out.
-    const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-    const jwtToken = localStorage.getItem('token')
-    const wsURL = `${proto}//${window.location.host}/api/v1/live-response/terminal` +
-                  `?token=${session.session_token}&auth=${jwtToken}`
-
-    ws = new WebSocket(wsURL)
-    ws.binaryType = 'arraybuffer'
-    wsRef.current = ws
-
     // Buffer for data arriving before xterm is ready
     const buffer = []
-
-    ws.onopen = () => {
-      if (dead) return
-      setStatus('connected')
-      if (term) {
-        term.writeln('\x1b[32m✓ Tunnel established\x1b[0m\r\n')
+    const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+    const wsReady = (async () => {
+      let ticket
+      try { ticket = await getWSTicket() } catch {
+        if (!dead) { setStatus('error'); setErrorMsg('Could not authorise the terminal connection') }
+        return null
       }
-    }
+      if (dead) return null
+      const wsURL = `${proto}//${window.location.host}/api/v1/live-response/terminal` +
+                    `?token=${session.session_token}&ticket=${encodeURIComponent(ticket)}`
 
-    ws.onmessage = (evt) => {
-      if (dead) return
-      const data = evt.data instanceof ArrayBuffer
-        ? new Uint8Array(evt.data)
-        : new TextEncoder().encode(evt.data)
-      if (term) {
-        term.write(data)
-      } else {
-        buffer.push(data) // xterm not ready yet — buffer it
+      ws = new WebSocket(wsURL)
+      ws.binaryType = 'arraybuffer'
+      wsRef.current = ws
+
+      ws.onopen = () => {
+        if (dead) return
+        setStatus('connected')
+        if (term) {
+          term.writeln('\x1b[32m✓ Tunnel established\x1b[0m\r\n')
+        }
       }
-    }
 
-    ws.onerror = (e) => {
-      if (dead) return
-      setStatus('error')
-      setErrorMsg('WebSocket connection failed — check server logs')
-      if (term) term.writeln('\r\n\x1b[31m✗ Connection failed\x1b[0m')
-    }
+      ws.onmessage = (evt) => {
+        if (dead) return
+        const data = evt.data instanceof ArrayBuffer
+          ? new Uint8Array(evt.data)
+          : new TextEncoder().encode(evt.data)
+        if (term) {
+          term.write(data)
+        } else {
+          buffer.push(data) // xterm not ready yet — buffer it
+        }
+      }
 
-    ws.onclose = (e) => {
-      if (dead) return
-      setStatus('closed')
-      if (term) term.writeln(`\r\n\x1b[33m● Session closed (${e.code})\x1b[0m`)
-    }
+      ws.onerror = (e) => {
+        if (dead) return
+        setStatus('error')
+        setErrorMsg('WebSocket connection failed — check server logs')
+        if (term) term.writeln('\r\n\x1b[31m✗ Connection failed\x1b[0m')
+      }
+
+      ws.onclose = (e) => {
+        if (dead) return
+        setStatus('closed')
+        if (term) term.writeln(`\r\n\x1b[33m● Session closed (${e.code})\x1b[0m`)
+      }
+      return ws
+    })()
 
     // ── 2. Load xterm.js and mount terminal ────────────────────────────────
     const mountTerminal = async () => {
+      await wsReady
       if (dead || !termRef.current) return
 
       term = new XTerm({
@@ -118,7 +128,14 @@ function SSHTerminal({ session, onClose }) {
         cols: 120,
       })
 
+      const fit = new FitAddon()
+      term.loadAddon(fit)
       term.open(termRef.current)
+      try { fit.fit() } catch (_) { /* container not measurable yet */ }
+      if (typeof ResizeObserver !== 'undefined') {
+        ro = new ResizeObserver(() => { try { fit.fit() } catch (_) {} })
+        ro.observe(termRef.current)
+      }
       xtermRef.current = term
 
       term.writeln('\r\n\x1b[32m ObsidianWatch Live Response\x1b[0m')
@@ -129,13 +146,25 @@ function SSHTerminal({ session, onClose }) {
       buffer.length = 0
 
       // If already connected show it
-      if (ws.readyState === WebSocket.OPEN) {
+      if (ws && ws.readyState === WebSocket.OPEN) {
         term.writeln('\x1b[32m✓ Tunnel established\x1b[0m\r\n')
       }
 
       // Terminal input → WebSocket
       // xterm gives us strings — encode to UTF-8 bytes then send as binary
       // The backend expects raw bytes (it json.Marshal's them before forwarding)
+      // Keep the remote PTY the same size as the browser terminal. Sent as a
+      // TEXT frame (keystrokes are binary), clamped server-side.
+      const sendSize = () => {
+        if (ws && ws.readyState === WebSocket.OPEN && term.cols && term.rows) {
+          ws.send(JSON.stringify({ type: 'resize', cols: term.cols, rows: term.rows }))
+        }
+      }
+      term.onResize(sendSize)
+      if (!ws) { /* ticket failed; error already shown */ }
+      else if (ws.readyState === WebSocket.OPEN) sendSize()
+      else ws.addEventListener('open', sendSize, { once: true })
+
       term.onData(data => {
         if (ws && ws.readyState === WebSocket.OPEN) {
           ws.send(new TextEncoder().encode(data))
@@ -151,6 +180,7 @@ function SSHTerminal({ session, onClose }) {
 
     return () => {
       dead = true
+      if (ro) ro.disconnect()
       if (ws) ws.close()
       if (xtermRef.current) { xtermRef.current.dispose(); xtermRef.current = null }
     }

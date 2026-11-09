@@ -59,10 +59,11 @@ export default function Users() {
             <input className="bg-siem-bg border border-siem-border rounded-lg px-3 py-2 text-sm text-siem-text focus:outline-none focus:border-siem-accent"
               placeholder="Username" value={form.username} onChange={e => setForm(f => ({ ...f, username: e.target.value }))} required />
             <input type="password" className="bg-siem-bg border border-siem-border rounded-lg px-3 py-2 text-sm text-siem-text focus:outline-none focus:border-siem-accent"
-              placeholder="Password (min 8 chars)" value={form.password} onChange={e => setForm(f => ({ ...f, password: e.target.value }))} required minLength={8} />
+              placeholder="Password (min 10 chars)" value={form.password} onChange={e => setForm(f => ({ ...f, password: e.target.value }))} required minLength={10} />
             <select className="bg-siem-bg border border-siem-border rounded-lg px-3 py-2 text-sm text-siem-text focus:outline-none"
               value={form.role} onChange={e => setForm(f => ({ ...f, role: e.target.value }))}>
               <option value="analyst">Analyst</option>
+              <option value="viewer">Viewer (read-only)</option>
               <option value="admin">Admin</option>
             </select>
             {error && <div className="col-span-3 text-siem-red text-xs">{error}</div>}

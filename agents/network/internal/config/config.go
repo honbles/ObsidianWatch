@@ -2,9 +2,9 @@ package config
 
 import (
 	"fmt"
+	"gopkg.in/yaml.v3"
 	"os"
 	"strings"
-	"gopkg.in/yaml.v3"
 )
 
 type Config struct {
@@ -20,36 +20,36 @@ type Config struct {
 }
 
 type ProbeConfig struct {
-	ID       string `yaml:"id"`       // auto-generated on first run
+	ID       string `yaml:"id"` // auto-generated on first run
 	Version  string `yaml:"version"`
 	Location string `yaml:"location"` // e.g. "HQ-Floor2", "DataCenter-Rack3"
 	SiteName string `yaml:"site_name"`
 }
 
 type ForwarderConfig struct {
-	BackendURL     string `yaml:"backend_url"`
-	ManagementURL  string `yaml:"management_url"`
-	APIKey         string `yaml:"api_key"`
-	CACertPEM      string `yaml:"ca_cert_pem"`
+	BackendURL       string `yaml:"backend_url"`
+	ManagementURL    string `yaml:"management_url"`
+	APIKey           string `yaml:"api_key"`
+	CACertPEM        string `yaml:"ca_cert_pem"`
 	ManagementCACert string `yaml:"management_ca_cert_pem"`
-	BatchSize      int    `yaml:"batch_size"`
-	FlushInterval  string `yaml:"flush_interval"`
+	BatchSize        int    `yaml:"batch_size"`
+	FlushInterval    string `yaml:"flush_interval"`
 	// How often to send summaries vs real-time alerts
 	SummaryInterval string `yaml:"summary_interval"` // default 5m
 }
 
 type SyslogConfig struct {
 	Enabled    bool   `yaml:"enabled"`
-	UDPAddr    string `yaml:"udp_addr"`  // :514
-	TCPAddr    string `yaml:"tcp_addr"`  // :514
+	UDPAddr    string `yaml:"udp_addr"` // :514
+	TCPAddr    string `yaml:"tcp_addr"` // :514
 	BufferSize int    `yaml:"buffer_size"`
 }
 
 type NetFlowConfig struct {
-	Enabled        bool   `yaml:"enabled"`
-	Addr           string `yaml:"addr"`           // :2055
-	SFlowAddr      string `yaml:"sflow_addr"`     // :6343
-	ActiveTimeout  int    `yaml:"active_timeout"` // seconds, for flow expiry
+	Enabled         bool   `yaml:"enabled"`
+	Addr            string `yaml:"addr"`           // :2055
+	SFlowAddr       string `yaml:"sflow_addr"`     // :6343
+	ActiveTimeout   int    `yaml:"active_timeout"` // seconds, for flow expiry
 	SummaryInterval string `yaml:"summary_interval"`
 }
 
@@ -62,32 +62,32 @@ type SNMPConfig struct {
 
 type SNMPTarget struct {
 	Host      string `yaml:"host"`
-	Port      int    `yaml:"port"`       // default 161
-	Version   string `yaml:"version"`    // v2c | v3
-	Community string `yaml:"community"`  // for v2c
+	Port      int    `yaml:"port"`      // default 161
+	Version   string `yaml:"version"`   // v2c | v3
+	Community string `yaml:"community"` // for v2c
 	// v3 fields
 	Username  string `yaml:"username"`
 	AuthProto string `yaml:"auth_proto"` // MD5 | SHA
 	AuthKey   string `yaml:"auth_key"`
 	PrivProto string `yaml:"priv_proto"` // DES | AES
 	PrivKey   string `yaml:"priv_key"`
-	Label     string `yaml:"label"`      // friendly name e.g. "core-switch"
+	Label     string `yaml:"label"` // friendly name e.g. "core-switch"
 }
 
 type ARPConfig struct {
-	Enabled      bool   `yaml:"enabled"`
-	Interfaces   []string `yaml:"interfaces"` // e.g. ["eth0", "eth1"]
-	PollInterval string `yaml:"poll_interval"` // default 30s
+	Enabled      bool     `yaml:"enabled"`
+	Interfaces   []string `yaml:"interfaces"`    // e.g. ["eth0", "eth1"]
+	PollInterval string   `yaml:"poll_interval"` // default 30s
 	// Known devices — don't alert on these
-	KnownMACs    []string `yaml:"known_macs"`
+	KnownMACs []string `yaml:"known_macs"`
 }
 
 type DetectionConfig struct {
 	// Port scan detection
-	PortScanThreshold    int `yaml:"port_scan_threshold"`    // distinct ports/min to trigger
-	PortScanWindow       int `yaml:"port_scan_window"`       // seconds
+	PortScanThreshold int `yaml:"port_scan_threshold"` // distinct ports/min to trigger
+	PortScanWindow    int `yaml:"port_scan_window"`    // seconds
 	// Brute force
-	BruteForceThreshold  int `yaml:"brute_force_threshold"`  // failures/min
+	BruteForceThreshold int `yaml:"brute_force_threshold"` // failures/min
 	// Bandwidth spike
 	BandwidthSpikeMultiplier float64 `yaml:"bandwidth_spike_multiplier"` // 3x baseline
 	// Lateral movement (east-west new connection)
@@ -97,8 +97,8 @@ type DetectionConfig struct {
 }
 
 type StoreConfig struct {
-	DBPath        string `yaml:"db_path"`         // SQLite path for local state
-	RetentionDays int    `yaml:"retention_days"`  // how long to keep local data
+	DBPath        string `yaml:"db_path"`        // SQLite path for local state
+	RetentionDays int    `yaml:"retention_days"` // how long to keep local data
 }
 
 type LogConfig struct {
@@ -120,27 +120,69 @@ func Load(path string) (*Config, error) {
 }
 
 func setDefaults(cfg *Config) {
-	if cfg.Probe.Version == "" { cfg.Probe.Version = "0.1.0" }
-	if cfg.Syslog.UDPAddr == "" { cfg.Syslog.UDPAddr = ":514" }
-	if cfg.Syslog.TCPAddr == "" { cfg.Syslog.TCPAddr = ":514" }
-	if cfg.Syslog.BufferSize == 0 { cfg.Syslog.BufferSize = 65536 }
-	if cfg.NetFlow.Addr == "" { cfg.NetFlow.Addr = ":2055" }
-	if cfg.NetFlow.SFlowAddr == "" { cfg.NetFlow.SFlowAddr = ":6343" }
-	if cfg.NetFlow.ActiveTimeout == 0 { cfg.NetFlow.ActiveTimeout = 30 }
-	if cfg.NetFlow.SummaryInterval == "" { cfg.NetFlow.SummaryInterval = "5m" }
-	if cfg.SNMP.PollInterval == "" { cfg.SNMP.PollInterval = "60s" }
-	if cfg.ARP.PollInterval == "" { cfg.ARP.PollInterval = "30s" }
-	if cfg.Detection.PortScanThreshold == 0 { cfg.Detection.PortScanThreshold = 20 }
-	if cfg.Detection.PortScanWindow == 0 { cfg.Detection.PortScanWindow = 60 }
-	if cfg.Detection.BruteForceThreshold == 0 { cfg.Detection.BruteForceThreshold = 10 }
-	if cfg.Detection.BandwidthSpikeMultiplier == 0 { cfg.Detection.BandwidthSpikeMultiplier = 3.0 }
-	if cfg.Store.DBPath == "" { cfg.Store.DBPath = "/var/lib/obsidianwatch-probe/state.db" }
-	if cfg.Store.RetentionDays == 0 { cfg.Store.RetentionDays = 7 }
-	if cfg.Forwarder.BatchSize == 0 { cfg.Forwarder.BatchSize = 200 }
-	if cfg.Forwarder.FlushInterval == "" { cfg.Forwarder.FlushInterval = "10s" }
-	if cfg.Forwarder.SummaryInterval == "" { cfg.Forwarder.SummaryInterval = "5m" }
-	if cfg.Log.Level == "" { cfg.Log.Level = "info" }
-	if cfg.Log.Format == "" { cfg.Log.Format = "json" }
+	if cfg.Probe.Version == "" {
+		cfg.Probe.Version = "0.1.0"
+	}
+	if cfg.Syslog.UDPAddr == "" {
+		cfg.Syslog.UDPAddr = ":514"
+	}
+	if cfg.Syslog.TCPAddr == "" {
+		cfg.Syslog.TCPAddr = ":514"
+	}
+	if cfg.Syslog.BufferSize == 0 {
+		cfg.Syslog.BufferSize = 65536
+	}
+	if cfg.NetFlow.Addr == "" {
+		cfg.NetFlow.Addr = ":2055"
+	}
+	if cfg.NetFlow.SFlowAddr == "" {
+		cfg.NetFlow.SFlowAddr = ":6343"
+	}
+	if cfg.NetFlow.ActiveTimeout == 0 {
+		cfg.NetFlow.ActiveTimeout = 30
+	}
+	if cfg.NetFlow.SummaryInterval == "" {
+		cfg.NetFlow.SummaryInterval = "5m"
+	}
+	if cfg.SNMP.PollInterval == "" {
+		cfg.SNMP.PollInterval = "60s"
+	}
+	if cfg.ARP.PollInterval == "" {
+		cfg.ARP.PollInterval = "30s"
+	}
+	if cfg.Detection.PortScanThreshold == 0 {
+		cfg.Detection.PortScanThreshold = 20
+	}
+	if cfg.Detection.PortScanWindow == 0 {
+		cfg.Detection.PortScanWindow = 60
+	}
+	if cfg.Detection.BruteForceThreshold == 0 {
+		cfg.Detection.BruteForceThreshold = 10
+	}
+	if cfg.Detection.BandwidthSpikeMultiplier == 0 {
+		cfg.Detection.BandwidthSpikeMultiplier = 3.0
+	}
+	if cfg.Store.DBPath == "" {
+		cfg.Store.DBPath = "/var/lib/obsidianwatch-probe/state.db"
+	}
+	if cfg.Store.RetentionDays == 0 {
+		cfg.Store.RetentionDays = 7
+	}
+	if cfg.Forwarder.BatchSize == 0 {
+		cfg.Forwarder.BatchSize = 200
+	}
+	if cfg.Forwarder.FlushInterval == "" {
+		cfg.Forwarder.FlushInterval = "10s"
+	}
+	if cfg.Forwarder.SummaryInterval == "" {
+		cfg.Forwarder.SummaryInterval = "5m"
+	}
+	if cfg.Log.Level == "" {
+		cfg.Log.Level = "info"
+	}
+	if cfg.Log.Format == "" {
+		cfg.Log.Format = "json"
+	}
 }
 
 // LoadFromString parses config from a YAML string (used for embedded config)

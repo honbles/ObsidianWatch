@@ -8,16 +8,79 @@ package api
 
 import (
 	"encoding/json"
-	"fmt"
 	"net/http"
+	"net/url"
 	"os"
-	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
+	"obsidianwatch/management/internal/auth"
 	"obsidianwatch/management/internal/store"
 )
+
+// M-01: once setup has been completed once (setup.seeded=true), the setup
+// wizard endpoints must require a valid admin session — otherwise anyone who
+// can reach the management API can silently rewrite the agent API key, SMTP
+// credentials, AI provider keys, and even re-sign the server's TLS cert for
+// a new domain, with no authentication at all.
+var (
+	validHostnameRe = regexp.MustCompile(`^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$`)
+	validAPIKeyRe   = regexp.MustCompile(`^[A-Za-z0-9_\-\.]{8,256}$`)
+)
+
+func isValidHostname(h string) bool {
+	if h == "" || len(h) > 253 {
+		return false
+	}
+	return validHostnameRe.MatchString(h)
+}
+
+func isValidAPIKeyFormat(k string) bool {
+	return validAPIKeyRe.MatchString(k)
+}
+
+// requireSetupAuth returns the authenticated username if setup has already
+// been completed and the request carries a valid admin JWT, "" (anonymous,
+// allowed) if setup has not been completed yet, or writes a 401 and returns
+// ("", false) if setup is complete and auth is missing/invalid.
+func requireSetupAuth(db *store.DB, jwt *auth.JWTService, w http.ResponseWriter, r *http.Request) (string, bool) {
+	settings, _ := db.GetSettingsPrefix(r.Context(), "setup")
+	if settings["seeded"] != "true" {
+		// First run — no admin account exists yet to authenticate with.
+		return "", true
+	}
+	header := r.Header.Get("Authorization")
+	parts := strings.SplitN(header, " ", 2)
+	if len(parts) != 2 || !strings.EqualFold(parts[0], "bearer") {
+		writeJSON(w, 401, map[string]string{"error": "setup already completed; admin authentication required"})
+		return "", false
+	}
+	claims, err := jwt.Verify(parts[1])
+	if err != nil {
+		writeJSON(w, 401, map[string]string{"error": "invalid or expired token"})
+		return "", false
+	}
+	// C-2: any valid JWT (e.g. a viewer) must not be able to re-run setup.
+	if claims.Role != "admin" {
+		writeJSON(w, 403, map[string]string{"error": "admin role required"})
+		return "", false
+	}
+	return claims.Username, true
+}
+
+// validHTTPURL accepts only absolute http(s) URLs with a host.
+func validHTTPURL(raw string, httpsOnly bool) bool {
+	u, err := url.Parse(raw)
+	if err != nil || u.Host == "" {
+		return false
+	}
+	if u.Scheme == "https" {
+		return true
+	}
+	return u.Scheme == "http" && !httpsOnly
+}
 
 const (
 	certDir      = "/app/certs"
@@ -46,40 +109,86 @@ type SetupRequest struct {
 	OTXAPIKey       string `json:"otx_api_key"`
 }
 
-func handleSetupStatus(db *store.DB) http.HandlerFunc {
+func handleSetupStatus(db *store.DB, jwtSvc *auth.JWTService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		meta := readCertMeta()
 		settings, _ := db.GetSettingsPrefix(r.Context(), "setup")
 		ai, _ := db.GetSettingsPrefix(r.Context(), "ai")
+		isComplete := settings["seeded"] == "true"
 
 		status := SetupStatus{
-			IsComplete:    settings["seeded"] == "true",
-			PrivateIP:     meta.PrivateIP,
-			PublicIP:      meta.PublicIP,
-			BackendDomain: settings["backend_domain"],
-			BackendURL:    settings["backend_url"],
-			ManagementURL: settings["management_url"],
-			HasAgentKey:   settings["agent_api_key"] != "",
-			HasGroqKey:    ai["groq_api_key"] != "",
+			IsComplete:  isComplete,
+			HasAgentKey: settings["agent_api_key"] != "",
+			HasGroqKey:  ai["groq_api_key"] != "",
+		}
+
+		// M-01: network topology (private/public IP, backend domain/URL) is
+		// only useful to the first-run wizard before an admin exists. Once
+		// setup is complete, only an authenticated admin should see it —
+		// otherwise an unauthenticated caller can map internal network
+		// layout for free.
+		authed := false
+		if isComplete {
+			header := r.Header.Get("Authorization")
+			parts := strings.SplitN(header, " ", 2)
+			if len(parts) == 2 && strings.EqualFold(parts[0], "bearer") {
+				if _, err := jwtSvc.Verify(parts[1]); err == nil {
+					authed = true
+				}
+			}
+		}
+		if !isComplete || authed {
+			meta := readCertMeta()
+			status.PrivateIP = meta.PrivateIP
+			status.PublicIP = meta.PublicIP
+			status.BackendDomain = settings["backend_domain"]
+			status.BackendURL = settings["backend_url"]
+			status.ManagementURL = settings["management_url"]
 		}
 		writeJSON(w, 200, status)
 	}
 }
 
-func handleSetupComplete(db *store.DB) http.HandlerFunc {
+func handleSetupComplete(db *store.DB, jwtSvc *auth.JWTService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		actor, ok := requireSetupAuth(db, jwtSvc, w, r)
+		if !ok {
+			return
+		}
+
 		var req SetupRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			writeJSON(w, 400, map[string]string{"error": "invalid request"})
 			return
 		}
 
-		// If domain provided, regenerate server cert with domain added to SAN
+		// M-01: validate attacker-reachable string fields before they ever
+		// touch a shell command (openssl -subj/san.cnf) or get written
+		// verbatim into a YAML config file.
+		if req.BackendDomain != "" && !isValidHostname(req.BackendDomain) {
+			writeJSON(w, 400, map[string]string{"error": "invalid backend_domain: must be a valid hostname"})
+			return
+		}
+		if req.BackendURL != "" && !validHTTPURL(req.BackendURL, true) {
+			writeJSON(w, 400, map[string]string{"error": "invalid backend_url: must be an https URL"})
+			return
+		}
+		if req.ManagementURL != "" && !validHTTPURL(req.ManagementURL, true) {
+			writeJSON(w, 400, map[string]string{"error": "invalid management_url: must be an https URL"})
+			return
+		}
+		if req.AgentAPIKey != "" && !isValidAPIKeyFormat(req.AgentAPIKey) {
+			writeJSON(w, 400, map[string]string{"error": "invalid agent_api_key format"})
+			return
+		}
+
+		certNote := ""
+		// If a domain is provided, record it (cert SAN is handled by cert-init)
 		if req.BackendDomain != "" {
-			if err := regenerateCertWithDomain(req.BackendDomain); err != nil {
-				writeJSON(w, 500, map[string]string{"error": "cert regeneration failed: " + err.Error()})
-				return
-			}
+			// H-3: the CA private key is no longer reachable from this
+			// service, so the certificate cannot be re-signed here. The domain
+			// is recorded; add it to EXTRA_SAN_DNS in .env and re-run
+			// `docker compose up cert-init` to put it in the certificate.
+			certNote = "Domain recorded. To add it to the TLS certificate set EXTRA_SAN_DNS=" + req.BackendDomain + " in .env and run: docker compose up cert-init"
 		}
 
 		// Re-read CA cert (may have changed)
@@ -100,7 +209,7 @@ func handleSetupComplete(db *store.DB) http.HandlerFunc {
 		}
 		mgmtURL := req.ManagementURL
 		if mgmtURL == "" {
-			mgmtURL = "http://" + meta.PrivateIP
+			mgmtURL = "https://" + meta.PrivateIP
 		}
 
 		// Save all settings to DB
@@ -155,67 +264,21 @@ func handleSetupComplete(db *store.DB) http.HandlerFunc {
 		// Clear agent cache — compiled binaries may have old CA cert embedded
 		clearAgentCache()
 
-		writeJSON(w, 200, map[string]string{"status": "ok", "backend_url": backendURL})
-	}
-}
-
-// regenerateCertWithDomain re-signs the server cert adding the domain as a SAN.
-// The CA key/cert are preserved — only server.key/server.crt change.
-func regenerateCertWithDomain(domain string) error {
-	sanCnf := filepath.Join(certDir, "san.cnf")
-
-	// Read existing san.cnf to get current IPs
-	existing, err := os.ReadFile(sanCnf)
-	if err != nil {
-		return fmt.Errorf("read san.cnf: %w", err)
-	}
-
-	// Add DNS entry to alt_names section if not already there
-	content := string(existing)
-	dnsEntry := "DNS.1 = " + domain
-	if !strings.Contains(content, dnsEntry) {
-		// Insert before the closing of alt_names section
-		content = strings.TrimRight(content, "\n") + "\n" + dnsEntry + "\n"
-		if err := os.WriteFile(sanCnf, []byte(content), 0644); err != nil {
-			return fmt.Errorf("write san.cnf: %w", err)
+		if actor == "" {
+			actor = "setup-wizard"
 		}
+		db.WriteAudit(r.Context(), actor, "setup_complete", "", "domain="+req.BackendDomain, clientIP(r))
+
+		writeJSON(w, 200, map[string]string{"status": "ok", "backend_url": backendURL, "cert_note": certNote})
 	}
-
-	srvKey := filepath.Join(certDir, "server.key")
-	srvCsr := filepath.Join(certDir, "server.csr")
-	srvCrt := filepath.Join(certDir, "server.crt")
-	caCrt  := filepath.Join(certDir, "ca.crt")
-	caKey  := filepath.Join(certDir, "ca.key")
-
-	// Generate new server key and CSR
-	cmds := [][]string{
-		{"openssl", "genrsa", "-out", srvKey, "2048"},
-		{"openssl", "req", "-new", "-key", srvKey, "-out", srvCsr,
-			"-subj", "/CN=obsidianwatch-backend", "-config", sanCnf},
-		{"openssl", "x509", "-req", "-days", "3650",
-			"-in", srvCsr, "-CA", caCrt, "-CAkey", caKey, "-CAcreateserial",
-			"-extensions", "v3_req", "-extfile", sanCnf, "-out", srvCrt},
-	}
-
-	for _, args := range cmds {
-		out, err := exec.Command(args[0], args[1:]...).CombinedOutput()
-		if err != nil {
-			return fmt.Errorf("openssl error: %s — %s", err, string(out))
-		}
-	}
-
-	// Update domain in cert-meta.json
-	meta := readCertMeta()
-	meta.BackendDomain = domain
-	writeCertMeta(meta)
-
-	return nil
 }
 
 // restartBackendContainer restarts the obsidianwatch-backend Docker container
 // so it reloads server.yaml and picks up the newly written API key.
 func restartBackendContainer() {
-	exec.Command("docker", "restart", "obsidianwatch-backend").Run()
+	// M-08: no docker.sock access anymore — signal via shared volume file mtime instead.
+	_ = os.MkdirAll("/var/run/obsidianwatch", 0755)
+	_ = os.WriteFile("/var/run/obsidianwatch/restart-signal", []byte(time.Now().Format(time.RFC3339Nano)), 0644)
 }
 
 func clearAgentCache() {

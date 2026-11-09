@@ -406,6 +406,7 @@ func (f *FIMCollector) emit(path, action string, pid int, procName string) {
 		source = "inotify"
 	}
 
+	wr := lookupWriter(pid) // L-02: writer exe, parent and user
 	rawData := map[string]interface{}{
 		"action":       action,
 		"path":         path,
@@ -413,6 +414,13 @@ func (f *FIMCollector) emit(path, action string, pid int, procName string) {
 		"process_name": procName,
 		"file_hash":    hash,
 		"source":       source,
+	}
+	if wr.Exe != "" {
+		rawData["exe"] = wr.Exe
+	}
+	if wr.User != "" {
+		rawData["username"] = wr.User
+		rawData["ppid"] = wr.PPID
 	}
 	rawJSON, _ := json.Marshal(rawData)
 
@@ -426,7 +434,10 @@ func (f *FIMCollector) emit(path, action string, pid int, procName string) {
 		Source:      source,
 		Raw:         rawJSON,
 		PID:         pid,
+		PPID:        wr.PPID,
 		ProcessName: procName,
+		ImagePath:   wr.Exe,
+		UserName:    wr.User,
 		FilePath:    path,
 		FileHash:    hash,
 	}

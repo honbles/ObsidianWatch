@@ -6,8 +6,8 @@ package service
 
 import (
 	"crypto/rand"
+	"crypto/subtle"
 	"crypto/tls"
-	"crypto/x509"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -31,13 +31,14 @@ const (
 )
 
 type InstallConfig struct {
-	BinarySrc          string
-	ManagementURL      string
-	CAFile             string
-	CACertPEM          string // backend CA — inline PEM
+	BinarySrc           string
+	ManagementURL       string
+	CAFile              string
+	CACertPEM           string // backend CA — inline PEM
 	ManagementCACertPEM string // management CA — inline PEM; falls back to CACertPEM if empty
-	AgentID            string
-	Hostname           string
+	APIKey              string // fleet API key (X-API-Key) required by register-key / verify-install-key
+	AgentID             string
+	Hostname            string
 }
 
 func Install(cfg InstallConfig) error {
@@ -64,7 +65,7 @@ func Install(cfg InstallConfig) error {
 		if mgmtCA == "" {
 			mgmtCA = cfg.CACertPEM
 		}
-		if err := registerInstallKey(cfg.ManagementURL, cfg.CAFile, mgmtCA, cfg.AgentID, cfg.Hostname, installKey); err != nil {
+		if err := registerInstallKey(cfg.ManagementURL, cfg.CAFile, mgmtCA, cfg.APIKey, cfg.AgentID, cfg.Hostname, installKey); err != nil {
 			fmt.Printf("Warning: could not register with management server: %v\n", err)
 			fmt.Println("The key is saved locally and will sync when the server is reachable.")
 		} else {
@@ -73,14 +74,16 @@ func Install(cfg InstallConfig) error {
 	}
 
 	for _, dir := range []string{ConfigDir, QueueDir} {
-		if err := os.MkdirAll(dir, 0755); err != nil {
+		// The queue holds unsent telemetry and the config dir holds the
+		// install key: root-only.
+		if err := os.MkdirAll(dir, 0700); err != nil {
 			return fmt.Errorf("mkdir %s: %w", dir, err)
 		}
 	}
 
 	// Install the binary — config is embedded inside it, no yaml file needed.
 	fmt.Printf("Installing binary to %s...\n", BinaryDst)
-	if err := copyFile(cfg.BinarySrc, BinaryDst, 0755); err != nil {
+	if err := copyFile(cfg.BinarySrc, BinaryDst, 0700); err != nil {
 		return fmt.Errorf("copy binary: %w", err)
 	}
 
@@ -110,7 +113,7 @@ func Install(cfg InstallConfig) error {
 	return nil
 }
 
-func Uninstall(managementURL, caFile, agentID string) error {
+func Uninstall(managementURL, caFile, caCertPEM, apiKey, agentID string) error {
 	// Read the persisted install key from the state file.
 	installKey, err := config.ReadInstallKey()
 	if err != nil || installKey == "" {
@@ -132,9 +135,20 @@ func Uninstall(managementURL, caFile, agentID string) error {
 	fmt.Scanln(&inputKey)
 	inputKey = strings.TrimSpace(inputKey)
 
-	if inputKey != installKey {
+	// F-02: the management server is the authority — it verifies the key and
+	// rotates it (single-use), so "Regenerate key" on the dashboard actually
+	// works. The local copy is consulted only when the server cannot be
+	// reached at all; a server rejection is final.
+	accepted, reachable := verifyInstallKey(managementURL, caFile, caCertPEM, apiKey, inputKey)
+	if reachable {
+		if !accepted {
+			fmt.Println()
+			fmt.Println("  ✗ Incorrect key. Uninstall blocked.")
+			return fmt.Errorf("tamper protection: incorrect install key")
+		}
+	} else if subtle.ConstantTimeCompare([]byte(inputKey), []byte(installKey)) != 1 {
 		fmt.Println()
-		fmt.Println("  ✗ Incorrect key. Uninstall blocked.")
+		fmt.Println("  ✗ Incorrect key (management server unreachable; checked against local copy). Uninstall blocked.")
 		return fmt.Errorf("tamper protection: incorrect install key")
 	}
 	fmt.Println("  ✓ Key accepted. Proceeding with uninstall...")
@@ -155,7 +169,11 @@ func Uninstall(managementURL, caFile, agentID string) error {
 }
 
 func writeUnit() error {
-	unit := `[Unit]
+	return os.WriteFile(UnitFile, []byte(unitText()), 0644)
+}
+
+func unitText() string {
+	return `[Unit]
 Description=ObsidianWatch Security Agent
 Documentation=https://obsidianwatch.io
 After=network-online.target
@@ -164,7 +182,7 @@ Wants=network-online.target
 [Service]
 Type=simple
 ExecStart=/usr/local/bin/obsidianwatch-agent
-Restart=on-failure
+Restart=always
 RestartSec=5s
 StandardOutput=journal
 StandardError=journal
@@ -173,7 +191,7 @@ User=root
 Group=root
 NoNewPrivileges=true
 ProtectSystem=strict
-ReadWritePaths=/var/lib/obsidianwatch /etc/obsidianwatch /etc/shadow /etc/passwd /etc/group
+ReadWritePaths=/var/lib/obsidianwatch /etc/obsidianwatch
 PrivateTmp=true
 ProtectHome=read-only
 RestrictSUIDSGID=true
@@ -185,7 +203,6 @@ CPUQuota=25%
 [Install]
 WantedBy=multi-user.target
 `
-	return os.WriteFile(UnitFile, []byte(unit), 0644)
 }
 
 func applyTamper() {
@@ -201,6 +218,33 @@ func removeTamper() {
 	run("chattr", "-i", config.InstallKeyFile())
 }
 
+// verifyInstallKey (F-02) asks the management server to verify the key via
+// POST body + X-API-Key. reachable=false means the server could not be
+// contacted at all (as opposed to contacted-and-rejected).
+func verifyInstallKey(managementURL, caFile, caCertPEM, apiKey, key string) (accepted, reachable bool) {
+	if managementURL == "" {
+		return false, false
+	}
+	client, err := buildClient(caFile, caCertPEM)
+	if err != nil {
+		return false, false
+	}
+	payload, _ := json.Marshal(map[string]string{"key": key})
+	req, err := http.NewRequest(http.MethodPost, managementURL+"/api/v1/verify-install-key",
+		strings.NewReader(string(payload)))
+	if err != nil {
+		return false, false
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-API-Key", apiKey)
+	resp, err := client.Do(req)
+	if err != nil {
+		return false, false
+	}
+	defer resp.Body.Close()
+	return resp.StatusCode == 200, true
+}
+
 // generateInstallKey returns a 32-character cryptographically random hex string.
 func generateInstallKey() (string, error) {
 	b := make([]byte, 16)
@@ -211,7 +255,7 @@ func generateInstallKey() (string, error) {
 }
 
 // registerInstallKey posts the agent's auto-generated key to the management server.
-func registerInstallKey(managementURL, caFile, caCertPEM, agentID, hostname, installKey string) error {
+func registerInstallKey(managementURL, caFile, caCertPEM, apiKey, agentID, hostname, installKey string) error {
 	payload, _ := json.Marshal(map[string]string{
 		"agent_id":    agentID,
 		"hostname":    hostname,
@@ -222,8 +266,14 @@ func registerInstallKey(managementURL, caFile, caCertPEM, agentID, hostname, ins
 	if err != nil {
 		return err
 	}
-	resp, err := client.Post(managementURL+"/api/v1/agent/register-key", "application/json",
+	req, err := http.NewRequest(http.MethodPost, managementURL+"/api/v1/agent/register-key",
 		strings.NewReader(string(payload)))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-API-Key", apiKey)
+	resp, err := client.Do(req)
 	if err != nil {
 		return fmt.Errorf("management server unreachable: %w", err)
 	}
@@ -235,8 +285,11 @@ func registerInstallKey(managementURL, caFile, caCertPEM, agentID, hostname, ins
 }
 
 // buildClient builds an HTTP client. Prefers inline caCertPEM over a file path.
+// L-05: no allowInsecure plumbing reaches this call site (it's only used
+// during install/registration, where a CA should always be available), so
+// this hard-fails via config.BuildTLSConfig rather than silently accepting
+// any certificate the way it used to.
 func buildClient(caFile, caCertPEM string) (*http.Client, error) {
-	tlsCfg := &tls.Config{MinVersion: tls.VersionTLS12}
 	var caPEM []byte
 	switch {
 	case caCertPEM != "":
@@ -248,15 +301,11 @@ func buildClient(caFile, caCertPEM string) (*http.Client, error) {
 			return nil, fmt.Errorf("read CA: %w", err)
 		}
 	}
-	if len(caPEM) > 0 {
-		pool := x509.NewCertPool()
-		if !pool.AppendCertsFromPEM(caPEM) {
-			return nil, fmt.Errorf("parse CA cert")
-		}
-		tlsCfg.RootCAs = pool
-	} else {
-		tlsCfg.InsecureSkipVerify = true
+	tlsCfg, err := config.BuildTLSConfig(caPEM, false)
+	if err != nil {
+		return nil, err
 	}
+	tlsCfg.MinVersion = tls.VersionTLS12
 	return &http.Client{
 		Transport: &http.Transport{TLSClientConfig: tlsCfg},
 		Timeout:   15 * time.Second,

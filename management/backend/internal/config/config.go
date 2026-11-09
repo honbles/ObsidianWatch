@@ -3,13 +3,14 @@ package config
 import (
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"gopkg.in/yaml.v3"
 )
 
 type Config struct {
-	NVD NVDConfig `yaml:"nvd"`
+	NVD       NVDConfig       `yaml:"nvd"`
 	Server    ServerConfig    `yaml:"server"`
 	Database  DatabaseConfig  `yaml:"database"`
 	BackendDB DatabaseConfig  `yaml:"backend_db"`
@@ -39,9 +40,9 @@ type ServerConfig struct {
 	CORSOrigins  []string      `yaml:"cors_origins"`
 	AgentAPIKey  string        `yaml:"agent_api_key"` // shared key agents use for tunnel auth
 	// TLS — auto-detected from /app/certs/ if present
-	TLSCertFile  string        `yaml:"tls_cert_file"`  // default: /app/certs/server.crt
-	TLSKeyFile   string        `yaml:"tls_key_file"`   // default: /app/certs/server.key
-	TLSEnabled   bool          `yaml:"tls_enabled"`    // auto-set to true if cert files exist
+	TLSCertFile string `yaml:"tls_cert_file"` // default: /app/certs/server.crt
+	TLSKeyFile  string `yaml:"tls_key_file"`  // default: /app/certs/server.key
+	TLSEnabled  bool   `yaml:"tls_enabled"`   // auto-set to true if cert files exist
 }
 
 type DatabaseConfig struct {
@@ -69,15 +70,15 @@ type AuthConfig struct {
 }
 
 type SMTPConfig struct {
-	Enabled    bool     `yaml:"enabled"`
-	Host       string   `yaml:"host"`
-	Port       int      `yaml:"port"`
-	Username   string   `yaml:"username"`
-	Password   string   `yaml:"password"`
-	From       string   `yaml:"from"`
-	To         []string `yaml:"to"`
-	MinSeverity int     `yaml:"min_severity"`
-	UseTLS     bool     `yaml:"use_tls"`
+	Enabled     bool     `yaml:"enabled"`
+	Host        string   `yaml:"host"`
+	Port        int      `yaml:"port"`
+	Username    string   `yaml:"username"`
+	Password    string   `yaml:"password"`
+	From        string   `yaml:"from"`
+	To          []string `yaml:"to"`
+	MinSeverity int      `yaml:"min_severity"`
+	UseTLS      bool     `yaml:"use_tls"`
 }
 
 type LogConfig struct {
@@ -96,6 +97,7 @@ func Load(path string) (*Config, error) {
 	if err := yaml.NewDecoder(f).Decode(cfg); err != nil {
 		return nil, fmt.Errorf("config: decode: %w", err)
 	}
+	applyEnvOverrides(cfg)
 	return cfg, validate(cfg)
 }
 
@@ -118,7 +120,9 @@ func defaults() *Config {
 			ConnMaxLifetime: 5 * time.Minute,
 		},
 		Auth: AuthConfig{
-			TokenDuration: 24 * time.Hour,
+			// M-07: cut from 24h to 4h to shrink the window a stolen token
+			// remains usable.
+			TokenDuration: 4 * time.Hour,
 		},
 		SMTP: SMTPConfig{
 			Enabled:     false,
@@ -130,12 +134,50 @@ func defaults() *Config {
 	}
 }
 
-func validate(cfg *Config) error {
-	if cfg.Database.Password == "" {
-		return fmt.Errorf("database.password is required")
+// M-09: these are the exact placeholder values that have appeared in
+// .env.example / docker-compose defaults. Starting with one of them left in
+// place means the DB password, JWT signing secret, or agent API key is
+// public knowledge (it's in the repo), so refuse to start rather than run
+// insecurely by accident.
+func isPlaceholderSecret(v string) bool {
+	v = strings.ToLower(strings.TrimSpace(v))
+	switch v {
+	case "changeme", "change-me", "changeme123", "password", "secret", "":
+		return true
 	}
-	if cfg.Auth.JWTSecret == "" {
-		return fmt.Errorf("auth.jwt_secret is required")
+	return strings.HasPrefix(v, "changeme-") || strings.HasPrefix(v, "change-me-")
+}
+
+func validate(cfg *Config) error {
+	if cfg.Database.Password == "" || isPlaceholderSecret(cfg.Database.Password) {
+		return fmt.Errorf("database.password is required and must not be a placeholder value")
+	}
+	if cfg.Auth.JWTSecret == "" || isPlaceholderSecret(cfg.Auth.JWTSecret) {
+		return fmt.Errorf("auth.jwt_secret is required and must not be a placeholder value")
+	}
+	if len(cfg.Auth.JWTSecret) < 32 {
+		return fmt.Errorf("auth.jwt_secret must be at least 32 characters (HS256 key strength); generate one with `openssl rand -hex 32`")
+	}
+	if cfg.Server.AgentAPIKey != "" && isPlaceholderSecret(cfg.Server.AgentAPIKey) {
+		return fmt.Errorf("agent_api_key must not be a placeholder value")
 	}
 	return nil
+}
+
+// applyEnvOverrides fills placeholder/empty secrets from the environment so a
+// clean `docker compose up` works from .env alone (H-1). Real values already
+// present in the YAML always win.
+func applyEnvOverrides(cfg *Config) {
+	if v := os.Getenv("DB_PASSWORD"); v != "" && isPlaceholderSecret(cfg.Database.Password) {
+		cfg.Database.Password = v
+	}
+	if v := os.Getenv("DB_PASSWORD"); v != "" && isPlaceholderSecret(cfg.BackendDB.Password) {
+		cfg.BackendDB.Password = v
+	}
+	if v := os.Getenv("AGENT_API_KEY"); v != "" && isPlaceholderSecret(cfg.Server.AgentAPIKey) {
+		cfg.Server.AgentAPIKey = v
+	}
+	if v := os.Getenv("JWT_SECRET"); v != "" && isPlaceholderSecret(cfg.Auth.JWTSecret) {
+		cfg.Auth.JWTSecret = v
+	}
 }

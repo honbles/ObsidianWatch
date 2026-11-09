@@ -91,6 +91,14 @@ type VulnScanner struct {
 	os      string
 	out     chan<- schema.Event
 	logger  *slog.Logger
+	// A-07: posture findings from the previous scan, to detect regressions.
+	prevPosture map[string]bool
+	postureInit bool
+}
+
+// postureCategories are the host-hardening controls whose loss is alertable.
+var postureCategories = map[string]bool{
+	"System Integrity Protection": true, "Gatekeeper": true, "FileVault": true, "Firewall": true,
 }
 
 func NewVulnScanner(cfg VulnScannerConfig, agentID, host, osStr string,
@@ -131,6 +139,7 @@ func (v *VulnScanner) scan(ctx context.Context) {
 	sev := 1
 	if result.CriticalCount > 0 { sev = 5 } else if result.HighCount > 0 { sev = 4 } else if result.MediumCount > 0 { sev = 3 } else if result.TotalOpen > 0 { sev = 2 }
 	v.logger.Info("vuln: done", "ports", result.TotalOpen, "packages", len(result.Packages), "findings", len(result.Findings))
+	v.emitPostureRegressions(ctx, result.Findings)
 	raw, _ := json.Marshal(result)
 	ev := schema.Event{
 		ID: fmt.Sprintf("vuln:%s:%d", v.agentID, time.Now().Unix()),
@@ -143,6 +152,42 @@ func (v *VulnScanner) scan(ctx context.Context) {
 		v.logger.Warn("vuln: output channel blocked for 30s, dropping scan result")
 	case <-ctx.Done():
 	}
+}
+
+// emitPostureRegressions emits a high-severity event when a hardening control
+// (SIP, Gatekeeper, FileVault, firewall) newly turns off between scans.
+func (v *VulnScanner) emitPostureRegressions(ctx context.Context, findings []SecurityFinding) {
+	cur := map[string]bool{}
+	for _, f := range findings {
+		if postureCategories[f.Category] {
+			cur[f.Category] = true
+		}
+	}
+	if v.postureInit {
+		for cat := range cur {
+			if v.prevPosture[cat] {
+				continue
+			}
+			raw, _ := json.Marshal(map[string]interface{}{
+				"control": cat, "state": "disabled", "previous": "enabled",
+				"message": "macOS security control regressed: " + cat,
+			})
+			ev := schema.Event{
+				ID:   fmt.Sprintf("posture:%s:%s:%d", v.agentID, strings.ReplaceAll(strings.ToLower(cat), " ", "_"), time.Now().Unix()),
+				Time: time.Now().UTC(), AgentID: v.agentID, Host: v.host, OS: v.os,
+				EventType: "config.posture_regression", Severity: schema.Severity(4),
+				Source: "vuln-scanner", Raw: raw,
+			}
+			select {
+			case v.out <- ev:
+			case <-time.After(10 * time.Second):
+			case <-ctx.Done():
+				return
+			}
+		}
+	}
+	v.prevPosture = cur
+	v.postureInit = true
 }
 
 func (v *VulnScanner) scanTCP(ctx context.Context) []PortResult {
@@ -252,6 +297,30 @@ func collectSecurityFindings() []SecurityFinding {
 				Title:  "SIP (System Integrity Protection) is disabled",
 				Detail: "SIP protects critical system files from modification — disabling it significantly increases attack surface",
 				Fix:    "Boot to Recovery Mode and run: csrutil enable",
+			})
+		}
+	}
+
+	// Gatekeeper (A-07)
+	if out, err := exec.Command("spctl", "--status").CombinedOutput(); err == nil || len(out) > 0 {
+		if strings.Contains(strings.ToLower(string(out)), "disabled") {
+			findings = append(findings, SecurityFinding{
+				Category: "Gatekeeper", Severity: 4,
+				Title:  "Gatekeeper is disabled",
+				Detail: "Gatekeeper no longer verifies that downloaded apps are signed/notarized",
+				Fix:    "Re-enable: sudo spctl --master-enable",
+			})
+		}
+	}
+
+	// FileVault disk encryption (A-07)
+	if out, err := exec.Command("fdesetup", "status").Output(); err == nil {
+		if strings.Contains(string(out), "FileVault is Off") {
+			findings = append(findings, SecurityFinding{
+				Category: "FileVault", Severity: 3,
+				Title:  "FileVault disk encryption is off",
+				Detail: "The startup disk is not encrypted; data is exposed if the device is lost or stolen",
+				Fix:    "System Settings → Privacy & Security → FileVault → Turn On",
 			})
 		}
 	}

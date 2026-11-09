@@ -72,10 +72,10 @@ func (e *VirusTotalEngine) Run(ctx context.Context) {
 
 func (e *VirusTotalEngine) ingestNewHashes(ctx context.Context) {
 	rows, err := e.db.QueryContext(ctx, `
-		SELECT DISTINCT
+		SELECT
 			file_hash as hash,
-			COALESCE(process_name, '') as file_name,
-			host
+			MAX(COALESCE(process_name, '')) as file_name,
+			MAX(host) as host
 		FROM events
 		WHERE file_hash IS NOT NULL
 		  AND file_hash != ''
@@ -91,7 +91,10 @@ func (e *VirusTotalEngine) ingestNewHashes(ctx context.Context) {
 		    OR process_name ILIKE '%wget%' OR process_name ILIKE '%curl%'
 		    OR process_name ILIKE '%powershell%' OR process_name ILIKE '%python%'
 		  )
-		ORDER BY hash LIMIT 500
+		GROUP BY file_hash
+		-- F-20: newest first. "ORDER BY hash" meant the same low-sorting hashes
+		-- always filled the 500 slots and newer hashes could starve.
+		ORDER BY MAX(time) DESC LIMIT 500
 	`)
 	if err != nil {
 		return

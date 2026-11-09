@@ -75,12 +75,20 @@ func handleUpdateAgentLocation(db *store.DB, logger *slog.Logger) http.HandlerFu
 			City     string  `json:"city"`
 			Country  string  `json:"country"`
 		}
+		r.Body = http.MaxBytesReader(w, r.Body, 64<<10)
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.AgentID == "" {
 			http.Error(w, `{"error":"bad request"}`, 400)
 			return
 		}
 		if body.Lat == 0 && body.Lng == 0 {
 			http.Error(w, `{"error":"invalid coordinates"}`, 400)
+			return
+		}
+		// I-04: range/length validation — agent-supplied, never trusted as-is.
+		if body.Lat < -90 || body.Lat > 90 || body.Lng < -180 || body.Lng > 180 ||
+			body.Accuracy < 0 || body.Accuracy > 1e7 ||
+			len(body.AgentID) > 128 || len(body.Source) > 32 || len(body.City) > 128 || len(body.Country) > 64 {
+			http.Error(w, `{"error":"invalid location values"}`, 400)
 			return
 		}
 		if err := db.UpdateAgentLocation(r.Context(), body.AgentID,

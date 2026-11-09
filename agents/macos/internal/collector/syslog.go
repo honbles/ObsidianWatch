@@ -46,10 +46,40 @@ func NewSyslogCollector(cfg SyslogConfig, agentID, host string, out chan<- schem
 	return &SyslogCollector{cfg: cfg, out: out, agentID: agentID, host: host, logger: logger}
 }
 
+// Run keeps `log stream` alive. The subprocess can exit (logd restart, memory
+// pressure) or its pipe can break on an over-long line; without a restart that
+// ended auth/sudo/ssh visibility until the agent itself restarted.
 func (c *SyslogCollector) Run(ctx context.Context) {
 	if !c.cfg.Enabled {
 		return
 	}
+	backoff := 2 * time.Second
+	for ctx.Err() == nil {
+		started := time.Now()
+		if !c.runOnce(ctx) {
+			return // could not start `log` at all
+		}
+		if ctx.Err() != nil {
+			return
+		}
+		if time.Since(started) > 30*time.Second {
+			backoff = 2 * time.Second
+		}
+		c.logger.Warn("syslog: log stream ended, restarting", "after", backoff)
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(backoff):
+		}
+		if backoff < time.Minute {
+			backoff *= 2
+		}
+	}
+}
+
+// runOnce runs one `log stream` process to completion. It returns false only
+// when the process could not be started.
+func (c *SyslogCollector) runOnce(ctx context.Context) bool {
 
 	// log stream --style json --predicate filters for security-relevant events
 	predicate := strings.Join([]string{
@@ -75,11 +105,11 @@ func (c *SyslogCollector) Run(ctx context.Context) {
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		c.logger.Error("syslog: pipe failed", "err", err)
-		return
+		return false
 	}
 	if err := cmd.Start(); err != nil {
 		c.logger.Error("syslog: log stream start failed", "err", err)
-		return
+		return false
 	}
 
 	c.logger.Info("syslog: log stream started")
@@ -90,7 +120,8 @@ func (c *SyslogCollector) Run(ctx context.Context) {
 		select {
 		case <-ctx.Done():
 			cmd.Process.Kill()
-			return
+			cmd.Wait()
+			return true
 		default:
 		}
 		line := scanner.Text()
@@ -99,7 +130,12 @@ func (c *SyslogCollector) Run(ctx context.Context) {
 		}
 		c.parseLine(line)
 	}
+	if err := scanner.Err(); err != nil {
+		c.logger.Warn("syslog: read error", "err", err)
+		cmd.Process.Kill()
+	}
 	cmd.Wait()
+	return true
 }
 
 // logEntry is a minimal subset of the macOS ndjson log format

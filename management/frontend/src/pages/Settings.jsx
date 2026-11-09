@@ -53,6 +53,32 @@ const API_KEY_GROUPS = [
         badge: 'Claude',
         badgeColor: 'text-orange-400 bg-orange-950/30 border-orange-800/40',
       },
+      {
+        key: 'local_llm_url',
+        plain: true,
+        label: 'Local model URL',
+        placeholder: 'http://localhost:11434',
+        desc: 'Self-hosted OpenAI-compatible server (Ollama, vLLM, llama.cpp, LM Studio). When set together with a model name, natural-language search uses it instead of Groq/Anthropic, so the question never leaves your network.',
+        badge: 'Self-hosted',
+        badgeColor: 'text-sky-400 bg-sky-950/30 border-sky-800/40',
+      },
+      {
+        key: 'local_llm_model',
+        plain: true,
+        label: 'Local model name',
+        placeholder: 'llama3.1:8b',
+        desc: 'Model name as the local server knows it (for Ollama, the tag you pulled).',
+        badge: 'Self-hosted',
+        badgeColor: 'text-sky-400 bg-sky-950/30 border-sky-800/40',
+      },
+      {
+        key: 'local_llm_api_key',
+        label: 'Local model API key (optional)',
+        placeholder: 'Only if your server requires one',
+        desc: 'Sent as a Bearer token to the local server. Leave empty for Ollama.',
+        badge: 'Self-hosted',
+        badgeColor: 'text-sky-400 bg-sky-950/30 border-sky-800/40',
+      },
     ],
   },
   {
@@ -154,29 +180,39 @@ const API_KEY_GROUPS = [
 ]
 
 function APIKeyRow({ keyDef, onSaved }) {
-  const { key, label, placeholder, desc, link, linkLabel, badge, badgeColor } = keyDef
+  const { key, label, placeholder, desc, link, linkLabel, badge, badgeColor, plain } = keyDef
   const [value, setValue]     = useState('')
+  const [initial, setInitial] = useState('') // saved value for non-secret fields
   const [isSet, setIsSet]     = useState(false)
-  const [show, setShow]       = useState(false)
+  const [show, setShow]       = useState(!!plain)
   const [saving, setSaving]   = useState(false)
   const [status, setStatus]   = useState(null) // null | 'saved' | 'cleared' | 'error'
+  const [errMsg, setErrMsg]   = useState('')
   const [loaded, setLoaded]   = useState(false)
 
   useEffect(() => {
     api.get('/api/v1/settings/api-keys').then(r => {
       if (r.data[key + '_set']) setIsSet(true)
+      if (plain && r.data[key]) { setValue(r.data[key]); setInitial(r.data[key]) }
     }).catch(() => {}).finally(() => setLoaded(true))
-  }, [key])
+  }, [key, plain])
 
   const save = async () => {
     if (!value.trim()) return
     setSaving(true); setStatus(null)
     try {
       await api.post('/api/v1/settings/api-keys', { [key]: value })
-      setIsSet(true); setValue(''); setStatus('saved')
+      setIsSet(true); setStatus('saved'); setErrMsg('')
+      if (plain) {
+        // The server normalises the value (e.g. trims a trailing slash): show what was stored.
+        const r = await api.get('/api/v1/settings/api-keys').catch(() => null)
+        const stored = r?.data?.[key] ?? value.trim()
+        setValue(stored); setInitial(stored)
+      } else setValue('')
       onSaved && onSaved(key)
       setTimeout(() => setStatus(null), 3000)
-    } catch {
+    } catch (e) {
+      setErrMsg(e?.response?.data?.error || '')
       setStatus('error')
     } finally { setSaving(false) }
   }
@@ -185,7 +221,7 @@ function APIKeyRow({ keyDef, onSaved }) {
     setSaving(true); setStatus(null)
     try {
       await api.post('/api/v1/settings/api-keys', { [key]: '' })
-      setIsSet(false); setValue(''); setStatus('cleared')
+      setIsSet(false); setValue(''); setInitial(''); setStatus('cleared')
       setTimeout(() => setStatus(null), 2000)
     } catch {
       setStatus('error')
@@ -219,7 +255,7 @@ function APIKeyRow({ keyDef, onSaved }) {
               <span className="text-[9px] text-siem-muted">Cleared</span>
             )}
             {status === 'error' && (
-              <span className="text-[9px] text-red-400">Save failed</span>
+              <span className="text-[9px] text-red-400">{errMsg || 'Save failed'}</span>
             )}
           </div>
           <p className="text-[10px] text-siem-muted">{desc}</p>
@@ -235,7 +271,7 @@ function APIKeyRow({ keyDef, onSaved }) {
       <div className="flex gap-2">
         <div className="relative flex-1">
           <input
-            type={show ? 'text' : 'password'}
+            type={show || plain ? 'text' : 'password'}
             value={value}
             onChange={e => setValue(e.target.value)}
             onKeyDown={handleKey}
@@ -247,13 +283,13 @@ function APIKeyRow({ keyDef, onSaved }) {
             {show ? <EyeOff size={13}/> : <Eye size={13}/>}
           </button>
         </div>
-        {value.trim() && (
+        {value.trim() && value !== initial && (
           <button onClick={save} disabled={saving}
             className="shrink-0 flex items-center gap-1.5 text-[11px] font-semibold bg-siem-accent hover:bg-siem-accent/90 text-white rounded-lg px-3 disabled:opacity-40 transition-colors">
             <Save size={11}/>{saving ? '…' : 'Save'}
           </button>
         )}
-        {isSet && !value.trim() && (
+        {isSet && (!value.trim() || value === initial) && (
           <button onClick={clear} disabled={saving}
             className="shrink-0 text-[10px] text-red-400/70 border border-red-800/30 rounded-lg px-2.5 hover:bg-red-950/20 transition-colors disabled:opacity-40">
             Clear

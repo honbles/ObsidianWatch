@@ -8,11 +8,10 @@ services:
     environment:
       POSTGRES_DB:       obsidianwatch
       POSTGRES_USER:     obsidianwatch
-      POSTGRES_PASSWORD: changeme        # ← CHANGE THIS (match server.yaml)
+      POSTGRES_PASSWORD: "${DB_PASSWORD:?DB_PASSWORD must be set, see .env.example}"
     volumes:
       - timescale_data:/var/lib/postgresql/data
-    ports:
-      - "5432:5432"
+    # M-09: no published port — reached over the internal compose network only.
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U obsidianwatch -d obsidianwatch"]
       interval: 10s

@@ -4,6 +4,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"log/slog"
@@ -60,6 +61,7 @@ func main() {
 			ManagementCACertPEM: cfg.Forwarder.ManagementCACertPEM,
 			AgentID:             agentID,
 			Hostname:            hostname,
+			APIKey:              cfg.Forwarder.APIKey,
 		})
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Install failed: %v\n", err)
@@ -68,7 +70,7 @@ func main() {
 		return
 
 	case "uninstall":
-		err := service.Uninstall(cfg.Forwarder.ManagementURL, cfg.Forwarder.CAFile, agentID)
+		err := service.Uninstall(cfg.Forwarder.ManagementURL, cfg.Forwarder.CAFile, uninstallCA(cfg.Forwarder.ManagementCACertPEM, cfg.Forwarder.CACertPEM), cfg.Forwarder.APIKey, agentID)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Uninstall failed: %v\n", err)
 			os.Exit(1)
@@ -194,6 +196,22 @@ func main() {
 		go func() { cm.Run(ctx) }()
 	}
 
+	// P-12: USB / removable media attach events.
+	{
+		activeCollectors = append(activeCollectors, "usb")
+		usbc := collector.NewUSBCollector(agentID, hostname, rawCh, logger)
+		go func() { usbc.Run(ctx) }()
+	}
+
+	// P-12: package install/remove and container start events.
+	{
+		activeCollectors = append(activeCollectors, "software", "container")
+		swc := collector.NewSoftwareCollector(agentID, hostname, rawCh, logger)
+		go func() { swc.Run(ctx) }()
+		cc := collector.NewContainerCollector(agentID, hostname, rawCh, logger)
+		go func() { cc.Run(ctx) }()
+	}
+
 	if cfg.Collector.Health.Enabled {
 		activeCollectors = append(activeCollectors, "health")
 		h := collector.NewHealthReporter(cfg.Collector.Health.Interval,
@@ -225,14 +243,15 @@ func main() {
 			agentID, hostname,
 			cfg.Forwarder.BackendURL, cfg.Forwarder.APIKey,
 			cfg.Forwarder.CAFile, cfg.Forwarder.CACertPEM,
+			cfg.Forwarder.AllowInsecureTLS,
 			rawCh, logger,
 		)
 		go func() { loc.Run(ctx) }()
 		activeCollectors = append(activeCollectors, "location")
 	}
 
-	// Live Response — SSH tunnel for analyst terminal access
-	{
+	// Live Response — analyst terminal access. H-2: opt-in only.
+	if cfg.LiveResponse.Enabled {
 		lr := collector.NewLiveResponseCollector(
 			agentID, hostname,
 			cfg.Forwarder.ManagementURL,
@@ -243,8 +262,12 @@ func main() {
 		)
 		// Pass embedded CA PEM so tunnel TLS works when no ca_file is set on disk
 		caPEM := cfg.Forwarder.ManagementCACertPEM
-		if caPEM == "" { caPEM = cfg.Forwarder.CACertPEM }
-		if caPEM != "" { lr.SetCAPEM(caPEM) }
+		if caPEM == "" {
+			caPEM = cfg.Forwarder.CACertPEM
+		}
+		if caPEM != "" {
+			lr.SetCAPEM(caPEM)
+		}
 		go func() { lr.Run(ctx) }()
 		activeCollectors = append(activeCollectors, "live-response")
 	}
@@ -254,6 +277,22 @@ func main() {
 	logger.Info("All collectors running", "count", len(activeCollectors), "collectors", activeCollectors)
 	<-ctx.Done()
 	logger.Info("Shutting down...")
+	// D-12: tell the server we are going away before we do. The signal reaching
+	// us means a stop/kill-TERM was requested (service stop, uninstall, or a
+	// deliberate attempt to blind the host).
+	{
+		raw, _ := json.Marshal(map[string]interface{}{
+			"reason": "shutdown signal received", "pid": os.Getpid(), "agent_version": agentVersion,
+		})
+		fwd.SendFinal(schema.Event{
+			ID:        fmt.Sprintf("agent-tamper:%s:%d", agentID, time.Now().UnixNano()),
+			OS:        "linux",
+			EventType: "agent.tamper",
+			Severity:  schema.Severity(4),
+			Source:    "agent",
+			Raw:       raw,
+		})
+	}
 }
 
 func buildLogger(level string) *slog.Logger {
@@ -282,4 +321,11 @@ func resolveAgentID(hostname string) string {
 	return hostname
 }
 
-
+// uninstallCA picks the CA PEM for management-server calls: the management CA
+// if embedded, otherwise the backend CA.
+func uninstallCA(mgmtCA, backendCA string) string {
+	if mgmtCA != "" {
+		return mgmtCA
+	}
+	return backendCA
+}

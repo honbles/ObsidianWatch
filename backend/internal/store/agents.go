@@ -2,6 +2,8 @@ package store
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"time"
 )
@@ -20,9 +22,21 @@ type Agent struct {
 
 // UpsertAgent inserts or updates agent metadata on each batch received.
 // last_ip comes from the HTTP request RemoteAddr.
+// UpsertAgent records an ingest batch's sender. installKey is only ever
+// used on first registration (the INSERT branch) — I-02: ingest trusts
+// agent_id/host/os/install_key straight from the request body, and this
+// used to let any ingest batch (authenticated with nothing more than the
+// one fleet-wide API key baked into every agent binary) silently replace
+// an existing agent's install_key with an attacker-chosen value on every
+// single call (`COALESCE(NULLIF(EXCLUDED.install_key,”), ...)` prefers
+// the incoming key whenever it's non-empty). Since the install key is
+// meant to be the one thing that can authorize an uninstall, that was a
+// way to hijack it without ever touching the host. The ON CONFLICT path
+// now always keeps the key already on file, full stop — an attacker who
+// can forge ingest batches gains nothing against it anymore.
 func (db *DB) UpsertAgent(ctx context.Context, id, hostname, os, version, remoteIP, installKey string, eventCount int) error {
 	_, err := db.ExecContext(ctx, `
-		INSERT INTO agents (id, hostname, os, version, first_seen, last_seen, last_ip, event_count, install_key)
+		INSERT INTO agents (id, hostname, os, version, first_seen, last_seen, last_ip, event_count, install_key_hash)
 		VALUES ($1, $2, $3, $4, NOW(), NOW(), $5, $6, NULLIF($7, ''))
 		ON CONFLICT (id) DO UPDATE SET
 			hostname    = EXCLUDED.hostname,
@@ -30,9 +44,9 @@ func (db *DB) UpsertAgent(ctx context.Context, id, hostname, os, version, remote
 			version     = EXCLUDED.version,
 			last_seen   = NOW(),
 			last_ip     = EXCLUDED.last_ip,
-			event_count = agents.event_count + EXCLUDED.event_count,
-			install_key = COALESCE(NULLIF(EXCLUDED.install_key, ''), agents.install_key)
-	`, id, hostname, os, version, remoteIP, eventCount, installKey)
+			event_count = agents.event_count + EXCLUDED.event_count
+			-- install_key intentionally omitted: never updated once set.
+	`, id, hostname, os, version, remoteIP, eventCount, hashIngestKey(installKey))
 	if err != nil {
 		return fmt.Errorf("store: upsert agent: %w", err)
 	}
@@ -102,4 +116,13 @@ func (db *DB) UpdateAgentLocation(ctx context.Context, agentID string, lat, lng,
 		return fmt.Errorf("agent not found: %s", agentID)
 	}
 	return nil
+}
+
+// hashIngestKey stores install keys hashed (F-03); empty stays empty.
+func hashIngestKey(k string) string {
+	if k == "" {
+		return ""
+	}
+	sum := sha256.Sum256([]byte(k))
+	return hex.EncodeToString(sum[:])
 }

@@ -15,10 +15,12 @@ export default function ChangePassword({ onChanged }) {
     e.preventDefault()
     setError('')
     if (next !== confirm) { setError('Passwords do not match'); return }
-    if (next.length < 8) { setError('Password must be at least 8 characters'); return }
+    if (next.length < 10) { setError('Password must be at least 10 characters'); return }
     setLoading(true)
     try {
-      await api.patch('/auth/password', { current_password: current, new_password: next })
+      const res = await api.patch('/auth/password', { current_password: current, new_password: next })
+      // Server ends all other sessions on a password change and returns a fresh token for this one.
+      if (res.data?.token) { try { localStorage.setItem('token', res.data.token) } catch { /* storage unavailable */ } }
       setDone(true)
       setTimeout(() => onChanged && onChanged(), 1500)
     } catch (err) {
@@ -64,7 +66,7 @@ export default function ChangePassword({ onChanged }) {
               <label className="block text-xs text-siem-muted mb-1.5">New password</label>
               <input type="password"
                 className="w-full bg-siem-bg border border-siem-border rounded-lg px-3 py-2.5 text-sm text-siem-text focus:outline-none focus:border-siem-accent"
-                value={next} onChange={e => setNext(e.target.value)} required minLength={8}
+                value={next} onChange={e => setNext(e.target.value)} required minLength={10}
               />
               <div className="text-xs text-siem-muted/60 mt-1">Minimum 8 characters</div>
             </div>

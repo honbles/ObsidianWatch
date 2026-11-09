@@ -49,9 +49,11 @@ func New(cfg *config.Config, db *store.DB, logger *slog.Logger) (*Server, error)
 	}
 
 	protected := http.NewServeMux()
+	SetTrustedProxies(cfg.Server.TrustedProxies) // M-13
 	protected.HandleFunc("POST /api/v1/events", handleIngest(db, cfg.Server.MaxBatchSize, logger))
 	protected.HandleFunc("POST /api/v1/agents/location", handleUpdateAgentLocation(db, logger))
 	protected.HandleFunc("GET /api/v1/events", handleQueryEvents(db))
+	protected.HandleFunc("GET /api/v1/metrics", handleMetrics())
 	protected.HandleFunc("GET /api/v1/agents", handleListAgents(db))
 	protected.HandleFunc("GET /api/v1/agents/{id}", handleGetAgent(db))
 
@@ -82,6 +84,10 @@ func New(cfg *config.Config, db *store.DB, logger *slog.Logger) (*Server, error)
 		TLSConfig:    tlsCfg,
 		ReadTimeout:  cfg.Server.ReadTimeout,
 		WriteTimeout: cfg.Server.WriteTimeout,
+		// Slow-header (slowloris) and idle-connection limits.
+		ReadHeaderTimeout: 10 * time.Second,
+		IdleTimeout:       120 * time.Second,
+		MaxHeaderBytes:    64 << 10,
 	}
 
 	return s, nil

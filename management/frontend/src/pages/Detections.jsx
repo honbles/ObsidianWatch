@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Zap, Shield, ChevronDown, ChevronUp, ExternalLink, ToggleLeft, ToggleRight,
-         RefreshCw, Globe, AlertCircle, CheckCircle, Clock, Monitor, Server, Apple, Cloud, GitBranch, Wifi, Code, Filter } from 'lucide-react'
+         RefreshCw, Globe, AlertCircle, CheckCircle, Clock, Monitor, Server, Apple, Cloud, GitBranch, Wifi, Code, Filter, Trash2 } from 'lucide-react'
 import api from '../api/client'
 
 const SEV_LABEL = { 1:'Info', 2:'Low', 3:'Medium', 4:'High', 5:'Critical' }
@@ -40,6 +40,23 @@ const sigOS = id => {
   if (id.startsWith('DEV-')) return 'devops'
   if (id.startsWith('NET-')) return 'network'
   return 'all'
+}
+
+// Label lookup for Azure sub-categories in the cloud tab
+const AZURE_SIG_LABELS = {
+  'C-AZ-IAM':   'Entra ID / Identity',
+  'C-AZ-COMP':  'Compute / AKS',
+  'C-AZ-DATA':  'Data & Storage',
+  'C-AZ-NET':   'Network',
+  'C-AZ-EVA':   'Defense Evasion',
+  'C-AZ-DEF':   'Defender',
+  'C-AZ-AUDIT': 'Entra Audit',
+}
+const azureSigGroup = id => {
+  for (const [prefix, label] of Object.entries(AZURE_SIG_LABELS)) {
+    if (id.startsWith(prefix)) return label
+  }
+  return null
 }
 
 const OS_TABS = [
@@ -155,6 +172,35 @@ function SourceCard({ source, onUpdate, onSync }) {
   )
 }
 
+function Backtest({ sigId }) {
+  const [res, setRes] = useState(null)
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+  const run = async () => {
+    setBusy(true); setErr('')
+    try { setRes((await api.post(`/api/v1/detections/${sigId}/backtest?hours=24`)).data) }
+    catch (e) { setErr(e?.response?.data?.error || 'Backtest failed') }
+    finally { setBusy(false) }
+  }
+  return (
+    <div className="mt-3">
+      <button onClick={run} disabled={busy}
+        className="text-xs border border-siem-border text-siem-muted hover:text-siem-text rounded-lg px-3 py-1.5 disabled:opacity-40">
+        {busy ? 'Replaying…' : 'Backtest last 24h'}
+      </button>
+      {err && <span className="text-xs text-red-400 ml-3">{err}</span>}
+      {res && (
+        <div className="mt-2 text-xs text-siem-muted">
+          <div><span className="text-siem-text">{res.matches}</span> matches in {res.events_scanned.toLocaleString()} events
+            {res.truncated ? ' (scan capped)' : ''} — about <span className="text-siem-text">{Math.round(res.estimated_per_day)}</span> per day.</div>
+          {res.top_hosts?.length > 0 && <div>Top hosts: {res.top_hosts.slice(0, 5).map(h => `${h.host} (${h.count})`).join(', ')}</div>}
+          <div className="opacity-70">{res.note}</div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function SigList({ sigs, toggling, onToggle, expanded, onExpand }) {
   const byCat = {}
   sigs.forEach(s => {
@@ -217,6 +263,7 @@ function SigList({ sigs, toggling, onToggle, expanded, onExpand }) {
                           : <span className="text-red-400">Disabled</span>}
                       </span>
                     </div>
+                    <Backtest sigId={sig.id}/>
                   </div>
                 )}
               </div>
@@ -242,6 +289,12 @@ export default function Detections() {
   const [sigmaToggling, setSigmaToggling] = useState(false)
   const [osTab, setOsTab] = useState('linux')
   const navigate = useNavigate()
+  // Suppression rules (GCP cloud tab)
+  const [suppressRules, setSuppressRules] = useState([])
+  const [suppressLoading, setSuppressLoading] = useState(false)
+  const [showSuppressForm, setShowSuppressForm] = useState(false)
+  const [suppressForm, setSuppressForm] = useState({ description:'', sig_id:'', principal:'', src_ip_prefix:'', method_contains:'', expires_days:'' })
+  const [suppressSaving, setSuppressSaving] = useState(false)
 
   const fetchAll = () => {
     Promise.all([
@@ -256,6 +309,37 @@ export default function Detections() {
   }
 
   useEffect(() => { fetchAll() }, [])
+
+  const loadSuppress = () => {
+    setSuppressLoading(true)
+    api.get('/api/v1/cloud-connectors/suppress')
+      .then(r => setSuppressRules(Array.isArray(r.data) ? r.data : []))
+      .catch(() => setSuppressRules([]))
+      .finally(() => setSuppressLoading(false))
+  }
+
+  const deleteSuppress = async (id) => {
+    await api.delete(`/api/v1/cloud-connectors/suppress/${id}`).catch(() => {})
+    setSuppressRules(r => r.filter(x => x.id !== id))
+  }
+
+  const saveSuppress = async () => {
+    if (!suppressForm.description) return
+    if (!suppressForm.sig_id && !suppressForm.principal && !suppressForm.src_ip_prefix && !suppressForm.method_contains) return
+    setSuppressSaving(true)
+    try {
+      const payload = { ...suppressForm }
+      if (suppressForm.expires_days) {
+        const d = new Date(); d.setDate(d.getDate() + parseInt(suppressForm.expires_days))
+        payload.expires_at = d.toISOString()
+      }
+      if (payload.expires_days !== undefined) delete payload.expires_days
+      await api.post('/api/v1/cloud-connectors/suppress', payload)
+      setShowSuppressForm(false)
+      setSuppressForm({ description:'', sig_id:'', principal:'', src_ip_prefix:'', method_contains:'', expires_days:'' })
+      loadSuppress()
+    } finally { setSuppressSaving(false) }
+  }
 
   const toggle = async (sig, e) => {
     e.stopPropagation()
@@ -298,6 +382,9 @@ export default function Detections() {
   useEffect(() => {
     if (osTab === 'sast' && sastRules.length === 0) {
       api.get('/api/v1/sast-rules').then(r => setSastRules(r.data.rules || [])).catch(() => {})
+    }
+    if (osTab === 'cloud') {
+      loadSuppress()
     }
   }, [osTab])
 
@@ -606,6 +693,101 @@ export default function Detections() {
                 onExpand={id => setExpanded(expanded === id ? null : id)}
               />
           }
+
+          {/* ── GCP Suppression Rules — shown only in Cloud tab ── */}
+          {osTab === 'cloud' && (
+            <div className="mt-8 space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <Filter size={14} className="text-cyan-400"/>
+                    <span className="text-sm font-semibold text-siem-text">GCP Alert Suppression Rules</span>
+                    {suppressRules.length > 0 && (
+                      <span className="text-xs text-cyan-400 bg-cyan-900/20 border border-cyan-700/30 rounded px-1.5 py-0.5">{suppressRules.length}</span>
+                    )}
+                  </div>
+                  <p className="text-xs text-siem-muted mt-0.5">
+                    Suppress noisy-but-legitimate GCP activity (CI/CD SA key creation, internal IPs, trusted principals) without disabling the entire rule.
+                  </p>
+                </div>
+                <button onClick={() => setShowSuppressForm(v => !v)}
+                  className="flex items-center gap-1.5 text-xs text-cyan-400 bg-cyan-900/20 border border-cyan-700/30 rounded-lg px-3 py-1.5 hover:bg-cyan-900/30">
+                  <Zap size={11}/>{showSuppressForm ? 'Cancel' : '+ New Rule'}
+                </button>
+              </div>
+
+              {showSuppressForm && (
+                <div className="bg-siem-surface border border-cyan-700/20 rounded-xl p-4 space-y-3">
+                  <div className="text-xs font-semibold text-cyan-400 uppercase tracking-wide">New Suppression Rule</div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="col-span-2">
+                      <label className="text-[10px] text-siem-muted block mb-1">Description *</label>
+                      <input value={suppressForm.description} onChange={e => setSuppressForm(p=>({...p,description:e.target.value}))}
+                        placeholder="e.g. CI/CD pipeline SA key creation"
+                        className="w-full bg-siem-bg border border-siem-border rounded px-3 py-1.5 text-xs text-siem-text focus:outline-none focus:border-siem-accent"/>
+                    </div>
+                    {[
+                      {k:'sig_id', label:'Sig ID / Prefix', ph:'e.g. C-GCP-025 or C-GCP-0'},
+                      {k:'principal', label:'Principal (exact or @suffix)', ph:'e.g. ci-cd@proj.iam.gserviceaccount.com'},
+                      {k:'src_ip_prefix', label:'Source IP Prefix', ph:'e.g. 10.128.'},
+                      {k:'method_contains', label:'Method Contains', ph:'e.g. CloudBuild'},
+                      {k:'expires_days', label:'Expires in days (blank = permanent)', ph:'e.g. 30'},
+                    ].map(f => (
+                      <div key={f.k}>
+                        <label className="text-[10px] text-siem-muted block mb-1">{f.label}</label>
+                        <input value={suppressForm[f.k]} onChange={e => setSuppressForm(p=>({...p,[f.k]:e.target.value}))}
+                          placeholder={f.ph}
+                          className="w-full bg-siem-bg border border-siem-border rounded px-3 py-1.5 text-xs text-siem-text placeholder-siem-muted/50 focus:outline-none focus:border-siem-accent font-mono"/>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="flex justify-end">
+                    <button onClick={saveSuppress} disabled={suppressSaving || !suppressForm.description}
+                      className="px-4 py-1.5 bg-siem-accent text-white rounded-lg text-xs font-semibold disabled:opacity-40">
+                      {suppressSaving ? 'Saving…' : 'Save Rule'}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {suppressLoading ? (
+                <div className="text-siem-muted text-xs text-center py-4 flex items-center justify-center gap-2">
+                  <RefreshCw size={11} className="animate-spin"/> Loading rules…
+                </div>
+              ) : suppressRules.length === 0 ? (
+                <div className="text-siem-muted text-xs text-center py-6 bg-siem-surface border border-siem-border rounded-xl">
+                  No suppression rules. Create one above to stop specific high-volume but legitimate alerts (e.g. CI/CD SA key creation).
+                </div>
+              ) : (
+                <div className="bg-siem-surface border border-siem-border rounded-xl overflow-hidden divide-y divide-siem-border/30">
+                  {suppressRules.map(rule => {
+                    const expired = rule.expires_at && new Date(rule.expires_at) < new Date()
+                    return (
+                      <div key={rule.id} className={`px-4 py-3 flex items-start gap-3 ${expired ? 'opacity-50' : ''}`}>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+                            <span className="text-xs font-medium text-siem-text">{rule.description}</span>
+                            {expired && <span className="text-[9px] text-red-400 border border-red-700/30 rounded px-1">EXPIRED</span>}
+                          </div>
+                          <div className="flex gap-1.5 flex-wrap">
+                            {rule.sig_id && <span className="text-[9px] font-mono text-purple-400 bg-purple-900/20 border border-purple-700/20 rounded px-1.5 py-0.5">sig: {rule.sig_id}</span>}
+                            {rule.principal && <span className="text-[9px] font-mono text-cyan-400 bg-cyan-900/20 border border-cyan-700/20 rounded px-1.5 py-0.5">principal: {rule.principal}</span>}
+                            {rule.src_ip_prefix && <span className="text-[9px] font-mono text-yellow-400 bg-yellow-900/20 border border-yellow-700/20 rounded px-1.5 py-0.5">ip: {rule.src_ip_prefix}*</span>}
+                            {rule.method_contains && <span className="text-[9px] font-mono text-green-400 bg-green-900/20 border border-green-700/20 rounded px-1.5 py-0.5">method: *{rule.method_contains}*</span>}
+                            {rule.expires_at && !expired && <span className="text-[9px] text-siem-muted border border-siem-border rounded px-1.5 py-0.5">expires {new Date(rule.expires_at).toLocaleDateString()}</span>}
+                          </div>
+                        </div>
+                        <button onClick={() => deleteSuppress(rule.id)}
+                          className="shrink-0 text-red-400/60 hover:text-red-400 transition-colors p-1">
+                          <Trash2 size={13}/>
+                        </button>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+          )}
         </>
       )}
 

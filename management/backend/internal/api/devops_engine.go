@@ -4,12 +4,18 @@ package api
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net/http"
+	neturl "net/url"
+	"net/netip"
+	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"obsidianwatch/management/internal/store"
@@ -64,6 +70,13 @@ func (e *DevOpsEngine) SyncOne(ctx context.Context, id int64) error {
 }
 
 func (e *DevOpsEngine) syncOne(ctx context.Context, conn *store.DevOpsConnector) error {
+	// DO-12: skip if a sync for this connector is already running.
+	guardKey := fmt.Sprintf("devops:%d", conn.ID)
+	if !tryAcquireSync(guardKey) {
+		e.logger.Info("devops sync skipped: previous sync still running", "provider", conn.Provider, "org", conn.Org)
+		return nil
+	}
+	defer releaseSync(guardKey)
 	syncCtx, cancel := context.WithTimeout(ctx, 3*time.Minute)
 	defer cancel()
 
@@ -74,6 +87,10 @@ func (e *DevOpsEngine) syncOne(ctx context.Context, conn *store.DevOpsConnector)
 		return err
 	}
 	e.db.UpdateDevOpsConnectorStatus(ctx, conn.ID, "connected", "", int64(ingested), cursor)
+	// DO-05: surface reduced coverage instead of silently looking healthy.
+	if note := takeCoverageNote(conn.ID); note != "" {
+		e.db.SetDevOpsConnectorNote(ctx, conn.ID, note)
+	}
 	if ingested > 0 {
 		e.logger.Info("devops sync complete", "provider", conn.Provider, "org", conn.Org, "ingested", ingested)
 	}
@@ -125,6 +142,12 @@ func handleSaveDevOpsConnector(db *store.DB) http.HandlerFunc {
 			writeJSON(w, 400, map[string]string{"error": "provider and org required"})
 			return
 		}
+		if bu, err := validateDevOpsBaseURL(req.Credentials["base_url"]); err != nil {
+			writeJSON(w, 400, map[string]string{"error": err.Error()})
+			return
+		} else if bu != "" {
+			req.Credentials["base_url"] = bu
+		}
 		// Generate webhook secret
 		webhookSecret := generateToken(16)
 		id, err := db.UpsertDevOpsConnector(r.Context(),
@@ -151,6 +174,12 @@ func handleTestDevOpsConnector(db *store.DB) http.HandlerFunc {
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			writeJSON(w, 400, map[string]string{"error": "invalid body"})
 			return
+		}
+		if bu, err := validateDevOpsBaseURL(req.Credentials["base_url"]); err != nil {
+			writeJSON(w, 400, map[string]string{"error": err.Error()})
+			return
+		} else if bu != "" {
+			req.Credentials["base_url"] = bu
 		}
 		ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
 		defer cancel()
@@ -247,14 +276,90 @@ func handleGetDevOpsCommit(db *store.DB) http.HandlerFunc {
 
 // generateToken generates a hex random token
 func generateToken(n int) string {
+	// DO-02: webhook secrets must be unpredictable — crypto/rand, not clock bits.
 	b := make([]byte, n)
-	for i := range b {
-		b[i] = byte(time.Now().UnixNano()>>uint(i%8) ^ int64(i*17))
+	if _, err := rand.Read(b); err != nil {
+		panic("crypto/rand unavailable: " + err.Error())
 	}
-	return fmt.Sprintf("%x", b)
+	return hex.EncodeToString(b)
 }
 
 // isDevOpsEvent returns true if the event came from a DevOps provider
 func isDevOpsEvent(ev store.Event) bool {
 	return strings.HasPrefix(string(ev.EventType), "devops.")
+}
+
+// validateDevOpsBaseURL checks a user-supplied provider base_url before the
+// connector token is ever sent to it (DO-10: it used to be taken from the
+// request unvalidated, so the token could be exfiltrated to any host or the
+// server pointed at internal services). Rules: https only, no userinfo, a
+// real hostname, and never loopback / link-local (cloud metadata) / unspecified
+// addresses. Private RFC1918 ranges are permitted only when the operator sets
+// OW_ALLOW_PRIVATE_DEVOPS=true, since self-hosted GitLab often lives there.
+// Returns the normalised URL (scheme://host[:port][/path], no trailing slash).
+func validateDevOpsBaseURL(raw string) (string, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return "", nil
+	}
+	u, err := neturl.Parse(raw)
+	if err != nil || u.Host == "" {
+		return "", fmt.Errorf("base_url is not a valid URL")
+	}
+	if u.Scheme != "https" {
+		return "", fmt.Errorf("base_url must use https")
+	}
+	if u.User != nil {
+		return "", fmt.Errorf("base_url must not contain credentials")
+	}
+	host := strings.ToLower(u.Hostname())
+	if host == "localhost" || strings.HasSuffix(host, ".localhost") {
+		return "", fmt.Errorf("base_url host is not allowed")
+	}
+	if a, err := netip.ParseAddr(host); err == nil {
+		a = a.Unmap()
+		if a.IsLoopback() || a.IsLinkLocalUnicast() || a.IsLinkLocalMulticast() || a.IsUnspecified() || a.IsMulticast() {
+			return "", fmt.Errorf("base_url host is not allowed")
+		}
+		if a.IsPrivate() && os.Getenv("OW_ALLOW_PRIVATE_DEVOPS") != "true" {
+			return "", fmt.Errorf("base_url points at a private address (set OW_ALLOW_PRIVATE_DEVOPS=true to allow self-hosted)")
+		}
+	}
+	return strings.TrimRight(u.Scheme+"://"+u.Host+u.EscapedPath(), "/"), nil
+}
+
+// ── Coverage notes (DO-05) ────────────────────────────────────────────────────
+
+var (
+	coverageMu    sync.Mutex
+	coverageNotes = map[int64]string{}
+)
+
+func setCoverageNote(id int64, note string) {
+	coverageMu.Lock()
+	coverageNotes[id] = note
+	coverageMu.Unlock()
+}
+
+func takeCoverageNote(id int64) string {
+	coverageMu.Lock()
+	defer coverageMu.Unlock()
+	n := coverageNotes[id]
+	delete(coverageNotes, id)
+	return n
+}
+
+// commitEventTime returns the time to stamp on a commit-derived event
+// (DS-01/DO-08). Events now carry the real commit time — the detection
+// engine pages by ingest time (D-01), so old timestamps are still evaluated —
+// which also makes the (id, time) primary key stable, so a commit fetched
+// twice (overlap window, manual sync, retry) is deduplicated instead of
+// being inserted again. Zero or future-dated values (attacker- or
+// clock-controlled) fall back to the receive time.
+func commitEventTime(t time.Time) time.Time {
+	now := time.Now().UTC()
+	if t.IsZero() || t.After(now.Add(5*time.Minute)) {
+		return now
+	}
+	return t.UTC()
 }

@@ -1,6 +1,8 @@
 package config
 
 import (
+	"crypto/tls"
+	"crypto/x509"
 	"fmt"
 	"os"
 	"strings"
@@ -10,11 +12,12 @@ import (
 )
 
 type Config struct {
-	Agent     AgentConfig     `yaml:"agent"`
-	Collector CollectorConfig `yaml:"collector"`
-	Forwarder ForwarderConfig `yaml:"forwarder"`
-	Queue     QueueConfig     `yaml:"queue"`
-	Log       LogConfig       `yaml:"log"`
+	LiveResponse LiveResponseConfig `yaml:"live_response"` // H-2: opt-in remote shell
+	Agent        AgentConfig        `yaml:"agent"`
+	Collector    CollectorConfig    `yaml:"collector"`
+	Forwarder    ForwarderConfig    `yaml:"forwarder"`
+	Queue        QueueConfig        `yaml:"queue"`
+	Log          LogConfig          `yaml:"log"`
 }
 
 type AgentConfig struct {
@@ -89,17 +92,22 @@ type RateLimitConfig struct {
 }
 
 type ForwarderConfig struct {
-	InstallKey    string        `yaml:"install_key"`
-	ManagementURL string        `yaml:"management_url"`
-	BackendURL    string        `yaml:"backend_url"`
-	BatchSize     int           `yaml:"batch_size"`
-	FlushInterval time.Duration `yaml:"flush_interval"`
-	CertFile      string        `yaml:"cert_file"`
-	KeyFile       string        `yaml:"key_file"`
-	CAFile        string        `yaml:"ca_file"`
+	InstallKey          string        `yaml:"install_key"`
+	ManagementURL       string        `yaml:"management_url"`
+	BackendURL          string        `yaml:"backend_url"`
+	BatchSize           int           `yaml:"batch_size"`
+	FlushInterval       time.Duration `yaml:"flush_interval"`
+	CertFile            string        `yaml:"cert_file"`
+	KeyFile             string        `yaml:"key_file"`
+	CAFile              string        `yaml:"ca_file"`
 	CACertPEM           string        `yaml:"ca_cert_pem"`
 	ManagementCACertPEM string        `yaml:"management_ca_cert_pem"` // CA for management HTTPS; falls back to CACertPEM if empty
-	APIKey        string        `yaml:"api_key"`
+	APIKey              string        `yaml:"api_key"`
+	// AllowInsecureTLS (L-05): must be explicitly opted into. Without a CA
+	// configured, BuildTLSConfig now hard-fails rather than silently
+	// falling back to InsecureSkipVerify, which previously made the agent
+	// accept ANY cert for every backend connection whenever the CA was unset.
+	AllowInsecureTLS bool `yaml:"allow_insecure_tls"`
 }
 
 type QueueConfig struct {
@@ -135,7 +143,7 @@ func defaults() *Config {
 		Collector: CollectorConfig{
 			Journald: JournaldConfig{Enabled: true},
 			Process:  ProcessConfig{Enabled: true, PollInterval: 2 * time.Second},
-			Network:  NetworkConfig{Enabled: true, PollInterval: 30 * time.Second},
+			Network:  NetworkConfig{Enabled: true, PollInterval: 10 * time.Second},
 			DNS:      DNSConfig{Enabled: true},
 			FIM: FIMConfig{
 				Enabled: true,
@@ -194,7 +202,6 @@ func validate(cfg *Config) error {
 	return nil
 }
 
-
 // LoadEmbedded loads config from the string baked in at compile time.
 // Falls back to reading from path if EmbeddedConfig is empty (dev builds).
 func LoadEmbedded(fallbackPath string) (*Config, error) {
@@ -217,10 +224,20 @@ const installKeyFile = "/etc/obsidianwatch/.install_key"
 // This replaces the old approach of patching agent.yaml on disk,
 // which no longer exists when the config is embedded in the binary.
 func PersistInstallKey(key string) error {
-	if err := os.MkdirAll(installKeyDir(), 0755); err != nil {
+	if err := os.MkdirAll(installKeyDir(), 0700); err != nil {
 		return err
 	}
-	return os.WriteFile(installKeyFile, []byte(key), 0600)
+	return writeSecretFile(installKeyFile, []byte(key))
+}
+
+// writeSecretFile writes data with mode 0600 and also tightens the mode of a
+// file that already existed (os.WriteFile keeps an old file's permissions, so
+// a key first written with a looser umask would otherwise stay readable).
+func writeSecretFile(path string, data []byte) error {
+	if err := os.WriteFile(path, data, 0600); err != nil {
+		return err
+	}
+	return os.Chmod(path, 0600)
 }
 
 // ReadInstallKey reads the persisted install key from the state file.
@@ -232,5 +249,32 @@ func ReadInstallKey() (string, error) {
 	return strings.TrimSpace(string(data)), nil
 }
 
-func installKeyDir() string { return "/etc/obsidianwatch" }
+func installKeyDir() string  { return "/etc/obsidianwatch" }
 func InstallKeyFile() string { return installKeyFile }
+
+// BuildTLSConfig (L-05) builds a *tls.Config trusting caPEM if provided.
+// If caPEM is empty and allowInsecure is false, it HARD-FAILS instead of
+// the old behavior of silently setting InsecureSkipVerify: true — that
+// previous fallback meant any MITM could present any certificate and the
+// agent would accept it without complaint whenever the CA wasn't wired up
+// correctly, which is exactly the situation (misconfiguration) where you
+// most need TLS to fail loudly rather than quietly do nothing.
+func BuildTLSConfig(caPEM []byte, allowInsecure bool) (*tls.Config, error) {
+	if len(caPEM) > 0 {
+		pool := x509.NewCertPool()
+		if !pool.AppendCertsFromPEM(caPEM) {
+			return nil, fmt.Errorf("tls: failed to parse CA certificate")
+		}
+		return &tls.Config{RootCAs: pool}, nil
+	}
+	if allowInsecure {
+		return &tls.Config{InsecureSkipVerify: true}, nil
+	}
+	return nil, fmt.Errorf("tls: no CA certificate configured and allow_insecure_tls is false — refusing to connect without verifying the server certificate")
+}
+
+// LiveResponseConfig gates the analyst remote-shell tunnel. Off unless the
+// agent was built (or configured) with live_response.enabled: true.
+type LiveResponseConfig struct {
+	Enabled bool `yaml:"enabled"`
+}

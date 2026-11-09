@@ -10,6 +10,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -57,6 +58,9 @@ func New(cfg config.ForwarderConfig, probeID, host, ver string, logger *slog.Log
 
 func (f *Forwarder) Enqueue(ev schema.ProbeEvent) {
 	f.mu.Lock()
+	if len(f.buffer) >= maxBuffered {
+		f.buffer = f.buffer[1:] // drop oldest rather than grow without bound
+	}
 	f.buffer = append(f.buffer, ev)
 	shouldFlush := len(f.buffer) >= f.cfg.BatchSize
 	f.mu.Unlock()
@@ -97,29 +101,68 @@ func (f *Forwarder) pending() int {
 	return len(f.buffer)
 }
 
+// maxBuffered bounds memory while the backend is unreachable.
+const maxBuffered = 50000
+
+// maxSendBatch keeps each request under the backend's per-batch event limit
+// (default 1000). Re-queued events after an outage can number in the tens of
+// thousands; sending them as one batch would be rejected with 413 on every
+// retry and the backlog would never drain.
+const maxSendBatch = 500
+
+// errPermanent marks a rejection that retrying the same batch cannot fix.
+type errPermanent struct{ code int }
+
+func (e errPermanent) Error() string { return fmt.Sprintf("backend rejected batch: %d", e.code) }
+
 func (f *Forwarder) Flush(ctx context.Context) {
 	f.mu.Lock()
 	if len(f.buffer) == 0 {
 		f.mu.Unlock()
 		return
 	}
-	batch := make([]schema.ProbeEvent, len(f.buffer))
-	copy(batch, f.buffer)
+	pending := make([]schema.ProbeEvent, len(f.buffer))
+	copy(pending, f.buffer)
 	f.buffer = f.buffer[:0]
 	f.mu.Unlock()
 
-	if err := f.send(ctx, batch); err != nil {
-		f.logger.Warn("forwarder: send failed", "events", len(batch), "err", err)
-		// Re-queue on failure (simple retry)
+	rest := f.flushChunks(ctx, pending, f.send)
+	if len(rest) > 0 {
 		f.mu.Lock()
-		f.buffer = append(batch, f.buffer...)
-		if len(f.buffer) > 50000 {
-			f.buffer = f.buffer[len(f.buffer)-50000:] // cap buffer
+		f.buffer = append(rest, f.buffer...)
+		if len(f.buffer) > maxBuffered {
+			f.buffer = f.buffer[len(f.buffer)-maxBuffered:] // keep the newest
 		}
 		f.mu.Unlock()
-	} else {
-		f.logger.Debug("forwarder: sent", "events", len(batch))
 	}
+}
+
+// flushChunks sends events in bounded batches and returns whatever should be
+// retried later. A permanent rejection (HTTP 400/413/422) drops
+// that chunk, since resending identical data would fail forever.
+func (f *Forwarder) flushChunks(ctx context.Context, events []schema.ProbeEvent,
+	send func(context.Context, []schema.ProbeEvent) error) []schema.ProbeEvent {
+	for len(events) > 0 {
+		n := len(events)
+		if n > maxSendBatch {
+			n = maxSendBatch
+		}
+		err := send(ctx, events[:n])
+		if err == nil {
+			f.logger.Debug("forwarder: sent", "events", n)
+			events = events[n:]
+			continue
+		}
+		var perm errPermanent
+		if errors.As(err, &perm) {
+			f.logger.Error("forwarder: dropping batch the backend rejected", "events", n, "err", err)
+			events = events[n:]
+			continue
+		}
+		f.logger.Warn("forwarder: send failed", "events", len(events), "err", err)
+		return events
+	}
+	return nil
 }
 
 func (f *Forwarder) send(ctx context.Context, events []schema.ProbeEvent) error {
@@ -148,6 +191,12 @@ func (f *Forwarder) send(ctx context.Context, events []schema.ProbeEvent) error 
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode >= 400 {
+		// Only malformed/oversized payloads are permanent. 401/403 (wrong or
+		// rotated key) and 429 are retried so data is not lost while an
+		// operator fixes the configuration.
+		if resp.StatusCode == 400 || resp.StatusCode == 413 || resp.StatusCode == 422 {
+			return errPermanent{code: resp.StatusCode}
+		}
 		return fmt.Errorf("backend returned %d", resp.StatusCode)
 	}
 	return nil
@@ -188,4 +237,21 @@ func (f *Forwarder) SendInventory(ctx context.Context, devices interface{}, arp 
 		Source:    "probe",
 		Raw:       raw,
 	})
+}
+
+// SendFinal synchronously delivers one last event (e.g. probe.tamper on
+// SIGINT/SIGTERM) with a 5-second bound so the server sees a stop attempt
+// before the process exits. Falls back to the in-memory buffer on failure.
+func (f *Forwarder) SendFinal(ev schema.ProbeEvent) {
+	ev.AgentID = f.probeID
+	ev.Host = f.host
+	if ev.Time.IsZero() {
+		ev.Time = time.Now().UTC()
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := f.send(ctx, []schema.ProbeEvent{ev}); err != nil {
+		f.logger.Warn("forwarder: final event send failed", "err", err)
+		f.Enqueue(ev)
+	}
 }

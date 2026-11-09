@@ -23,6 +23,7 @@ import (
 	"os/exec"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 	"unsafe"
 
@@ -30,6 +31,19 @@ import (
 )
 
 const lrReconnectInterval = 15 * time.Second
+
+// sessionEntry is one live-response shell session as seen by the tunnel loop.
+type sessionEntry struct {
+	ch  chan []byte
+	ptm atomic.Pointer[os.File] // set once the shell PTY exists (resize)
+}
+
+func clampTermDim(v, def int) int {
+	if v < 10 || v > 500 {
+		return def
+	}
+	return v
+}
 
 type LiveResponseCollector struct {
 	agentID       string
@@ -74,8 +88,11 @@ func (c *LiveResponseCollector) Run(ctx context.Context) error {
 
 func (c *LiveResponseCollector) runTunnel(ctx context.Context) error {
 	mgmt := strings.TrimRight(c.managementURL, "/")
-	wsURL := strings.Replace(mgmt, "https://", "wss://", 1)
-	wsURL = strings.Replace(wsURL, "http://", "ws://", 1)
+	// C-1: the tunnel carries the API key and a remote shell; never cleartext.
+	if !strings.HasPrefix(strings.ToLower(mgmt), "https://") {
+		return fmt.Errorf("live-response: refusing non-https management URL %q (tunnel requires wss)", mgmt)
+	}
+	wsURL := "wss://" + mgmt[len("https://"):]
 	wsURL += fmt.Sprintf("/api/v1/live-response/agent-tunnel?agent_id=%s", c.agentID)
 
 	dialer := wsDialerForCAPEM(c.caPEM, c.caFile)
@@ -87,6 +104,7 @@ func (c *LiveResponseCollector) runTunnel(ctx context.Context) error {
 		return fmt.Errorf("dial: %w", err)
 	}
 	defer conn.Close()
+	conn.SetReadLimit(1 << 20) // server frames are commands/keystrokes; bound them
 
 	c.logger.Info("live-response: tunnel connected")
 
@@ -96,7 +114,6 @@ func (c *LiveResponseCollector) runTunnel(ctx context.Context) error {
 		"payload": json.RawMessage(`{"username":"root","mode":"direct-shell"}`),
 	})
 
-	type sessionEntry struct{ ch chan []byte }
 	sessions := make(map[string]*sessionEntry)
 	var mu sync.Mutex
 	var wsWriteMu sync.Mutex
@@ -133,18 +150,25 @@ func (c *LiveResponseCollector) runTunnel(ctx context.Context) error {
 			c.logger.Info("live-response: session requested", "token", tok[:8]+"...")
 			ch := make(chan []byte, 256)
 			mu.Lock()
-			sessions[tok] = &sessionEntry{ch: ch}
+			entry := &sessionEntry{ch: ch}
+			sessions[tok] = entry
 			mu.Unlock()
 			go func() {
-				c.handleSession(ctx, tok, ch, writeJSON, cols, rows)
+				c.handleSession(ctx, tok, ch, writeJSON, cols, rows, entry)
 				mu.Lock()
 				delete(sessions, tok)
 				mu.Unlock()
 			}()
 
 		case "resize":
-			// PTY resize handled inside handleSession via channel — not implemented here
-			// Frontend can send resize events
+			mu.Lock()
+			entry, ok := sessions[env.Token]
+			mu.Unlock()
+			if ok {
+				if f := entry.ptm.Load(); f != nil {
+					setWinsize(f, clampTermDim(env.Cols, 120), clampTermDim(env.Rows, 30))
+				}
+			}
 
 		case "data":
 			tok := env.Token
@@ -173,7 +197,7 @@ func (c *LiveResponseCollector) runTunnel(ctx context.Context) error {
 }
 
 // handleSession spawns /bin/bash directly with a PTY — no SSH needed.
-func (c *LiveResponseCollector) handleSession(ctx context.Context, token string, inCh chan []byte, writeJSON func(interface{}) error, cols, rows int) {
+func (c *LiveResponseCollector) handleSession(ctx context.Context, token string, inCh chan []byte, writeJSON func(interface{}) error, cols, rows int, entry *sessionEntry) {
 	// Open a PTY pair
 	ptm, pts, err := openPTY()
 	if err != nil {
@@ -185,6 +209,8 @@ func (c *LiveResponseCollector) handleSession(ctx context.Context, token string,
 
 	// Set initial terminal size
 	setWinsize(ptm, cols, rows)
+	entry.ptm.Store(ptm)
+	defer entry.ptm.Store(nil)
 
 	// Find shell
 	shell := "/bin/bash"

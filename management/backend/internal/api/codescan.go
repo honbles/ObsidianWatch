@@ -448,6 +448,10 @@ func handleCodeScanAI(cfg *config.Config, db *store.DB) http.HandlerFunc {
 			return
 		}
 
+		if !sourceAILimiter.Allow("codescan") {
+			writeJSON(w, 429, map[string]string{"error": "AI analysis rate limit reached; try again later"})
+			return
+		}
 		// Resolve AI keys
 		groqKey := cfg.Groq.APIKey
 		anthropicKey := cfg.Anthropic.APIKey
@@ -488,6 +492,9 @@ func handleCodeScanAI(cfg *config.Config, db *store.DB) http.HandlerFunc {
 		}
 		compact := make([]compactFinding, 0, len(findings))
 		for _, f := range findings {
+			if len(compact) >= aiMaxFindings {
+				break
+			}
 			compact = append(compact, compactFinding{
 				Sev: f.Severity, Category: f.Category,
 				Title: f.Title, File: f.File,
@@ -496,7 +503,7 @@ func handleCodeScanAI(cfg *config.Config, db *store.DB) http.HandlerFunc {
 		}
 		compactJSON, _ := json.Marshal(compact)
 
-		prompt := fmt.Sprintf(`You are a senior application security engineer reviewing code scan results.
+		prompt := promptInjectionGuard + "\n\n" + fmt.Sprintf(`You are a senior application security engineer reviewing code scan results.
 
 You have been given code scan findings from a DevOps repository connector.
 The findings include: secrets exposed in commits, sensitive files committed, dangerous code patterns, and vulnerable dependencies.
@@ -515,8 +522,8 @@ Analyse the findings and return ONLY this exact JSON — no markdown, no code bl
   "positive_notes": ["things done right"]
 }
 
-Findings (%d total):
-%s`, len(findings), string(compactJSON))
+Findings (%d total, %d shown):
+%s`, len(findings), len(compact), fenceUntrusted("code_scan_findings", string(compactJSON)))
 
 		aiCtx, cancel := context.WithTimeout(r.Context(), 45*time.Second)
 		defer cancel()

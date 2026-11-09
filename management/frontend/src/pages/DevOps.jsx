@@ -1,10 +1,11 @@
 import { useState, useEffect, useCallback } from 'react'
+import { safeHref } from '../utils/safeHref'
 import { GitBranch, GitCommit, Code, Bell, Activity, Search,
          RefreshCw, Plus, Trash2, ChevronRight, AlertTriangle,
          CheckCircle, XCircle, Eye, EyeOff, Clock, User,
          Shield, FileText, Lock, Zap, Bug, ExternalLink, Hash } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
-import api from '../api/client'
+import api, { runScan } from '../api/client'
 import AlertPanel from '../components/AlertPanel'
 
 // ── Provider config ───────────────────────────────────────────────────────────
@@ -257,7 +258,7 @@ function CommitDetail({ commit, onClose }) {
           <span className="text-red-400 font-medium">-{commit.deletions} deletions</span>
           <span className="text-siem-muted">{commit.files_changed} files changed</span>
           {commit.url && (
-            <a href={commit.url} target="_blank" rel="noopener noreferrer"
+            <a href={safeHref(commit.url)} target="_blank" rel="noopener noreferrer"
               className="text-siem-accent hover:underline ml-auto">
               View on {commit.url.includes('github') ? 'GitHub' : 'GitLab'} →
             </a>
@@ -305,6 +306,46 @@ function CommitDetail({ commit, onClose }) {
 }
 
 // ── ConnectorDetail ───────────────────────────────────────────────────────────
+function PosturePanel({ conn }) {
+  const [res, setRes] = useState(null)
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+  const sevCls = { high: 'text-red-400', medium: 'text-orange-400', low: 'text-yellow-400' }
+  useEffect(() => {
+    api.get(`/api/v1/devops-connectors/${conn.id}/posture`).then(r => setRes(r.data)).catch(() => {})
+  }, [conn.id])
+  const run = async () => {
+    setBusy(true); setErr(''); setRes(null)
+    try { setRes((await runScan(`/api/v1/devops-connectors/${conn.id}/posture`)).data) }
+    catch (e) { setErr(e.response?.data?.error || e.message || 'Posture scan failed') }
+    finally { setBusy(false) }
+  }
+  return (
+    <div className="p-5 space-y-3">
+      <div className="flex items-center gap-3">
+        <button onClick={run} disabled={busy} className="px-4 py-2 text-xs font-semibold bg-siem-accent text-white rounded-xl disabled:opacity-40">
+          {busy ? 'Scanning…' : 'Run posture check'}
+        </button>
+        <span className="text-xs text-siem-muted">Branch protection, secret scanning, push protection and org 2FA (GitHub).</span>
+      </div>
+      {err && <div className="text-sm text-red-400">{err}</div>}
+      {res && (
+        <div className="text-xs space-y-1">
+          <div className="text-siem-muted">{res.repos_checked} repos checked · {(res.findings || []).length} findings</div>
+          {(res.findings || []).map((f, i) => (
+            <div key={i} className="border border-siem-border rounded-lg p-3">
+              <span className={`font-semibold uppercase mr-2 ${sevCls[f.severity] || ''}`}>{f.severity}</span>
+              <span className="font-medium">{f.title}</span>
+              <span className="text-siem-muted ml-2 font-mono">{f.resource}</span>
+              <div className="text-siem-muted mt-1">{f.detail} <span className="text-siem-text">Fix: {f.fix}</span></div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function ConnectorDetail({ conn, onSync, onDisconnect, syncing }) {
   const [tab, setTab]           = useState('commits')
   const [commits, setCommits]   = useState([])
@@ -467,6 +508,7 @@ function ConnectorDetail({ conn, onSync, onDisconnect, syncing }) {
     { id: 'sast',      label: 'SAST',          icon: Code      },
     { id: 'events',    label: 'Events',        icon: Activity  },
     { id: 'alerts',    label: 'Alerts',        icon: Bell      },
+    ...((['github', 'gitlab', 'azuredevops'].includes(conn.provider)) ? [{ id: 'posture', label: 'Posture', icon: Shield }] : []),
   ]
 
   return (
@@ -588,6 +630,8 @@ function ConnectorDetail({ conn, onSync, onDisconnect, syncing }) {
           </div>
         )}
 
+        {tab === 'posture' && <PosturePanel conn={conn} />}
+
         {/* SAST — Static Analysis */}
         {tab === 'sast' && (
           <div className="p-5 space-y-4">
@@ -651,7 +695,7 @@ function ConnectorDetail({ conn, onSync, onDisconnect, syncing }) {
                   if (sastSelRepo) params.set('repo', sastSelRepo)
                   if (sastSelBranch) params.set('branch', sastSelBranch)
                   const url = `/api/v1/devops-connectors/${conn.id}/sast${params.toString() ? '?' + params.toString() : ''}`
-                  const { data } = await api.post(url, {}, { timeout: 300000 })
+                  const { data } = await runScan(url)
                   setSastResult(data); setAiSast(null)
                 } catch (e) { setSastError(e.response?.data?.error || 'SAST scan failed') }
                 finally { setSasting(false) }

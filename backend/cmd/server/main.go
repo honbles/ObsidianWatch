@@ -30,6 +30,7 @@ func main() {
 
 	// ── Logger ──────────────────────────────────────────────────────────
 	logger := buildLogger(cfg.Log.Level, cfg.Log.Format)
+	go watchRestartSignal(logger) // M-08
 
 	// ── Database ────────────────────────────────────────────────────────
 	db, err := store.Connect(cfg.Database, logger)
@@ -47,6 +48,8 @@ func main() {
 	}
 
 	// ── HTTP Server ─────────────────────────────────────────────────────
+	applyRetention(ctx, db, cfg, logger)
+
 	srv, err := api.New(cfg, db, logger)
 	if err != nil {
 		logger.Error("server init failed", "err", err)
@@ -101,4 +104,35 @@ func buildLogger(level, format string) *slog.Logger {
 		handler = slog.NewJSONHandler(os.Stdout, opts)
 	}
 	return slog.New(handler)
+}
+
+// applyRetention (H-05) makes the events retention window configurable and
+// optionally enables chunk compression. Best-effort: errors are logged.
+func applyRetention(ctx context.Context, db *store.DB, cfg *config.Config, logger *slog.Logger) {
+	days := cfg.Server.RetentionDays
+	if days <= 0 {
+		days = 90
+	}
+	if days < 7 || days > 3650 {
+		logger.Warn("retention_days out of range (7-3650); using 90", "value", days)
+		days = 90
+	}
+	interval := fmt.Sprintf("%d days", days)
+	if _, err := db.ExecContext(ctx, `SELECT remove_retention_policy('events', if_exists => TRUE)`); err != nil {
+		logger.Warn("retention: remove old policy failed", "err", err)
+	}
+	if _, err := db.ExecContext(ctx, `SELECT add_retention_policy('events', $1::interval, if_not_exists => TRUE)`, interval); err != nil {
+		logger.Warn("retention: apply failed", "err", err)
+	} else {
+		logger.Info("retention policy applied", "days", days)
+	}
+	if cfg.Server.EnableCompression {
+		if _, err := db.ExecContext(ctx, `ALTER TABLE events SET (timescaledb.compress, timescaledb.compress_segmentby = 'agent_id', timescaledb.compress_orderby = 'time DESC')`); err != nil {
+			logger.Warn("compression: not available (needs TimescaleDB Community)", "err", err)
+			return
+		}
+		if _, err := db.ExecContext(ctx, `SELECT add_compression_policy('events', INTERVAL '7 days', if_not_exists => TRUE)`); err != nil {
+			logger.Warn("compression: policy failed", "err", err)
+		}
+	}
 }

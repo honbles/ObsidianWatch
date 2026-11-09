@@ -4,12 +4,16 @@ import (
 	"archive/zip"
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -60,6 +64,7 @@ func (e *ThreatIntelEngine) syncAll(ctx context.Context) {
 			continue
 		}
 		e.logger.Info("threat-intel: syncing", "source", src.Name)
+		syncStart := time.Now().Add(-1 * time.Minute)
 		var syncErr error
 		var count int
 		switch src.Name {
@@ -80,13 +85,26 @@ func (e *ThreatIntelEngine) syncAll(ctx context.Context) {
 			e.logger.Info("threat-intel: sync complete", "source", src.Name, "count", count)
 		}
 		e.db.SetThreatIntelSyncResult(ctx, src.Name, count, syncErr)
+		if syncErr == nil && src.Name != "sigma" {
+			e.retroHunt(ctx, src.Name, syncStart)
+		}
 	}
 	// Clean expired IOCs
 	e.db.DeleteExpiredIOCs(ctx)
+	_ = e.db.PrunePrevalence(ctx, time.Now().AddDate(0, 0, -180))
+	// F-16: location history is personal data; keep it for a bounded, configurable time.
+	days := 90
+	if v, _ := e.db.GetSetting(ctx, "location.retention_days"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n >= 7 && n <= 3650 {
+			days = n
+		}
+	}
+	_ = e.db.PruneLocationHistory(ctx, time.Now().AddDate(0, 0, -days))
 }
 
 func (e *ThreatIntelEngine) SyncSource(ctx context.Context, name string, apiKey *string) {
 	e.logger.Info("threat-intel: manual sync", "source", name)
+	syncStart := time.Now().Add(-1 * time.Minute)
 	var syncErr error
 	var count int
 	switch name {
@@ -109,9 +127,10 @@ func (e *ThreatIntelEngine) SyncSource(ctx context.Context, name string, apiKey 
 		e.logger.Info("threat-intel: sync complete", "source", name, "count", count)
 	}
 	e.db.SetThreatIntelSyncResult(ctx, name, count, syncErr)
+	if syncErr == nil && name != "sigma" {
+		e.retroHunt(ctx, name, syncStart)
+	}
 }
-
-
 
 func (e *ThreatIntelEngine) syncThreatFox(ctx context.Context, apiKey *string) (int, error) {
 	// ThreatFox API — free API key required (get one at threatfox.abuse.ch)
@@ -168,7 +187,9 @@ func (e *ThreatIntelEngine) syncThreatFox(ctx context.Context, apiKey *string) (
 	}
 	if err := json.Unmarshal(respBody, &result); err != nil {
 		preview := string(respBody)
-		if len(preview) > 300 { preview = preview[:300] }
+		if len(preview) > 300 {
+			preview = preview[:300]
+		}
 		return 0, fmt.Errorf("ThreatFox decode failed: %w — response: %s", err, preview)
 	}
 	switch result.QueryStatus {
@@ -262,24 +283,39 @@ func (e *ThreatIntelEngine) syncOTX(ctx context.Context, apiKey string) (int, er
 		default:
 		}
 		req, err := http.NewRequestWithContext(ctx, "GET", nextURL, nil)
-		if err != nil { return 0, err }
+		if err != nil {
+			return 0, err
+		}
 		req.Header.Set("X-OTX-API-KEY", apiKey)
 		resp, err := e.client.Do(req)
-		if err != nil { return 0, fmt.Errorf("OTX request (page %d): %w", page+1, err) }
-		if resp.StatusCode == 403 { resp.Body.Close(); return 0, fmt.Errorf("OTX invalid API key") }
-		if resp.StatusCode != 200 { resp.Body.Close(); return 0, fmt.Errorf("OTX status %d", resp.StatusCode) }
+		if err != nil {
+			return 0, fmt.Errorf("OTX request (page %d): %w", page+1, err)
+		}
+		if resp.StatusCode == 403 {
+			resp.Body.Close()
+			return 0, fmt.Errorf("OTX invalid API key")
+		}
+		if resp.StatusCode != 200 {
+			resp.Body.Close()
+			return 0, fmt.Errorf("OTX status %d", resp.StatusCode)
+		}
 		var result otxResult
 		if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-			resp.Body.Close(); return 0, fmt.Errorf("OTX decode (page %d): %w", page+1, err)
+			resp.Body.Close()
+			return 0, fmt.Errorf("OTX decode (page %d): %w", page+1, err)
 		}
 		resp.Body.Close()
 		for _, pulse := range result.Results {
 			tags := strings.Join(pulse.Tags, ",")
 			for _, ind := range pulse.Indicators {
 				iocType := normalizeOTXType(ind.Type)
-				if iocType == "" { continue }
+				if iocType == "" {
+					continue
+				}
 				value := strings.ToLower(strings.TrimSpace(ind.Indicator))
-				if value == "" { continue }
+				if value == "" {
+					continue
+				}
 				iocs = append(iocs, store.IOCIndicator{
 					Source: "otx", IOCType: iocType, Value: value,
 					Malware: pulse.Name, ThreatType: ind.Role,
@@ -319,9 +355,26 @@ func normalizeOTXType(t string) string {
 
 // ── Sigma ─────────────────────────────────────────────────────────────────────
 
+// D-13: the rule pack used to be pulled from GitHub's "releases/latest",
+// with no version pin and no integrity check — a supply-chain risk, since
+// whatever SigmaHQ (or anyone able to tamper with that endpoint) publishes
+// next gets imported and matched against live security events sight
+// unseen. syncSigma now requires an explicit pinned release tag and its
+// expected SHA-256 (set via the ti.sigma_pinned_version /
+// ti.sigma_pinned_sha256 settings, e.g. from the admin UI), and fails
+// closed — importing nothing — if either is unset or the downloaded zip's
+// hash doesn't match. Bumping the pin is a deliberate action: review the
+// diff against the previous ruleset before updating these settings.
 func (e *ThreatIntelEngine) syncSigma(ctx context.Context) (int, error) {
-	// Download the SigmaHQ core rules zip from GitHub releases
-	zipURL := "https://github.com/SigmaHQ/sigma/releases/latest/download/sigma_core.zip"
+	version, _ := e.db.GetSetting(ctx, "ti.sigma_pinned_version")
+	expectedSHA, _ := e.db.GetSetting(ctx, "ti.sigma_pinned_sha256")
+	version = strings.TrimSpace(version)
+	expectedSHA = strings.ToLower(strings.TrimSpace(expectedSHA))
+	if version == "" || expectedSHA == "" {
+		return 0, fmt.Errorf("Sigma rule pack not configured: set ti.sigma_pinned_version (a specific SigmaHQ release tag, never \"latest\") and ti.sigma_pinned_sha256 (the release asset's published SHA-256) after reviewing the release's changes")
+	}
+
+	zipURL := fmt.Sprintf("https://github.com/SigmaHQ/sigma/releases/download/%s/sigma_core.zip", url.PathEscape(version))
 	req, err := http.NewRequestWithContext(ctx, "GET", zipURL, nil)
 	if err != nil {
 		return 0, err
@@ -339,6 +392,12 @@ func (e *ThreatIntelEngine) syncSigma(ctx context.Context) (int, error) {
 	data, err := io.ReadAll(io.LimitReader(resp.Body, 50*1024*1024)) // 50MB limit
 	if err != nil {
 		return 0, fmt.Errorf("Sigma read: %w", err)
+	}
+
+	sum := sha256.Sum256(data)
+	gotSHA := hex.EncodeToString(sum[:])
+	if gotSHA != expectedSHA {
+		return 0, fmt.Errorf("Sigma integrity check failed: downloaded %s but pinned ti.sigma_pinned_sha256 is %s — refusing to import unverified rules", gotSHA, expectedSHA)
 	}
 
 	zr, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))

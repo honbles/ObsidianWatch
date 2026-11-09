@@ -133,7 +133,7 @@ export default function Setup() {
                 className="w-full bg-siem-bg border border-siem-border rounded-lg px-3 py-2 text-sm text-siem-text placeholder-siem-muted focus:outline-none focus:border-cyan-500/50"
               />
               <p className="text-xs text-siem-muted mt-1.5">
-                If set, the TLS certificate will be regenerated with this domain as a SAN. Agents can then connect using the domain instead of an IP. Agent cache will be cleared.
+                If set, the domain is recorded and the agent cache cleared. To add it to the TLS certificate, set EXTRA_SAN_DNS in .env and run "docker compose up cert-init" (the CA key is kept out of the running services).
               </p>
             </div>
           </div>

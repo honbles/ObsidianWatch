@@ -19,7 +19,7 @@ var publicAPIPaths = map[string]bool{
 }
 
 // Middleware validates the Authorization: Bearer <token> header.
-// For WebSocket connections that can't set headers, also accepts ?auth=<token> query param.
+// WebSocket connections authenticate with a single-use ?ticket= (see ws_ticket.go).
 func Middleware(jwt *JWTService) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -40,9 +40,15 @@ func Middleware(jwt *JWTService) func(http.Handler) http.Handler {
 					token = parts[1]
 				}
 			}
-			// Fall back to ?auth= query param (used by WebSocket clients)
-			if token == "" {
-				token = r.URL.Query().Get("auth")
+			// WebSocket clients cannot set headers: they authenticate with a
+			// short-lived single-use ticket (never the JWT itself) and only on
+			// the WebSocket paths.
+			if token == "" && r.Method == http.MethodGet && wsPaths[path] {
+				if c := redeemWSTicket(r.URL.Query().Get("ticket")); c != nil {
+					ctx := context.WithValue(r.Context(), ClaimsKey, c)
+					next.ServeHTTP(w, r.WithContext(ctx))
+					return
+				}
 			}
 			if token == "" {
 				http.Error(w, `{"error":"missing authorization header"}`, http.StatusUnauthorized)

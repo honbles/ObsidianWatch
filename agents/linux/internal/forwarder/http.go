@@ -83,6 +83,34 @@ func (f *HTTPForwarder) Run(ctx context.Context) error {
 	}
 }
 
+
+// SendFinal (D-12) transmits one last event synchronously as the agent shuts
+// down — typically "agent.tamper" (stop requested / signal received) — so the
+// server sees a stop/uninstall attempt before the agent dies. It bypasses the
+// queue ordering, waits at most 5 seconds, and falls back to the local queue
+// if the backend is unreachable.
+func (f *HTTPForwarder) SendFinal(ev schema.Event) {
+	ev.AgentID = f.agentID
+	ev.Host = f.hostname
+	if ev.Time.IsZero() {
+		ev.Time = time.Now().UTC()
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	batch := schema.Batch{
+		AgentID:    f.agentID,
+		Hostname:   f.hostname,
+		AgentVer:   f.ver,
+		InstallKey: f.cfg.InstallKey,
+		SentAt:     time.Now().UTC(),
+		Events:     []schema.Event{ev},
+	}
+	if err := f.send(ctx, batch); err != nil {
+		f.logger.Warn("forwarder: final event send failed, queued locally", "err", err)
+		f.Enqueue([]schema.Event{ev})
+	}
+}
+
 // Enqueue pushes events into the local queue (non-blocking path from collectors).
 func (f *HTTPForwarder) Enqueue(events []schema.Event) {
 	if err := f.queue.Push(events); err != nil {
