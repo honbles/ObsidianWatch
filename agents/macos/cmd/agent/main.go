@@ -265,6 +265,9 @@ func main() {
 		activeCollectors = append(activeCollectors, "live-response")
 	}
 
+	// [APP-COLLECTORS-BEGIN]
+	// [APP-COLLECTORS-END]
+
 	go func() { fwd.Run(ctx) }()
 
 	logger.Info("All collectors running", "count", len(activeCollectors), "collectors", activeCollectors)

@@ -191,6 +191,7 @@ export default function AgentBuilder() {
   const [form, setForm] = useState({
     backend_url: '', management_url: '', agent_api_key: '',
     ca_cert: '', management_ca_cert: '', enable_live_response: false,
+    /* [APP-FORM-BEGIN] */ enable_app_profile: false, /* [APP-FORM-END] */
   })
   const [buildStatus, setBuildStatus] = useState({})
   const [savedKeys, setSavedKeys]     = useState({})
@@ -301,6 +302,8 @@ export default function AgentBuilder() {
                   <span><b className="text-siem-text">Enable Live Response (remote shell)</b> — off by default. Agents built with this on accept analyst terminal sessions as root/SYSTEM.</span>
                 </label>
               )}
+              {/* [APP-BUILDER-BEGIN] */}
+              {/* [APP-BUILDER-END] */}
               {group.fields.map(field => {
                 const isSaved = savedKeys[`has_${field.key}`]
                 return (
