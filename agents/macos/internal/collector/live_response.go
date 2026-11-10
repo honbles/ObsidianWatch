@@ -9,6 +9,7 @@ package collector
 // pipe stdin/stdout through the existing management WebSocket tunnel.
 
 import (
+	"obsidianwatch/macos-agent/internal/ownproc"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -217,6 +218,7 @@ func (c *LiveResponseCollector) handleSession(ctx context.Context, token string,
 		pts.Close()
 		return
 	}
+	ownproc.Exclude(cmd.Process.Pid) // analyst commands stay visible
 	pts.Close()
 
 	c.logger.Info("live-response: shell session started", "token", token[:8]+"...", "shell", shell)

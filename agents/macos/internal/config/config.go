@@ -12,6 +12,9 @@ import (
 )
 
 type Config struct {
+	// [APP-CONFIG-BEGIN]
+	AppMonitoring AppMonitoringConfig `yaml:"app_monitoring"`
+	// [APP-CONFIG-END]
 	LiveResponse LiveResponseConfig `yaml:"live_response"` // H-2: opt-in remote shell
 	Agent        AgentConfig        `yaml:"agent"`
 	Collector    CollectorConfig    `yaml:"collector"`

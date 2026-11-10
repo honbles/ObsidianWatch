@@ -91,6 +91,10 @@ export default function App() {
         <Route path="/live-response"    element={<ProtectedRoute adminOnly><LiveResponse /></ProtectedRoute>} />
         <Route path="/devops"             element={<ProtectedRoute><DevOps /></ProtectedRoute>} />
         <Route path="/network"            element={<ProtectedRoute><NetworkProbes /></ProtectedRoute>} />
+        {/* [NET-ROUTES-BEGIN] — Network build adds /network/* routes here */}
+        {/* [NET-ROUTES-END] */}
+        {/* [APP-ROUTES-BEGIN] — Application build adds /applications/* routes here */}
+        {/* [APP-ROUTES-END] */}
         <Route path="/insights"           element={<ProtectedRoute><Insights /></ProtectedRoute>} />
         <Route path="*"             element={<Navigate to="/" replace />} />
       </Routes>

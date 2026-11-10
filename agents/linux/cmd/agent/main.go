@@ -17,6 +17,7 @@ import (
 	"obsidianwatch/linux-agent/internal/collector"
 	"obsidianwatch/linux-agent/internal/config"
 	"obsidianwatch/linux-agent/internal/forwarder"
+	"obsidianwatch/linux-agent/internal/ownproc"
 	"obsidianwatch/linux-agent/internal/parser"
 	"obsidianwatch/linux-agent/internal/service"
 	"obsidianwatch/linux-agent/pkg/schema"
@@ -129,6 +130,10 @@ func main() {
 			enrich.Enrich(&ev)
 			if err := norm.Normalize(&ev); err != nil {
 				continue
+			}
+			if ownproc.IsOwn(ev.PID, ev.PPID) {
+				ev.Raw = ownproc.TagRaw(ev.Raw)
+				ev.Severity = schema.SeverityInfo
 			}
 			if limiter.Allow(&ev) {
 				select {
@@ -271,6 +276,9 @@ func main() {
 		go func() { lr.Run(ctx) }()
 		activeCollectors = append(activeCollectors, "live-response")
 	}
+
+	// [APP-COLLECTORS-BEGIN]
+	// [APP-COLLECTORS-END]
 
 	go func() { fwd.Run(ctx) }()
 

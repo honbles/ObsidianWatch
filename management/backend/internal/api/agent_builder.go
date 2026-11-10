@@ -537,18 +537,21 @@ func handleAgentBuilderSettings(db *store.DB) http.HandlerFunc {
 // ── Config types and helpers ──────────────────────────────────────────────────
 
 type AgentBuilderConfig struct {
-	Platform           string `json:"platform"`
-	BackendURL         string `json:"backend_url"`
-	ManagementURL      string `json:"management_url"`
-	AgentAPIKey        string `json:"agent_api_key"`
-	CACert             string `json:"ca_cert"`
-	GroqAPIKey         string `json:"groq_api_key"`
-	AnthropicAPIKey    string `json:"anthropic_api_key"`
-	ThreatFoxAPIKey    string `json:"threatfox_api_key"`
-	OTXAPIKey          string `json:"otx_api_key"`
-	ManagementCACert   string `json:"management_ca_cert"`   // CA for management HTTPS (self-signed); leave empty if HTTP or trusted cert
-	SiteName           string `json:"site_name"`            // Network probe site name
-	EnableLiveResponse bool   `json:"enable_live_response"` // H-2: opt-in remote shell (default off)
+	Platform         string `json:"platform"`
+	BackendURL       string `json:"backend_url"`
+	ManagementURL    string `json:"management_url"`
+	AgentAPIKey      string `json:"agent_api_key"`
+	CACert           string `json:"ca_cert"`
+	GroqAPIKey       string `json:"groq_api_key"`
+	AnthropicAPIKey  string `json:"anthropic_api_key"`
+	ThreatFoxAPIKey  string `json:"threatfox_api_key"`
+	OTXAPIKey        string `json:"otx_api_key"`
+	ManagementCACert string `json:"management_ca_cert"` // CA for management HTTPS (self-signed); leave empty if HTTP or trusted cert
+	SiteName         string `json:"site_name"`          // Network probe site name
+	// [APP-FIELDS-BEGIN]
+	EnableAppProfile bool `json:"enable_app_profile"` // app-server profile: eBPF sensor + OTLP receiver
+	// [APP-FIELDS-END]
+	EnableLiveResponse bool `json:"enable_live_response"` // H-2: opt-in remote shell (default off)
 }
 
 func buildSettingsMap(cfg AgentBuilderConfig) map[string]string {
@@ -581,6 +584,9 @@ func buildAgentYAML(cfg AgentBuilderConfig) string {
 	y := buildAgentYAMLBase(cfg)
 	if cfg.Platform != "network" {
 		y += fmt.Sprintf("\nlive_response:\n  enabled: %t\n", cfg.EnableLiveResponse)
+		// [APP-YAML-BEGIN]
+		y += appProfileYAML(cfg)
+		// [APP-YAML-END]
 	}
 	return y
 }
@@ -612,6 +618,7 @@ func yamlLiteral(s string) string {
 	return sb.String()
 }
 
+// [NET-OWNED-BEGIN]
 func buildNetworkProbeYAML(cfg AgentBuilderConfig) string {
 	return fmt.Sprintf(`probe:
   version: "0.1.0"
@@ -669,6 +676,8 @@ log:
   format: "json"
 `, cfg.SiteName, cfg.BackendURL, cfg.ManagementURL, cfg.AgentAPIKey, yamlLiteral(cfg.CACert))
 }
+
+// [NET-OWNED-END]
 
 func buildLinuxYAML(cfg AgentBuilderConfig) string {
 	return fmt.Sprintf(`agent:

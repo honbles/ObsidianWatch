@@ -6,7 +6,7 @@ COPY backend/go.mod backend/go.sum* ./
 RUN go mod download 2>/dev/null || true
 COPY backend/ .
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
-    go build -ldflags="-s -w" -o /backend-server ./cmd/server
+    go build -mod=mod -ldflags="-s -w" -o /backend-server ./cmd/server
 
 FROM alpine:3.19
 RUN echo "https://mirror.csclub.uwaterloo.ca/alpine/v3.19/main" > /etc/apk/repositories \

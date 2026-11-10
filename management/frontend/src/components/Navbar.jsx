@@ -373,6 +373,9 @@ export function Navbar({ user }) {
           Network
         </button>
 
+        {/* [APP-NAV-BEGIN] — Application build: one "Applications" nav group */}
+        {/* [APP-NAV-END] */}
+
         {/* DevOps */}
         <NavDropdownWithClose label="DevOps" icon={GitBranch} isActive={isPath('/devops')}>
           {(close) => (
