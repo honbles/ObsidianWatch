@@ -272,7 +272,12 @@ func (c *EventLogCollector) parseEvent(evHandle windows.Handle) *schema.Event {
 		c.logger.Warn("eventlog: render failed", "err", err)
 		return nil
 	}
+	return c.parseEventXML(xmlBytes)
+}
 
+// parseEventXML converts rendered event XML into a normalised event. It is
+// split out from parseEvent so it can be tested without the Windows API.
+func (c *EventLogCollector) parseEventXML(xmlBytes []byte) *schema.Event {
 	var parsed winEventXML
 	if err := xml.Unmarshal(xmlBytes, &parsed); err != nil {
 		raw, _ := json.Marshal(map[string]string{"raw_xml": string(xmlBytes)})
