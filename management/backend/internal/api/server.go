@@ -142,6 +142,7 @@ func New(cfg *config.Config, db *store.DB, backendDB *store.DB, logger *slog.Log
 	protected.HandleFunc("DELETE /api/v1/suppressions/{id}", handleDeleteSuppression(db))
 	protected.HandleFunc("GET /api/v1/stats", cachedGET(20*time.Second, handleStats(db)))
 	protected.HandleFunc("GET /api/v1/threat-intel", handleThreatIntel(db))
+	protected.HandleFunc("GET /api/v1/enrich/ip/{ip}", handleEnrichIP(db, newIPEnricher()))
 
 	// AI Analysis
 	protected.HandleFunc("POST /api/v1/ai/analyse", aiLimited(handleAIAnalysis(cfg, db)))

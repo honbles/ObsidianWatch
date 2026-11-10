@@ -543,7 +543,7 @@ Keys are stored encrypted with `OW_SECRET_KEY`, shown masked, and can be replace
 | ThreatFox API Key | ThreatFox IOC feed (see 7.2) |
 | OTX API Key | AlienVault OTX IOC feed (see 7.2) |
 | Hybrid Analysis | Fourth step of the hash-reputation lookup (free key), queried before VirusTotal |
-| AbuseIPDB, Shodan | Can be saved here, but nothing in the code reads them yet (checked the whole codebase). Reserved for future IP enrichment |
+| AbuseIPDB | Used by the IP lookup endpoint `GET /api/v1/enrich/ip/{ip}` (cached 24h, 900 lookups/day cap). Shodan was removed because nothing used it |
 
 #### Email alerts
 

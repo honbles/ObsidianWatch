@@ -269,7 +269,6 @@ func handleGetAPIKeys(db *store.DB) http.HandlerFunc {
 			"virustotal_api_key":      "ti.virustotal_api_key",
 			"hybrid_analysis_api_key": "ti.hybrid_analysis_api_key",
 			"abuseipdb_api_key":       "ti.abuseipdb_api_key",
-			"shodan_api_key":          "ti.shodan_api_key",
 		}
 		for uiKey, storeKey := range settingsKeys {
 			val, _ := db.GetSetting(ctx, storeKey)
@@ -338,7 +337,6 @@ func handleSaveAPIKeys(db *store.DB) http.HandlerFunc {
 		save("virustotal_api_key", "ti.virustotal_api_key")
 		save("hybrid_analysis_api_key", "ti.hybrid_analysis_api_key")
 		save("abuseipdb_api_key", "ti.abuseipdb_api_key")
-		save("shodan_api_key", "ti.shodan_api_key")
 
 		// Self-hosted model for natural-language search (P-14/P-15).
 		if v, ok := body["local_llm_url"]; ok {
