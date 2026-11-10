@@ -1542,7 +1542,7 @@ func (e *DetectionEngine) evaluateEvents(ctx context.Context, events []store.Eve
 			continue
 		}
 		// Skip if the process IS the ObsidianWatch agent binary
-		if isOwnAgentProcess(ev) {
+		if isOwnAgentProcess(ev) || isSelfActivity(ev) || isOwnSysmon(ev) {
 			continue
 		}
 
@@ -1568,8 +1568,10 @@ func (e *DetectionEngine) evaluateEvents(ctx context.Context, events []store.Eve
 			// DevOps events — only apply devops sigs, skip endpoint sigs entirely
 			sigs = append(sigs, devopsSignatures...)
 		case "network-probe":
+			// [NET-DISPATCH-BEGIN]
 			// Network probe events — only apply network sigs
 			sigs = append(sigs, networkSignatures...)
+			// [NET-DISPATCH-END]
 		default:
 			// linux or unknown
 			sigs = append(append(append(append([]ThreatSig{}, linuxSignatures...), usbSignatures...), linuxAccountSignatures...), dnsCatSignatures...)
@@ -1629,6 +1631,8 @@ func (e *DetectionEngine) evaluateEvents(ctx context.Context, events []store.Eve
 		if isDevOpsEvent(ev) {
 			sigs = append(sigs, devopsSignatures...)
 		}
+		// [FOUNDATION-HOOK] rules registered by the Network/Application builds
+		sigs = append(sigs, extraSignaturesFor(ev)...)
 		// Signature matching
 		for _, sig := range sigs {
 			if retiredSigIDs[sig.ID] || endpointSuppressed(sig.ID, ev) {
@@ -1648,6 +1652,12 @@ func (e *DetectionEngine) evaluateEvents(ctx context.Context, events []store.Eve
 			if !sig.Match(ev) {
 				continue
 			}
+			// [FOUNDATION-HOOK] rule contract: enable / observe / allowlist
+			gateAdjust, gateSkip := engineGate(ctx, e.db, sig.ID, ev)
+			if gateSkip {
+				continue
+			}
+			sev = gateAdjust(sev)
 			// DevOps events: dedup per day (bulk syncs replay many historical commits)
 			// Agent events: dedup per hour (high-frequency, need tighter windows)
 			var dedupKey string
@@ -1675,6 +1685,7 @@ func (e *DetectionEngine) evaluateEvents(ctx context.Context, events []store.Eve
 			}
 			if id, inserted, err := e.db.CreateAlertDeduped(ctx, alert); err == nil && inserted {
 				created++
+				engineLinkEntities(ctx, e.db, id, ev) // [FOUNDATION-HOOK]
 				alert.CreatedAt = time.Now()
 				if e.mailer.Enabled() && sev >= e.mailer.MinSeverity() {
 					alert.ID = id

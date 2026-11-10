@@ -56,6 +56,12 @@ func New(cfg *config.Config, db *store.DB, logger *slog.Logger) (*Server, error)
 	protected.HandleFunc("GET /api/v1/metrics", handleMetrics())
 	protected.HandleFunc("GET /api/v1/agents", handleListAgents(db))
 	protected.HandleFunc("GET /api/v1/agents/{id}", handleGetAgent(db))
+	// [NET-ROUTES-BEGIN]
+	registerNetworkIngestRoutes(protected, db, logger)
+	// [NET-ROUTES-END]
+	// [APP-ROUTES-BEGIN]
+	registerApplicationIngestRoutes(protected, db, logger)
+	// [APP-ROUTES-END]
 
 	mux.Handle("/api/", authMiddleware(protected))
 

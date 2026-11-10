@@ -37,6 +37,7 @@ import (
 	"obsidianwatch/agent/internal/collector"
 	"obsidianwatch/agent/internal/config"
 	"obsidianwatch/agent/internal/forwarder"
+	"obsidianwatch/agent/internal/ownproc"
 	"obsidianwatch/agent/internal/parser"
 	sysmonpkg "obsidianwatch/agent/internal/sysmon"
 	"obsidianwatch/agent/pkg/schema"
@@ -312,6 +313,10 @@ func run(ctx context.Context, cfg *config.Config, logger *slog.Logger) error {
 				flush()
 				return
 			case ev := <-eventCh:
+				if ownproc.IsOwn(ev.PID, ev.PPID) {
+					ev.Raw = ownproc.TagRaw(ev.Raw)
+					ev.Severity = schema.SeverityInfo
+				}
 				buf = append(buf, ev)
 				if len(buf) >= cfg.Forwarder.BatchSize {
 					flush()
@@ -510,6 +515,9 @@ func run(ctx context.Context, cfg *config.Config, logger *slog.Logger) error {
 		go func() { lr.Run(ctx) }()
 		activeCollectors = append(activeCollectors, "live-response")
 	}
+
+	// [APP-COLLECTORS-BEGIN]
+	// [APP-COLLECTORS-END]
 
 	// Start the HTTP forwarder (reads from queue, not eventCh).
 	go func() { errCh <- fwd.Run(ctx) }()

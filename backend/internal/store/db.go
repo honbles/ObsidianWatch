@@ -55,5 +55,6 @@ func (db *DB) GetAgentAPIKey(ctx context.Context) string {
 	if err != nil {
 		return ""
 	}
-	return val
+	// The management API stores this setting encrypted at rest.
+	return openString(val)
 }

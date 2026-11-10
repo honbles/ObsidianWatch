@@ -14,6 +14,7 @@ package collector
 //   - All traffic goes over the existing TLS-encrypted WebSocket tunnel
 
 import (
+	"obsidianwatch/agent/internal/ownproc"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -195,6 +196,7 @@ func (c *LiveResponseCollector) handleSession(ctx context.Context, token string,
 		writeJSON(map[string]interface{}{"type": "session_error", "token": token, "error": err.Error()})
 		return
 	}
+	ownproc.Exclude(cmd.Process.Pid) // analyst commands stay visible
 
 	c.logger.Info("live-response: shell session started", "token", token[:8]+"...", "shell", shell)
 

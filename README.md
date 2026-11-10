@@ -706,4 +706,12 @@ Development builds without an embedded config read `agent.yaml` from disk. Copy 
 
 ## License
 
-MIT. See `LICENSE`.
+Copyright © 2026 Blessing Honmane.
+
+All Rights Reserved.
+
+This project is proprietary software. Public access to this
+repository does not grant permission to copy, modify, distribute,
+or commercially use its source code.
+
+See [LICENSE](./LICENSE) for details.

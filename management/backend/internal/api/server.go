@@ -77,6 +77,16 @@ func New(cfg *config.Config, db *store.DB, backendDB *store.DB, logger *slog.Log
 
 	// Protected
 	protected := http.NewServeMux()
+	// Shared rule contract API (foundation)
+	protected.HandleFunc("GET /api/v1/rules/meta", handleRuleMeta())
+	protected.HandleFunc("GET /api/v1/rules/settings", handleListRuleSettings(db))
+	protected.HandleFunc("PUT /api/v1/rules/settings", adminOnly(handlePutRuleSetting(db)))
+	// [NET-ROUTES-BEGIN]
+	registerNetRoutes(protected, db, backendDB)
+	// [NET-ROUTES-END]
+	// [APP-ROUTES-BEGIN]
+	registerAppRoutes(protected, db, backendDB)
+	// [APP-ROUTES-END]
 	protected.HandleFunc("GET /auth/me", handleMe)
 	protected.HandleFunc("POST /auth/logout", handleLogout(db, jwt))
 	protected.HandleFunc("POST /auth/ws-ticket", handleWSTicket)
