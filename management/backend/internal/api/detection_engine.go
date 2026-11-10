@@ -76,6 +76,26 @@ func img(ev store.Event) string {
 	}
 	return strings.ToLower(*ev.ImagePath)
 }
+// procIn reports whether the process base name (lower-case, without a
+// directory or ".exe") is exactly one of names. Substring matching on short
+// names ("sh", "nc", "host", "tar") matched ssh, sync, ghost, start-stop-daemon.
+func procIn(ev store.Event, names ...string) bool {
+	if ev.ProcessName == nil {
+		return false
+	}
+	n := strings.ToLower(strings.TrimSpace(*ev.ProcessName))
+	if i := strings.LastIndexAny(n, `/\`); i >= 0 {
+		n = n[i+1:]
+	}
+	n = strings.TrimSuffix(n, ".exe")
+	for _, w := range names {
+		if n == w {
+			return true
+		}
+	}
+	return false
+}
+
 func fp(ev store.Event) string {
 	if ev.FilePath == nil {
 		return ""
@@ -146,7 +166,7 @@ var linuxSignatures = []ThreatSig{
 			if ev.EventType != "process" {
 				return false
 			}
-			isShell := containsAny(proc(ev), "bash", "sh", "zsh", "dash", "ksh", "fish")
+			isShell := procIn(ev, "bash", "sh", "zsh", "dash", "ksh", "fish")
 			// Match shells running -c with suspicious content (pipe content IS in -c argument)
 			// OR shells running from suspicious paths
 			return isShell && containsAny(cl(ev),
@@ -186,7 +206,7 @@ var linuxSignatures = []ThreatSig{
 		Severity:    5, MITRE: "T1059.004", Category: "Execution",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "process" &&
-				containsAny(proc(ev), "nc", "ncat", "netcat") &&
+				procIn(ev, "nc", "ncat", "netcat", "nc.openbsd", "nc.traditional") &&
 				containsAny(cl(ev), " -e ", " -c ", "--exec", "-e /bin", "-e sh", "-e bash")
 		},
 	},
@@ -240,7 +260,7 @@ var linuxSignatures = []ThreatSig{
 		Description: "dig, nslookup, or dnsrecon used for domain enumeration.",
 		Severity:    2, MITRE: "T1590", Category: "Reconnaissance",
 		Match: func(ev store.Event) bool {
-			return ev.EventType == "process" && containsAny(proc(ev), "dig", "nslookup", "host", "dnsenum", "dnsrecon", "fierce", "whois")
+			return ev.EventType == "process" && procIn(ev, "dig", "nslookup", "host", "dnsenum", "dnsrecon", "fierce", "whois")
 		},
 	},
 
@@ -390,7 +410,7 @@ var linuxSignatures = []ThreatSig{
 		Description: "SSH -L/-R/-D flag — tunnelling or SOCKS proxy.",
 		Severity:    4, MITRE: "T1021.004", Category: "Lateral Movement",
 		Match: func(ev store.Event) bool {
-			return ev.EventType == "process" && containsAny(proc(ev), "ssh") &&
+			return ev.EventType == "process" && procIn(ev, "ssh") &&
 				containsAny(cl(ev), " -l ", " -r ", " -d ", "-nfl", "-nfr", "-nfd")
 		},
 	},
@@ -444,7 +464,7 @@ var linuxSignatures = []ThreatSig{
 		Description: "tar/zip archiving /etc, /home, or sensitive directories — staging for exfil.",
 		Severity:    3, MITRE: "T1560.001", Category: "Exfiltration",
 		Match: func(ev store.Event) bool {
-			return ev.EventType == "process" && containsAny(proc(ev), "tar", "zip", "7z", "gzip") &&
+			return ev.EventType == "process" && procIn(ev, "tar", "zip", "7z", "7za", "gzip", "bzip2", "xz") &&
 				containsAny(cl(ev), "/home/", "/etc/", "/root/", "database", ".sql", "backup", "dump")
 		},
 	},
@@ -903,7 +923,7 @@ var dcSignatures = []ThreatSig{
 			}
 			// Object type must be domainDNS or DS replication class
 			cl := strings.ToLower(*ev.CommandLine)
-			if !strings.Contains(cl, "domainDNS") && !strings.Contains(cl, "19195a5b") {
+			if !strings.Contains(cl, "domaindns") && !strings.Contains(cl, "19195a5b") {
 				return false
 			}
 			// Exclude legitimate DC accounts doing normal replication
@@ -1055,7 +1075,7 @@ var macosSignatures = []ThreatSig{
 			if ev.EventType != "process" {
 				return false
 			}
-			isShell := containsAny(proc(ev), "bash", "sh", "zsh", "dash")
+			isShell := procIn(ev, "bash", "sh", "zsh", "dash")
 			return isShell && containsAny(cl(ev), "| bash", "|bash", "| sh", "|sh", "/tmp/", "/var/tmp/", "http://", "https://")
 		},
 	},
@@ -1271,7 +1291,7 @@ var macosSignatures = []ThreatSig{
 		Description: "SSH -L/-R/-D flag — tunnelling or SOCKS proxy.",
 		Severity:    4, MITRE: "T1021.004", Category: "Lateral Movement",
 		Match: func(ev store.Event) bool {
-			return ev.EventType == "process" && containsAny(proc(ev), "ssh") &&
+			return ev.EventType == "process" && procIn(ev, "ssh") &&
 				containsAny(cl(ev), " -l ", " -r ", " -d ", "-nfl", "-nfr", "-nfd")
 		},
 	},
@@ -1305,7 +1325,7 @@ var macosSignatures = []ThreatSig{
 		Description: "tar or zip archiving /Users or sensitive paths.",
 		Severity:    3, MITRE: "T1560.001", Category: "Exfiltration",
 		Match: func(ev store.Event) bool {
-			return ev.EventType == "process" && containsAny(proc(ev), "tar", "zip", "7z", "gzip") &&
+			return ev.EventType == "process" && procIn(ev, "tar", "zip", "7z", "7za", "gzip", "bzip2", "xz") &&
 				containsAny(cl(ev), "/users/", "documents", "desktop", "/etc/", ".sql", "backup")
 		},
 	},
