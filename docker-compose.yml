@@ -66,6 +66,7 @@ services:
     environment:
       DB_PASSWORD: "${DB_PASSWORD:?DB_PASSWORD must be set, see .env.example}"
       AGENT_API_KEY: "${AGENT_API_KEY:?AGENT_API_KEY must be set (openssl rand -hex 32), see .env.example}"
+      OW_SECRET_KEY: "${OW_SECRET_KEY:?set OW_SECRET_KEY in .env}"   # must equal the management service's key: it reads the sealed agent API key from the settings table
     ports:
       - "8443:8443"
     volumes:

@@ -1542,7 +1542,7 @@ func (e *DetectionEngine) evaluateEvents(ctx context.Context, events []store.Eve
 			continue
 		}
 		// Skip if the process IS the ObsidianWatch agent binary
-		if isOwnAgentProcess(ev) {
+		if isOwnAgentProcess(ev) || isSelfActivity(ev) || isOwnSysmon(ev) {
 			continue
 		}
 

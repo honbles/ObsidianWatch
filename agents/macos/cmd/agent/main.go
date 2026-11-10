@@ -18,6 +18,7 @@ import (
 	"obsidianwatch/macos-agent/internal/collector"
 	"obsidianwatch/macos-agent/internal/config"
 	"obsidianwatch/macos-agent/internal/forwarder"
+	"obsidianwatch/macos-agent/internal/ownproc"
 	"obsidianwatch/macos-agent/internal/parser"
 	"obsidianwatch/macos-agent/internal/service"
 	"obsidianwatch/macos-agent/pkg/schema"
@@ -98,6 +99,10 @@ func main() {
 		for ev := range rawCh {
 			e := ev // copy
 			if err := norm.Normalize(&e); err == nil {
+				if ownproc.IsOwn(e.PID, e.PPID) {
+					e.Raw = ownproc.TagRaw(e.Raw)
+					e.Severity = schema.SeverityInfo
+				}
 				select {
 				case normalizedCh <- e:
 				case <-ctx.Done():
