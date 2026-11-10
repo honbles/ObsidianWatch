@@ -316,20 +316,28 @@ export function TabVuln({ agent }) {
                   {osvBusy ? "Checking OSV…" : "Check packages against OSV"}
                 </button>
                 <button onClick={runHC}
-                  className="text-xs px-3 py-1.5 rounded-lg border border-siem-border bg-siem-surface hover:bg-siem-bg">Run host hygiene checks</button>
+                  className="text-xs px-3 py-1.5 rounded-lg border border-siem-border bg-siem-surface hover:bg-siem-bg">Run endpoint compliance checks</button>
                 {osvErr && <span className="text-xs text-red-400">{osvErr}</span>}
                 {osv && <span className="text-xs text-siem-muted">{osv.packages_checked} packages ({osv.ecosystem}) · {(osv.findings||[]).length} advisories</span>}
               </div>
               {hc && (
                 <div className="mb-4 bg-siem-surface border border-siem-border rounded-xl">
                   <div className="px-4 py-2 text-[11px] text-siem-muted border-b border-siem-border/30">
-                    {hc.passed}/{hc.total} passed — {hc.scope}
+                    <span className="text-emerald-400">{hc.passed} passed</span>
+                    {" · "}<span className="text-red-400">{hc.failed ?? (hc.total - hc.passed)} failed</span>
+                    {hc.unknown > 0 && <>{" · "}<span className="text-amber-400">{hc.unknown} could not be checked</span></>}
+                    {" — "}{hc.scope}
                   </div>
-                  {hc.checks.map(c => (
+                  {[...hc.checks]
+                    .sort((a, b) => ({fail:0, unknown:1, pass:2}[a.status] ?? 3) - ({fail:0, unknown:1, pass:2}[b.status] ?? 3)
+                      || ({critical:0, high:1, medium:2, low:3}[a.severity] ?? 4) - ({critical:0, high:1, medium:2, low:3}[b.severity] ?? 4))
+                    .map(c => (
                     <div key={c.id} className="px-4 py-2 border-b border-siem-border/15 last:border-0 text-[11px]">
-                      <span className={c.status === "pass" ? "text-emerald-400" : "text-red-400"}>{c.status.toUpperCase()}</span>
+                      <span className={c.status === "pass" ? "text-emerald-400" : c.status === "fail" ? "text-red-400" : "text-amber-400"}>{c.status === "unknown" ? "UNKNOWN" : c.status.toUpperCase()}</span>
                       <span className="ml-2 text-siem-text">{c.id} {c.title}</span>
-                      {c.status === "fail" && <div className="text-siem-muted mt-0.5">{c.detail} — {c.fix}</div>}
+                      {c.category && <span className="ml-2 text-siem-muted/60">{c.category}</span>}
+                      {c.status !== "pass" && c.severity && <span className="ml-2 text-siem-muted uppercase">{c.severity}</span>}
+                      {c.status !== "pass" && <div className="text-siem-muted mt-0.5">{c.detail ? c.detail + " — " : ""}{c.fix}</div>}
                     </div>
                   ))}
                 </div>
