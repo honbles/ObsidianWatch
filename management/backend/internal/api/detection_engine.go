@@ -1507,6 +1507,12 @@ func (e *DetectionEngine) evaluateEvents(ctx context.Context, events []store.Eve
 	ipIOCs, _ := e.db.GetAllIOCsOfType(ctx, "ip")
 	domainIOCs, _ := e.db.GetAllIOCsOfType(ctx, "domain")
 	hashIOCs, _ := e.db.GetAllIOCsOfType(ctx, "hash")
+	if urlIOCs, err := e.db.GetAllIOCsOfType(ctx, "url"); err == nil && len(urlIOCs) > 0 {
+		if domainIOCs == nil {
+			domainIOCs = map[string]store.IOCIndicator{}
+		}
+		addURLIOCs(domainIOCs, urlIOCs)
+	}
 
 	// Refresh DNS blocklist cache
 	domainCats, _ := e.db.GetAllIOCsOfType(ctx, "domain_category")
@@ -2258,6 +2264,13 @@ func (e *DetectionEngine) matchIOC(ev store.Event,
 			if ioc, ok := domainIOCs[parts[1]]; ok {
 				return &ioc
 			}
+		}
+	}
+
+	// URL indicators — URLs appearing in command lines (curl, powershell, ...)
+	if ev.CommandLine != nil {
+		if ioc := matchURLIOC(*ev.CommandLine, domainIOCs); ioc != nil {
+			return ioc
 		}
 	}
 
