@@ -181,7 +181,7 @@ var linuxSignatures = []ThreatSig{
 		Description: "Process spawned from /tmp, /dev/shm, or /var/tmp — common malware staging.",
 		Severity:    5, MITRE: "T1059.004", Category: "Execution",
 		Match: func(ev store.Event) bool {
-			return ev.EventType == "process" && containsAny(img(ev)+cl(ev), "/tmp/", "/dev/shm/", "/var/tmp/")
+			return ev.EventType == "process" && execFromDir(ev, "/tmp/", "/dev/shm/", "/var/tmp/")
 		},
 	},
 	{
@@ -376,7 +376,24 @@ var linuxSignatures = []ThreatSig{
 		Description: "LD_PRELOAD or /etc/ld.so.preload set — shared library hijacking.",
 		Severity:    5, MITRE: "T1574.006", Category: "Persistence",
 		Match: func(ev store.Event) bool {
-			return containsAny(fp(ev)+rk(ev)+cl(ev)+rawStr(ev), "ld_preload", "ld.so.preload")
+			// Process command lines and file events only: raw log text and
+			// environment dumps mention LD_PRELOAD without anyone using it.
+			if ev.EventType != "process" && ev.EventType != "file" {
+				return false
+			}
+			c := cl(ev)
+			if strings.Contains(fp(ev), "ld.so.preload") || strings.Contains(c, "ld.so.preload") {
+				return true
+			}
+			if !strings.Contains(c, "ld_preload=") {
+				return false
+			}
+			for _, lib := range benignPreloadLibs {
+				if strings.Contains(c, strings.ToLower(lib)) {
+					return false
+				}
+			}
+			return true
 		},
 	},
 
@@ -730,12 +747,21 @@ var windowsSignatures = []ThreatSig{
 		Description: "AWS, Azure, or GCP credential files accessed — cloud credential theft.",
 		Severity:    5, MITRE: "T1552.005", Category: "Credential Access",
 		Match: func(ev store.Event) bool {
-			// FIM file event (if watched path) OR process reading credential file in cl/raw
-			return containsAny(fp(ev)+cl(ev)+rawStr(ev),
-				".aws\\credentials", ".aws/credentials", ".aws\\config", ".aws/config",
-				".azure\\", ".azure/",
-				"accesstokens.json", ".config\\gcloud", ".config/gcloud",
-				"application_default_credentials.json", "terraform.tfstate")
+			// File events on the credential stores, or a process whose command
+			// line points at one. Raw event text is not searched (log lines and
+			// registry dumps mention these paths without reading them), and
+			// "terraform.tfstate" / ".aws config" are ordinary tool arguments.
+			if ev.EventType != "file" && ev.EventType != "process" {
+				return false
+			}
+			if ev.EventType == "process" && procIn(ev, "aws", "az", "gcloud", "terraform", "aws.cmd", "az.cmd") {
+				return false // the cloud CLIs read their own stores
+			}
+			return containsAny(fp(ev)+cl(ev),
+				".aws\\credentials", ".aws/credentials",
+				"accesstokens.json", "msal_token_cache", "azureprofile.json",
+				".config\\gcloud\\credentials", ".config/gcloud/credentials", ".config/gcloud/legacy_credentials",
+				"application_default_credentials.json")
 		},
 	},
 
@@ -1093,7 +1119,7 @@ var macosSignatures = []ThreatSig{
 		Description: "Process spawned from /tmp — common macOS malware staging.",
 		Severity:    5, MITRE: "T1059.004", Category: "Execution",
 		Match: func(ev store.Event) bool {
-			return ev.EventType == "process" && containsAny(cl(ev), "/tmp/", "/var/tmp/", "/private/tmp/")
+			return ev.EventType == "process" && execFromDir(ev, "/tmp/", "/var/tmp/", "/private/tmp/", "/private/var/tmp/")
 		},
 	},
 	{

