@@ -1,6 +1,9 @@
 package api
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestAIModelNames(t *testing.T) {
 	t.Cleanup(func() { setAIModels("", "") })
@@ -33,5 +36,15 @@ func TestGroqTuneAndExtract(t *testing.T) {
 	}
 	if got := extractJSONObject("sure:\n```json\n{\"a\":1}\n```"); got != `{"a":1}` {
 		t.Fatalf("extract: %q", got)
+	}
+}
+
+func TestHumanizeAIAnswer(t *testing.T) {
+	if got := humanizeAIAnswer("plain text"); got != "plain text" {
+		t.Fatalf("plain changed: %q", got)
+	}
+	got := humanizeAIAnswer("```json\n{\"verdict\":\"benign\",\"steps\":[\"a\",\"b\"]}\n```")
+	if !strings.Contains(got, "verdict: benign") || !strings.Contains(got, "• a") {
+		t.Fatalf("humanize: %q", got)
 	}
 }
