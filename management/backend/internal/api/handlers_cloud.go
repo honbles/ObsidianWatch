@@ -272,9 +272,9 @@ func handleCSPMAIExplain(cfg *config.Config, db *store.DB) http.HandlerFunc {
 			return
 		}
 
-		apiKey, model := groqKey, "llama-3.3-70b-versatile"
+		apiKey, model := groqKey, groqModelName()
 		if apiKey == "" {
-			apiKey, model = anthropicKey, "claude-sonnet-4-20250514"
+			apiKey, model = anthropicKey, anthropicModelName()
 		}
 
 		aiCtx, cancel := context.WithTimeout(r.Context(), 45*time.Second)

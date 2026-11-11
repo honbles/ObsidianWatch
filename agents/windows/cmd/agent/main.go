@@ -52,7 +52,14 @@ const (
 func main() {
 	// Config is embedded in the binary at compile time by the Agent Builder.
 	// Just run: agent.exe install   or   agent.exe uninstall
+	sysmonSetupOnly := flag.Bool("sysmon-setup-only", false, "internal: install/start Sysmon (used by the elevated relaunch) and exit")
 	flag.Parse()
+
+	// Elevated relaunch from elevatedSysmonSetup: do the Sysmon work only,
+	// log to a file (the process runs hidden), then exit.
+	if *sysmonSetupOnly {
+		os.Exit(runSysmonSetupOnly())
+	}
 
 	isService, err := svc.IsWindowsService()
 	if err != nil {
@@ -233,6 +240,7 @@ func run(ctx context.Context, cfg *config.Config, logger *slog.Logger) error {
 	// Ensure required Windows services are running before starting collectors.
 	ensureWindowsServices(logger)
 	logStep("windows services checked")
+	go retrySysmonInstall(ctx, logger)
 
 	// Resolve host metadata once.
 	agentID := cfg.Agent.ID

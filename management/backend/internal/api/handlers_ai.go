@@ -203,7 +203,7 @@ Return this exact JSON structure:
 
 func callGroq(ctx context.Context, apiKey string, req AlertAnalysisRequest) (map[string]interface{}, error) {
 	body := map[string]interface{}{
-		"model":           "llama-3.3-70b-versatile",
+		"model":           groqModelName(),
 		"max_tokens":      1024,
 		"temperature":     0.2,
 		"response_format": map[string]string{"type": "json_object"},
@@ -262,7 +262,7 @@ func callGroq(ctx context.Context, apiKey string, req AlertAnalysisRequest) (map
 
 func callAnthropic(ctx context.Context, apiKey string, req AlertAnalysisRequest) (map[string]interface{}, error) {
 	body := map[string]interface{}{
-		"model":      "claude-sonnet-4-20250514",
+		"model":      anthropicModelName(),
 		"max_tokens": 1024,
 		"system":     promptInjectionGuard,
 		"messages": []map[string]string{
@@ -752,7 +752,7 @@ func handleAIChat(cfg *config.Config, db *store.DB) http.HandlerFunc {
 			messages = append(messages, map[string]string{"role": "user", "content": req.Question})
 
 			body := map[string]interface{}{
-				"model": "llama-3.3-70b-versatile", "max_tokens": 1024, "temperature": 0.3,
+				"model": groqModelName(), "max_tokens": 1024, "temperature": 0.3,
 				"messages": messages,
 			}
 			bodyBytes, _ := json.Marshal(body)
@@ -799,7 +799,7 @@ func handleAIChat(cfg *config.Config, db *store.DB) http.HandlerFunc {
 			msgs = append(msgs, map[string]string{"role": "user", "content": req.Question})
 
 			body := map[string]interface{}{
-				"model": "claude-sonnet-4-20250514", "max_tokens": 1024,
+				"model": anthropicModelName(), "max_tokens": 1024,
 				"system": systemPrompt, "messages": msgs,
 			}
 			bodyBytes, _ := json.Marshal(body)

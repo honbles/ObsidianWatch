@@ -97,6 +97,7 @@ type VulnScanResult struct {
 	Packages         []InstalledPackage `json:"packages,omitempty"`
 	Services         []RunningService   `json:"services,omitempty"`
 	Findings         []SecurityFinding  `json:"findings,omitempty"`
+	Posture          []PostureCheck     `json:"posture,omitempty"`
 	TotalOpen        int                `json:"total_open"`
 	CriticalCount    int                `json:"critical_count"`
 	HighCount        int                `json:"high_count"`
@@ -180,6 +181,7 @@ func (v *VulnScanner) scan(ctx context.Context) {
 
 	// 6. Security findings (SUID, world-writable, etc.)
 	result.Findings = collectSecurityFindings()
+	result.Posture = collectPosture()
 
 	// Totals
 	result.TotalOpen   = len(result.OpenPorts)

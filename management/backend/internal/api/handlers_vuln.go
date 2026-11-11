@@ -73,9 +73,9 @@ func handleVulnAIAnalysis(cfg *config.Config, db *store.DB, backendDB *store.DB,
 			return
 		}
 
-		apiKey, model := groqKey, "llama-3.3-70b-versatile"
+		apiKey, model := groqKey, groqModelName()
 		if apiKey == "" {
-			apiKey, model = anthropicKey, "claude-sonnet-4-20250514"
+			apiKey, model = anthropicKey, anthropicModelName()
 		}
 
 		ctx := r.Context()
@@ -211,7 +211,7 @@ func handleVulnAIAnalysis(cfg *config.Config, db *store.DB, backendDB *store.DB,
 
 // callVulnAI sends a prompt to the configured AI provider and returns the text response.
 func callVulnAI(ctx context.Context, apiKey, model, prompt string) (string, error) {
-	isGroq := model == "llama-3.3-70b-versatile"
+	isGroq := !isAnthropicModel(model)
 
 	var apiURL string
 	body := map[string]interface{}{
