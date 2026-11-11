@@ -198,15 +198,15 @@ func handleNLSearch(cfg *config.Config, db *store.DB) http.HandlerFunc {
 				Call: func(ctx context.Context) (string, error) { return callLocalLLM(ctx, local, nlSystemPrompt, prompt) }})
 		}
 		if groqKey != "" {
-			providers = append(providers, nlProvider{Name: "groq", Model: "llama-3.3-70b-versatile",
+			providers = append(providers, nlProvider{Name: "groq", Model: groqModelName(),
 				Call: func(ctx context.Context) (string, error) {
-					return callVulnAI(ctx, groqKey, "llama-3.3-70b-versatile", prompt)
+					return callVulnAI(ctx, groqKey, groqModelName(), prompt)
 				}})
 		}
 		if anthropicKey != "" {
-			providers = append(providers, nlProvider{Name: "anthropic", Model: "claude-sonnet-4-20250514",
+			providers = append(providers, nlProvider{Name: "anthropic", Model: anthropicModelName(),
 				Call: func(ctx context.Context) (string, error) {
-					return callVulnAI(ctx, anthropicKey, "claude-sonnet-4-20250514", prompt)
+					return callVulnAI(ctx, anthropicKey, anthropicModelName(), prompt)
 				}})
 		}
 		if len(providers) == 0 {

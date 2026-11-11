@@ -16,8 +16,9 @@ import (
 type HostCheck struct {
 	ID       string `json:"id"`
 	Title    string `json:"title"`
-	Status   string `json:"status"` // pass | fail
+	Status   string `json:"status"` // pass | fail | unknown
 	Severity string `json:"severity"`
+	Category string `json:"category,omitempty"`
 	Detail   string `json:"detail,omitempty"`
 	Fix      string `json:"fix,omitempty"`
 }
@@ -250,16 +251,21 @@ func handleEndpointCompliance(db, backendDB *store.DB) http.HandlerFunc {
 			writeJSONError(w, http.StatusNotFound, "no vulnerability scan found for this host")
 			return
 		}
-		checks := evalHostChecks(events[0].Raw)
-		pass := 0
+		checks := endpointChecks(events[0].Raw)
+		pass, fail, unknown := 0, 0, 0
 		for _, c := range checks {
-			if c.Status == "pass" {
+			switch c.Status {
+			case "pass":
 				pass++
+			case "fail":
+				fail++
+			default:
+				unknown++
 			}
 		}
 		writeJSON(w, http.StatusOK, map[string]interface{}{
-			"host": host, "checks": checks, "passed": pass, "total": len(checks),
-			"scope": "CIS-inspired subset derived from package, service and port data; not a full CIS benchmark.",
+			"host": host, "checks": checks, "passed": pass, "failed": fail, "unknown": unknown, "total": len(checks), "os": hostOSFamily(events[0].Raw),
+			"scope": "CIS-inspired host hygiene checks reported by the agent plus package/port analysis; not a full CIS benchmark.",
 		})
 	}
 }
