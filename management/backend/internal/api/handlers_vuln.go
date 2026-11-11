@@ -228,6 +228,8 @@ func callVulnAI(ctx context.Context, apiKey, model, prompt string) (string, erro
 	}
 
 	if isGroq {
+		delete(body, "max_tokens")
+		groqTune(body, model, 4096)
 		apiURL = "https://api.groq.com/openai/v1/chat/completions"
 	} else {
 		apiURL = "https://api.anthropic.com/v1/messages"
@@ -285,7 +287,7 @@ func callVulnAI(ctx context.Context, apiKey, model, prompt string) (string, erro
 	text = strings.TrimPrefix(text, "```json")
 	text = strings.TrimPrefix(text, "```")
 	text = strings.TrimSuffix(text, "```")
-	return strings.TrimSpace(text), nil
+	return extractJSONObject(strings.TrimSpace(text)), nil
 }
 
 func buildVulnAnalysisPrompt(scanJSON, host string) string {

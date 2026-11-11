@@ -32,6 +32,7 @@ package api
 //    registry  → EventType="registry",RegKey=config_path  (configmon)
 
 import (
+	"regexp"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -169,11 +170,11 @@ var linuxSignatures = []ThreatSig{
 			isShell := procIn(ev, "bash", "sh", "zsh", "dash", "ksh", "fish")
 			// Match shells running -c with suspicious content (pipe content IS in -c argument)
 			// OR shells running from suspicious paths
-			return isShell && containsAny(cl(ev),
+			return isShell && (containsAny(cl(ev),
 				"-c curl", "-c wget", "-c python", "-c nc ", "-c ncat",
 				"/dev/shm", "/dev/tcp",
-				"bash -i", "sh -i", "0>&1", ">&2", "/dev/null 2>&1",
-				"http://", "https://")
+				"0>&1", ">&2", "/dev/null 2>&1",
+				"http://", "https://") || shInteractiveRe.MatchString(cl(ev)))
 		},
 	},
 	{
@@ -234,9 +235,9 @@ var linuxSignatures = []ThreatSig{
 		Description: "Commands enumerating local users and sudo privileges.",
 		Severity:    2, MITRE: "T1087.001", Category: "Discovery",
 		Match: func(ev store.Event) bool {
-			return ev.EventType == "process" && containsAny(cl(ev),
-				"cat /etc/passwd", "getent passwd", "id -a", "sudo -l",
-				"last ", "lastlog", "who ", "w ")
+			return ev.EventType == "process" && (containsAny(cl(ev),
+				"cat /etc/passwd", "getent passwd", "id -a", "sudo -l", "lastlog") ||
+				procIn(ev, "last", "who", "w"))
 		},
 	},
 	{
@@ -473,7 +474,7 @@ var linuxSignatures = []ThreatSig{
 		Severity:    3, MITRE: "T1048", Category: "Exfiltration",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "process" && containsAny(proc(ev), "curl") &&
-				containsAny(cl(ev), " -d ", " --data ", " -f ", " -t ", "--upload-file", "-x post")
+				containsAny(cl(ev), " -d @", " --data @", " --data-binary @", " --data-raw @", " -t /", " -t ~", "--upload-file", " -f file=@", " --form ")
 		},
 	},
 	{
@@ -482,7 +483,8 @@ var linuxSignatures = []ThreatSig{
 		Severity:    3, MITRE: "T1560.001", Category: "Exfiltration",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "process" && procIn(ev, "tar", "zip", "7z", "7za", "gzip", "bzip2", "xz") &&
-				containsAny(cl(ev), "/home/", "/etc/", "/root/", "database", ".sql", "backup", "dump")
+				containsAny(cl(ev), "/home/", "/etc/", "/root/", "database", ".sql", "dump") &&
+				!containsAny(cl(ev), "/var/backups/")
 		},
 	},
 	{
@@ -617,7 +619,7 @@ var windowsSignatures = []ThreatSig{
 		Severity:    4, MITRE: "T1218.007", Category: "Execution",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "process" && containsAny(proc(ev), "msiexec") &&
-				containsAny(cl(ev), "http://", "https://", "/i ", "/q ")
+				containsAny(cl(ev), "http://", "https://")
 		},
 	},
 	{
@@ -1352,7 +1354,7 @@ var macosSignatures = []ThreatSig{
 		Severity:    3, MITRE: "T1048", Category: "Exfiltration",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "process" && containsAny(proc(ev), "curl") &&
-				containsAny(cl(ev), " -d ", " --data ", " -f ", "--upload-file", "-x post")
+				containsAny(cl(ev), " -d @", " --data @", " --data-binary @", " --data-raw @", " -t /", " -t ~", "--upload-file", " -f file=@", " --form ")
 		},
 	},
 	{
@@ -1361,7 +1363,7 @@ var macosSignatures = []ThreatSig{
 		Severity:    3, MITRE: "T1560.001", Category: "Exfiltration",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "process" && procIn(ev, "tar", "zip", "7z", "7za", "gzip", "bzip2", "xz") &&
-				containsAny(cl(ev), "/users/", "documents", "desktop", "/etc/", ".sql", "backup")
+				containsAny(cl(ev), "/users/", "documents", "desktop", "/etc/", ".sql")
 		},
 	},
 	{
@@ -2399,3 +2401,7 @@ func isOwnAgentProcess(ev store.Event) bool {
 	}
 	return false
 }
+
+// shInteractiveRe matches an interactive bash/sh (reverse-shell staple) without
+// matching "zsh -il" style login shells.
+var shInteractiveRe = regexp.MustCompile(`(^|[\s/])(bash|sh) -i(\s|$)`)
