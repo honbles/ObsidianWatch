@@ -434,7 +434,7 @@ export const SAVED_SEARCHES = [
 
 // ── EventPanel (detail slide-out) ─────────────────────────────────────────────
 
-function EventPanel({ event, onClose }) {
+export function EventPanel({ event, onClose }) {
   const [detail, setDetail] = useState(null)
   const [loading, setLoading] = useState(true)
 
@@ -449,6 +449,7 @@ function EventPanel({ event, onClose }) {
   const ev = detail?.event || event
   const related = detail?.related || []
   const isCloud = ev.event_type?.startsWith('cloud.')
+  const isDevops = ev.event_type?.startsWith('devops.')
 
   const fields = [
     ['Time',         format(new Date(ev.time), 'yyyy-MM-dd HH:mm:ss.SSS')],
@@ -459,7 +460,7 @@ function EventPanel({ event, onClose }) {
     ['Source',       ev.source],
     ['Severity',     ev.severity],
     // Endpoint fields
-    ...(!isCloud ? [
+    ...(!isCloud && !isDevops ? [
       ['PID',          ev.pid],
       ['PPID',         ev.ppid],
       ['Process',      ev.process_name],
@@ -481,6 +482,7 @@ function EventPanel({ event, onClose }) {
     ] : []),
     // Cloud fields (from raw JSON)
     ...(isCloud ? cloudFields(ev) : []),
+    ...(isDevops ? devopsFields(ev) : []),
   ].filter(([, v]) => v !== null && v !== undefined && v !== '' && v !== 0)
 
   return (
@@ -551,6 +553,25 @@ function EventPanel({ event, onClose }) {
 }
 
 // Extract human-readable fields from cloud event raw JSON
+// devopsFields: human-readable summary of a devops.* event from its raw JSON.
+export function devopsFields(ev) {
+  let r = {}
+  try { r = typeof ev.raw === 'string' ? JSON.parse(ev.raw) : (ev.raw || {}) } catch { r = {} }
+  const files = Array.isArray(r.files) ? r.files.map(f => (typeof f === 'string' ? f : f.filename || f.path || '')).filter(Boolean).slice(0, 25).join(', ') : r.files
+  return [
+    ['User', ev.user_name || r.author || r.author_login],
+    ['Repo', r.repo],
+    ['Branch', r.branch || r.ref],
+    ['Commit', r.sha],
+    ['Message', r.message],
+    ['Additions', r.additions],
+    ['Deletions', r.deletions],
+    ['Verified', r.verified === undefined ? undefined : String(r.verified)],
+    ['Files', files],
+    ['URL', r.url],
+  ]
+}
+
 function cloudFields(ev) {
   if (!ev.raw) return []
   try {

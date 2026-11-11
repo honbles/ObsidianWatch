@@ -293,13 +293,6 @@ func handleGetAPIKeys(db *store.DB) http.HandlerFunc {
 			}
 		}
 
-		// Sigma pin (non-secret): shown so the admin can see what is configured.
-		for _, k := range []struct{ field, key string }{{"sigma_pinned_version", "ti.sigma_pinned_version"}, {"sigma_pinned_sha256", "ti.sigma_pinned_sha256"}} {
-			if v, _ := db.GetSetting(ctx, k.key); v != "" {
-				result[k.field], result[k.field+"_set"] = v, true
-			}
-		}
-
 		// Model names are not secrets; show the effective value.
 		refreshAIModels(ctx, db)
 		result["groq_model"], result["anthropic_model"] = groqModelName(), anthropicModelName()
@@ -457,3 +450,40 @@ func handleToggleSigma(db *store.DB) http.HandlerFunc {
 }
 
 // ── IP ISP/ASN Lookup ─────────────────────────────────────────────────────────
+
+// handleSigmaPinSeen: POST /api/v1/threat-intel-sources/sigma/pin-seen
+// {"prefix":"45ccbd62"}. The admin supplies the first 8 hex characters of the
+// sigma_core.zip digest from the GitHub release page; if they match the hash
+// the server actually downloaded, that full hash is pinned. Verification still
+// happens against GitHub's page — it just avoids retyping 64 characters.
+func handleSigmaPinSeen(db *store.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Prefix string `json:"prefix"`
+		}
+		r.Body = http.MaxBytesReader(w, r.Body, 1<<10)
+		if json.NewDecoder(r.Body).Decode(&body) != nil {
+			writeJSONError(w, http.StatusBadRequest, "invalid body")
+			return
+		}
+		prefix := strings.ToLower(strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(body.Prefix), "sha256:")))
+		sigmaSeenMu.Lock()
+		ver, sha := sigmaSeenVer, sigmaSeenSHA
+		sigmaSeenMu.Unlock()
+		if sha == "" {
+			writeJSONError(w, http.StatusConflict, "no downloaded hash to confirm — press Sync now first")
+			return
+		}
+		if len(prefix) < 8 || !strings.HasPrefix(sha, prefix) {
+			writeJSONError(w, http.StatusBadRequest, "those characters do not match the hash the server downloaded (starts "+sha[:8]+")")
+			return
+		}
+		cur, _ := db.GetSetting(r.Context(), "ti.sigma_pinned_version")
+		if strings.TrimSpace(cur) != ver {
+			writeJSONError(w, http.StatusConflict, "release tag changed since the download — press Sync now again")
+			return
+		}
+		_ = db.SetSetting(r.Context(), "ti.sigma_pinned_sha256", sha)
+		writeJSON(w, 200, map[string]string{"status": "pinned", "sha256": sha})
+	}
+}
