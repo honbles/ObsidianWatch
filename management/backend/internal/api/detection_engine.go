@@ -1786,6 +1786,10 @@ func (e *DetectionEngine) evaluateEvents(ctx context.Context, events []store.Eve
 			if !matchSigmaRule(rule, ev) {
 				continue
 			}
+			sigSev, sigOK := sigmaAlertSeverity(rule)
+			if !sigOK {
+				continue
+			}
 
 			hour := ev.Time.UTC().Format("2006010215")
 			dedupKey := fmt.Sprintf("sig:sigma:%s:host:%s:h:%s:e:%s", rule.ID, ev.Host, hour, alertEntityKey(ev)) // D-06: entity fingerprint folded in
@@ -1798,7 +1802,7 @@ func (e *DetectionEngine) evaluateEvents(ctx context.Context, events []store.Eve
 				Description: fmt.Sprintf("%s\n\nRule: %s | Level: %s | Category: %s\nMITRE: %s\nHost: %s | OS: %s | Process: %s | Command: %s",
 					rule.Description, rule.Title, rule.Level, rule.Category,
 					mitre, ev.Host, ev.OS, strOrDash(ev.ProcessName), strOrDash(ev.CommandLine)),
-				Severity:      rule.Severity,
+				Severity:      sigSev,
 				AgentID:       ev.AgentID,
 				Host:          ev.Host,
 				EventType:     ev.EventType,
@@ -1808,7 +1812,7 @@ func (e *DetectionEngine) evaluateEvents(ctx context.Context, events []store.Eve
 			if id, inserted, err := e.db.CreateAlertDeduped(ctx, alert); err == nil && inserted {
 				created++
 				alert.CreatedAt = time.Now()
-				if e.mailer.Enabled() && rule.Severity >= e.mailer.MinSeverity() {
+				if e.mailer.Enabled() && sigSev >= e.mailer.MinSeverity() {
 					alert.ID = id
 					e.mailer.QueueAlert(alert)
 				}
@@ -1867,6 +1871,11 @@ func sigmaRelevantRules(byCategory map[string][]store.SigmaRule, ev store.Event)
 	case "sysmon":
 		add("process_creation", "network_connection", "file_event", "registry_event")
 	}
+	// Windows event-log rules (logsource product+service, stored under the
+	// "windows" category) apply to events that carry an event-log channel.
+	if ev.Channel != nil && evOS == "windows" {
+		add("windows")
+	}
 	// Add OS-specific rules — only add broad OS categories for process/sysmon events
 	// to avoid false positives (e.g. "windows" rules matching network events)
 	switch strings.ToLower(ev.OS) {
@@ -1913,354 +1922,6 @@ func buildEventText(ev store.Event) string {
 		fields = append(fields, strings.ToLower(string(ev.Raw)))
 	}
 	return strings.ToLower(strings.Join(fields, " "))
-}
-
-// sigmaEntry and compiledSigmaRule (D-05): matchSigmaRule used to re-parse
-// a rule's YAML detection block from scratch for every single event it was
-// checked against — with N events and M rules that's an O(N*M) re-parse of
-// the same M rule bodies, which dominates detection latency once there are
-// more than a handful of Sigma rules. Parsing is now split from
-// evaluation: compileSigmaDetection runs once per rule body and the result
-// is cached in sigmaCompileCache, keyed by rule ID + UpdatedAt so an edited
-// rule is recompiled but an unchanged one never is. Only eval() runs on
-// the hot per-event path now.
-type sigmaEntry struct {
-	field    string
-	patterns []string
-}
-
-type compiledSigmaRule struct {
-	selections map[string][]sigmaEntry
-	condition  string
-	// supported (D-04 interim fix) is false when condition uses syntax this
-	// home-made parser cannot evaluate correctly (boolean combinators like
-	// "and"/"or"/"not", parenthesised groups, multi-selection conditions,
-	// etc). Previously an unsupported condition either silently matched
-	// every event ("all of them" fell through to a vacuous `return true`
-	// because no selection name actually starts with the literal string
-	// "them") or silently matched nothing — both are worse than simply not
-	// firing. eval() now refuses to evaluate unsupported rules at all.
-	supported bool
-}
-
-// sigmaSupportedCondition reports whether cond (already lowercased and
-// trimmed) is one of the forms eval() implements correctly: a bare
-// selection name, "N of <selection>", "N of <prefix>*", or either of those
-// with "them" in place of a selection (meaning "every/any selection in the
-// rule", not a literal selection named "them").
-func sigmaSupportedCondition(cond string, selections map[string][]sigmaEntry) bool {
-	if cond == "" {
-		return true // defaults to AND of all selections — eval() handles this directly
-	}
-	// Reject anything using boolean combinators or grouping this parser
-	// does not implement — matching on these used to silently produce a
-	// wrong answer instead of visibly doing nothing.
-	for _, tok := range []string{" and ", " or ", " not ", "(", ")"} {
-		if strings.Contains(" "+cond+" ", tok) {
-			return false
-		}
-	}
-	for name := range selections {
-		if strings.ToLower(name) == cond {
-			return true // bare selection name
-		}
-	}
-	rest := cond
-	hasPrefix := false
-	if strings.HasPrefix(rest, "1 of ") {
-		rest = strings.TrimPrefix(rest, "1 of ")
-		hasPrefix = true
-	} else if strings.HasPrefix(rest, "all of ") {
-		rest = strings.TrimPrefix(rest, "all of ")
-		hasPrefix = true
-	}
-	if !hasPrefix {
-		return false
-	}
-	rest = strings.TrimSuffix(rest, "*")
-	if rest == "them" {
-		return true
-	}
-	// "N of <prefix>*" or "N of <name>" — supported as long as what's left
-	// is a single identifier, not a further expression.
-	return rest != "" && !strings.ContainsAny(rest, " \t")
-}
-
-var sigmaCompileCache sync.Map // key: rule.ID+"@"+rule.UpdatedAt -> *compiledSigmaRule
-
-func getCompiledSigmaRule(rule store.SigmaRule) *compiledSigmaRule {
-	key := rule.ID + "@" + rule.UpdatedAt.String()
-	if v, ok := sigmaCompileCache.Load(key); ok {
-		return v.(*compiledSigmaRule)
-	}
-	c := compileSigmaDetection(rule.Detection)
-	sigmaCompileCache.Store(key, c)
-	return c
-}
-
-// matchSigmaRule evaluates a Sigma rule detection block against an event,
-// using the cached compiled form (see getCompiledSigmaRule).
-func matchSigmaRule(rule store.SigmaRule, ev store.Event) bool {
-	if rule.Detection == "" {
-		return false
-	}
-	return getCompiledSigmaRule(rule).eval(ev)
-}
-
-// compileSigmaDetection parses a Sigma rule's YAML detection block once.
-// Handles the standard Sigma YAML structure:
-//
-//	detection:           <- outer container (indent 0)
-//	    selection:       <- selection name (indent 4)
-//	        Image: ...   <- field (indent 8)
-//	    condition: sel
-func compileSigmaDetection(detection string) *compiledSigmaRule {
-	selections := make(map[string][]sigmaEntry)
-	var condition, currentSel, currentField string
-	detectionIndent := -1
-	selectionIndent := -1
-
-	for _, line := range strings.Split(detection, "\n") {
-		trimmed := strings.TrimSpace(line)
-		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
-			continue
-		}
-		indent := len(line) - len(strings.TrimLeft(line, " \t"))
-
-		// Find "detection:" container
-		if indent == 0 && (trimmed == "detection:" || strings.HasPrefix(trimmed, "detection:")) {
-			detectionIndent = 0
-			continue
-		}
-
-		// Other top-level keys (logsource, title, etc.) — skip
-		if indent == 0 {
-			continue
-		}
-
-		// At detection+N indent: selection names or condition
-		if detectionIndent >= 0 && selectionIndent < 0 {
-			// First indented key under detection — this is the selection indent level
-			if strings.Contains(trimmed, ":") {
-				k, v, _ := strings.Cut(trimmed, ":")
-				k = strings.TrimSpace(k)
-				v = strings.TrimSpace(v)
-				if k == "condition" {
-					condition = v
-					continue
-				}
-				if v == "" && !strings.Contains(k, "|") {
-					// New named selection
-					selectionIndent = indent
-					currentSel = k
-					currentField = ""
-					continue
-				}
-			}
-			continue
-		}
-
-		// At selection indent level: new selection names or condition
-		if indent == selectionIndent {
-			if strings.Contains(trimmed, ":") {
-				k, v, _ := strings.Cut(trimmed, ":")
-				k = strings.TrimSpace(k)
-				v = strings.TrimSpace(v)
-				if k == "condition" {
-					condition = v
-					continue
-				}
-				if v == "" && !strings.Contains(k, "|") {
-					currentSel = k
-					currentField = ""
-					continue
-				}
-			}
-			continue
-		}
-
-		// Deeper indent: field definitions and values
-		if currentSel == "" {
-			continue
-		}
-
-		if strings.HasPrefix(trimmed, "- ") {
-			val := strings.ToLower(strings.Trim(strings.TrimPrefix(trimmed, "- "), `'"`))
-			if val == "" || val == "null" {
-				continue
-			}
-			if currentField == "" {
-				currentField = "*"
-			}
-			sels := selections[currentSel]
-			added := false
-			for i := len(sels) - 1; i >= 0; i-- {
-				if sels[i].field == currentField {
-					sels[i].patterns = append(sels[i].patterns, val)
-					selections[currentSel] = sels
-					added = true
-					break
-				}
-			}
-			if !added {
-				selections[currentSel] = append(selections[currentSel], sigmaEntry{currentField, []string{val}})
-			}
-		} else if strings.Contains(trimmed, ":") {
-			k, v, _ := strings.Cut(trimmed, ":")
-			k = strings.TrimSpace(k)
-			v = strings.TrimSpace(v)
-			if k == "condition" {
-				condition = v
-				continue
-			}
-			if v == "" && !strings.Contains(k, "|") {
-				// Sub-selection or nested key — treat as new field group
-				currentField = k
-				continue
-			}
-			currentField = k
-			if idx := strings.Index(currentField, "|"); idx >= 0 {
-				currentField = currentField[:idx]
-			}
-			if v != "" && v != "null" {
-				selections[currentSel] = append(selections[currentSel], sigmaEntry{currentField, []string{strings.ToLower(strings.Trim(v, `'"`))}})
-			}
-		}
-	}
-
-	cond := strings.TrimSpace(strings.ToLower(condition))
-	return &compiledSigmaRule{
-		selections: selections,
-		condition:  condition,
-		supported:  sigmaSupportedCondition(cond, selections),
-	}
-}
-
-// eval runs a compiled rule against one event — this is the hot per-event
-// path, with no YAML/string parsing in it.
-func (c *compiledSigmaRule) eval(ev store.Event) bool {
-	if len(c.selections) == 0 {
-		return false
-	}
-	// D-04 interim fix: a condition this parser can't actually evaluate
-	// (boolean combinators, grouping, etc.) must never fire — it used to
-	// either vacuously match every event or vacuously match none, silently.
-	if !c.supported {
-		return false
-	}
-
-	fields := []string{
-		ev.EventType, ev.OS, ev.Host, ev.Source,
-		strOrDash(ev.ProcessName), strOrDash(ev.CommandLine), strOrDash(ev.ImagePath),
-		strOrDash(ev.UserName), strOrDash(ev.FilePath), strOrDash(ev.FileHash),
-		strOrDash(ev.DstIP), strOrDash(ev.SrcIP), strOrDash(ev.RegKey),
-	}
-	if ev.Raw != nil {
-		fields = append(fields, strings.ToLower(string(ev.Raw)))
-	}
-	eventText := strings.ToLower(strings.Join(fields, " "))
-
-	selResults := make(map[string]bool)
-	for name, entries := range c.selections {
-		allMatch := len(entries) > 0
-		for _, e := range entries {
-			ft := eventText
-			switch strings.ToLower(e.field) {
-			case "commandline", "command_line":
-				ft = strings.ToLower(strOrDash(ev.CommandLine))
-			case "image", "imagepath":
-				ft = strings.ToLower(strOrDash(ev.ImagePath))
-			case "processname", "process_name":
-				ft = strings.ToLower(strOrDash(ev.ProcessName))
-			case "parentimage", "parentprocessname":
-				ft = strings.ToLower(strOrDash(ev.ProcessName))
-			case "username", "user":
-				ft = strings.ToLower(strOrDash(ev.UserName))
-			case "targetfilename", "filepath":
-				ft = strings.ToLower(strOrDash(ev.FilePath))
-			case "queryname", "destinationhostname":
-				ft = strings.ToLower(strOrDash(ev.DstIP))
-			case "regkey", "targetobject":
-				ft = strings.ToLower(strOrDash(ev.RegKey))
-			case "eventid":
-				if ev.EventID != nil {
-					ft = fmt.Sprintf("%d", *ev.EventID)
-				} else {
-					ft = ""
-				}
-			}
-			matched := false
-			for _, pat := range e.patterns {
-				if strings.HasPrefix(pat, "*") && strings.HasSuffix(pat, "*") {
-					if strings.Contains(ft, strings.Trim(pat, "*")) {
-						matched = true
-						break
-					}
-				} else if strings.HasPrefix(pat, "*") {
-					if strings.HasSuffix(ft, strings.TrimPrefix(pat, "*")) {
-						matched = true
-						break
-					}
-				} else if strings.HasSuffix(pat, "*") {
-					if strings.HasPrefix(ft, strings.TrimSuffix(pat, "*")) {
-						matched = true
-						break
-					}
-				} else if strings.Contains(ft, pat) {
-					matched = true
-					break
-				}
-			}
-			if !matched {
-				allMatch = false
-				break
-			}
-		}
-		selResults[name] = allMatch
-	}
-	if c.condition == "" {
-		for _, v := range selResults {
-			if !v {
-				return false
-			}
-		}
-		return true
-	}
-	cond := strings.TrimSpace(strings.ToLower(c.condition))
-	if strings.HasPrefix(cond, "1 of ") {
-		prefix := strings.TrimSuffix(strings.TrimPrefix(cond, "1 of "), "*")
-		// "them" means every selection in the rule, not a literal prefix —
-		// matching it as a string prefix meant no selection ever matched,
-		// so "1 of them" vacuously evaluated to false for every event.
-		all := prefix == "them"
-		for n, v := range selResults {
-			if (all || strings.HasPrefix(strings.ToLower(n), prefix)) && v {
-				return true
-			}
-		}
-		return false
-	}
-	if strings.HasPrefix(cond, "all of ") {
-		prefix := strings.TrimSuffix(strings.TrimPrefix(cond, "all of "), "*")
-		// Same "them" fix as above — matching it as a literal prefix meant
-		// no selection ever matched the prefix, so the "return false" path
-		// was never reached and this vacuously evaluated to true for every
-		// event regardless of the rule's actual selections.
-		all := prefix == "them"
-		for n, v := range selResults {
-			if (all || strings.HasPrefix(strings.ToLower(n), prefix)) && !v {
-				return false
-			}
-		}
-		return true
-	}
-	// Simple condition: just a selection name
-	for n, v := range selResults {
-		if strings.ToLower(n) == cond {
-			return v
-		}
-	}
-	return false
 }
 
 func (e *DetectionEngine) matchIOC(ev store.Event,
