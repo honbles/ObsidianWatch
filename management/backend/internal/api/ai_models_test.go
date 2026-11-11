@@ -19,3 +19,19 @@ func TestAIModelNames(t *testing.T) {
 		t.Error("provider detection wrong")
 	}
 }
+
+func TestGroqTuneAndExtract(t *testing.T) {
+	b := map[string]interface{}{}
+	groqTune(b, "openai/gpt-oss-120b", 1000)
+	if b["reasoning_effort"] != "low" || b["max_completion_tokens"].(int) <= 1000 || b["max_tokens"] != nil {
+		t.Fatalf("gpt-oss tuning wrong: %v", b)
+	}
+	b = map[string]interface{}{}
+	groqTune(b, "llama-x", 500)
+	if b["max_tokens"] != 500 {
+		t.Fatalf("plain tuning wrong: %v", b)
+	}
+	if got := extractJSONObject("sure:\n```json\n{\"a\":1}\n```"); got != `{"a":1}` {
+		t.Fatalf("extract: %q", got)
+	}
+}

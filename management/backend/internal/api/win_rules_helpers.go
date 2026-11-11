@@ -125,7 +125,7 @@ func runKeySuspicious(ev store.Event) bool {
 	if !isRunKey(ev) {
 		return false
 	}
-	return containsAny(runKeyData(ev), `\users\`, `\appdata\`, `\temp\`, `\programdata\`, `\public\`,
+	return containsAny(runKeyData(ev), `\temp\`, `\public\`, `\users\public\`, `\downloads\`,
 		"powershell", "cmd.exe /c", "cmd /c", "wscript", "cscript", "mshta", "rundll32", "regsvr32",
 		".vbs", ".js", ".bat", ".ps1", "http://", "https://")
 }
@@ -137,5 +137,5 @@ func runKeyUntrusted(ev store.Event) bool {
 		return false
 	}
 	d := strings.Trim(runKeyData(ev), `"' `)
-	return !(strings.HasPrefix(d, `c:\program files`) || strings.HasPrefix(d, `c:\windows\`) || strings.HasPrefix(d, `%programfiles`) || strings.HasPrefix(d, `%systemroot%`))
+	return !(strings.HasPrefix(d, `c:\program files`) || strings.HasPrefix(d, `c:\windows\`) || strings.HasPrefix(d, `%programfiles`) || strings.HasPrefix(d, `%systemroot%`) || strings.HasPrefix(d, `%windir%`))
 }

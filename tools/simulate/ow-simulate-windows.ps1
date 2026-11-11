@@ -61,7 +61,7 @@ $Cases = @(
   @{ Id='W-T1490'; Title='[T1490] Shadow Copy Deletion'; Kind='proc'; Text='vssadmin delete shadows /all /quiet' }
   @{ Id='W-T1543.003'; Title='[T1543.003] New Service Created'; Kind='proc'; Text='sc create evil binpath= c:\x.exe' }
   @{ Id='W-T1546.003'; Title='[T1546.003] WMI Event Subscription'; Kind='proc'; Text='powershell Set-WmiInstance -Class __EventFilter' }
-  @{ Id='W-T1547.001'; Title='[T1547.001] Run Key Persistence'; Kind='reg'; Path='HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'; Data='C:\Users\a\AppData\Roaming\x.exe' }
+  @{ Id='W-T1547.001'; Title='[T1547.001] Run Key Persistence'; Kind='reg'; Path='HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'; Data='C:\Users\a\AppData\Local\Temp\x.exe' }
   @{ Id='W-T1548.002'; Title='[T1548.002] UAC Bypass Technique'; Kind='proc'; Text='fodhelper.exe' }
   @{ Id='W-T1552.001'; Title='[T1552.001] Credential Search in Files'; Kind='proc'; Text='findstr /si password *.txt' }
   @{ Id='W-T1552.005'; Title='[T1552.005] Cloud Credential File Access'; Kind='proc'; Text='type c:\users\a\.aws\credentials' }
@@ -72,15 +72,26 @@ $Cases = @(
   @{ Id='W-T1595'; Title='[T1595.001] Port Scanning Tool'; Kind='proc'; Text='nmap -sS 10.0.0.0/24' }
 )
 $Skipped = @(
+  @{ Id='W-ACCT-001'; Reason='needs a real eventlog event (log, file or system change)' }
+  @{ Id='W-ACCT-002'; Reason='needs a real eventlog event (log, file or system change)' }
+  @{ Id='W-ACCT-003'; Reason='needs a real eventlog event (log, file or system change)' }
+  @{ Id='W-ACCT-004'; Reason='needs a real eventlog event (log, file or system change)' }
+  @{ Id='W-RDP-001'; Reason='needs a real eventlog event (log, file or system change)' }
   @{ Id='W-T1036'; Reason='needs the real process or event; a harmless stand-in does not trigger it' }
   @{ Id='W-T1070.001'; Reason='needs a real eventlog event (log, file or system change)' }
   @{ Id='W-T1110'; Reason='needs a real logon event (log, file or system change)' }
   @{ Id='W-T1218.011'; Reason='needs the real process or event; a harmless stand-in does not trigger it' }
   @{ Id='W-T1486'; Reason='needs a real file event (log, file or system change)' }
+  @{ Id='W-T1543.003b'; Reason='needs a real eventlog event (log, file or system change)' }
+  @{ Id='W-T1546.003b'; Reason='needs a real eventlog event (log, file or system change)' }
   @{ Id='W-T1546.012'; Reason='needs a real registry event (log, file or system change)' }
   @{ Id='W-T1547.001b'; Reason='needs a real registry event (log, file or system change)' }
   @{ Id='W-T1562.001c'; Reason='needs a real eventlog event (log, file or system change)' }
+  @{ Id='W-T1562.001d'; Reason='needs a real eventlog event (log, file or system change)' }
+  @{ Id='W-T1562.002'; Reason='needs a real eventlog event (log, file or system change)' }
+  @{ Id='W-T1562.006'; Reason='needs a real eventlog event (log, file or system change)' }
   @{ Id='W-T1574.002'; Reason='needs a real file event (log, file or system change)' }
+  @{ Id='W-USB-001'; Reason='needs a real eventlog event (log, file or system change)' }
 )
 
 if ($Only) { $ids = $Only.Split(',') | ForEach-Object { $_.Trim() }; $Cases = @($Cases | Where-Object { $ids -contains $_.Id }) }

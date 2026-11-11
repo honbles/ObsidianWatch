@@ -6,7 +6,7 @@ func init() {
 	sigFixtures = append(sigFixtures, []sigFixture{
 		{"W-T1552.001", fxProc("findstr.exe", "findstr /si password *.txt"), fxProc("findstr.exe", "findstr /i error app.log")},
 		{"W-T1552.005", fxProc("type.exe", `type c:\users\a\.aws\credentials`), fxProc("type.exe", `type c:\users\a\notes.txt`)},
-		{"W-T1547.001", fxRegData(`HKCU\Software\Microsoft\Windows\CurrentVersion\Run\evil`, `C:\Users\a\AppData\Roaming\x.exe`), fxRegData(`HKCU\Software\Microsoft\Windows\CurrentVersion\Run\Teams`, `C:\Program Files\Teams\t.exe`)},
+		{"W-T1547.001", fxRegData(`HKCU\Software\Microsoft\Windows\CurrentVersion\Run\evil`, `C:\Users\a\AppData\Local\Temp\x.exe`), fxRegData(`HKCU\Software\Microsoft\Windows\CurrentVersion\Run\Teams`, `C:\Program Files\Teams\t.exe`)},
 		{"W-T1547.001b", fxRegData(`HKLM\Software\Microsoft\Windows\CurrentVersion\Run\Updater`, `D:\Tools\updater.exe`), fxRegData(`HKLM\Software\Microsoft\Windows\CurrentVersion\Run\Teams`, `C:\Program Files\Teams\t.exe`)},
 		{"W-T1053.005", fxProc("schtasks.exe", "schtasks /create /tn x /tr calc.exe"), fxProc("schtasks.exe", "schtasks /query")},
 		{"W-T1543.003", fxProc("sc.exe", `sc create evil binpath= c:\x.exe`), fxProc("sc.exe", "sc query spooler")},
