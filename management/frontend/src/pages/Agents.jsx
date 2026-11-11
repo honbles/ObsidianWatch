@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { Wifi, Shield, ShieldOff, ChevronRight, X, RefreshCw, Search, Activity, GitBranch, LayoutDashboard, Cpu, MapPin, Zap, Globe as GlobeIcon, Bug, LogIn, FolderOpen, Terminal } from 'lucide-react'
+import { Wifi, Shield, ShieldOff, ShieldCheck, ChevronRight, X, RefreshCw, Search, Activity, GitBranch, LayoutDashboard, Cpu, MapPin, Zap, Globe as GlobeIcon, Bug, LogIn, FolderOpen, Terminal } from 'lucide-react'
 import api from '../api/client'
 import { OS_GROUPS, getOSCategory } from './agents/shared.jsx'
 import { TabAlerts, TabDNS, TabEvents, TabFiles, TabLogons, TabNetwork, TabOverview, TabThreats } from './agents/tabs_basic.jsx'
 import { TabDevice, TabLocation, TabTerminal } from './agents/tabs_device.jsx'
 import { TabRCA, TabVuln } from './agents/tabs_vuln.jsx'
+import { TabCompliance } from './agents/tabs_compliance.jsx'
 import { OSGroup, TamperPanel } from './agents/tamper.jsx'
 
 const DETAIL_TABS=[
@@ -18,6 +19,7 @@ const DETAIL_TABS=[
   {id:'dns',      label:'DNS',       icon:GlobeIcon},
   {id:'files',    label:'Files',     icon:FolderOpen},
   {id:'device',   label:'Device',    icon:Cpu},
+  {id:'compliance', label:'Compliance', icon:ShieldCheck},
   {id:'location', label:'Location',  icon:MapPin},
   {id:'terminal',     label:'Terminal',     icon:Terminal},
   {id:'vulnerability', label:'Vulnerability', icon:Bug},
@@ -31,7 +33,7 @@ function AgentDetail({ agent, onBack }) {
   const osStyle=OS_GROUPS[getOSCategory(agent.os)]||OS_GROUPS.other
   const Icon=osStyle.icon
   const reload=async()=>{try{const{data}=await api.get('/api/v1/agents');const found=(data.agents||[]).find(a=>a.id===agent.id);if(found)setAgentData(found)}catch(e){}}
-  const fullHeight=['events','threats','location','logons','network','dns','files','terminal','vulnerability','rca'].includes(activeTab)
+  const fullHeight=['events','threats','location','logons','network','dns','files','terminal','vulnerability','rca','compliance'].includes(activeTab)
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
@@ -71,6 +73,7 @@ function AgentDetail({ agent, onBack }) {
         {activeTab==='dns'      &&<TabDNS       agent={agentData}/>}
         {activeTab==='files'    &&<TabFiles     agent={agentData}/>}
         {activeTab==='device'   &&<TabDevice    agent={agentData}/>}
+        {activeTab==='compliance'&&<TabCompliance agent={agentData}/>}
         {activeTab==='location' &&<TabLocation  agent={agentData}/>}
         {activeTab==='terminal'     &&<TabTerminal  agent={agentData}/>}
         {activeTab==='vulnerability' &&<TabVuln      agent={agentData}/>}

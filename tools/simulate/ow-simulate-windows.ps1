@@ -61,7 +61,7 @@ $Cases = @(
   @{ Id='W-T1490'; Title='[T1490] Shadow Copy Deletion'; Kind='proc'; Text='vssadmin delete shadows /all /quiet' }
   @{ Id='W-T1543.003'; Title='[T1543.003] New Service Created'; Kind='proc'; Text='sc create evil binpath= c:\x.exe' }
   @{ Id='W-T1546.003'; Title='[T1546.003] WMI Event Subscription'; Kind='proc'; Text='powershell Set-WmiInstance -Class __EventFilter' }
-  @{ Id='W-T1547.001'; Title='[T1547.001] Run Key Persistence'; Kind='reg'; Path='HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'; Data='C:\Users\a\AppData\Roaming\x.exe' }
+  @{ Id='W-T1547.001'; Title='[T1547.001] Run Key Persistence'; Kind='reg'; Path='HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'; Data='C:\Users\a\AppData\Local\Temp\x.exe' }
   @{ Id='W-T1548.002'; Title='[T1548.002] UAC Bypass Technique'; Kind='proc'; Text='fodhelper.exe' }
   @{ Id='W-T1552.001'; Title='[T1552.001] Credential Search in Files'; Kind='proc'; Text='findstr /si password *.txt' }
   @{ Id='W-T1552.005'; Title='[T1552.005] Cloud Credential File Access'; Kind='proc'; Text='type c:\users\a\.aws\credentials' }

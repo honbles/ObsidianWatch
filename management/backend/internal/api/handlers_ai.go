@@ -202,62 +202,98 @@ Return this exact JSON structure:
 }
 
 func callGroq(ctx context.Context, apiKey string, req AlertAnalysisRequest) (map[string]interface{}, error) {
-	body := map[string]interface{}{
-		"model":           groqModelName(),
-		"max_tokens":      1024,
-		"temperature":     0.2,
-		"response_format": map[string]string{"type": "json_object"},
-		"messages": []map[string]string{
-			{
-				"role":    "system",
-				"content": "You are a cybersecurity analyst. Always respond with valid JSON only. No explanations, no markdown, no code blocks — just the raw JSON object. " + promptInjectionGuard,
-			},
-			{"role": "user", "content": buildAnalysisPrompt(req)},
+	msgs := []map[string]string{
+		{
+			"role":    "system",
+			"content": "You are a cybersecurity analyst. Always respond with valid JSON only. No explanations, no markdown, no code blocks — just the raw JSON object. " + promptInjectionGuard,
 		},
+		{"role": "user", "content": buildAnalysisPrompt(req)},
 	}
-	bodyBytes, _ := json.Marshal(body)
-
-	httpReq, err := http.NewRequestWithContext(ctx, "POST",
-		"https://api.groq.com/openai/v1/chat/completions", bytes.NewReader(bodyBytes))
+	text, err := groqChatJSON(ctx, apiKey, groqModelName(), msgs, 0.2, 1500)
 	if err != nil {
 		return nil, err
 	}
-	httpReq.Header.Set("Content-Type", "application/json")
-	httpReq.Header.Set("Authorization", "Bearer "+apiKey)
-
-	client := &http.Client{Timeout: 30 * time.Second}
-	resp, err := client.Do(httpReq)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	var groqResp struct {
-		Choices []struct {
-			Message struct {
-				Content string `json:"content"`
-			} `json:"message"`
-		} `json:"choices"`
-		Error *struct {
-			Message string `json:"message"`
-		} `json:"error"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&groqResp); err != nil {
-		return nil, err
-	}
-	if groqResp.Error != nil {
-		return nil, fmt.Errorf("groq: %s", groqResp.Error.Message)
-	}
-	if len(groqResp.Choices) == 0 {
-		return nil, fmt.Errorf("groq: no choices returned")
-	}
-
-	text := groqResp.Choices[0].Message.Content
 	return map[string]interface{}{
 		"content": []map[string]interface{}{
 			{"type": "text", "text": text},
 		},
 	}, nil
+}
+
+// groqTune adds model-specific parameters. gpt-oss models are reasoning
+// models: reasoning tokens count against the completion budget, so a small
+// max_tokens leaves no room for the JSON and Groq answers "failed_generation".
+func groqTune(body map[string]interface{}, model string, maxTokens int) {
+	if strings.Contains(strings.ToLower(model), "gpt-oss") {
+		body["max_completion_tokens"] = maxTokens + 6000
+		body["reasoning_effort"] = "low"
+		return
+	}
+	body["max_tokens"] = maxTokens
+}
+
+// extractJSONObject returns the outermost {...} in s (models sometimes wrap
+// JSON in prose or code fences). If none is found s is returned unchanged.
+func extractJSONObject(s string) string {
+	i, j := strings.Index(s, "{"), strings.LastIndex(s, "}")
+	if i >= 0 && j > i {
+		return s[i : j+1]
+	}
+	return s
+}
+
+// groqChatJSON asks Groq for a JSON answer. It first uses JSON mode and, if
+// Groq rejects the generation (failed_generation / validate JSON), retries
+// once in plain mode and extracts the JSON object from the reply.
+func groqChatJSON(ctx context.Context, apiKey, model string, msgs []map[string]string, temp float64, maxTokens int) (string, error) {
+	var lastErr error
+	for attempt := 0; attempt < 2; attempt++ {
+		body := map[string]interface{}{"model": model, "temperature": temp, "messages": msgs}
+		groqTune(body, model, maxTokens)
+		if attempt == 0 {
+			body["response_format"] = map[string]string{"type": "json_object"}
+		}
+		bodyBytes, _ := json.Marshal(body)
+		httpReq, err := http.NewRequestWithContext(ctx, "POST", "https://api.groq.com/openai/v1/chat/completions", bytes.NewReader(bodyBytes))
+		if err != nil {
+			return "", err
+		}
+		httpReq.Header.Set("Content-Type", "application/json")
+		httpReq.Header.Set("Authorization", "Bearer "+apiKey)
+		resp, err := (&http.Client{Timeout: 60 * time.Second}).Do(httpReq)
+		if err != nil {
+			return "", err
+		}
+		var gr struct {
+			Choices []struct {
+				Message struct {
+					Content string `json:"content"`
+				} `json:"message"`
+			} `json:"choices"`
+			Error *struct {
+				Message string `json:"message"`
+				Code    string `json:"code"`
+			} `json:"error"`
+		}
+		derr := json.NewDecoder(resp.Body).Decode(&gr)
+		resp.Body.Close()
+		if derr != nil {
+			return "", derr
+		}
+		if gr.Error != nil {
+			lastErr = fmt.Errorf("groq: %s", gr.Error.Message)
+			m := strings.ToLower(gr.Error.Message + " " + gr.Error.Code)
+			if attempt == 0 && (strings.Contains(m, "json") || strings.Contains(m, "failed_generation")) {
+				continue
+			}
+			return "", lastErr
+		}
+		if len(gr.Choices) == 0 {
+			return "", fmt.Errorf("groq: no choices returned")
+		}
+		return extractJSONObject(gr.Choices[0].Message.Content), nil
+	}
+	return "", lastErr
 }
 
 func callAnthropic(ctx context.Context, apiKey string, req AlertAnalysisRequest) (map[string]interface{}, error) {
@@ -752,9 +788,10 @@ func handleAIChat(cfg *config.Config, db *store.DB) http.HandlerFunc {
 			messages = append(messages, map[string]string{"role": "user", "content": req.Question})
 
 			body := map[string]interface{}{
-				"model": groqModelName(), "max_tokens": 1024, "temperature": 0.3,
+				"model": groqModelName(), "temperature": 0.3,
 				"messages": messages,
 			}
+			groqTune(body, groqModelName(), 1024)
 			bodyBytes, _ := json.Marshal(body)
 			httpReq, _ := http.NewRequestWithContext(r.Context(), "POST",
 				"https://api.groq.com/openai/v1/chat/completions", bytes.NewReader(bodyBytes))
