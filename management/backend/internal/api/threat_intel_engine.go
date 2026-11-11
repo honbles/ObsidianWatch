@@ -387,6 +387,9 @@ func (e *ThreatIntelEngine) syncSigma(ctx context.Context) (int, error) {
 	}
 	resp, err := e.client.Do(req)
 	if err != nil {
+		if strings.Contains(err.Error(), "x509") || strings.Contains(err.Error(), "certificate") || strings.Contains(err.Error(), "tls:") {
+			return 0, fmt.Errorf("Sigma download failed TLS verification (%w). The management server cannot validate github.com's certificate: check the server clock, install/update its CA certificates (ca-certificates), and check for a TLS-inspecting proxy that needs its CA added", err)
+		}
 		return 0, fmt.Errorf("Sigma download: %w", err)
 	}
 	defer resp.Body.Close()

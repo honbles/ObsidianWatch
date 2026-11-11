@@ -391,7 +391,7 @@ function ConnectorDetail({ conn, onSync, onDisconnect, syncing }) {
     setLoading(true)
     try {
       const { data } = await api.get('/api/v1/alerts', {
-        params: { host: conn.org, limit: 100 }
+        params: { host: conn.org, limit: 100, all_time: 1 }
       })
       // handler returns { alerts: [...] } when host filter is used
       const alertList = data?.alerts ?? (Array.isArray(data) ? data : [])
@@ -403,7 +403,7 @@ function ConnectorDetail({ conn, onSync, onDisconnect, syncing }) {
     setLoading(true)
     try {
       const { data } = await api.get('/api/v1/events', {
-        params: { host: conn.org, limit: 200 }
+        params: { host: conn.org, limit: 500, all_time: 1 }
       })
       setEvents(Array.isArray(data?.events) ? data.events : [])
     } catch { setEvents([]) } finally { setLoading(false) }

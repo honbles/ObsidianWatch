@@ -65,12 +65,12 @@ func (f *FIMCollector) Run(ctx context.Context) error {
 		return nil
 	}
 
-	// Try fanotify first (gives PID)
-	if err := f.runFanotify(ctx); err != nil {
-		f.logger.Warn("fim: fanotify unavailable, falling back to inotify (no PID)", "err", err)
-		return f.runInotify(ctx)
-	}
-	return nil
+	// inotify is the supported FIM backend. The old fanotify path asked for
+	// directory-entry events (create/delete/move) on mount marks, which the
+	// kernel rejects with EINVAL on every kernel (they need FAN_REPORT_FID),
+	// so it never produced events — it only logged six warnings and fell back.
+	// It is kept (runFanotify) for a future FID-based implementation.
+	return f.runInotify(ctx)
 }
 
 // ── fanotify implementation ──────────────────────────────────────────────────
@@ -306,7 +306,7 @@ func (f *FIMCollector) runInotify(ctx context.Context) error {
 			if err != nil || n2 == 0 {
 				break
 			}
-			f.parseInotifyEvents(buf[:n2], wdToPath)
+			f.parseInotifyEvents(fd, mask, buf[:n2], wdToPath)
 		}
 	}
 }
@@ -341,7 +341,7 @@ func (f *FIMCollector) addInotifyWatch(fd int, path string, recursive bool, mask
 	return nil
 }
 
-func (f *FIMCollector) parseInotifyEvents(buf []byte, wdToPath map[int]string) {
+func (f *FIMCollector) parseInotifyEvents(fd int, mask uint32, buf []byte, wdToPath map[int]string) {
 	offset := 0
 	for offset < len(buf) {
 		if offset+unix.SizeofInotifyEvent > len(buf) {
@@ -365,6 +365,11 @@ func (f *FIMCollector) parseInotifyEvents(buf []byte, wdToPath map[int]string) {
 		if f.isExcluded(fullPath) {
 			continue
 		}
+		// A new directory under a watched tree: watch it too, otherwise
+		// everything written inside it is invisible.
+		if ev.Mask&(unix.IN_CREATE|unix.IN_MOVED_TO) != 0 && ev.Mask&unix.IN_ISDIR != 0 && f.underRecursiveDir(fullPath) {
+			_ = f.addInotifyWatch(fd, fullPath, true, mask, wdToPath)
+		}
 		action := f.inotifyMaskToAction(ev.Mask)
 		if action == "" {
 			continue
@@ -372,6 +377,16 @@ func (f *FIMCollector) parseInotifyEvents(buf []byte, wdToPath map[int]string) {
 		// No PID in inotify — emit with 0
 		f.emit(fullPath, action, 0, "")
 	}
+}
+
+// underRecursiveDir reports whether path is inside a configured recursive dir.
+func (f *FIMCollector) underRecursiveDir(path string) bool {
+	for _, d := range f.cfg.Dirs {
+		if d.Recursive && (path == d.Path || strings.HasPrefix(path, strings.TrimRight(d.Path, "/")+"/")) {
+			return true
+		}
+	}
+	return false
 }
 
 func (f *FIMCollector) inotifyMaskToAction(mask uint32) string {
