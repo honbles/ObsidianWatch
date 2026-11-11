@@ -93,3 +93,23 @@ func TestCredentialSearchNeedsSearchBehaviour(t *testing.T) {
 		}
 	}
 }
+
+func TestSecurityServiceStopIgnoresEventLogAndSubstrings(t *testing.T) {
+	sig, _ := fxFind("W-T1562.001d")
+	mk := func(name, state string) store.Event {
+		id := uint32(7036)
+		return store.Event{EventType: "eventlog", EventID: &id, Raw: []byte(`{"event_data":{"param1":` + jsonStr(name) + `,"param2":` + jsonStr(state) + `}}`)}
+	}
+	if sig.Match(mk("Windows Event Log", "stopped")) {
+		t.Error("Event Log stops on every shutdown and must not alert")
+	}
+	if sig.Match(mk("Windows License Manager Service", "stopped")) {
+		t.Error("unrelated service must not alert")
+	}
+	if !sig.Match(mk("Microsoft Defender Antivirus Service", "stopped")) || !sig.Match(mk("Sysmon64", "stopped")) {
+		t.Error("security service stopping must alert")
+	}
+	if sig.Match(mk("Sysmon64", "running")) {
+		t.Error("running state must not alert")
+	}
+}
