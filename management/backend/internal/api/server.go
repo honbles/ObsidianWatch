@@ -260,6 +260,7 @@ func New(cfg *config.Config, db *store.DB, backendDB *store.DB, logger *slog.Log
 	// Threat Intel Sources
 	protected.HandleFunc("GET /api/v1/threat-intel-sources", handleListThreatIntelSources(db))
 	protected.HandleFunc("PATCH /api/v1/threat-intel-sources/{name}", adminOnly(handleUpdateThreatIntelSource(db, s.tiEngine)))
+	protected.HandleFunc("POST /api/v1/threat-intel-sources/sigma/pin-seen", adminOnly(handleSigmaPinSeen(db)))
 	protected.HandleFunc("POST /api/v1/threat-intel-sources/{name}/sync", handleTriggerSync(s.tiEngine, db))
 
 	// Agent Builder
