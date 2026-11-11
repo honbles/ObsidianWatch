@@ -1426,7 +1426,7 @@ func (e *DetectionEngine) Run(ctx context.Context) {
 	loadCorrelatorState(ctx, e.db, e.auth, e.seq) // D-07
 	e.runCursor(ctx)
 	e.runDevOpsCursor(ctx)
-	ticker := time.NewTicker(45 * time.Second)
+	ticker := time.NewTicker(detectionInterval())
 	defer ticker.Stop()
 	for {
 		select {
@@ -1499,9 +1499,10 @@ func (e *DetectionEngine) runCursor(ctx context.Context) {
 }
 
 func (e *DetectionEngine) evaluateEvents(ctx context.Context, events []store.Event) {
-	if len(events) > 0 {
-		e.logger.Info("detection: evaluating events", "count", len(events))
+	if len(events) == 0 {
+		return // nothing to evaluate; skip the per-cycle refresh work entirely
 	}
+	e.logger.Info("detection: evaluating events", "count", len(events))
 
 	e.recordPrevalence(events)
 	e.alertRareBinaries(ctx, events)
@@ -1513,23 +1514,7 @@ func (e *DetectionEngine) evaluateEvents(ctx context.Context, events []store.Eve
 		e.suppressor.Refresh(ctx)
 	}
 	states, _ := e.db.GetSignatureStates(ctx)
-	ipIOCs, _ := e.db.GetAllIOCsOfType(ctx, "ip")
-	domainIOCs, _ := e.db.GetAllIOCsOfType(ctx, "domain")
-	hashIOCs, _ := e.db.GetAllIOCsOfType(ctx, "hash")
-	if urlIOCs, err := e.db.GetAllIOCsOfType(ctx, "url"); err == nil && len(urlIOCs) > 0 {
-		if domainIOCs == nil {
-			domainIOCs = map[string]store.IOCIndicator{}
-		}
-		addURLIOCs(domainIOCs, urlIOCs)
-	}
-
-	// Refresh DNS blocklist cache
-	domainCats, _ := e.db.GetAllIOCsOfType(ctx, "domain_category")
-	for domain, ioc := range domainCats {
-		if ioc.Tags != "" && ioc.Tags != "clean" {
-			dnsCatCache[domain] = strings.Split(ioc.Tags, ",")
-		}
-	}
+	ipIOCs, domainIOCs, hashIOCs := e.loadIOCs(ctx)
 
 	// Check if Sigma detection is globally enabled
 	sigmaGlobalEnabled := true
