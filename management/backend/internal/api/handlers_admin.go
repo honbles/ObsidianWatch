@@ -286,6 +286,24 @@ func handleGetAPIKeys(db *store.DB) http.HandlerFunc {
 		kv, _ := db.GetSetting(ctx, settingLocalKey)
 		maskVal("local_llm_api_key", kv)
 
+		// Sigma pin (non-secret): shown so the admin can see what is configured.
+		for _, k := range []struct{ field, key string }{{"sigma_pinned_version", "ti.sigma_pinned_version"}, {"sigma_pinned_sha256", "ti.sigma_pinned_sha256"}} {
+			if v, _ := db.GetSetting(ctx, k.key); v != "" {
+				result[k.field], result[k.field+"_set"] = v, true
+			}
+		}
+
+		// Sigma pin (non-secret): shown so the admin can see what is configured.
+		for _, k := range []struct{ field, key string }{{"sigma_pinned_version", "ti.sigma_pinned_version"}, {"sigma_pinned_sha256", "ti.sigma_pinned_sha256"}} {
+			if v, _ := db.GetSetting(ctx, k.key); v != "" {
+				result[k.field], result[k.field+"_set"] = v, true
+			}
+		}
+
+		// Model names are not secrets; show the effective value.
+		refreshAIModels(ctx, db)
+		result["groq_model"], result["anthropic_model"] = groqModelName(), anthropicModelName()
+
 		// ThreatFox + OTX from threat_intel_sources table
 		if sources, err := db.ListThreatIntelSources(ctx); err == nil {
 			for _, src := range sources {
@@ -358,6 +376,38 @@ func handleSaveAPIKeys(db *store.DB) http.HandlerFunc {
 			saved = append(saved, "local_llm_model")
 		}
 		save("local_llm_api_key", settingLocalKey)
+
+		for _, m := range []struct{ field, key string }{{"groq_model", settingGroqModel}, {"anthropic_model", settingAnthropicModel}} {
+			if v, ok := body[m.field]; ok {
+				v = strings.TrimSpace(v)
+				if v != "" && !validModelName(v) {
+					writeJSON(w, 400, map[string]string{"error": m.field + ": invalid model name"})
+					return
+				}
+				_ = db.SetSetting(ctx, m.key, v)
+				saved = append(saved, m.field)
+			}
+		}
+		refreshAIModels(ctx, db)
+
+		if v, ok := body["sigma_pinned_version"]; ok {
+			v = strings.TrimSpace(v)
+			if v != "" && !sigmaVersionRe.MatchString(v) {
+				writeJSON(w, 400, map[string]string{"error": "sigma_pinned_version must be a release tag such as r2025-01-01 (never 'latest')"})
+				return
+			}
+			_ = db.SetSetting(ctx, "ti.sigma_pinned_version", v)
+			saved = append(saved, "sigma_pinned_version")
+		}
+		if v, ok := body["sigma_pinned_sha256"]; ok {
+			v = strings.ToLower(strings.TrimSpace(v))
+			if v != "" && !sigmaSHARe.MatchString(v) {
+				writeJSON(w, 400, map[string]string{"error": "sigma_pinned_sha256 must be 64 hex characters"})
+				return
+			}
+			_ = db.SetSetting(ctx, "ti.sigma_pinned_sha256", v)
+			saved = append(saved, "sigma_pinned_sha256")
+		}
 
 		// ThreatFox → threat_intel_sources table
 		if v, ok := body["threatfox_api_key"]; ok && !strings.Contains(v, "•") {

@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"net/url"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -365,13 +366,18 @@ func normalizeOTXType(t string) string {
 // closed — importing nothing — if either is unset or the downloaded zip's
 // hash doesn't match. Bumping the pin is a deliberate action: review the
 // diff against the previous ruleset before updating these settings.
+var (
+	sigmaVersionRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,60}$`)
+	sigmaSHARe     = regexp.MustCompile(`^[0-9a-f]{64}$`)
+)
+
 func (e *ThreatIntelEngine) syncSigma(ctx context.Context) (int, error) {
 	version, _ := e.db.GetSetting(ctx, "ti.sigma_pinned_version")
 	expectedSHA, _ := e.db.GetSetting(ctx, "ti.sigma_pinned_sha256")
 	version = strings.TrimSpace(version)
 	expectedSHA = strings.ToLower(strings.TrimSpace(expectedSHA))
 	if version == "" || expectedSHA == "" {
-		return 0, fmt.Errorf("Sigma rule pack not configured: set ti.sigma_pinned_version (a specific SigmaHQ release tag, never \"latest\") and ti.sigma_pinned_sha256 (the release asset's published SHA-256) after reviewing the release's changes")
+		return 0, fmt.Errorf("Sigma rule pack not configured: in Settings, set the Sigma release tag (a specific SigmaHQ release, never \"latest\") and its sigma_core.zip SHA-256. Tip: enter the tag and any 64-character hash, sync once, and the error will show the real hash to compare with the release page")
 	}
 
 	zipURL := fmt.Sprintf("https://github.com/SigmaHQ/sigma/releases/download/%s/sigma_core.zip", url.PathEscape(version))

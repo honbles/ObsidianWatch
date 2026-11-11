@@ -51,8 +51,21 @@ var windowsTamperSignatures = []ThreatSig{
 		Description: "A new service was installed (7045 / 4697) — review binary path for persistence or driver abuse.",
 		Severity:    3, MITRE: "T1543.003", Category: "Persistence",
 		Match: func(ev store.Event) bool {
-			return ev.EventID != nil && (*ev.EventID == 7045 || *ev.EventID == 4697) &&
-				containsAny(rawStr(ev), `\temp\`, `\appdata\`, `\users\public\`, "cmd.exe /c", "powershell", `\programdata\`)
+			if ev.EventID == nil || (*ev.EventID != 7045 && *ev.EventID != 4697) {
+				return false
+			}
+			// rawStr is JSON-escaped (\\ for each backslash), so path patterns
+			// would never match it; read the decoded fields instead.
+			d := sysmonData(ev)
+			r := strings.ToLower(d["ImagePath"] + " " + d["ServiceFileName"] + " " + d["ServiceName"])
+			if ev.ImagePath != nil {
+				r += " " + strings.ToLower(*ev.ImagePath)
+			}
+			// ObsidianWatch's own service and the Sysmon service it installs.
+			if containsAny(r, "obsidianwatch", `\sysmon64.exe`, `\sysmon.exe`) {
+				return false
+			}
+			return containsAny(r, `\temp\`, `\appdata\`, `\users\public\`, "cmd.exe /c", "powershell", `\programdata\`)
 		},
 	},
 	{

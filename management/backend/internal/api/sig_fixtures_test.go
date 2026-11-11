@@ -6,6 +6,7 @@ package api
 // production. Add a fixture whenever a rule is added or changed.
 
 import (
+	"encoding/json"
 	"testing"
 
 	"obsidianwatch/management/internal/store"
@@ -58,6 +59,24 @@ func fxLogonMsg(msg string) store.Event {
 	return store.Event{EventType: "logon", CommandLine: &m}
 }
 
+func fxRegData(key, data string) store.Event {
+	e := fxReg(key)
+	d := data
+	e.RegValue = &d
+	return e
+}
+
+func fxSysmonAccess(src, target, access string) store.Event {
+	id := uint32(10)
+	raw := `{"event_data":{"SourceImage":` + jsonStr(src) + `,"TargetImage":` + jsonStr(target) + `,"GrantedAccess":"` + access + `"}}`
+	return store.Event{EventType: "process", EventID: &id, Raw: []byte(raw)}
+}
+
+func jsonStr(s string) string {
+	b, _ := json.Marshal(s)
+	return string(b)
+}
+
 func fxFind(id string) (ThreatSig, bool) {
 	for _, set := range allSignatureSets() {
 		for _, s := range set {
@@ -92,6 +111,7 @@ var sigFixtures = []sigFixture{
 	{"W-T1055", fxProc("procdump.exe", "procdump -ma 624 out.dmp"), fxProc("notepad.exe", "notepad a.txt")},
 	{"W-T1134", fxProc("x.exe", "x.exe getsystem"), fxProc("notepad.exe", "notepad a.txt")},
 	{"W-T1003.001", fxProc("procdump.exe", "procdump -ma lsass.exe out.dmp"), fxProc("notepad.exe", "notepad a.txt")},
+	{"W-T1003.001", fxSysmonAccess(`C:\Users\a\Downloads\x.exe`, `C:\Windows\System32\lsass.exe`, "0x1fffff"), fxSysmonAccess(`C:\ProgramData\Microsoft\Windows Defender\Platform\4.18\MsMpEng.exe`, `C:\Windows\System32\lsass.exe`, "0x1fffff")},
 	{"W-T1003.002", fxProc("reg.exe", `reg save hklm\sam sam.hiv`), fxProc("reg.exe", `reg query hkcu\software\x`)},
 	{"W-T1110", fxLogon(4625), fxLogon(4624)},
 }

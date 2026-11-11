@@ -310,6 +310,7 @@ func New(cfg *config.Config, db *store.DB, backendDB *store.DB, logger *slog.Log
 }
 
 func (s *Server) Start(ctx context.Context) error {
+	refreshAIModels(ctx, s.db)
 	engine := NewAlertEngine(s.db, s.mailer, s.logger)
 	go engine.Run(ctx)
 	detection := NewDetectionEngine(s.db, s.mailer, s.logger)
