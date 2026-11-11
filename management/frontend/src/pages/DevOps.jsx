@@ -7,6 +7,7 @@ import { GitBranch, GitCommit, Code, Bell, Activity, Search,
 import { formatDistanceToNow } from 'date-fns'
 import api, { runScan } from '../api/client'
 import AlertPanel from '../components/AlertPanel'
+import { EventPanel, devopsFields } from './Events.jsx'
 
 // ── Provider config ───────────────────────────────────────────────────────────
 const PROVIDERS = {
@@ -352,6 +353,7 @@ function ConnectorDetail({ conn, onSync, onDisconnect, syncing }) {
   const [alerts, setAlerts]     = useState([])
   const [selectedAlertId, setSelectedAlertId] = useState(null)
   const [events, setEvents]     = useState([])
+  const [selectedEvent, setSelectedEvent] = useState(null)
   const [selectedCommit, setSelectedCommit] = useState(null)
   const [loading, setLoading]   = useState(false)
   const [scanResult, setScanResult] = useState(null)
@@ -514,6 +516,7 @@ function ConnectorDetail({ conn, onSync, onDisconnect, syncing }) {
   return (
     <>
     <div className="flex flex-col h-full">
+      {selectedEvent && <EventPanel event={selectedEvent} onClose={() => setSelectedEvent(null)} />}
       <div className="flex-shrink-0 px-6 py-4 border-b border-siem-border bg-siem-surface">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -612,7 +615,7 @@ function ConnectorDetail({ conn, onSync, onDisconnect, syncing }) {
             )}
             {(search ? events.filter(e => JSON.stringify(e).toLowerCase().includes(search.toLowerCase())) : events)
               .map(ev => (
-                <div key={ev.id} className="px-4 py-3 hover:bg-siem-surface/50">
+                <div key={ev.id} onClick={() => setSelectedEvent(ev)} className="px-4 py-3 hover:bg-siem-surface/50 cursor-pointer">
                   <div className="flex items-center justify-between gap-3">
                     <div className="flex items-center gap-2 min-w-0">
                       <span className={`text-[10px] shrink-0 ${SEVERITY_COLORS[ev.severity] || 'text-siem-muted'}`}>
@@ -620,6 +623,7 @@ function ConnectorDetail({ conn, onSync, onDisconnect, syncing }) {
                       </span>
                       <span className="font-mono text-[10px] text-siem-muted shrink-0">{ev.event_type}</span>
                       {ev.user_name && <span className="text-xs text-siem-text truncate">{ev.user_name}</span>}
+                      {(() => { const f = Object.fromEntries(devopsFields(ev).filter(([, v]) => v)); return (f.Repo || f.Message) ? <span className="text-[11px] text-siem-muted truncate">{[f.Repo, f.Message && String(f.Message).split('\n')[0]].filter(Boolean).join(' — ')}</span> : null })()}
                     </div>
                     <span className="text-[10px] text-siem-muted shrink-0">
                       {ev.time ? formatDistanceToNow(new Date(ev.time), { addSuffix: true }) : ''}
