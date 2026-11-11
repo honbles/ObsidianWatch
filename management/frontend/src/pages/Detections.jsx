@@ -113,6 +113,15 @@ function SourceCard({ source, onUpdate, onSync }) {
     setSyncing(true)
     try { await onSync(source.name) } finally { setTimeout(() => setSyncing(false), 2000) }
   }
+  const [pinPrefix, setPinPrefix] = useState('')
+  const [pinMsg, setPinMsg] = useState('')
+  const pinSeen = async () => {
+    setPinMsg('')
+    try {
+      await api.post('/api/v1/threat-intel-sources/sigma/pin-seen', { prefix: pinPrefix })
+      setPinMsg('Pinned. Press Sync now.'); setPinPrefix('')
+    } catch (e) { setPinMsg(e?.response?.data?.error || 'Could not pin') }
+  }
   const lastSync = source.last_sync ? new Date(source.last_sync).toLocaleString() : null
 
   return (
@@ -143,6 +152,18 @@ function SourceCard({ source, onUpdate, onSync }) {
         {lastSync && <span className="text-siem-muted">{lastSync}</span>}
         {source.last_error && <span className="text-red-400 truncate max-w-xs" title={source.last_error}>{source.last_error}</span>}
       </div>
+      {source.name === 'sigma' && source.last_error && /integrity check failed/.test(source.last_error) && (
+        <div className="text-xs space-y-1.5 border border-siem-border rounded-lg p-2">
+          <div className="text-siem-muted">Open the release page, find sigma_core.zip, and type the first 8 characters of its sha256. If they match what the server downloaded, it is pinned for you.</div>
+          <div className="flex gap-2">
+            <input value={pinPrefix} onChange={e => setPinPrefix(e.target.value)} placeholder="first 8 characters, e.g. 45ccbd62"
+              className="flex-1 bg-siem-bg border border-siem-border rounded px-3 py-1.5 text-xs text-siem-text focus:outline-none focus:border-siem-accent" />
+            <button onClick={pinSeen} disabled={pinPrefix.trim().length < 8}
+              className="px-3 py-1.5 bg-siem-accent text-white rounded text-xs disabled:opacity-40">Confirm &amp; pin</button>
+          </div>
+          {pinMsg && <div className="text-siem-muted">{pinMsg}</div>}
+        </div>
+      )}
       {meta.needsKey && source.enabled && (
         <div>
           {source.has_api_key && !showKey ? (

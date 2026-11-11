@@ -16,6 +16,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"obsidianwatch/management/internal/store"
@@ -371,6 +372,21 @@ var (
 	sigmaSHARe     = regexp.MustCompile(`^[0-9a-f]{64}$`)
 )
 
+// The hash of the last sigma_core.zip that failed verification, so an admin
+// can confirm it (by its first 8 characters, as shown on the GitHub release
+// page) and pin it without retyping 64 characters.
+var (
+	sigmaSeenMu  sync.Mutex
+	sigmaSeenVer string
+	sigmaSeenSHA string
+)
+
+func recordSigmaSeen(version, sha string) {
+	sigmaSeenMu.Lock()
+	sigmaSeenVer, sigmaSeenSHA = version, sha
+	sigmaSeenMu.Unlock()
+}
+
 func (e *ThreatIntelEngine) syncSigma(ctx context.Context) (int, error) {
 	version, _ := e.db.GetSetting(ctx, "ti.sigma_pinned_version")
 	expectedSHA, _ := e.db.GetSetting(ctx, "ti.sigma_pinned_sha256")
@@ -406,6 +422,7 @@ func (e *ThreatIntelEngine) syncSigma(ctx context.Context) (int, error) {
 	sum := sha256.Sum256(data)
 	gotSHA := hex.EncodeToString(sum[:])
 	if gotSHA != expectedSHA {
+		recordSigmaSeen(version, gotSHA)
 		return 0, fmt.Errorf("Sigma integrity check failed: downloaded %s but pinned ti.sigma_pinned_sha256 is %s — refusing to import unverified rules", gotSHA, expectedSHA)
 	}
 
