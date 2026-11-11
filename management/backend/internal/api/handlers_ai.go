@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"sort"
 	"strings"
 	"time"
 
@@ -738,6 +739,7 @@ func buildChatSystemPrompt(req AIChatRequest) string {
 	return fmt.Sprintf(`You are an expert cybersecurity analyst assistant helping investigate a SIEM alert.
 Answer questions concisely and precisely. Be direct — this is a live investigation.
 If you are unsure, say so. Never invent indicators or IOCs.
+Reply in plain conversational text (short paragraphs or a short bullet list). Do NOT reply with JSON or a code block.
 
 === ALERT CONTEXT ===
 Title: %s | Severity: %s | Host: %s
@@ -824,7 +826,7 @@ func handleAIChat(cfg *config.Config, db *store.DB) http.HandlerFunc {
 				writeJSON(w, 500, map[string]string{"error": "no response from Groq"})
 				return
 			}
-			writeJSON(w, 200, map[string]string{"answer": groqResp.Choices[0].Message.Content})
+			writeJSON(w, 200, map[string]string{"answer": humanizeAIAnswer(groqResp.Choices[0].Message.Content)})
 			return
 
 		} else if anthropicKey != "" {
@@ -878,4 +880,72 @@ func handleAIChat(cfg *config.Config, db *store.DB) http.HandlerFunc {
 		// No AI key configured
 		writeJSON(w, 503, map[string]string{"error": "No AI provider configured. Add a Groq or Anthropic API key in Settings → AI."})
 	}
+}
+
+// humanizeAIAnswer turns a reply that is a bare JSON object (models sometimes
+// answer in the format of the analysis prompt) into readable text. Anything
+// that is not a JSON object is returned unchanged.
+func humanizeAIAnswer(s string) string {
+	t := strings.TrimSpace(s)
+	t = strings.TrimPrefix(t, "```json")
+	t = strings.TrimPrefix(t, "```")
+	t = strings.TrimSpace(strings.TrimSuffix(t, "```"))
+	if !strings.HasPrefix(t, "{") {
+		return s
+	}
+	var m map[string]interface{}
+	if json.Unmarshal([]byte(t), &m) != nil {
+		return s
+	}
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	var sb strings.Builder
+	var walk func(prefix string, v interface{}, depth int)
+	walk = func(prefix string, v interface{}, depth int) {
+		switch x := v.(type) {
+		case map[string]interface{}:
+			ks := make([]string, 0, len(x))
+			for k := range x {
+				ks = append(ks, k)
+			}
+			sort.Strings(ks)
+			for _, k := range ks {
+				walk(prefix+strings.ReplaceAll(k, "_", " ")+": ", x[k], depth+1)
+			}
+		case []interface{}:
+			sb.WriteString(prefix + "\n")
+			for _, it := range x {
+				sb.WriteString("  • ")
+				if mm, ok := it.(map[string]interface{}); ok {
+					parts := []string{}
+					for _, k := range humanKeys(mm) {
+						parts = append(parts, fmt.Sprint(mm[k]))
+					}
+					sb.WriteString(strings.Join(parts, " — "))
+				} else {
+					sb.WriteString(fmt.Sprint(it))
+				}
+				sb.WriteString("\n")
+			}
+		case nil:
+		default:
+			sb.WriteString(prefix + fmt.Sprint(x) + "\n")
+		}
+	}
+	for _, k := range keys {
+		walk(strings.ReplaceAll(k, "_", " ")+": ", m[k], 0)
+	}
+	return strings.TrimSpace(sb.String())
+}
+
+func humanKeys(m map[string]interface{}) []string {
+	ks := make([]string, 0, len(m))
+	for k := range m {
+		ks = append(ks, k)
+	}
+	sort.Strings(ks)
+	return ks
 }
