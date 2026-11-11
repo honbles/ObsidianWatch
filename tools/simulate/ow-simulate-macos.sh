@@ -77,6 +77,7 @@ N 'M-T1560' '[T1560.001] Archive of Sensitive Directory' '"[T1560.001] Archive o
 T 'M-T1562.001' '[T1562.001] SIP Tamper Attempt' '"[T1562.001] SIP Tamper Attempt"' 'csrutil' 'disable'
 T 'M-T1574.006' '[T1574.006] DYLD_INSERT_LIBRARIES Injection' '"[T1574.006] DYLD_INSERT_LIBRARIES Injection"' 'DYLD_INSERT_LIBRARIES=/tmp/x.dylib' 'ls'
 T 'M-T1592' '[T1592] Packet Capture Tool' '"[T1592] Packet Capture Tool"' 'tcpdump' '-i' 'en0'
+S 'M-POSTURE-001: needs a real config.posture_regression event (log, file or system change)'
 S 'M-T1053.003: needs a real file event (log, file or system change)'
 S 'M-T1110.001: needs a real logon event (log, file or system change)'
 S 'M-T1543.004: needs a real file event (log, file or system change)'

@@ -134,7 +134,7 @@ func TestSignatureFixtures(t *testing.T) {
 
 // minFixtureCoverage is a ratchet: raise it as fixtures are added; it must
 // never go down. Rules without a fixture are listed in the test log.
-const minFixtureCoverage = 115
+const minFixtureCoverage = 134
 
 func TestSignatureFixtureCoverage(t *testing.T) {
 	have := map[string]bool{}
