@@ -509,11 +509,16 @@ func IsAdmin() bool {
 // binary (W-02): it must be Valid and signed by Microsoft. A zip from a
 // poisoned mirror/proxy would otherwise run as SYSTEM.
 func verifySysmonSignature(exePath string) error {
-	ps := `$s = Get-AuthenticodeSignature -LiteralPath $args[0]; ` +
+	// The path is passed through the environment: with -Command, trailing
+	// arguments are NOT exposed as $args, so the earlier $args[0] version was
+	// always null and every install was rejected.
+	ps := `$p = $env:OW_SYSMON_PATH; ` +
+		`if (-not $p) { Write-Output 'STATUS:NoPath'; exit 3 }; ` +
+		`$s = Get-AuthenticodeSignature -LiteralPath $p; ` +
 		`if ($s.Status -ne 'Valid') { Write-Output ('STATUS:' + $s.Status); exit 2 }; ` +
 		`Write-Output ('SUBJECT:' + $s.SignerCertificate.Subject)`
-	cmd := exec.Command("powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
-		"-Command", ps, exePath)
+	cmd := exec.Command("powershell.exe", "-NoProfile", "-NonInteractive", "-Command", ps)
+	cmd.Env = append(os.Environ(), "OW_SYSMON_PATH="+exePath)
 	out, err := cmd.CombinedOutput()
 	text := strings.TrimSpace(string(out))
 	if err != nil {
