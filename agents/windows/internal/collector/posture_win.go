@@ -65,7 +65,7 @@ func collectPosture() []PostureCheck {
 		b = append(b, byte(c), byte(c>>8))
 	}
 	cmd := exec.CommandContext(ctx, "powershell.exe", "-NoProfile", "-NonInteractive",
-		"-ExecutionPolicy", "Bypass", "-EncodedCommand", base64.StdEncoding.EncodeToString(b))
+		"-EncodedCommand", base64.StdEncoding.EncodeToString(b))
 	out, err := cmd.Output()
 	if err != nil || len(out) == 0 {
 		return nil

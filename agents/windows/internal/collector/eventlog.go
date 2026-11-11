@@ -587,8 +587,11 @@ func classifyAndEnrichEvent(ev *schema.Event, data map[string]string) {
 		ev.Severity = schema.SeverityLow
 		// Elevate suspicious process names / command lines
 		cmdLower := strings.ToLower(ev.CommandLine + ev.ProcessName)
-		if containsAnyStr(cmdLower, "mimikatz", "meterpreter", "cobalt", "shellcode",
-			"invoke-expression", "downloadstring", "-enc", "bypass", "webclient") {
+		// Only unambiguous tokens raise Critical; "-enc" also matches
+		// -encoding, "bypass" matches -ExecutionPolicy Bypass in admin
+		// scripts, and "webclient" matches many legitimate scripts.
+		if containsAnyStr(cmdLower, "mimikatz", "meterpreter", "cobaltstrike", "shellcode",
+			"invoke-expression", "downloadstring", " -enc ", "-encodedcommand") {
 			ev.Severity = schema.SeverityCritical
 		} else if containsAnyStr(cmdLower, "powershell", "wscript", "cscript", "mshta",
 			"regsvr32", "rundll32", "certutil", "bitsadmin", "wmic", "psexec") {

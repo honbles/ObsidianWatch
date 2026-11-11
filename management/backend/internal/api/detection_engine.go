@@ -497,7 +497,7 @@ var endpointAgentSignatures = []ThreatSig{
 	{
 		ID: "AGENT-TAMPER-001", Name: "ObsidianWatch Agent Stopping (Possible Tamper)",
 		Description: "The agent reported a shutdown/stop request before exiting. Expected during maintenance or upgrades; otherwise indicates an attempt to blind the host. Correlate with a following silent-agent alert.",
-		Severity:    4, MITRE: "T1562.001", Category: "Defence Evasion",
+		Severity:    3, MITRE: "T1562.001", Category: "Defence Evasion",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "agent.tamper"
 		},
@@ -694,7 +694,7 @@ var windowsSignatures = []ThreatSig{
 		Description: "Attempt to dump LSASS memory — credential harvesting.",
 		Severity:    5, MITRE: "T1003.001", Category: "Credential Access",
 		Match: func(ev store.Event) bool {
-			return containsAny(cl(ev)+fp(ev)+rawStr(ev), "lsass", "procdump", "comsvcs.dll,minidump", "sekurlsa")
+			return lsassDump(ev)
 		},
 	},
 	{
@@ -719,8 +719,10 @@ var windowsSignatures = []ThreatSig{
 		Description: "findstr searching for passwords in files.",
 		Severity:    3, MITRE: "T1552.001", Category: "Credential Access",
 		Match: func(ev store.Event) bool {
+			// Searching for credentials, not merely mentioning the word.
 			return ev.EventType == "process" && containsAny(cl(ev),
-				"findstr /si password", ".kdbx", "unattend.xml", "credential", "vault")
+				"findstr /si password", "findstr /s /i password", "findstr /spin", "dir /s *pass*", "dir /s *cred*",
+				"unattend.xml", "sysprep.xml", "cmdkey /list", "vaultcmd /list", "vaultcmd.exe /list")
 		},
 	},
 	{
@@ -743,8 +745,15 @@ var windowsSignatures = []ThreatSig{
 		Description: "Registry Run key modified — common Windows persistence.",
 		Severity:    4, MITRE: "T1547.001", Category: "Persistence",
 		Match: func(ev store.Event) bool {
-			return ev.EventType == "registry" && containsAny(rk(ev),
-				`\currentversion\run`, `\currentversion\runonce`, `policies\explorer\run`)
+			return runKeySuspicious(ev)
+		},
+	},
+	{
+		ID: "W-T1547.001b", Name: "Run Key Entry Added",
+		Description: "A program was registered to start at logon or boot from a location outside Program Files and the Windows directory. Common for installers and updaters; review if unexpected.",
+		Severity:    2, MITRE: "T1547.001", Category: "Persistence",
+		Match: func(ev store.Event) bool {
+			return runKeyUntrusted(ev)
 		},
 	},
 	{

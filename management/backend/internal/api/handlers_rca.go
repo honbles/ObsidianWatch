@@ -164,9 +164,9 @@ func handleRCAAnalysis(cfg *config.Config, db *store.DB, backendDB *store.DB) ht
 			writeJSON(w, 503, map[string]string{"error": "No AI provider configured."})
 			return
 		}
-		apiKey, model := groqKey, "llama-3.3-70b-versatile"
+		apiKey, model := groqKey, groqModelName()
 		if apiKey == "" {
-			apiKey, model = anthropicKey, "claude-sonnet-4-20250514"
+			apiKey, model = anthropicKey, anthropicModelName()
 		}
 
 		// Parse incident time
