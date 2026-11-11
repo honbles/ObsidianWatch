@@ -18,12 +18,24 @@ var windowsTamperSignatures = []ThreatSig{
 			if ev.EventID == nil || *ev.EventID != 7036 {
 				return false
 			}
-			r := rawStr(ev)
-			if !strings.Contains(r, "stopped") {
+			// Match the service named in the event, not any text in the raw
+			// record: the old substring test matched "sense" and "eventlog"
+			// anywhere, and the Event Log service stops on every shutdown.
+			d := sysmonData(ev)
+			name := strings.ToLower(strings.TrimSpace(d["param1"]))
+			state := strings.ToLower(strings.TrimSpace(d["param2"]))
+			if state == "" {
+				state = strings.ToLower(rawStr(ev))
+			}
+			if !strings.Contains(state, "stopped") {
 				return false
 			}
-			return containsAny(r, "windefend", "windows defender", "sysmon", "mpssvc", "windows firewall",
-				"eventlog", "windows event log", "wscsvc", "sense", "obsidianwatch")
+			if name == "" {
+				name = rawStr(ev)
+			}
+			return containsAny(name, "windefend", "microsoft defender antivirus service", "windows defender antivirus service",
+				"sysmon", "mpssvc", "windows defender firewall", "wscsvc", "security center",
+				"windows defender advanced threat protection", "microsoft defender for endpoint", "obsidianwatch")
 		},
 	},
 	{
@@ -51,8 +63,21 @@ var windowsTamperSignatures = []ThreatSig{
 		Description: "A new service was installed (7045 / 4697) — review binary path for persistence or driver abuse.",
 		Severity:    3, MITRE: "T1543.003", Category: "Persistence",
 		Match: func(ev store.Event) bool {
-			return ev.EventID != nil && (*ev.EventID == 7045 || *ev.EventID == 4697) &&
-				containsAny(rawStr(ev), `\temp\`, `\appdata\`, `\users\public\`, "cmd.exe /c", "powershell", `\programdata\`)
+			if ev.EventID == nil || (*ev.EventID != 7045 && *ev.EventID != 4697) {
+				return false
+			}
+			// rawStr is JSON-escaped (\\ for each backslash), so path patterns
+			// would never match it; read the decoded fields instead.
+			d := sysmonData(ev)
+			r := strings.ToLower(d["ImagePath"] + " " + d["ServiceFileName"] + " " + d["ServiceName"])
+			if ev.ImagePath != nil {
+				r += " " + strings.ToLower(*ev.ImagePath)
+			}
+			// ObsidianWatch's own service and the Sysmon service it installs.
+			if containsAny(r, "obsidianwatch", `\sysmon64.exe`, `\sysmon.exe`) {
+				return false
+			}
+			return containsAny(r, `\temp\`, `\appdata\`, `\users\public\`, "cmd.exe /c", "powershell", `\programdata\`)
 		},
 	},
 	{
