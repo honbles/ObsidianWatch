@@ -67,6 +67,11 @@ func (e *AlertEngine) runCursor(ctx context.Context) {
 			if !matchesRule(ev, rule) {
 				continue
 			}
+			// The catch-all "Critical Event" rule duplicates the specific
+			// signature alert that DevOps and cloud events already raise.
+			if rule.Name == "Critical Event" && (strings.HasPrefix(ev.EventType, "devops.") || strings.HasPrefix(ev.EventType, "cloud.")) {
+				continue
+			}
 			if !thresholdReached(rule, ev.Host, ev.Time) {
 				continue
 			}

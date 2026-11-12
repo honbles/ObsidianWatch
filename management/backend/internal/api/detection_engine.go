@@ -172,9 +172,8 @@ var linuxSignatures = []ThreatSig{
 			// OR shells running from suspicious paths
 			return isShell && (containsAny(cl(ev),
 				"-c curl", "-c wget", "-c python", "-c nc ", "-c ncat",
-				"/dev/shm", "/dev/tcp",
-				"0>&1", ">&2", "/dev/null 2>&1",
-				"http://", "https://") || shInteractiveRe.MatchString(cl(ev)))
+				"/dev/shm", "/dev/tcp", "0>&1") ||
+				shPipeToShellRe.MatchString(cl(ev)) || shInteractiveRe.MatchString(cl(ev)))
 		},
 	},
 	{
@@ -214,18 +213,18 @@ var linuxSignatures = []ThreatSig{
 	{
 		ID: "L-T1105", Name: "curl/wget Suspicious Download",
 		Description: "curl or wget downloading from internet to stdout or temp location — dropper technique.",
-		Severity:    4, MITRE: "T1105", Category: "Execution",
+		Severity:    3, MITRE: "T1105", Category: "Execution",
 		Match: func(ev store.Event) bool {
 			if ev.EventType != "process" {
 				return false
 			}
 			isFetcher := containsAny(proc(ev), "curl", "wget")
-			// Downloading to stdout (-o- or no -o flag with URL) or to /tmp
-			return isFetcher && containsAny(cl(ev),
-				"-o /tmp", "-o /dev/shm", "-O /tmp",
-				"--output /tmp", "--output /dev/shm",
-				"-o-", "--output-",
-				"/tmp/", "/dev/shm/", "/var/tmp/")
+			// A real download (URL present) written to a staging directory or
+			// to stdout for piping — not just any curl that mentions /tmp.
+			return isFetcher && containsAny(cl(ev), "://") && containsAny(cl(ev),
+				"-o /tmp", "-o /dev/shm", "-o /var/tmp", "-O /tmp", "-O /dev/shm",
+				"--output /tmp", "--output /dev/shm", "--output /var/tmp",
+				"-o-", "--output-", "-p /tmp", "--directory-prefix=/tmp", "--directory-prefix=/dev/shm")
 		},
 	},
 
@@ -727,8 +726,8 @@ var windowsSignatures = []ThreatSig{
 	},
 	{
 		ID: "W-T1110", Name: "Failed Logon (EventID 4625)",
-		Description: "Windows failed logon — possible brute force.",
-		Severity:    3, MITRE: "T1110", Category: "Credential Access",
+		Description: "Windows failed logon — one failure is usually a typo; repeated failures indicate brute force.",
+		Severity:    2, MITRE: "T1110", Category: "Credential Access",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "logon" && ev.EventID != nil && *ev.EventID == 4625
 		},
@@ -894,11 +893,11 @@ var windowsSignatures = []ThreatSig{
 	},
 	{
 		ID: "W-T1574.002", Name: "DLL in User-Writable Path",
-		Description: "DLL placed in AppData or Temp — search order hijacking.",
-		Severity:    4, MITRE: "T1574.002", Category: "Defence Evasion",
+		Description: "DLL dropped in Temp, Downloads, Desktop or Public — search order hijacking. (Normal AppData/ProgramData application DLLs are not flagged.)",
+		Severity:    3, MITRE: "T1574.002", Category: "Defence Evasion",
 		Match: func(ev store.Event) bool {
-			return ev.EventType == "file" && containsAny(fp(ev), ".dll") &&
-				containsAny(fp(ev), `\appdata\`, `\temp\`, `\downloads\`, `\desktop\`, `\programdata\`)
+			return ev.EventType == "file" && strings.HasSuffix(fp(ev), ".dll") &&
+				containsAny(fp(ev), `\temp\`, `\downloads\`, `\desktop\`, `\users\public\`)
 		},
 	},
 
@@ -1113,7 +1112,8 @@ var macosSignatures = []ThreatSig{
 				return false
 			}
 			isShell := procIn(ev, "bash", "sh", "zsh", "dash")
-			return isShell && containsAny(cl(ev), "| bash", "|bash", "| sh", "|sh", "/tmp/", "/var/tmp/", "http://", "https://")
+			return isShell && (containsAny(cl(ev), "| bash", "|bash", "| sh", "|sh") || shPipeToShellRe.MatchString(cl(ev)) ||
+				(containsAny(cl(ev), "-c curl", "-c wget") && containsAny(cl(ev), "/tmp/", "/var/tmp/", "/dev/shm/")))
 		},
 	},
 	{
@@ -2065,4 +2065,7 @@ func isOwnAgentProcess(ev store.Event) bool {
 
 // shInteractiveRe matches an interactive bash/sh (reverse-shell staple) without
 // matching "zsh -il" style login shells.
+// shPipeToShellRe: a downloader piped into an interpreter.
+var shPipeToShellRe = regexp.MustCompile(`(curl|wget)[^|;]*\|\s*(sudo\s+)?(ba|z|da)?sh\b`)
+
 var shInteractiveRe = regexp.MustCompile(`(^|[\s/])(bash|sh) -i(\s|$)`)
