@@ -114,6 +114,7 @@ func New(cfg *config.Config, db *store.DB, backendDB *store.DB, logger *slog.Log
 	protected.HandleFunc("GET /api/v1/alerts", handleListAlerts(db))
 	protected.HandleFunc("POST /api/v1/alerts", handleCreateAlert(db, mailer))
 	protected.HandleFunc("GET /api/v1/alerts/{id}", handleGetAlert(db))
+	protected.HandleFunc("GET /api/v1/alerts/{id}/graph", handleAlertGraph(db))
 	protected.HandleFunc("PATCH /api/v1/alerts/{id}/acknowledge", handleAcknowledgeAlert(db))
 	protected.HandleFunc("PATCH /api/v1/alerts/{id}/assign", handleAssignAlert(db))
 	protected.HandleFunc("PATCH /api/v1/alerts/{id}/notes", handleUpdateCaseNotes(db))
