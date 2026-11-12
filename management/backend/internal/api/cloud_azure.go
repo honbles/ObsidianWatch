@@ -23,16 +23,34 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
 	"obsidianwatch/management/internal/store"
 )
 
+// flexInt unmarshals a JSON number or a numeric string.
+type flexInt int
+
+func (f *flexInt) UnmarshalJSON(b []byte) error {
+	s := strings.Trim(strings.TrimSpace(string(b)), `"`)
+	if s == "" || s == "null" {
+		*f = 0
+		return nil
+	}
+	n, err := strconv.Atoi(s)
+	if err != nil {
+		return fmt.Errorf("not a number: %q", s)
+	}
+	*f = flexInt(n)
+	return nil
+}
+
 // azureToken holds an OAuth2 access token with expiry
 type azureToken struct {
 	AccessToken string    `json:"access_token"`
-	ExpiresIn   int       `json:"expires_in"`
+	ExpiresIn   flexInt   `json:"expires_in"` // v1 endpoint returns a string, v2 a number
 	ExpiresAt   time.Time `json:"-"`
 }
 
@@ -73,7 +91,7 @@ func getAzureToken(ctx context.Context, tenantID, clientID, clientSecret, resour
 	if err := json.Unmarshal(body, &token); err != nil {
 		return nil, fmt.Errorf("parse token: %w", err)
 	}
-	token.ExpiresAt = time.Now().Add(time.Duration(token.ExpiresIn-60) * time.Second)
+	token.ExpiresAt = time.Now().Add(time.Duration(int(token.ExpiresIn)-60) * time.Second)
 	return &token, nil
 }
 
