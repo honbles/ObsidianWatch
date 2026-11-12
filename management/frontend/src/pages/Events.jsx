@@ -6,6 +6,7 @@ import { format, formatDistanceToNow } from 'date-fns'
 import api from '../api/client'
 import { useLiveFeed } from '../api/useLiveFeed'
 import { SeverityBadge } from '../components/SeverityBadge'
+import { IPLink } from '../components/IPLookup'
 
 // ── Event type metadata ───────────────────────────────────────────────────────
 
@@ -511,7 +512,7 @@ export function EventPanel({ event, onClose }) {
                 {fields.map(([label, value], i) => (
                   <div key={label} className={`flex gap-3 px-4 py-2.5 text-sm ${i % 2 === 0 ? '' : 'bg-white/[0.02]'}`}>
                     <span className="text-siem-muted w-32 shrink-0">{label}</span>
-                    <span className="text-siem-text break-all font-mono text-xs">{String(value)}</span>
+                    <span className="text-siem-text break-all font-mono text-xs">{(label === 'Src IP' || label === 'Dst IP') ? <IPLink ip={String(value)} /> : String(value)}</span>
                   </div>
                 ))}
               </div>

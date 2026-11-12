@@ -1,3 +1,4 @@
+import { IPLink } from './IPLookup'
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { Bell, CheckCircle, XCircle, RefreshCw, X,
@@ -671,7 +672,7 @@ function AlertPanel({ alertId, users, onClose, onStatusChange, inline = false })
                     ].filter(([, v]) => v).map(([k, v], i) => (
                       <div key={k} className={`flex gap-3 px-4 py-2 text-xs ${i % 2 ? 'bg-white/[0.01]' : ''}`}>
                         <span className="text-siem-muted w-24 shrink-0">{k}</span>
-                        <span className="text-siem-text font-mono text-[10px] break-all">{String(v)}</span>
+                        <span className="text-siem-text font-mono text-[10px] break-all">{(k === 'Src IP' || k === 'Dst IP') ? <IPLink ip={String(v)} /> : String(v)}</span>
                       </div>
                     ))}
                     {ev.raw && (
