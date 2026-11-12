@@ -430,6 +430,9 @@ func (f *FIMCollector) emit(path, action string, pid int, procName string) {
 		"file_hash":    hash,
 		"source":       source,
 	}
+	if g := linuxProcGUID(pid); g != "" && pid > 0 {
+		rawData["process_guid"] = g
+	}
 	if wr.Exe != "" {
 		rawData["exe"] = wr.Exe
 	}

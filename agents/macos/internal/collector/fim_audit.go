@@ -261,14 +261,18 @@ func (a *AuditFIMCollector) emit(path, action string, pid int, procName string) 
 		hash = hashFile(path)
 	}
 
-	raw, _ := json.Marshal(map[string]interface{}{
+	fimDetail := map[string]interface{}{
 		"path":         path,
 		"action":       action,
 		"pid":          pid,
 		"process_name": procName,
 		"hash":         hash,
 		"source":       "auditpipe",
-	})
+	}
+	if g := macProcGUID(int32(pid)); g != "" {
+		fimDetail["process_guid"] = g
+	}
+	raw, _ := json.Marshal(fimDetail)
 
 	select {
 	case a.out <- schema.Event{

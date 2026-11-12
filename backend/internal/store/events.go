@@ -17,7 +17,7 @@ func (db *DB) InsertEvents(ctx context.Context, events []schema.Event) error {
 		return nil
 	}
 
-	const cols = 29 // number of columns in the INSERT
+	const cols = 31 // number of columns in the INSERT
 	placeholders := make([]string, 0, len(events))
 	args := make([]interface{}, 0, len(events)*cols)
 
@@ -64,6 +64,8 @@ func (db *DB) InsertEvents(ctx context.Context, events []schema.Event) error {
 			nullStr(ev.FileHash),
 			nullUint32(ev.EventID),
 			nullStr(ev.Channel),
+			nullStr(ev.ProcessGUID),
+			nullStr(ev.ParentProcessGUID),
 		)
 	}
 
@@ -75,7 +77,8 @@ func (db *DB) InsertEvents(ctx context.Context, events []schema.Event) error {
 			src_ip, src_port, dst_ip, dst_port, proto,
 			reg_key, reg_value, reg_data,
 			file_path, file_hash,
-			event_id, channel
+			event_id, channel,
+			process_guid, parent_process_guid
 		) VALUES %s
 		ON CONFLICT (id, time) DO NOTHING`,
 		strings.Join(placeholders, ","),
@@ -102,8 +105,9 @@ func (db *DB) InsertEvents(ctx context.Context, events []schema.Event) error {
 				src_ip, src_port, dst_ip, dst_port, proto,
 				reg_key, reg_value, reg_data,
 				file_path, file_hash,
-				event_id, channel
-			) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29
+				event_id, channel,
+				process_guid, parent_process_guid
+			) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31
 			) ON CONFLICT (id, time) DO NOTHING`
 			singleArgs := []interface{}{
 				ev.ID, ev.Time.UTC(), ev.AgentID, ev.Host, ev.OS,
@@ -116,6 +120,7 @@ func (db *DB) InsertEvents(ctx context.Context, events []schema.Event) error {
 				nullStr(ev.RegKey), nullStr(ev.RegValue), nullStr(ev.RegData),
 				nullStr(ev.FilePath), nullStr(ev.FileHash),
 				nullUint32(ev.EventID), nullStr(ev.Channel),
+				nullStr(ev.ProcessGUID), nullStr(ev.ParentProcessGUID),
 			}
 			if _, sErr := db.ExecContext(ctx, singleQuery, singleArgs...); sErr != nil {
 				fmt.Printf("store: single insert failed event_type=%s host=%s raw_bytes=%d: %v\n",
@@ -199,7 +204,8 @@ func (db *DB) QueryEvents(ctx context.Context, f QueryFilter) ([]schema.Event, e
 		       src_ip, src_port, dst_ip, dst_port, proto,
 		       reg_key, reg_value, reg_data,
 		       file_path, file_hash,
-		       event_id, channel, record_id
+		       event_id, channel, record_id,
+		       COALESCE(process_guid,''), COALESCE(parent_process_guid,'')
 		FROM events
 		WHERE %s
 		ORDER BY time DESC
@@ -237,6 +243,7 @@ func (db *DB) QueryEvents(ctx context.Context, f QueryFilter) ([]schema.Event, e
 			&ev.RegKey, &ev.RegValue, &ev.RegData,
 			&ev.FilePath, &ev.FileHash,
 			&eventID, &ev.Channel, &recordID,
+			&ev.ProcessGUID, &ev.ParentProcessGUID,
 		); err != nil {
 			return nil, fmt.Errorf("store: scan event: %w", err)
 		}
