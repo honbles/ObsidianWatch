@@ -427,6 +427,98 @@ function Scheduled() {
   )
 }
 
+// Plain-language help shown above each tab: what it does and how to use it.
+const TAB_HELP = {
+  inventory: {
+    what: 'Searches the software and services installed on every host, using each host\'s latest vulnerability scan.',
+    how: [
+      'Type a package or service name (e.g. openssl, nginx, log4j) and optionally a version prefix (e.g. 1.1.1), then press Search.',
+      'Use it during a CVE response to answer "which of my machines run this?" in one step.',
+      'Results are only as fresh as each host\'s last scan (the agent scans at start and then every 5 days). Hosts that never scanned will not appear.',
+    ],
+  },
+  incidents: {
+    what: 'Groups open alerts into incidents: alerts on the same host that occur within 2 hours of each other become one incident with a risk score (0–100).',
+    how: [
+      'Work from the top: the highest risk score is listed first, so you triage a few incidents instead of a long alert list.',
+      'Each row shows the host, alert count, highest severity, time span and top alert titles. Use the status dropdown on a row (open, investigating, resolved, false positive) and set an owner.',
+      'The list shows active incidents by default; use the filter at the top to see resolved, false-positive or all incidents.',
+      'It groups by time, not by attack chain, so check that grouped alerts are actually related.',
+    ],
+  },
+  findings: {
+    what: 'One list of code-security findings from your connected DevOps accounts: static analysis (SAST), the code scan and repository posture checks, with duplicates merged.',
+    how: [
+      'Set a minimum severity or pick a scanner to narrow the list.',
+      'Each finding shows the repo, file and line plus a suggested fix. Fix the highest severity first.',
+      'Findings appear after you run SAST / Code Scan on a DevOps connection (DevOps → your connection).',
+    ],
+  },
+  sources: {
+    what: 'Shows how much data each agent collector is sending (events in the last hour and 24 hours) and flags streams that have gone quiet.',
+    how: [
+      'Look for rows marked silent: a collector that normally sends events but has stopped is a blind spot.',
+      'Compare hosts: if one host sends process events but no DNS or file events, a collector is probably not running.',
+      'It only sees the last 24 hours, so a stream silent for longer than that disappears from the list instead of being flagged.',
+    ],
+  },
+  coverage: {
+    what: 'Maps your enabled detection rules to MITRE ATT&CK techniques for each platform, and lists known telemetry gaps.',
+    how: [
+      'Use it to see which techniques have at least one rule and which have none.',
+      'Read the "data gaps" notes: a technique can show as covered while the data it needs is not collected on that platform.',
+      'A covered technique means a rule exists, not that it was tested or has fired.',
+    ],
+  },
+  prev: {
+    what: 'Shows how many hosts in your fleet have run a given file hash, program path or process name, and when it was first seen.',
+    how: [
+      'Enter a hash, path or process name and press Search.',
+      'A binary seen on only one host is rare and worth a closer look; one seen on most hosts is usually normal software.',
+      'It counts only what the agents have reported, so on a small fleet "rare" means little.',
+    ],
+  },
+  identity: {
+    what: 'Follows one person\'s activity across endpoints, cloud and DevOps in a single timeline.',
+    how: [
+      'Enter a username and a time range, then search. Domain and email parts are ignored (DOMAIN\\alice and alice@corp match).',
+      'If someone uses different names on different systems (laptop login, cloud email, GitHub handle), add an alias so they join up.',
+      'Use it when an account may be compromised, to see where else it was active.',
+      'Generic names like admin or root merge everyone using that name.',
+    ],
+  },
+  sched: {
+    what: 'Runs a saved Events search on a schedule and raises an alert when it matches at least a set number of events.',
+    how: [
+      'First save a search on the Events page. It then appears here.',
+      'Turn the schedule on and set how often it runs, how far back it looks, the match threshold and the alert severity.',
+      'Only the person who saved the search can schedule it. A search that keeps matching re-alerts once per run interval, not every minute.',
+    ],
+  },
+}
+
+function TabHelp({ id }) {
+  const h = TAB_HELP[id]
+  const key = 'insights.help.' + id
+  const [open, setOpen] = useState(() => { try { return localStorage.getItem(key) !== 'closed' } catch { return true } })
+  if (!h) return null
+  const toggle = () => { const n = !open; setOpen(n); try { localStorage.setItem(key, n ? 'open' : 'closed') } catch { /* ignore */ } }
+  return (
+    <div className={`${card} p-4 text-xs`}>
+      <button onClick={toggle} className="flex items-center justify-between w-full text-left">
+        <span className="font-semibold text-siem-text">What this does and how to use it</span>
+        <span className="text-siem-muted">{open ? 'Hide' : 'Show'}</span>
+      </button>
+      {open && (
+        <div className="mt-2 space-y-2 text-siem-muted">
+          <p>{h.what}</p>
+          <ul className="list-disc pl-5 space-y-1">{h.how.map((x, i) => <li key={i}>{x}</li>)}</ul>
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function Insights() {
   const [tab, setTab] = useState('incidents')
   return (
@@ -440,6 +532,7 @@ export default function Insights() {
           </button>
         ))}
       </div>
+      <TabHelp id={tab} />
       {tab === 'inventory' && <Inventory />}
       {tab === 'incidents' && <Incidents />}
       {tab === 'findings' && <CodeFindings />}

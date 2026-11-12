@@ -1,3 +1,4 @@
+import { IPLink } from '../../components/IPLookup'
 import { useEffect, useState, useRef, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Shield, Check, ChevronRight, X, Unlock, AlertTriangle, RefreshCw, Search, Activity, GitBranch, Cpu, Zap, User, Tag, FolderOpen, Bookmark, Maximize2 } from 'lucide-react'
@@ -66,7 +67,7 @@ export function EventPanel({ event, onClose }) {
             ))}
           </div>
           {ev.command_line&&<div><div className="text-siem-muted mb-1">Command line</div><div className="bg-siem-bg border border-siem-border rounded p-2 font-mono text-[10px] text-emerald-300 break-all">{ev.command_line}</div></div>}
-          {ev.dst_ip&&<div><div className="text-siem-muted mb-0.5">Destination</div><div className="font-mono text-blue-400">{ev.dst_ip}{ev.dst_port?`:${ev.dst_port}`:''}</div></div>}
+          {ev.dst_ip&&<div><div className="text-siem-muted mb-0.5">Destination</div><div className="font-mono text-blue-400"><IPLink ip={ev.dst_ip}/>{ev.dst_port?`:${ev.dst_port}`:''}</div></div>}
           {ev.file_path&&<div><div className="text-siem-muted mb-0.5">File path</div><div className="font-mono text-yellow-400 break-all">{ev.file_path}</div></div>}
           {ev.reg_key&&<div><div className="text-siem-muted mb-0.5">Registry key</div><div className="font-mono text-purple-400 break-all">{ev.reg_key}</div></div>}
           {raw&&Object.keys(raw).length>0&&<div><div className="text-siem-muted mb-1">Raw data</div><pre className="bg-siem-bg border border-siem-border rounded p-2 text-[9px] text-siem-muted overflow-x-auto whitespace-pre-wrap">{JSON.stringify(raw,null,2)}</pre></div>}
