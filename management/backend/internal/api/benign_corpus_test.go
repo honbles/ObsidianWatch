@@ -110,6 +110,12 @@ func benignEvents() []benignEvent {
 		{"systemctl status", p("systemctl", `systemctl status sshd`)},
 		{"ghost cms", p("ghost-cms", `ghost-cms start`)},
 		{"normal file edit", fxFile(`/var/www/html/index.html`)},
+		{"cron-style sh", p("sh", `/bin/sh -c cd /srv/app && ./run.sh >/dev/null 2>&1`)},
+		{"sh -c health curl", p("bash", `bash -c "curl -fsS https://example.com/health >/dev/null"`)},
+		{"curl post to api reading tmp", p("curl", `curl -fsS -X POST https://api.example.com/v1/x --data-binary @/tmp/payload.json`)},
+		{"wget to home", p("wget", `wget https://example.com/file.tar.gz -O /home/deploy/file.tar.gz`)},
+		{"dll in appdata", fxFile(`C:\Users\a\AppData\Local\Microsoft\Teams\current\app.dll`)},
+		{"dll in programdata", fxFile(`C:\ProgramData\Microsoft\Windows Defender\Platform\4.18\x.dll`)},
 		{"app log write", fxFile(`/var/log/myapp/app.log`)},
 		{"ssh login ok", fxLogonMsg(`Accepted publickey for deploy from 10.0.0.5 port 51234 ssh2`)},
 
@@ -134,11 +140,13 @@ var corpusSets = []string{"linux", "windows", "windowsTamper", "macos", "endpoin
 // (activity that is benign here but legitimately worth a low-severity alert).
 // The value is the reason. Keep this list short.
 var knownBenignHits = map[string]string{
-	"L-ACCT-001|usermod shell":      "account-change audit rule (Low): changing a login shell is worth a record",
-	"M-T1560|7zip":                  "corpus replays every OS rule on every event; the macOS rule is not applied to Windows hosts",
-	"W-T1547.001b|teams run key":    "Low-severity audit: Run key outside Program Files is recorded, not escalated",
-	"W-T1547.001b|onedrive run key": "Low-severity audit: Run key outside Program Files is recorded, not escalated",
-	"W-T1547.001b|slack run key":    "Low-severity audit: Run key outside Program Files is recorded, not escalated",
+	"L-T1048|curl post to api reading tmp": "uploading a file with curl is recorded (Medium) — worth a look when unexpected",
+	"M-T1048|curl post to api reading tmp": "uploading a file with curl is recorded (Medium) — worth a look when unexpected",
+	"L-ACCT-001|usermod shell":             "account-change audit rule (Low): changing a login shell is worth a record",
+	"M-T1560|7zip":                         "corpus replays every OS rule on every event; the macOS rule is not applied to Windows hosts",
+	"W-T1547.001b|teams run key":           "Low-severity audit: Run key outside Program Files is recorded, not escalated",
+	"W-T1547.001b|onedrive run key":        "Low-severity audit: Run key outside Program Files is recorded, not escalated",
+	"W-T1547.001b|slack run key":           "Low-severity audit: Run key outside Program Files is recorded, not escalated",
 }
 
 func TestBenignCorpusProducesNoAlerts(t *testing.T) {
