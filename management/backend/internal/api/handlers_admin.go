@@ -487,3 +487,87 @@ func handleSigmaPinSeen(db *store.DB) http.HandlerFunc {
 		writeJSON(w, 200, map[string]string{"status": "pinned", "sha256": sha})
 	}
 }
+
+// handleListSigmaRules: GET /api/v1/detections/sigma/rules?q=&level=&evaluable=1&limit=&offset=
+// Lists the imported Sigma rules with whether this server can evaluate them.
+func handleListSigmaRules(db *store.DB) http.HandlerFunc {
+	type row struct {
+		ID        string `json:"id"`
+		Title     string `json:"title"`
+		Level     string `json:"level"`
+		Status    string `json:"status"`
+		Category  string `json:"category"`
+		MITRE     string `json:"mitre"`
+		Enabled   bool   `json:"enabled"`
+		Evaluable bool   `json:"evaluable"`
+		Why       string `json:"why,omitempty"`
+	}
+	return func(w http.ResponseWriter, r *http.Request) {
+		rules, err := db.ListSigmaRules(r.Context(), false)
+		if err != nil {
+			writeJSONError(w, http.StatusInternalServerError, "query failed")
+			return
+		}
+		q := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("q")))
+		level := strings.ToLower(r.URL.Query().Get("level"))
+		onlyEval := r.URL.Query().Get("evaluable") == "1"
+		total, enabled, evaluable := len(rules), 0, 0
+		out := []row{}
+		for _, ru := range rules {
+			c := getSigmaCompiled(ru)
+			if ru.Enabled {
+				enabled++
+			}
+			if c.supported {
+				evaluable++
+			}
+			if q != "" && !strings.Contains(strings.ToLower(ru.Title+" "+ru.MITRE+" "+ru.Category), q) {
+				continue
+			}
+			if level != "" && strings.ToLower(ru.Level) != level {
+				continue
+			}
+			if onlyEval && !c.supported {
+				continue
+			}
+			out = append(out, row{ru.ID, ru.Title, ru.Level, ru.Status, ru.Category, ru.MITRE, ru.Enabled, c.supported, c.why})
+		}
+		limit, offset := 100, 0
+		if v, err := strconv.Atoi(r.URL.Query().Get("limit")); err == nil && v > 0 && v <= 500 {
+			limit = v
+		}
+		if v, err := strconv.Atoi(r.URL.Query().Get("offset")); err == nil && v > 0 {
+			offset = v
+		}
+		matched := len(out)
+		if offset > len(out) {
+			offset = len(out)
+		}
+		end := offset + limit
+		if end > len(out) {
+			end = len(out)
+		}
+		writeJSON(w, 200, map[string]interface{}{
+			"rules": out[offset:end], "matched": matched, "total": total, "enabled": enabled, "evaluable": evaluable,
+		})
+	}
+}
+
+// handleSetSigmaRule: PATCH /api/v1/detections/sigma/rules/{id} {"enabled":bool}
+func handleSetSigmaRule(db *store.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Enabled bool `json:"enabled"`
+		}
+		r.Body = http.MaxBytesReader(w, r.Body, 1<<10)
+		if json.NewDecoder(r.Body).Decode(&body) != nil {
+			writeJSONError(w, http.StatusBadRequest, "invalid body")
+			return
+		}
+		if err := db.SetSigmaRuleEnabled(r.Context(), r.PathValue("id"), body.Enabled); err != nil {
+			writeJSONError(w, http.StatusInternalServerError, "update failed")
+			return
+		}
+		writeJSON(w, 200, map[string]bool{"ok": true, "enabled": body.Enabled})
+	}
+}

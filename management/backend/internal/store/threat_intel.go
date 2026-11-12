@@ -419,3 +419,21 @@ func (db *DB) RetroHuntEvents(ctx context.Context, iocType string, values []stri
 	}
 	return out, rows.Err()
 }
+
+// DisabledSigmaRuleIDs returns the IDs of rules an admin switched off, so a
+// re-sync (which replaces the rule set) can restore that choice.
+func (db *DB) DisabledSigmaRuleIDs(ctx context.Context) ([]string, error) {
+	rows, err := db.QueryContext(ctx, `SELECT id FROM sigma_rules WHERE enabled = FALSE`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var ids []string
+	for rows.Next() {
+		var id string
+		if rows.Scan(&id) == nil {
+			ids = append(ids, id)
+		}
+	}
+	return ids, rows.Err()
+}
