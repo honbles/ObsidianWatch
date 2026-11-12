@@ -381,6 +381,9 @@ func (db *DB) GetEventByID(ctx context.Context, id string) (*Event, error) {
 		); err != nil {
 			return nil, err
 		}
+		if len(e.Raw) > 0 {
+			enrichFromRaw(&e)
+		}
 		return &e, nil
 	}
 	return nil, fmt.Errorf("event not found")

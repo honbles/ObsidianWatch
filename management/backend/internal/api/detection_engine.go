@@ -1731,7 +1731,14 @@ func (e *DetectionEngine) evaluateEvents(ctx context.Context, events []store.Eve
 				EventID:       dedupKey,
 				SourceEventID: ev.ID,
 			}
-			if id, inserted, err := e.db.CreateAlertDeduped(ctx, alert); err == nil && inserted {
+			if id, inserted, err := e.db.CreateAlertDeduped(ctx, alert); err == nil && !inserted && id > 0 {
+				// Duplicate within the hour: record this process as an extra
+				// anchor on the existing alert (capped) so the Alert Graph
+				// still reaches it, without raising alert volume.
+				if k := processAnchorKey(ev); k != "" {
+					_ = e.db.LinkAlertEntityCapped(ctx, id, EntityProcess, k, maxProcessAnchorsPerAlert)
+				}
+			} else if err == nil && inserted {
 				created++
 				engineLinkEntities(ctx, e.db, id, ev) // [FOUNDATION-HOOK]
 				alert.CreatedAt = time.Now()
