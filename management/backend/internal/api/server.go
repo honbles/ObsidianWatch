@@ -53,6 +53,7 @@ func New(cfg *config.Config, db *store.DB, backendDB *store.DB, logger *slog.Log
 		webhooks.Enqueue(a)
 		syslogFwd.Enqueue(a)
 	}
+	installAlertAnchorLinker(db) // Alert Graph: link every new alert to its entities
 	cloudEngine := NewCloudConnectorEngine(db, backendDB, logger)
 	devopsEngine := NewDevOpsEngine(db, backendDB, logger)
 	tiEngine := NewThreatIntelEngine(db, logger)
