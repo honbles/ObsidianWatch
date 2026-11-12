@@ -157,7 +157,7 @@ const API_KEY_GROUPS = [
         key: 'abuseipdb_api_key',
         label: 'AbuseIPDB API Key',
         placeholder: 'Your AbuseIPDB API key',
-        desc: 'IP reputation lookups (abuse score, reports, ISP, Tor). Results are cached 24h; capped at 900 lookups/day to stay inside the free tier.',
+        desc: 'IP reputation lookups (abuse score, reports, ISP, Tor). This is a key from abuseipdb.com — it is NOT the abuse.ch ThreatFox key (a different service). Results are cached 24h; capped at 900 lookups/day to stay inside the free tier.',
         link: 'https://www.abuseipdb.com/account/api',
         linkLabel: 'Get free key →',
         badge: 'IP intel',

@@ -84,7 +84,7 @@ func getAzureToken(ctx context.Context, tenantID, clientID, clientSecret, resour
 			ErrorDescription string `json:"error_description"`
 		}
 		json.Unmarshal(body, &errResp)
-		return nil, fmt.Errorf("auth failed: %s", errResp.ErrorDescription)
+		return nil, fmt.Errorf("auth failed: %s%s", errResp.ErrorDescription, azureAuthHint(errResp.ErrorDescription))
 	}
 
 	var token azureToken
@@ -687,4 +687,19 @@ func firstAzureSub(setting string) string {
 		return strings.TrimSpace(setting)
 	}
 	return ids[0]
+}
+
+// azureAuthHint adds a plain-language fix for the most common Entra errors.
+func azureAuthHint(desc string) string {
+	switch {
+	case strings.Contains(desc, "AADSTS7000215"):
+		return " — HINT: you entered the secret's ID. In Azure portal → App registrations → Certificates & secrets, copy the secret VALUE (shown only once when created); if it is gone, create a new secret and copy its Value."
+	case strings.Contains(desc, "AADSTS7000222"):
+		return " — HINT: the client secret has expired. Create a new secret and use its Value."
+	case strings.Contains(desc, "AADSTS700016"):
+		return " — HINT: the Client ID was not found in this tenant. Check the Application (client) ID and Directory (tenant) ID on the app's Overview page."
+	case strings.Contains(desc, "AADSTS90002") || strings.Contains(desc, "AADSTS900023"):
+		return " — HINT: the Tenant ID is wrong. Use the Directory (tenant) ID from the app's Overview page."
+	}
+	return ""
 }

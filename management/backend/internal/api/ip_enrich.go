@@ -106,7 +106,7 @@ func (e *ipEnricher) lookup(ctx context.Context, apiKey, ip string) (*IPReputati
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
-		return nil, fmt.Errorf("abuseipdb rejected the API key")
+		return nil, fmt.Errorf("abuseipdb rejected the API key — use a key from abuseipdb.com/account/api (this is not the abuse.ch ThreatFox key)")
 	}
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("abuseipdb returned status %d", resp.StatusCode)

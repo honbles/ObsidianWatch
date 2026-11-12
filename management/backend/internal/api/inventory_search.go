@@ -27,7 +27,7 @@ type invHit struct {
 func inventoryFromScans(events []store.Event, kind, q, version string) []invHit {
 	q, version = strings.ToLower(q), strings.ToLower(version)
 	seen := map[string]bool{}
-	var out []invHit
+	out := []invHit{}
 	for _, ev := range events {
 		if seen[ev.Host] {
 			continue

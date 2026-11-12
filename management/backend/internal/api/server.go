@@ -254,6 +254,8 @@ func New(cfg *config.Config, db *store.DB, backendDB *store.DB, logger *slog.Log
 	protected.HandleFunc("GET /api/v1/sast-rules", handleListSASTRules(db))
 	protected.HandleFunc("PATCH /api/v1/detections/{id}", adminOnly(handleToggleDetection(db)))
 	protected.HandleFunc("POST /api/v1/detections/{id}/backtest", adminOnly(handleBacktestRule(db)))
+	protected.HandleFunc("GET /api/v1/detections/sigma/rules", handleListSigmaRules(db))
+	protected.HandleFunc("PATCH /api/v1/detections/sigma/rules/{id}", adminOnly(handleSetSigmaRule(db)))
 	protected.HandleFunc("POST /api/v1/detections/sigma/toggle", adminOnly(handleToggleSigma(db)))
 	protected.HandleFunc("POST /api/v1/enrichment/isp", handleISPLookup())
 
