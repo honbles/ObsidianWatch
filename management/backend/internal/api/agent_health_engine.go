@@ -57,6 +57,8 @@ type AgentHealthEngine struct {
 	logger *slog.Logger
 
 	mu          sync.Mutex
+	graceUntil  time.Time // no stall/drop alerts until then (startup, or after the process was paused)
+	lastCheck   time.Time
 	lastDropped map[string]int64           // agentID -> events_dropped as of last health event seen
 	knownColls  map[string]map[string]bool // agentID -> set of collector names ever reported
 }
@@ -67,7 +69,20 @@ func NewAgentHealthEngine(db *store.DB, logger *slog.Logger) *AgentHealthEngine 
 		logger:      logger,
 		lastDropped: make(map[string]int64),
 		knownColls:  make(map[string]map[string]bool),
+		graceUntil:  time.Now().Add(healthStartupGrace),
 	}
+}
+
+// healthStartupGrace: after the management server (re)starts, the other
+// engines' cursors are stale until their first poll, and agents have been
+// dropping events because the server was unreachable. Both are expected, so
+// stall and drop alerts wait this long.
+const healthStartupGrace = 10 * time.Minute
+
+func (e *AgentHealthEngine) inGrace() bool {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return time.Now().Before(e.graceUntil)
 }
 
 func (e *AgentHealthEngine) Run(ctx context.Context) {
@@ -85,6 +100,15 @@ func (e *AgentHealthEngine) Run(ctx context.Context) {
 }
 
 func (e *AgentHealthEngine) check(ctx context.Context) {
+	// If this loop itself was paused (VM suspended, host asleep, long GC or DB
+	// stall), every engine looks stalled the moment it resumes — wait for them.
+	e.mu.Lock()
+	now := time.Now()
+	if !e.lastCheck.IsZero() && now.Sub(e.lastCheck) > 3*time.Minute {
+		e.graceUntil = now.Add(5 * time.Minute)
+	}
+	e.lastCheck = now
+	e.mu.Unlock()
 	e.checkSilentAgents(ctx)
 	e.checkStalledEngines(ctx)
 	e.checkHealthEvents(ctx)
@@ -151,6 +175,9 @@ func (e *AgentHealthEngine) checkSilentAgents(ctx context.Context) {
 // that stops moving means the engine's goroutine itself has stopped, not
 // just that there's no new data.
 func (e *AgentHealthEngine) checkStalledEngines(ctx context.Context) {
+	if e.inGrace() {
+		return
+	}
 	cursors, err := e.db.ListEngineCursors(ctx)
 	if err != nil {
 		e.logger.Warn("agent health: list engine cursors failed", "err", err)
@@ -238,7 +265,8 @@ func (e *AgentHealthEngine) checkHealthEvents(ctx context.Context) {
 				ev.AgentID, ev.Host, sev)
 		}
 
-		if p.QueueDepth >= healthQueueDepthAlert {
+		grace := e.inGrace()
+		if !grace && p.QueueDepth >= healthQueueDepthAlert {
 			dedupKey := fmt.Sprintf("health:queue:%s:h:%s", ev.AgentID, hourBucket())
 			e.fire(ctx, dedupKey,
 				fmt.Sprintf("Event queue backing up on %s", ev.Host),
@@ -246,13 +274,15 @@ func (e *AgentHealthEngine) checkHealthEvents(ctx context.Context) {
 				ev.AgentID, ev.Host, 3)
 		}
 
-		if hadPrev && p.EventsDropped > prevDropped && p.EventsDropped-prevDropped >= healthDropIncreaseAlert {
-			dedupKey := fmt.Sprintf("health:drops:%s:h:%s", ev.AgentID, hourBucket())
+		if !grace && hadPrev && p.EventsDropped > prevDropped && p.EventsDropped-prevDropped >= healthDropIncreaseAlert {
+			// once per 6 hours per agent: drops come in bursts when the
+			// backend is briefly unreachable
+			dedupKey := fmt.Sprintf("health:drops:%s:h:%s", ev.AgentID, time.Now().UTC().Format("2006010215")[:8]+fmt.Sprintf("%02d", time.Now().UTC().Hour()/6))
 			e.fire(ctx, dedupKey,
 				fmt.Sprintf("Agent dropping events on %s", ev.Host),
 				fmt.Sprintf("Agent %s dropped %d more events since its last health report (total dropped: %d). The forwarder can't keep up or the backend is unreachable.",
 					ev.Host, p.EventsDropped-prevDropped, p.EventsDropped),
-				ev.AgentID, ev.Host, 4)
+				ev.AgentID, ev.Host, 3)
 		}
 
 		for _, c := range missing {
