@@ -165,13 +165,13 @@ function Inventory() {
       {err && <div className="text-red-400 text-sm">{err}</div>}
       {res && (
         <div className={`${card} overflow-x-auto`}>
-          <div className="px-4 py-2 text-xs text-siem-muted">{res.hits.length} matches on {res.host_count} hosts (latest scan per host){res.truncated ? ' — truncated' : ''}</div>
+          <div className="px-4 py-2 text-xs text-siem-muted">{(res.hits || []).length} matches on {res.host_count} hosts (latest scan per host){res.truncated ? ' — truncated' : ''}</div>
           <table className="w-full text-sm">
             <thead><tr className="border-b border-siem-border text-siem-muted text-xs">
               {['Host', 'OS', 'Type', 'Name', 'Version / state', 'Scanned'].map(h => <th key={h} className="text-left px-4 py-2">{h}</th>)}
             </tr></thead>
             <tbody>
-              {res.hits.map((h, i) => (
+              {(res.hits || []).map((h, i) => (
                 <tr key={i} className="border-b border-siem-border/50">
                   <td className="px-4 py-1.5 font-mono text-xs">
                     {h.host}
@@ -188,7 +188,7 @@ function Inventory() {
                   <td className="px-4 py-1.5 text-siem-muted text-xs">{fmt(h.scanned_at)}</td>
                 </tr>
               ))}
-              {res.hits.length === 0 && <tr><td colSpan={6} className="px-4 py-6 text-center text-siem-muted">No matches</td></tr>}
+              {(res.hits || []).length === 0 && <tr><td colSpan={6} className="px-4 py-6 text-center text-siem-muted">No matches</td></tr>}
             </tbody>
           </table>
         </div>
