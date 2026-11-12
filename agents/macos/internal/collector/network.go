@@ -180,6 +180,9 @@ func (c *NetworkCollector) emit(conn connEntry) {
 		"pid":          conn.pid,
 		"process_name": procName,
 	}
+	if g := macProcGUIDStr(conn.pid); g != "" {
+		detail["process_guid"] = g
+	}
 	raw, _ := json.Marshal(detail)
 
 	// Parse dst IP and port from remote addr (e.g. "1.2.3.4.443" or "1.2.3.4:443")

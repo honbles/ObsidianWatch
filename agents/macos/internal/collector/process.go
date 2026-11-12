@@ -111,6 +111,7 @@ func (c *ProcessCollector) snapshot() map[int32]procEntry {
 		starts[p.pid] = p.start
 	}
 	c.starts = starts
+	setProcStarts(starts)
 	for _, p := range procs {
 		cmd := getArgv(p.pid)
 		result[p.pid] = procEntry{

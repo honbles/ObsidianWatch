@@ -1521,6 +1521,9 @@ func handleEndpointProcesses(db *store.DB) http.HandlerFunc {
 // raw payload when the agent supplied them (Sysmon ProcessGuid, or an agent
 // emitted process_guid / parent_process_guid).
 func procGUIDs(ev store.Event) (string, string) {
+	if ev.ProcessGUID != "" || ev.ParentProcessGUID != "" {
+		return ev.ProcessGUID, ev.ParentProcessGUID
+	}
 	if len(ev.Raw) == 0 {
 		return "", ""
 	}

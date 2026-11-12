@@ -116,6 +116,9 @@ func (c *DNSCollector) poll() {
 						"dns_server":   dstIP,
 						"action":       "query",
 					}
+					if g := macProcGUIDStr(cur.pid); g != "" {
+						detail["process_guid"] = g
+					}
 					raw, _ := json.Marshal(detail)
 					c.out <- schema.Event{
 						AgentID:     c.agentID,

@@ -402,6 +402,9 @@ func (d *DNSCollector) emit(pid int, procName, dnsServer, srcIP, domain, source 
 		"query_name":   queryName,
 		"source":       source,
 	}
+	if g := linuxProcGUID(pid); g != "" && pid > 0 {
+		rawData["process_guid"] = g
+	}
 	rawJSON, _ := json.Marshal(rawData)
 
 	// dst_ip stores the queried domain name — matches how the backend queries DNS events
