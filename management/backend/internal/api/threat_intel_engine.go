@@ -431,7 +431,8 @@ func (e *ThreatIntelEngine) syncSigma(ctx context.Context) (int, error) {
 		return 0, fmt.Errorf("Sigma zip: %w", err)
 	}
 
-	// Clear old sigma rules before re-importing
+	// Remember rules an admin disabled, clear the old set, then re-import.
+	disabledIDs, _ := e.db.DisabledSigmaRuleIDs(ctx)
 	e.db.DeleteSigmaRulesBySource(ctx, "sigma")
 
 	count := 0
@@ -463,6 +464,9 @@ func (e *ThreatIntelEngine) syncSigma(ctx context.Context) (int, error) {
 			continue
 		}
 		count++
+	}
+	for _, id := range disabledIDs {
+		_ = e.db.SetSigmaRuleEnabled(ctx, id, false)
 	}
 	return count, nil
 }

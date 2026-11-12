@@ -193,6 +193,71 @@ function SourceCard({ source, onUpdate, onSync }) {
   )
 }
 
+// SigmaRuleList: the imported SigmaHQ rules, searchable, with a per-rule switch
+// so a noisy rule can be turned off without disabling all of Sigma. Rules this
+// server cannot evaluate (base64 modifiers, aggregations...) are marked.
+function SigmaRuleList() {
+  const [data, setData] = useState(null)
+  const [q, setQ] = useState('')
+  const [level, setLevel] = useState('')
+  const [onlyEval, setOnlyEval] = useState(false)
+  const [offset, setOffset] = useState(0)
+  const [err, setErr] = useState('')
+  const limit = 100
+  const load = () => {
+    api.get('/api/v1/detections/sigma/rules', { params: { q, level, evaluable: onlyEval ? 1 : 0, limit, offset } })
+      .then(r => { setData(r.data); setErr('') })
+      .catch(e => setErr(e.response?.data?.error || 'Failed to load Sigma rules'))
+  }
+  useEffect(() => { load() }, [q, level, onlyEval, offset])
+  const toggle = async (r) => {
+    try {
+      await api.patch('/api/v1/detections/sigma/rules/' + encodeURIComponent(r.id), { enabled: !r.enabled })
+      setData(d => ({ ...d, rules: d.rules.map(x => x.id === r.id ? { ...x, enabled: !r.enabled } : x) }))
+    } catch (e) { setErr(e.response?.data?.error || 'Update failed (admin only)') }
+  }
+  const lvl = { critical: 'text-red-400', high: 'text-orange-400', medium: 'text-amber-400', low: 'text-siem-muted', informational: 'text-siem-muted' }
+  return (
+    <div className="bg-siem-surface border border-siem-border rounded-xl">
+      <div className="flex items-center gap-3 flex-wrap px-4 py-3 border-b border-siem-border/40 text-xs">
+        <input value={q} onChange={e => { setOffset(0); setQ(e.target.value) }} placeholder="Search title, MITRE, category…"
+          className="bg-siem-bg border border-siem-border rounded-lg px-3 py-1.5 text-siem-text w-64" />
+        <select value={level} onChange={e => { setOffset(0); setLevel(e.target.value) }} className="bg-siem-bg border border-siem-border rounded-lg px-2 py-1.5 text-siem-text">
+          <option value="">All levels</option><option value="critical">Critical</option><option value="high">High</option>
+          <option value="medium">Medium</option><option value="low">Low</option>
+        </select>
+        <label className="flex items-center gap-1.5 text-siem-muted">
+          <input type="checkbox" checked={onlyEval} onChange={e => { setOffset(0); setOnlyEval(e.target.checked) }} /> Only rules this server can evaluate
+        </label>
+        {data && <span className="text-siem-muted ml-auto">{data.total.toLocaleString()} imported · {data.enabled.toLocaleString()} enabled · {data.evaluable.toLocaleString()} evaluable</span>}
+      </div>
+      {err && <div className="px-4 py-2 text-xs text-red-400">{err}</div>}
+      <div className="max-h-[520px] overflow-y-auto">
+        {(data?.rules || []).map(r => (
+          <div key={r.id} className="flex items-center gap-3 px-4 py-2 border-b border-siem-border/15 text-xs">
+            <button onClick={() => toggle(r)} className={`w-9 h-5 rounded-full shrink-0 ${r.enabled ? 'bg-siem-accent' : 'bg-siem-border'}`} title={r.enabled ? 'Disable this rule' : 'Enable this rule'}>
+              <span className={`block w-4 h-4 bg-white rounded-full transition-transform ${r.enabled ? 'translate-x-4' : 'translate-x-0.5'}`} />
+            </button>
+            <span className={`w-16 shrink-0 uppercase ${lvl[(r.level || '').toLowerCase()] || 'text-siem-muted'}`}>{r.level}</span>
+            <span className="text-siem-text flex-1 truncate" title={r.title}>{r.title}</span>
+            <span className="text-siem-muted shrink-0">{r.status}</span>
+            <span className="text-siem-muted/70 shrink-0 w-28 truncate" title={r.mitre}>{r.mitre}</span>
+            {!r.evaluable && <span className="text-amber-400 shrink-0" title={r.why}>not evaluable</span>}
+          </div>
+        ))}
+        {data && data.rules.length === 0 && <div className="px-4 py-6 text-center text-siem-muted text-xs">No rules match.</div>}
+      </div>
+      {data && data.matched > limit && (
+        <div className="flex items-center justify-between px-4 py-2 text-xs text-siem-muted">
+          <button disabled={offset === 0} onClick={() => setOffset(Math.max(0, offset - limit))} className="disabled:opacity-40">← Previous</button>
+          <span>{offset + 1}–{Math.min(offset + limit, data.matched)} of {data.matched.toLocaleString()}</span>
+          <button disabled={offset + limit >= data.matched} onClick={() => setOffset(offset + limit)} className="disabled:opacity-40">Next →</button>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function Backtest({ sigId }) {
   const [res, setRes] = useState(null)
   const [busy, setBusy] = useState(false)
@@ -465,7 +530,9 @@ export default function Detections() {
               }`}>
               <Icon size={12} className={osTab === id ? '' : color} />
               {label}
-              {counts && (
+              {id === 'sigma' ? (
+                <span className={`text-[10px] ${osTab === id ? 'text-white/70' : 'text-siem-muted'}`}>{sigmaCount.toLocaleString()}</span>
+              ) : counts && (
                 <span className={`text-[10px] ${osTab === id ? 'text-white/70' : 'text-siem-muted'}`}>
                   {counts.enabled}/{counts.total}
                 </span>
@@ -515,6 +582,7 @@ export default function Detections() {
               </span>
             </div>
           </div>
+          <SigmaRuleList />
         </div>
       )}
 
