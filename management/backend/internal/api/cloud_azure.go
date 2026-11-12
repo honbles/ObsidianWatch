@@ -23,6 +23,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -56,6 +57,10 @@ type azureToken struct {
 
 // getAzureToken retrieves an OAuth2 token using client credentials flow
 func getAzureToken(ctx context.Context, tenantID, clientID, clientSecret, resource string) (*azureToken, error) {
+	tenantID, clientID, clientSecret = strings.TrimSpace(tenantID), strings.TrimSpace(clientID), strings.TrimSpace(clientSecret)
+	if azureGUIDRe.MatchString(clientSecret) {
+		return nil, fmt.Errorf("the Client Secret you entered is a GUID — that is the secret's ID, not its Value. Copy the Value from Certificates & secrets (shown only when the secret is created); if it is gone, create a new secret")
+	}
 	tokenURL := fmt.Sprintf("https://login.microsoftonline.com/%s/oauth2/token", tenantID)
 
 	data := url.Values{
@@ -84,7 +89,7 @@ func getAzureToken(ctx context.Context, tenantID, clientID, clientSecret, resour
 			ErrorDescription string `json:"error_description"`
 		}
 		json.Unmarshal(body, &errResp)
-		return nil, fmt.Errorf("auth failed: %s%s", errResp.ErrorDescription, azureAuthHint(errResp.ErrorDescription))
+		return nil, fmt.Errorf("auth failed: %s%s", errResp.ErrorDescription, azureAuthHint(errResp.ErrorDescription)+fmt.Sprintf(" (the secret sent was %d characters; Azure secret values are normally about 40 and a secret ID is 36)", len(clientSecret)))
 	}
 
 	var token azureToken
@@ -688,6 +693,8 @@ func firstAzureSub(setting string) string {
 	}
 	return ids[0]
 }
+
+var azureGUIDRe = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
 
 // azureAuthHint adds a plain-language fix for the most common Entra errors.
 func azureAuthHint(desc string) string {
