@@ -54,6 +54,14 @@ func New(cfg *config.Config, db *store.DB, backendDB *store.DB, logger *slog.Log
 		syslogFwd.Enqueue(a)
 	}
 	installAlertAnchorLinker(db) // Alert Graph: link every new alert to its entities
+	go func() { // one-time: make events from before migration 009 usable by the graph
+		time.Sleep(30 * time.Second) // let migrations settle
+		if n, err := db.BackfillProcessGUIDs(context.Background(), 7); err != nil {
+			logger.Warn("graph: process GUID backfill stopped", "err", err, "rows", n)
+		} else if n > 0 {
+			logger.Info("graph: process GUID backfill done", "rows", n)
+		}
+	}()
 	cloudEngine := NewCloudConnectorEngine(db, backendDB, logger)
 	devopsEngine := NewDevOpsEngine(db, backendDB, logger)
 	tiEngine := NewThreatIntelEngine(db, logger)
