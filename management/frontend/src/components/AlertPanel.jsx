@@ -1,10 +1,11 @@
 import { IPLink } from './IPLookup'
+import AlertGraph from './AlertGraph'
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { Bell, CheckCircle, XCircle, RefreshCw, X,
          User, MessageSquare, Clock, AlertTriangle, UserCheck, FileText,
          Shield, ExternalLink, ChevronRight, Hash, Zap, Target,
-         Eye, Activity, Search } from 'lucide-react'
+         Eye, Activity, Search, GitBranch } from 'lucide-react'
 import { format, formatDistanceToNow } from 'date-fns'
 import api from '../api/client'
 import { SeverityBadge } from './SeverityBadge'
@@ -504,6 +505,7 @@ function AlertPanel({ alertId, users, onClose, onStatusChange, inline = false })
   const TABS = [
     { id: 'analysis', label: 'AI Analysis', icon: Zap },
     { id: 'details',  label: 'Details',     icon: FileText },
+    { id: 'graph',    label: 'Graph',       icon: GitBranch },
     { id: 'chat',     label: 'Chat',        icon: MessageSquare },
   ]
 
@@ -755,6 +757,10 @@ function AlertPanel({ alertId, users, onClose, onStatusChange, inline = false })
             )}
 
             {/* ── Chat tab ── */}
+            {activeTab === 'graph' && alert && (
+              <AlertGraph alertId={alert.id}/>
+            )}
+
             {activeTab === 'chat' && (
               <div className="flex flex-col h-full">
                 <div className="flex-1 overflow-y-auto p-4 space-y-3">
