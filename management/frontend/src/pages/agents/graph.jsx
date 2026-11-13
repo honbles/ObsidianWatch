@@ -19,7 +19,8 @@ export function GraphCanvas({ graph, onNodeClick, selectedNode }) {
     })
     const g=svg.append('g')
     const zoom=d3.zoom().scaleExtent([0.1,4]).on('zoom',e=>g.attr('transform',e.transform))
-    svg.call(zoom)
+    svg.call(zoom).on('dblclick.zoom',null).style('cursor','grab')
+    svg.on('mousedown.cur',()=>svg.style('cursor','grabbing')).on('mouseup.cur',()=>svg.style('cursor','grab'))
     const nodes=graph.nodes||[], edges=graph.edges||[]
     const nc={}; edges.forEach(e=>{nc[e.source]=(nc[e.source]||0)+1;nc[e.target]=(nc[e.target]||0)+1})
     const sim=d3.forceSimulation(nodes)
@@ -36,7 +37,8 @@ export function GraphCanvas({ graph, onNodeClick, selectedNode }) {
       .call(d3.drag()
         .on('start',(e,d)=>{if(!e.active)sim.alphaTarget(0.3).restart();d.fx=d.x;d.fy=d.y})
         .on('drag',(e,d)=>{d.fx=e.x;d.fy=e.y})
-        .on('end',(e,d)=>{if(!e.active)sim.alphaTarget(0);d.fx=null;d.fy=null}))
+        .on('end',(e,d)=>{if(!e.active)sim.alphaTarget(0)}))  // stay where dropped; double-click releases
+      .on('dblclick',(e,d)=>{e.stopPropagation();d.fx=null;d.fy=null;sim.alpha(0.3).restart()})
       .on('click',(e,d)=>{e.stopPropagation();onNodeClick(d)})
     node.each(function(d) {
       const el=d3.select(this), r=nodeRadius(d)
@@ -48,7 +50,9 @@ export function GraphCanvas({ graph, onNodeClick, selectedNode }) {
       el.append('title').text(`${d.label} (${d.type})\nEvents: ${d.event_count}\nSeverity: ${d.severity}`)
     })
     sim.on('tick',()=>{link.attr('x1',d=>d.source.x).attr('y1',d=>d.source.y).attr('x2',d=>d.target.x).attr('y2',d=>d.target.y);node.attr('transform',d=>`translate(${d.x},${d.y})`)})
+    let fitted=false
     sim.on('end',()=>{
+      if(fitted) return; fitted=true  // fit once; re-fitting after every drag undid the move
       const b=g.node().getBBox(); if(!b.width||!b.height) return
       const sc=Math.min((W-80)/b.width,(H-80)/b.height,1.2)
       svg.transition().duration(500).call(zoom.transform,d3.zoomIdentity.translate(W/2-sc*(b.x+b.width/2),H/2-sc*(b.y+b.height/2)).scale(sc))

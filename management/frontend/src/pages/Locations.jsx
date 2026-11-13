@@ -120,7 +120,12 @@ export default function Locations() {
       zoom: 2,
       zoomControl: true,
       attributionControl: true,
+      dragging: true, scrollWheelZoom: true, doubleClickZoom: true, touchZoom: true, inertia: true,
     })
+    // the flex layout settles after mount; re-measure so dragging/zoom use the real size
+    const ro = new ResizeObserver(() => map.invalidateSize())
+    ro.observe(mapRef.current)
+    setTimeout(() => map.invalidateSize(), 100)
 
     // Dark tile layer (CartoDB Dark Matter)
     L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
@@ -331,7 +336,7 @@ export default function Locations() {
               Loading map…
             </div>
           )}
-          <div ref={mapRef} className="w-full h-full" style={{ background: '#0f172a' }} />
+          <div ref={mapRef} className="w-full h-full" style={{ background: '#0f172a', cursor: 'grab' }} />
         </div>
       </div>
 

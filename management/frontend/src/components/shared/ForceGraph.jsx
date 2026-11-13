@@ -30,6 +30,13 @@ export default function ForceGraph({ nodes, links, width = 800, height = 480, on
         link.attr('x1', d => d.source.x).attr('y1', d => d.source.y).attr('x2', d => d.target.x).attr('y2', d => d.target.y)
         node.attr('transform', d => `translate(${d.x},${d.y})`)
       })
+    // Drag nodes; they stay where dropped (double-click releases).
+    node.call(d3.drag()
+      .on('start', (e, d) => { if (!e.active) sim.alphaTarget(0.3).restart(); d.fx = d.x; d.fy = d.y })
+      .on('drag', (e, d) => { d.fx = e.x; d.fy = e.y })
+      .on('end', (e) => { if (!e.active) sim.alphaTarget(0) }))
+      .on('dblclick', (e, d) => { e.stopPropagation(); d.fx = null; d.fy = null; sim.alpha(0.3).restart() })
+    svg.on('dblclick.zoom', null).style('cursor', 'grab')
     return () => sim.stop()
   }, [nodes, links, width, height, onNodeClick, colorFor])
   return <svg ref={ref} width="100%" viewBox={`0 0 ${width} ${height}`} className="text-siem-text" />
