@@ -48,6 +48,9 @@ type AGNode struct {
 	Collapsed  int               `json:"collapsed,omitempty"`
 	EventIDs   []string          `json:"event_ids,omitempty"`
 	Meta       map[string]string `json:"meta,omitempty"`
+	// Explain is a deterministic plain-language reading of the node built
+	// from its edges (no model involved).
+	Explain string `json:"explain,omitempty"`
 }
 
 type AGEdge struct {
@@ -1231,6 +1234,7 @@ func (b *gBuilder) finish(g *AlertGraph) {
 		return a.Type < c.Type
 	})
 	sort.Slice(g.Coverage.Gaps, func(i, j int) bool { return g.Coverage.Gaps[i].ID < g.Coverage.Gaps[j].ID })
+	explainNodes(g)
 	byID := map[string]AGNode{}
 	for _, n := range g.Nodes {
 		byID[n.ID] = n
@@ -1290,6 +1294,54 @@ func (b *gBuilder) finish(g *AlertGraph) {
 // HTTP
 // ---------------------------------------------------------------------------
 
+// loadAlertGraph resolves anchors for an alert and builds its graph. It
+// returns an HTTP status alongside any error so both the graph and the
+// analysis endpoints answer consistently.
+func loadAlertGraph(ctx context.Context, db *store.DB, id int64, days, maxNodes int) (*AlertGraph, int, error) {
+	alert, err := db.GetAlert(ctx, id)
+	if err != nil {
+		return nil, 404, fmt.Errorf("alert not found")
+	}
+	lookupID := alert.SourceEventID
+	if lookupID == "" && alert.EventID != "" &&
+		!strings.HasPrefix(alert.EventID, "sig:") && !strings.HasPrefix(alert.EventID, "ioc:") &&
+		!strings.HasPrefix(alert.EventID, "rule:") && !strings.HasPrefix(alert.EventID, "corr:") {
+		lookupID = alert.EventID
+	}
+	var ev *store.Event
+	if lookupID != "" {
+		if e, err := db.GetEventByID(ctx, lookupID); err == nil {
+			ev = e
+		}
+	}
+	var anchors []Anchor
+	seen := map[string]bool{}
+	add := func(a Anchor) {
+		if !seen[a.Kind+"\x00"+a.Key] {
+			seen[a.Kind+"\x00"+a.Key] = true
+			anchors = append(anchors, a)
+		}
+	}
+	if ev != nil {
+		for _, a := range deriveAnchors(*ev) {
+			add(a)
+		}
+	}
+	if links, err := db.AlertEntities(ctx, id); err == nil {
+		for _, l := range links {
+			switch l[0] {
+			case EntityProcess, EntityLogon, EntityUser, EntityIP, EntityFile, EntityRegistry, EntityDomain:
+				add(Anchor{l[0], l[1]})
+			}
+		}
+	}
+	g, err := BuildAlertGraph(ctx, db, graphInput{Alert: *alert, Anchors: anchors, AnchorEvent: ev, Days: days, MaxNodes: maxNodes})
+	if err != nil {
+		return nil, 500, fmt.Errorf("graph build failed")
+	}
+	return g, 200, nil
+}
+
 // handleAlertGraph serves GET /api/v1/alerts/{id}/graph?days=3&max_nodes=60.
 // Anchors are resolved on read from the alert's source event, then merged with
 // anchors persisted by the AlertCreatedHook (extra processes recorded when a
@@ -1302,50 +1354,11 @@ func handleAlertGraph(db *store.DB) http.HandlerFunc {
 			writeJSON(w, 400, map[string]string{"error": "invalid id"})
 			return
 		}
-		alert, err := db.GetAlert(r.Context(), id)
-		if err != nil {
-			writeJSON(w, 404, map[string]string{"error": "alert not found"})
-			return
-		}
 		days, _ := strconv.Atoi(r.URL.Query().Get("days"))
 		maxNodes, _ := strconv.Atoi(r.URL.Query().Get("max_nodes"))
-
-		lookupID := alert.SourceEventID
-		if lookupID == "" && alert.EventID != "" &&
-			!strings.HasPrefix(alert.EventID, "sig:") && !strings.HasPrefix(alert.EventID, "ioc:") &&
-			!strings.HasPrefix(alert.EventID, "rule:") && !strings.HasPrefix(alert.EventID, "corr:") {
-			lookupID = alert.EventID
-		}
-		var ev *store.Event
-		if lookupID != "" {
-			if e, err := db.GetEventByID(r.Context(), lookupID); err == nil {
-				ev = e
-			}
-		}
-		var anchors []Anchor
-		seen := map[string]bool{}
-		add := func(a Anchor) {
-			if !seen[a.Kind+"\x00"+a.Key] {
-				seen[a.Kind+"\x00"+a.Key] = true
-				anchors = append(anchors, a)
-			}
-		}
-		if ev != nil {
-			for _, a := range deriveAnchors(*ev) {
-				add(a)
-			}
-		}
-		if links, err := db.AlertEntities(r.Context(), id); err == nil {
-			for _, l := range links {
-				switch l[0] {
-				case EntityProcess, EntityLogon, EntityUser, EntityIP, EntityFile, EntityRegistry, EntityDomain:
-					add(Anchor{l[0], l[1]})
-				}
-			}
-		}
-		g, err := BuildAlertGraph(r.Context(), db, graphInput{Alert: *alert, Anchors: anchors, AnchorEvent: ev, Days: days, MaxNodes: maxNodes})
+		g, code, err := loadAlertGraph(r.Context(), db, id, days, maxNodes)
 		if err != nil {
-			writeJSON(w, 500, map[string]string{"error": "graph build failed"})
+			writeJSON(w, code, map[string]string{"error": err.Error()})
 			return
 		}
 		writeJSON(w, 200, g)
