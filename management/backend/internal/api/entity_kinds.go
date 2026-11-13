@@ -8,6 +8,13 @@ const (
 	EntityHost = "host" // agent hostname (existing agents)
 	EntityUser = "user"
 	EntityIP   = "ip"
+	// [GRAPH-ENTITY-BEGIN]
+	EntityProcess  = "process" // "agent|guid" or "agent|pid:N|name" when no GUID
+	EntityLogon    = "logon"   // "agent|0xLOGONID"
+	EntityFile     = "file"    // "host|path"
+	EntityRegistry = "reg"     // "host|key"
+	EntityDomain   = "domain"  // lowercase DNS name
+	// [GRAPH-ENTITY-END]
 	// [NET-ENTITY-BEGIN]
 	EntityDevice   = "device"   // MAC (network probe)
 	EntityObserver = "observer" // network device that produced the log

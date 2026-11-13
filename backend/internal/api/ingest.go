@@ -65,6 +65,7 @@ func handleIngest(db ingestStore, maxBatch int, logger *slog.Logger) http.Handle
 			if sanitizeEvent(&batch.Events[i]) {
 				truncated++
 			}
+			liftProcessIdentity(&batch.Events[i])
 		}
 		metrics.truncated.Add(int64(truncated))
 		if truncated > 0 {

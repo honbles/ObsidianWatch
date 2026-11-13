@@ -148,6 +148,10 @@ func (n *NetworkCollector) emit(conn netConn, action string) {
 		"pid":      conn.pid,
 		"name":     conn.name,
 	}
+	// Alert Graph: tie the connection to the exact process instance.
+	if g := linuxProcGUID(conn.pid); g != "" && conn.pid > 0 {
+		rawData["process_guid"] = g
+	}
 	rawJSON, _ := json.Marshal(rawData)
 
 	sev := schema.SeverityInfo

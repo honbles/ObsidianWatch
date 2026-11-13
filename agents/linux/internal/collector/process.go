@@ -442,6 +442,12 @@ func (p *ProcessCollector) emit(pid int, entry procEntry, action string, sev sch
 		"uid":      entry.uid,
 		"username": username,
 	}
+	// Parent image path (edge baseline for the Alert Graph).
+	if entry.ppid > 0 {
+		if pe := p.resolveExePath(entry.ppid); pe != "" {
+			rawData["parent_exe"] = pe
+		}
+	}
 	// F-11: stable process identity (boot id + pid + start time) so PID reuse
 	// cannot merge unrelated processes in the threat graph.
 	if g := linuxProcGUID(pid); g != "" {
