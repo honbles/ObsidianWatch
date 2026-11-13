@@ -764,7 +764,9 @@ func (g *graphBuilder) build() EndpointGraph {
 // ── Handler ───────────────────────────────────────────────────────────────────
 
 // graphEventCap bounds events loaded for a graph; Meta.Truncated tells the UI.
-const graphEventCap = 10000
+// QueryEvents clamps Limit to 5000, so the effective cap is 5000 (it was 10000,
+// which made Truncated impossible to trigger).
+const graphEventCap = 5000
 
 func handleEndpointGraph(db *store.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -1521,6 +1523,9 @@ func handleEndpointProcesses(db *store.DB) http.HandlerFunc {
 // raw payload when the agent supplied them (Sysmon ProcessGuid, or an agent
 // emitted process_guid / parent_process_guid).
 func procGUIDs(ev store.Event) (string, string) {
+	if ev.ProcessGUID != "" || ev.ParentProcessGUID != "" {
+		return ev.ProcessGUID, ev.ParentProcessGUID
+	}
 	if len(ev.Raw) == 0 {
 		return "", ""
 	}

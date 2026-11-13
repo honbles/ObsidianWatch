@@ -41,6 +41,10 @@ type Event struct {
 	EventID     *uint32         `json:"event_id,omitempty"`
 	Channel     *string         `json:"channel,omitempty"`
 	RecordID    *uint64         `json:"record_id,omitempty"`
+	// Process instance identity (Alert Graph). Empty for rows without a GUID;
+	// enrichFromRaw fills them from raw for rows ingested before migration 009.
+	ProcessGUID       string `json:"process_guid,omitempty"`
+	ParentProcessGUID string `json:"parent_process_guid,omitempty"`
 }
 
 // EventFilter is the full set of supported search parameters.
@@ -297,7 +301,8 @@ func (db *DB) QueryEvents(ctx context.Context, f EventFilter) ([]Event, int64, e
 		       pid, ppid, process_name, command_line, image_path, user_name, domain, logon_id,
 		       src_ip, src_port, dst_ip, dst_port, proto,
 		       reg_key, reg_value, reg_data, file_path, file_hash,
-		       event_id, channel, record_id
+		       event_id, channel, record_id,
+		       COALESCE(process_guid,''), COALESCE(parent_process_guid,'')
 		FROM events WHERE %s
 		ORDER BY %s
 		LIMIT %d OFFSET %d`, whereStr, orderBy, f.Limit, f.Offset)
@@ -318,6 +323,7 @@ func (db *DB) QueryEvents(ctx context.Context, f EventFilter) ([]Event, int64, e
 			&e.SrcIP, &e.SrcPort, &e.DstIP, &e.DstPort, &e.Proto,
 			&e.RegKey, &e.RegValue, &e.RegData, &e.FilePath, &e.FileHash,
 			&e.EventID, &e.Channel, &e.RecordID,
+			&e.ProcessGUID, &e.ParentProcessGUID,
 		); err != nil {
 			return nil, 0, err
 		}
@@ -338,7 +344,8 @@ func (db *DB) LatestEvents(ctx context.Context, since time.Time, limit int) ([]E
 		       pid, ppid, process_name, command_line, image_path, user_name, domain, logon_id,
 		       src_ip, src_port, dst_ip, dst_port, proto,
 		       reg_key, reg_value, reg_data, file_path, file_hash,
-		       event_id, channel, record_id
+		       event_id, channel, record_id,
+		       COALESCE(process_guid,''), COALESCE(parent_process_guid,'')
 		FROM events WHERE time > $1 ORDER BY time DESC LIMIT $2
 	`, since.UTC(), limit)
 	if err != nil {
@@ -354,7 +361,8 @@ func (db *DB) GetEventByID(ctx context.Context, id string) (*Event, error) {
 		       pid, ppid, process_name, command_line, image_path, user_name, domain, logon_id,
 		       src_ip, src_port, dst_ip, dst_port, proto,
 		       reg_key, reg_value, reg_data, file_path, file_hash,
-		       event_id, channel, record_id
+		       event_id, channel, record_id,
+		       COALESCE(process_guid,''), COALESCE(parent_process_guid,'')
 		FROM events WHERE id = $1
 	`, id)
 	if err != nil {
@@ -369,8 +377,12 @@ func (db *DB) GetEventByID(ctx context.Context, id string) (*Event, error) {
 			&e.SrcIP, &e.SrcPort, &e.DstIP, &e.DstPort, &e.Proto,
 			&e.RegKey, &e.RegValue, &e.RegData, &e.FilePath, &e.FileHash,
 			&e.EventID, &e.Channel, &e.RecordID,
+			&e.ProcessGUID, &e.ParentProcessGUID,
 		); err != nil {
 			return nil, err
+		}
+		if len(e.Raw) > 0 {
+			enrichFromRaw(&e)
 		}
 		return &e, nil
 	}
@@ -383,7 +395,8 @@ func (db *DB) RelatedEvents(ctx context.Context, host string, t time.Time, exclu
 		       pid, ppid, process_name, command_line, image_path, user_name, domain, logon_id,
 		       src_ip, src_port, dst_ip, dst_port, proto,
 		       reg_key, reg_value, reg_data, file_path, file_hash,
-		       event_id, channel, record_id
+		       event_id, channel, record_id,
+		       COALESCE(process_guid,''), COALESCE(parent_process_guid,'')
 		FROM events
 		WHERE host = $1 AND time BETWEEN $2 AND $3 AND id != $4
 		ORDER BY time DESC LIMIT 50
@@ -418,6 +431,7 @@ func scanEvents(rows interface {
 			&e.SrcIP, &e.SrcPort, &e.DstIP, &e.DstPort, &e.Proto,
 			&e.RegKey, &e.RegValue, &e.RegData, &e.FilePath, &e.FileHash,
 			&e.EventID, &e.Channel, &e.RecordID,
+			&e.ProcessGUID, &e.ParentProcessGUID,
 		); err != nil {
 			return nil, err
 		}
@@ -477,6 +491,22 @@ func enrichFromRaw(e *Event) {
 		if *field == nil && val != 0 {
 			v := val
 			*field = &v
+		}
+	}
+
+	if e.ProcessGUID == "" || e.ParentProcessGUID == "" {
+		g, pg := RawProcessGUIDs(e.Raw)
+		if e.ProcessGUID == "" {
+			e.ProcessGUID = g
+		}
+		if e.ParentProcessGUID == "" {
+			e.ParentProcessGUID = pg
+		}
+	}
+	if e.LogonID == nil && r.EventData != nil {
+		if v := firstOfMap(r.EventData, "LogonId", "LogonID"); v != "" {
+			lv := strings.ToLower(v)
+			e.LogonID = &lv
 		}
 	}
 
@@ -560,4 +590,37 @@ func firstOfMap(m map[string]string, keys ...string) string {
 // literally (F-07): "%" and "_" in a search term no longer act as wildcards.
 func escapeLike(s string) string {
 	return strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(s)
+}
+
+// RawProcessGUIDs extracts the acting process GUID and its parent's GUID from
+// a raw payload: agent-emitted process_guid / parent_process_guid, or Sysmon
+// ProcessGuid / ParentProcessGuid (SourceProcessGuid for events 8 and 10).
+func RawProcessGUIDs(raw json.RawMessage) (string, string) {
+	if len(raw) == 0 {
+		return "", ""
+	}
+	var m map[string]json.RawMessage
+	if json.Unmarshal(raw, &m) != nil {
+		return "", ""
+	}
+	var ed map[string]string
+	if v, ok := m["event_data"]; ok {
+		_ = json.Unmarshal(v, &ed)
+	}
+	look := func(keys ...string) string {
+		for _, k := range keys {
+			if v, ok := m[k]; ok {
+				var s string
+				if json.Unmarshal(v, &s) == nil && s != "" {
+					return s
+				}
+			}
+			if s := ed[k]; s != "" {
+				return s
+			}
+		}
+		return ""
+	}
+	return look("process_guid", "ProcessGuid", "ProcessGUID", "SourceProcessGuid", "SourceProcessGUID"),
+		look("parent_process_guid", "ParentProcessGuid", "ParentProcessGUID")
 }

@@ -61,6 +61,11 @@ type Event struct {
 	EventID     uint32          `json:"event_id,omitempty"`
 	Channel     string          `json:"channel,omitempty"`
 	RecordID    uint64          `json:"record_id,omitempty"`
+	// ProcessGUID / ParentProcessGUID identify the process instance (Sysmon
+	// ProcessGuid or the agent-emitted process_guid). Lifted from Raw at
+	// ingest when the agent did not set them.
+	ProcessGUID       string `json:"process_guid,omitempty"`
+	ParentProcessGUID string `json:"parent_process_guid,omitempty"`
 }
 
 // Batch is the payload agents POST to /api/v1/events.
