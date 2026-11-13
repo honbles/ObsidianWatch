@@ -5,6 +5,7 @@ import { AlertTriangle, RefreshCw, Activity, MapPin, Terminal, Square } from 'lu
 import { formatDistanceToNow, format } from 'date-fns'
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, BarChart, Bar, Cell } from 'recharts'
 import api, { getWSTicket } from '../../api/client'
+import AgentMap from '../../components/AgentMap'
 
 export function TabDevice({ agent }) {
   const [healthEvents, setHealthEvents] = useState([])
@@ -275,24 +276,14 @@ export function TabLocation({ agent }) {
   const hasCoords = loc.lat && loc.lng
   const lat = Number(loc.lat).toFixed(6)
   const lng = Number(loc.lng).toFixed(6)
-  // OpenStreetMap embed — no API key required
-  const mapSrc = hasCoords
-    ? `https://www.openstreetmap.org/export/embed.html?bbox=${Number(lng)-0.05},${Number(lat)-0.05},${Number(lng)+0.05},${Number(lat)+0.05}&layer=mapnik&marker=${lat},${lng}`
-    : null
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
-      {/* Embedded map */}
+      {/* Draggable map */}
       {hasCoords && (
         <div className="flex-1 min-h-0" style={{ minHeight: 320 }}>
-          <iframe
-            src={mapSrc}
-            title="Agent location"
-            width="100%"
-            height="100%"
-            style={{ border: 'none', minHeight: 320, display: 'block' }}
-            loading="lazy"
-          />
+          <AgentMap lat={Number(lat)} lng={Number(lng)} accuracy={Number(loc.location_accuracy) || 0}
+            label={[loc.location_city, loc.location_country].filter(Boolean).join(', ')} />
         </div>
       )}
 

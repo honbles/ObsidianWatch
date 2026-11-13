@@ -103,7 +103,8 @@ function GraphCanvas({ graph, onNodeClick, onEdgeClick, selectedNode, selectedEd
     const g = svg.append('g')
 
     const zoom = d3.zoom().scaleExtent([0.05, 4]).on('zoom', e => g.attr('transform', e.transform))
-    svg.call(zoom)
+    svg.call(zoom).on('dblclick.zoom', null).style('cursor', 'grab')
+    svg.on('mousedown.cur', () => svg.style('cursor', 'grabbing')).on('mouseup.cur', () => svg.style('cursor', 'grab'))
     zoomRef.current = zoom
 
     const zoomFit = () => {
@@ -132,6 +133,7 @@ function GraphCanvas({ graph, onNodeClick, onEdgeClick, selectedNode, selectedEd
     const useRadial = nodes.length > 60
     const hostNode  = nodes.find(n => n.type === 'host')
 
+    let fitted = false  // fit once; re-fitting after every drag undid the move
     const sim = d3.forceSimulation(nodes)
       .force('link', d3.forceLink(edges).id(d => d.id)
         .distance(d => d.type === 'spawned' || d.type === 'runs' ? 70 : 110)
@@ -145,9 +147,9 @@ function GraphCanvas({ graph, onNodeClick, onEdgeClick, selectedNode, selectedEd
     if (hostNode) {
       hostNode.fx = W / 2
       hostNode.fy = H / 2
-      sim.on('end', () => { hostNode.fx = null; hostNode.fy = null; zoomFit() })
+      sim.on('end', () => { if (fitted) return; fitted = true; hostNode.fx = null; hostNode.fy = null; zoomFit() })
     } else {
-      sim.on('end', zoomFit)
+      sim.on('end', () => { if (fitted) return; fitted = true; zoomFit() })
     }
 
     simRef.current = sim
@@ -182,7 +184,8 @@ function GraphCanvas({ graph, onNodeClick, onEdgeClick, selectedNode, selectedEd
       .call(d3.drag()
         .on('start', (event, d) => { if (!event.active) sim.alphaTarget(0.3).restart(); d.fx = d.x; d.fy = d.y })
         .on('drag',  (event, d) => { d.fx = event.x; d.fy = event.y })
-        .on('end',   (event, d) => { if (!event.active) sim.alphaTarget(0); d.fx = null; d.fy = null }))
+        .on('end',   (event, d) => { if (!event.active) sim.alphaTarget(0) }))  // stay where dropped; double-click releases
+      .on('dblclick', (event, d) => { event.stopPropagation(); d.fx = null; d.fy = null; sim.alpha(0.3).restart() })
       .on('click', (event, d) => { event.stopPropagation(); onNodeClick(d) })
 
     node.each(function(d) {
