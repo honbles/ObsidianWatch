@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { Maximize2, Minimize2, AlertTriangle, Loader2, RefreshCw, X } from 'lucide-react'
+import { Maximize2, Minimize2, AlertTriangle, Loader2, RefreshCw, X, Sparkles } from 'lucide-react'
 import { format } from 'date-fns'
 import api from '../api/client'
 
@@ -93,81 +93,130 @@ function edgePath(a, b) {
   return `M${x1},${y1} C${x1 + dx},${y1} ${x2 - dx},${y2} ${x2},${y2}`
 }
 
-function Detail({ node, edges, nodesById, onClose }) {
+const VERDICT = {
+  likely_malicious: ['Likely malicious', 'text-red-300 border-red-800 bg-red-950/30'],
+  suspicious: ['Suspicious', 'text-amber-300 border-amber-800 bg-amber-950/30'],
+  likely_benign: ['Likely benign', 'text-emerald-300 border-emerald-800 bg-emerald-950/30'],
+  unclear: ['Unclear', 'text-siem-muted border-siem-border bg-siem-bg'],
+}
+
+function NodeDetail({ node, edges, nodesById, aiNote, onClose }) {
   const [events, setEvents] = useState(null)
   useEffect(() => { setEvents(null) }, [node?.id])
-  if (!node) return null
   const myEdges = edges.filter(e => e.source === node.id || e.target === node.id)
   const loadEvents = async () => {
     const ids = [...(node.event_ids || []), ...myEdges.flatMap(e => e.event_ids || [])].filter((v, i, a) => a.indexOf(v) === i).slice(0, 12)
     const out = []
     for (const id of ids) {
-      try { out.push((await api.get(`/api/v1/events/${id}`)).data) } catch { /* retention */ }
+      try { out.push((await api.get(`/api/v1/events/${id}`)).data) } catch { /* outside retention */ }
     }
     setEvents(out)
   }
   const ts = t => { try { return format(new Date(t), 'MMM d HH:mm:ss') } catch { return '' } }
   return (
-    <div className="w-72 shrink-0 border-l border-siem-border overflow-y-auto p-3 space-y-3 text-xs">
+    <div className="space-y-3 text-xs">
       <div className="flex items-start justify-between gap-2">
         <div>
-          <div className="font-semibold text-siem-text break-all">{node.label}</div>
+          <div className="text-sm font-semibold text-siem-text break-all">{node.label}</div>
           <div className="text-[10px] uppercase tracking-wide text-siem-muted">{node.role} · {node.type}{node.confidence === 'low' ? ' · low confidence' : ''}</div>
         </div>
-        <button onClick={onClose} className="text-siem-muted hover:text-siem-text"><X size={12} /></button>
+        <button onClick={onClose} className="text-siem-muted hover:text-siem-text"><X size={13} /></button>
       </div>
-      {node.detail && <div className="font-mono text-[10px] text-siem-muted break-all">{node.detail}</div>}
-      {node.cmd && <div className="font-mono text-[10px] bg-siem-bg border border-siem-border rounded p-2 break-all">{node.cmd}</div>}
-      <div className="text-[10px] text-siem-muted space-y-0.5">
-        {node.user && <div>User: <span className="text-siem-text">{node.user}</span></div>}
-        <div>First: {ts(node.first)}</div>
-        <div>Last: {ts(node.last)}</div>
-        {node.ended && <div>Ended: {ts(node.ended)}</div>}
-        {node.meta?.start_seen === 'false' && <div className="text-amber-400">Start event not seen</div>}
-        {node.meta?.extensions && <div>Extensions: {node.meta.extensions}</div>}
-        {node.meta?.items && <div>Includes: {node.meta.items}</div>}
-        {node.collapsed > 0 && <div>{node.collapsed} more not drawn (budget)</div>}
-      </div>
-      {node.alerts?.length > 0 && (
-        <div>
-          <div className="text-[10px] uppercase tracking-wide text-siem-muted mb-1">Alerts on this node</div>
-          <div className="flex flex-wrap gap-1">{node.alerts.map(a => <span key={a} className="px-1.5 py-0.5 rounded bg-red-950/40 border border-red-900/50 text-red-300 font-mono text-[10px]">#{a}</span>)}</div>
+      {node.explain && (
+        <div className="rounded-lg border border-siem-border bg-siem-surface/40 p-2.5 text-[12px] leading-relaxed text-siem-text">
+          <div className="text-[9px] uppercase tracking-wider text-siem-muted mb-1">What is going on here</div>
+          {node.explain}
         </div>
       )}
-      {myEdges.length > 0 && (
-        <div>
-          <div className="text-[10px] uppercase tracking-wide text-siem-muted mb-1">Links (evidence)</div>
-          <div className="space-y-1">
-            {myEdges.slice(0, 20).map((e, i) => {
-              const other = nodesById[e.source === node.id ? e.target : e.source]
-              return <div key={i} className="text-[10px]"><span style={{ color: EDGE_COLOR[e.type] }}>{e.type}</span> {e.source === node.id ? '→' : '←'} <span className="text-siem-text">{other?.label}</span> <span className="text-siem-muted">[{e.evidence}{e.count > 1 ? ` ×${e.count}` : ''}]</span></div>
-            })}
+      {aiNote && (
+        <div className="rounded-lg border border-violet-800/50 bg-violet-950/20 p-2.5 text-[12px] leading-relaxed text-violet-200">
+          <div className="text-[9px] uppercase tracking-wider text-violet-300/80 mb-1 flex items-center gap-1"><Sparkles size={10} /> AI reading</div>
+          {aiNote}
+        </div>
+      )}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <div className="space-y-2">
+          {node.detail && <div className="font-mono text-[10px] text-siem-muted break-all">{node.detail}</div>}
+          {node.cmd && <div className="font-mono text-[10px] bg-siem-bg border border-siem-border rounded p-2 break-all">{node.cmd}</div>}
+          <div className="text-[10px] text-siem-muted space-y-0.5">
+            {node.user && <div>User: <span className="text-siem-text">{node.user}</span></div>}
+            <div>First: {ts(node.first)} · Last: {ts(node.last)}{node.ended ? ` · Ended: ${ts(node.ended)}` : ''}</div>
+            {node.meta?.extensions && <div>Extensions: {node.meta.extensions}</div>}
           </div>
+          {node.alerts?.length > 0 && (
+            <div className="flex flex-wrap items-center gap-1">
+              <span className="text-[10px] uppercase tracking-wide text-siem-muted mr-1">Alerts</span>
+              {node.alerts.map(a => <span key={a} className="px-1.5 py-0.5 rounded bg-red-950/40 border border-red-900/50 text-red-300 font-mono text-[10px]">#{a}</span>)}
+            </div>
+          )}
         </div>
-      )}
-      {(node.event_ids?.length > 0 || myEdges.some(e => e.event_ids?.length)) && (
-        <div>
-          {events === null
-            ? <button onClick={loadEvents} className="text-[10px] border border-siem-border rounded px-2 py-1 text-siem-muted hover:text-siem-text">Show raw events</button>
-            : events.length === 0 ? <div className="text-[10px] text-siem-muted">Events no longer retained.</div>
-            : <div className="space-y-1">{events.map((e, i) => (
-                <div key={i} className="border border-siem-border rounded p-1.5 font-mono text-[10px] break-all">
-                  <div className="text-siem-muted">{ts(e.time)} · {e.event_type}</div>
-                  <div>{e.command_line || e.file_path || e.reg_key || (e.dst_ip ? `${e.dst_ip}${e.dst_port ? ':' + e.dst_port : ''}` : e.process_name) || ''}</div>
-                </div>))}</div>}
+        <div className="space-y-2">
+          {myEdges.length > 0 && (
+            <div>
+              <div className="text-[10px] uppercase tracking-wide text-siem-muted mb-1">Links (evidence)</div>
+              <div className="space-y-0.5 max-h-28 overflow-y-auto">
+                {myEdges.slice(0, 20).map((e, i) => {
+                  const other = nodesById[e.source === node.id ? e.target : e.source]
+                  return <div key={i} className="text-[10px]"><span style={{ color: EDGE_COLOR[e.type] }}>{e.type}</span> {e.source === node.id ? '→' : '←'} <span className="text-siem-text">{other?.label}</span> <span className="text-siem-muted">[{e.evidence}{e.count > 1 ? ` ×${e.count}` : ''}]</span></div>
+                })}
+              </div>
+            </div>
+          )}
+          {(node.event_ids?.length > 0 || myEdges.some(e => e.event_ids?.length)) && (
+            events === null
+              ? <button onClick={loadEvents} className="text-[10px] border border-siem-border rounded px-2 py-1 text-siem-muted hover:text-siem-text">Show raw events</button>
+              : events.length === 0 ? <div className="text-[10px] text-siem-muted">Events no longer retained.</div>
+              : <div className="space-y-1 max-h-32 overflow-y-auto">{events.map((e, i) => (
+                  <div key={i} className="border border-siem-border rounded p-1.5 font-mono text-[10px] break-all">
+                    <div className="text-siem-muted">{ts(e.time)} · {e.event_type}</div>
+                    <div>{e.command_line || e.file_path || e.reg_key || (e.dst_ip ? `${e.dst_ip}${e.dst_port ? ':' + e.dst_port : ''}` : e.process_name) || ''}</div>
+                  </div>))}</div>
+          )}
         </div>
-      )}
+      </div>
     </div>
   )
 }
 
-function GraphBody({ graph, selected, setSelected }) {
+function AIStory({ ai, loading, err, onRun, canRun }) {
+  const v = ai && (VERDICT[ai.verdict] || VERDICT.unclear)
+  return (
+    <div className="space-y-2 text-xs">
+      <div className="flex items-center gap-2">
+        <div className="text-[10px] uppercase tracking-wider text-siem-muted flex items-center gap-1"><Sparkles size={11} /> AI story</div>
+        <div className="flex-1" />
+        {canRun && (
+          <button onClick={onRun} disabled={loading}
+            className="text-[10px] border border-violet-700/60 text-violet-200 rounded px-2 py-1 hover:bg-violet-950/40 disabled:opacity-50 flex items-center gap-1">
+            {loading ? <Loader2 size={10} className="animate-spin" /> : <Sparkles size={10} />}
+            {ai ? 'Re-run' : 'Explain this graph with AI'}
+          </button>
+        )}
+      </div>
+      {err && <div className="text-[11px] text-red-400">{err}</div>}
+      {!ai && !loading && !err && <div className="text-[11px] text-siem-muted">Click a node to see what it is doing. The AI story reads the whole graph (only the nodes and links you see here) and explains how it started, what it did and what to check next.</div>}
+      {ai && (<>
+        <div className="flex items-center gap-2">
+          <span className={`text-[10px] px-2 py-0.5 rounded-full border font-semibold ${v[1]}`}>{v[0]}</span>
+          <span className="text-[10px] text-siem-muted">confidence: {ai.confidence}</span>
+        </div>
+        <div className="text-[12px] leading-relaxed text-siem-text">{ai.summary}</div>
+        {ai.next_steps?.length > 0 && (
+          <ul className="list-disc pl-4 space-y-0.5 text-[11px] text-siem-muted">{ai.next_steps.map((s, i) => <li key={i}>{s}</li>)}</ul>
+        )}
+        <div className="text-[9px] text-siem-muted">Model output, checked only against node ids in this graph. Verify before acting.</div>
+      </>)}
+    </div>
+  )
+}
+
+function GraphBody({ graph, selected, setSelected, ai, aiLoading, aiErr, runAI }) {
   const L = useMemo(() => layout(graph), [graph])
   const nodesById = useMemo(() => Object.fromEntries(graph.nodes.map(n => [n.id, n])), [graph])
   const sel = selected ? nodesById[selected] : null
   return (
-    <div className="flex flex-1 min-h-0">
-      <div className="flex-1 overflow-auto">
+    <div className="flex flex-col flex-1 min-h-0">
+      <div className="flex-1 min-h-[160px] overflow-auto">
         <svg width={L.width} height={L.height} className="block">
           {L.usedLanes.map(l => (
             <text key={l} x={L.laneX[l]} y={PAD} fontSize="10" fill="#8b949e" style={{ textTransform: 'uppercase', letterSpacing: 1 }}>{LANE_TITLE[l]}</text>
@@ -186,7 +235,16 @@ function GraphBody({ graph, selected, setSelected }) {
           {graph.nodes.map(n => L.pos[n.id] && <NodeBox key={n.id} n={n} p={L.pos[n.id]} selected={selected === n.id} onClick={() => setSelected(selected === n.id ? null : n.id)} />)}
         </svg>
       </div>
-      <Detail node={sel} edges={graph.edges} nodesById={nodesById} onClose={() => setSelected(null)} />
+      <div className="shrink-0 h-[42%] min-h-[190px] border-t border-siem-border overflow-y-auto p-4 grid grid-cols-1 lg:grid-cols-5 gap-4">
+        <div className="lg:col-span-3">
+          {sel
+            ? <NodeDetail node={sel} edges={graph.edges} nodesById={nodesById} aiNote={ai?.nodes?.[sel.id]} onClose={() => setSelected(null)} />
+            : <div className="text-[11px] text-siem-muted">Click any node to read what it is doing, the evidence behind its links, and its raw events.</div>}
+        </div>
+        <div className="lg:col-span-2 lg:border-l lg:border-siem-border lg:pl-4">
+          <AIStory ai={ai} loading={aiLoading} err={aiErr} onRun={runAI} canRun={graph.coverage.mode !== 'fallback'} />
+        </div>
+      </div>
     </div>
   )
 }
@@ -199,9 +257,20 @@ function Panel({ alertId, full, onToggleFull }) {
   const [maxNodes, setMaxNodes] = useState(60)
   const [selected, setSelected] = useState(null)
   const [tlOpen, setTlOpen] = useState(false)
+  const [ai, setAi] = useState(null)
+  const [aiLoading, setAiLoading] = useState(false)
+  const [aiErr, setAiErr] = useState('')
+
+  const runAI = () => {
+    setAiLoading(true); setAiErr('')
+    api.post(`/api/v1/alerts/${alertId}/graph/analyse`, null, { params: { days, max_nodes: maxNodes }, timeout: 120000 })
+      .then(r => setAi(r.data))
+      .catch(e => setAiErr(e.response?.data?.error || 'AI analysis failed'))
+      .finally(() => setAiLoading(false))
+  }
 
   const load = () => {
-    setLoading(true); setErr('')
+    setLoading(true); setErr(''); setAi(null); setAiErr('')
     api.get(`/api/v1/alerts/${alertId}/graph`, { params: { days, max_nodes: maxNodes } })
       .then(r => setGraph(r.data))
       .catch(e => setErr(e.response?.data?.error || 'Could not build the graph'))
@@ -214,7 +283,7 @@ function Panel({ alertId, full, onToggleFull }) {
   const ts = t => { try { return format(new Date(t), 'MMM d HH:mm:ss') } catch { return '' } }
 
   return (
-    <div className={`flex flex-col ${full ? 'h-full' : 'h-[640px]'} bg-siem-bg`}>
+    <div className={`flex flex-col ${full ? 'h-full' : 'h-[760px]'} bg-siem-bg`}>
       <div className="shrink-0 flex items-center gap-3 px-4 py-2 border-b border-siem-border text-[11px]">
         <span className="text-siem-muted">Window</span>
         <select value={days} onChange={e => setDays(+e.target.value)} className="bg-siem-bg border border-siem-border rounded px-1.5 py-0.5">
@@ -244,7 +313,7 @@ function Panel({ alertId, full, onToggleFull }) {
             ))}
           </div>
         )}
-        <GraphBody graph={graph} selected={selected} setSelected={setSelected} />
+        <GraphBody graph={graph} selected={selected} setSelected={setSelected} ai={ai} aiLoading={aiLoading} aiErr={aiErr} runAI={runAI} />
         <div className="shrink-0 border-t border-siem-border">
           <button onClick={() => setTlOpen(o => !o)} className="w-full text-left px-4 py-1.5 text-[10px] uppercase tracking-wide text-siem-muted hover:text-siem-text">
             Timeline ({graph.timeline.length}) {tlOpen ? '▾' : '▸'}
