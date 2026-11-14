@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"net/url"
 	"path"
 	"sort"
 	"strconv"
@@ -33,27 +34,27 @@ type graphSource interface {
 }
 
 type AGNode struct {
-	ID         string            `json:"id"`
-	Type       string            `json:"type"` // process|ip|domain|file|reg|burst|gap|entity
-	Role       string            `json:"role"` // anchor|ancestor|descendant|artifact|burst|gap|entity
-	Label      string            `json:"label"`
-	Detail     string            `json:"detail,omitempty"`
-	Cmd        string            `json:"cmd,omitempty"`
-	User       string            `json:"user,omitempty"`
-	PID        int               `json:"pid,omitempty"`
-	First      time.Time         `json:"first"`
-	Last       time.Time         `json:"last"`
-	Ended      *time.Time        `json:"ended,omitempty"`
-	Severity   int               `json:"severity,omitempty"`
-	Score      int               `json:"score"`
-	Confidence string            `json:"confidence,omitempty"` // high|low
-	Alerts     []int64           `json:"alerts,omitempty"`
+	ID         string             `json:"id"`
+	Type       string             `json:"type"` // process|ip|domain|file|reg|burst|gap|entity
+	Role       string             `json:"role"` // anchor|ancestor|descendant|artifact|burst|gap|entity
+	Label      string             `json:"label"`
+	Detail     string             `json:"detail,omitempty"`
+	Cmd        string             `json:"cmd,omitempty"`
+	User       string             `json:"user,omitempty"`
+	PID        int                `json:"pid,omitempty"`
+	First      time.Time          `json:"first"`
+	Last       time.Time          `json:"last"`
+	Ended      *time.Time         `json:"ended,omitempty"`
+	Severity   int                `json:"severity,omitempty"`
+	Score      int                `json:"score"`
+	Confidence string             `json:"confidence,omitempty"` // high|low
+	Alerts     []int64            `json:"alerts,omitempty"`
 	AlertInfo  []store.AlertBrief `json:"alert_info,omitempty"`
-	Collapsed  int               `json:"collapsed,omitempty"`
+	Collapsed  int                `json:"collapsed,omitempty"`
 	// Items lists what a collapsed (burst) node stands for, so it can be expanded in the UI.
-	Items []AGItem `json:"items,omitempty"`
-	EventIDs   []string          `json:"event_ids,omitempty"`
-	Meta       map[string]string `json:"meta,omitempty"`
+	Items    []AGItem          `json:"items,omitempty"`
+	EventIDs []string          `json:"event_ids,omitempty"`
+	Meta     map[string]string `json:"meta,omitempty"`
 	// Explain is a deterministic plain-language reading of the node built
 	// from its edges (no model involved).
 	Explain string `json:"explain,omitempty"`
@@ -691,6 +692,7 @@ type gArt struct {
 	owner                   string // process nodeID
 	times                   []time.Time
 	beacon                  string
+	cmdline                 bool // inferred from the process command line, not an observed connection
 }
 
 func suspiciousDir(p string) bool {
@@ -776,6 +778,27 @@ func (b *gBuilder) artifactsFor(p *gProc) []*gArt {
 		if kind == "ip" && ev.DstPort != nil && *ev.DstPort > 0 {
 			a.ports[strconv.Itoa(*ev.DstPort)]++
 		}
+	}
+	// Destinations named in the command line (curl http://host/...). The agent
+	// polls connections, so a short-lived curl may never be seen on the wire;
+	// the command line still proves what it was asked to contact. Marked as
+	// inferred so it is never mistaken for an observed connection.
+	for _, u := range urlInTextRe.FindAllString(p.cmd, 3) {
+		pu, err := url.Parse(u)
+		if err != nil || pu.Hostname() == "" {
+			continue
+		}
+		h := strings.ToLower(pu.Hostname())
+		kind := "domain"
+		if net.ParseIP(h) != nil {
+			kind = "ip"
+		}
+		id := kind + ":" + h
+		if _, ok := agg[id]; ok {
+			continue
+		}
+		agg[id] = &gArt{kind: kind, id: id, label: h, detail: graphTrunc(u, 200), first: p.first, last: p.first, n: 1,
+			ports: map[string]int{}, owner: p.nodeID, cmdline: true}
 	}
 	out := make([]*gArt, 0, len(agg))
 	for _, a := range agg {
@@ -1185,8 +1208,15 @@ func (b *gBuilder) assemble(g *AlertGraph) {
 				n.Last = a.last
 			}
 		}
-		artEdges[owner+"|"+a.id] = AGEdge{Source: owner, Target: a.id, Type: a.edgeType(), Evidence: "guid", Confidence: 100,
-			First: a.first, Last: a.last, Count: a.n, Label: a.edgeLabel(), EventIDs: a.ids}
+		ev, conf, lbl := "guid", 100, a.edgeLabel()
+		if a.cmdline {
+			ev, conf, lbl = "cmdline", 70, "from command line"
+			if n := nodes[a.id]; n != nil && n.Meta == nil {
+				n.Meta = map[string]string{"source": "command line (not an observed connection)"}
+			}
+		}
+		artEdges[owner+"|"+a.id] = AGEdge{Source: owner, Target: a.id, Type: a.edgeType(), Evidence: ev, Confidence: conf,
+			First: a.first, Last: a.last, Count: a.n, Label: lbl, EventIDs: a.ids}
 	}
 	for id, bn := range burstOf {
 		nodes[id] = bn

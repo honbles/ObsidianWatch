@@ -290,7 +290,7 @@ function GraphBody({ graph, selected, setSelected, ai, aiLoading, aiErr, runAI }
             if (!a || !b) return null
             const hot = selected && (e.source === selected || e.target === selected)
             return <path key={i} d={edgePath(a, b)} fill="none" stroke={EDGE_COLOR[e.type] || '#64748b'}
-              strokeWidth={hot ? 2 : 1.2} opacity={selected && !hot ? 0.25 : 0.85} strokeDasharray={e.type === 'unseen' ? '4 3' : undefined} />
+              strokeWidth={hot ? 2 : 1.2} opacity={selected && !hot ? 0.25 : 0.85} strokeDasharray={e.type === 'unseen' || e.evidence === 'cmdline' ? '4 3' : undefined} />
           })}
           {graph.edges.filter(e => e.label && L.pos[e.source] && L.pos[e.target]).map((e, i) => {
             const a = L.pos[e.source], b = L.pos[e.target]
