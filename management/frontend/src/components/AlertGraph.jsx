@@ -108,7 +108,7 @@ function NodeDetail({ node, edges, nodesById, aiNote, onClose }) {
     const ids = [...(node.event_ids || []), ...myEdges.flatMap(e => e.event_ids || [])].filter((v, i, a) => a.indexOf(v) === i).slice(0, 12)
     const out = []
     for (const id of ids) {
-      try { out.push((await api.get(`/api/v1/events/${id}`)).data) } catch { /* outside retention */ }
+      try { const d = (await api.get(`/api/v1/events/${id}`)).data; out.push(d.event || d) } catch { /* outside retention */ }
     }
     setEvents(out)
   }
@@ -203,10 +203,10 @@ function NodeDetail({ node, edges, nodesById, aiNote, onClose }) {
             events === null
               ? <button onClick={loadEvents} className="text-[10px] border border-siem-border rounded px-2 py-1 text-siem-muted hover:text-siem-text">Show raw events</button>
               : events.length === 0 ? <div className="text-[10px] text-siem-muted">Events no longer retained.</div>
-              : <div className="space-y-1 max-h-32 overflow-y-auto">{events.map((e, i) => (
+              : <div className="space-y-1 max-h-56 overflow-y-auto">{events.map((e, i) => (
                   <div key={i} className="border border-siem-border rounded p-1.5 font-mono text-[10px] break-all">
                     <div className="text-siem-muted">{ts(e.time)} · {e.event_type}</div>
-                    <div>{e.command_line || e.file_path || e.reg_key || (e.dst_ip ? `${e.dst_ip}${e.dst_port ? ':' + e.dst_port : ''}` : e.process_name) || ''}</div>
+                    <div>{e.command_line || e.file_path || e.reg_key || (e.dst_ip ? `${e.dst_ip}${e.dst_port ? ':' + e.dst_port : ''}` : (e.image_path || e.process_name)) || '(no detail)'}</div>
                   </div>))}</div>
           )}
         </div>
