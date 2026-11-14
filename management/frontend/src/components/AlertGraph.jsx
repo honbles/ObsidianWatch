@@ -13,8 +13,8 @@ const COLW = 230, ROWH = 64, NW = 188, NH = 44, LANEW = 210, PAD = 24
 const LANES = ['ip', 'domain', 'file', 'reg', 'burst']
 const LANE_TITLE = { ip: 'Network', domain: 'DNS', file: 'Files', reg: 'Registry', burst: 'Collapsed' }
 const TYPE_COLOR = { ip: '#38bdf8', domain: '#a78bfa', file: '#fbbf24', reg: '#f472b6', burst: '#94a3b8' }
-const ROLE_COLOR = { anchor: '#ef4444', ancestor: '#64748b', descendant: '#3b82f6', gap: '#f59e0b', entity: '#94a3b8' }
-const EDGE_COLOR = { spawned: '#64748b', connected: '#38bdf8', resolved: '#a78bfa', wrote: '#fbbf24', modified: '#f472b6', unseen: '#f59e0b', about: '#94a3b8' }
+const ROLE_COLOR = { anchor: '#ef4444', ancestor: '#64748b', descendant: '#3b82f6', gap: '#f59e0b', entity: '#94a3b8', origin: '#a855f7', executed: '#ec4899', bridge: '#fbbf24' }
+const EDGE_COLOR = { spawned: '#64748b', connected: '#38bdf8', resolved: '#a78bfa', wrote: '#fbbf24', executed: '#ec4899', modified: '#f472b6', unseen: '#f59e0b', about: '#94a3b8' }
 const SEV_COLOR = { 5: '#ef4444', 4: '#f97316', 3: '#eab308' }
 
 function layout(graph) {
@@ -68,7 +68,7 @@ function layout(graph) {
 }
 
 function NodeBox({ n, p, selected, onClick }) {
-  const color = n.role === 'artifact' || n.type === 'burst' ? (TYPE_COLOR[n.type] || '#94a3b8') : (ROLE_COLOR[n.role] || '#94a3b8')
+  const color = (n.role === 'artifact' && n.type !== 'process') || n.type === 'burst' ? (TYPE_COLOR[n.type] || '#94a3b8') : (ROLE_COLOR[n.role] || '#94a3b8')
   const sev = SEV_COLOR[n.severity]
   const dashed = n.type === 'gap' || n.confidence === 'low'
   return (
@@ -126,6 +126,43 @@ function NodeDetail({ node, edges, nodesById, aiNote, onClose }) {
         <div className="rounded-lg border border-siem-border bg-siem-surface/40 p-2.5 text-[12px] leading-relaxed text-siem-text">
           <div className="text-[9px] uppercase tracking-wider text-siem-muted mb-1">What is going on here</div>
           {node.explain}
+        </div>
+      )}
+      {node.meta?.beacon && (
+        <div className="rounded-lg border border-orange-800/50 bg-orange-950/20 p-2.5 text-[11px] text-orange-200">
+          <div className="text-[9px] uppercase tracking-wider text-orange-300/80 mb-0.5">Beacon candidate</div>
+          {node.meta.beacon}
+        </div>
+      )}
+      {node.items?.length > 0 && (
+        <div className="rounded-lg border border-siem-border p-2.5">
+          <div className="text-[9px] uppercase tracking-wider text-siem-muted mb-1">
+            Collapsed items ({node.items.length}{node.collapsed > node.items.length ? ` of ${node.collapsed}` : ''})
+          </div>
+          <div className="max-h-40 overflow-y-auto space-y-0.5">
+            {node.items.map((it, i) => (
+              <div key={i} className="flex items-baseline gap-2 text-[11px]">
+                <span className="text-siem-muted font-mono shrink-0">{ts(it.t)}</span>
+                <span className="text-siem-text break-all">{it.detail || it.label}</span>
+                {it.count > 1 && <span className="text-siem-muted shrink-0">×{it.count}</span>}
+                {it.note && <span className="text-orange-300 shrink-0">beacon?</span>}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      {node.alert_info?.length > 0 && (
+        <div className="rounded-lg border border-red-900/50 bg-red-950/20 p-2.5 space-y-1">
+          <div className="text-[9px] uppercase tracking-wider text-red-300/80">Alerts on this node</div>
+          {node.alert_info.map(a => (
+            <div key={a.id} className="text-[11px] text-siem-text">#{a.id} {a.title}{a.category ? <span className="text-siem-muted"> · {a.category}</span> : null}</div>
+          ))}
+        </div>
+      )}
+      {node.meta?.download_url && (
+        <div className="rounded-lg border border-amber-800/50 bg-amber-950/20 p-2.5 text-[11px] break-all">
+          <div className="text-[9px] uppercase tracking-wider text-amber-300/80 mb-0.5">Downloaded from (Mark-of-the-Web)</div>
+          <span className="font-mono text-siem-text">{node.meta.download_url}</span>
         </div>
       )}
       {aiNote && (
@@ -210,12 +247,39 @@ function AIStory({ ai, loading, err, onRun, canRun }) {
   )
 }
 
+function CampaignStrip({ campaign }) {
+  const alerts = campaign?.alerts || [], related = campaign?.related || []
+  if (alerts.length < 2 && !related.length) return null
+  const ts = t => { try { return format(new Date(t), 'HH:mm') } catch { return '' } }
+  return (
+    <div className="shrink-0 border-b border-siem-border px-4 py-2 text-[11px] space-y-1">
+      <div className="flex items-center gap-1.5 flex-wrap">
+        <span className="text-[9px] uppercase tracking-wider text-siem-muted mr-1">Campaign</span>
+        {alerts.map((a, i) => (
+          <span key={a.id} className="flex items-center gap-1.5">
+            {i > 0 && <span className="text-siem-muted">→</span>}
+            <span className="px-1.5 py-0.5 rounded border border-siem-border bg-siem-surface/60 text-siem-text" title={a.title}>
+              {ts(a.created_at)} {a.category || 'Alert'} <span className="text-siem-muted">#{a.id}</span>
+            </span>
+          </span>
+        ))}
+      </div>
+      {related.length > 0 && (
+        <div className="text-siem-muted">
+          Related by shared evidence: {related.map(r => `#${r.alert.id} ${r.alert.title} (${r.via}${r.same_host ? '' : ', other host'})`).join(' · ')}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function GraphBody({ graph, selected, setSelected, ai, aiLoading, aiErr, runAI }) {
   const L = useMemo(() => layout(graph), [graph])
   const nodesById = useMemo(() => Object.fromEntries(graph.nodes.map(n => [n.id, n])), [graph])
   const sel = selected ? nodesById[selected] : null
   return (
     <div className="flex flex-col flex-1 min-h-0">
+      <CampaignStrip campaign={graph.campaign} />
       <div className="flex-1 min-h-[160px] overflow-auto">
         <svg width={L.width} height={L.height} className="block">
           {L.usedLanes.map(l => (

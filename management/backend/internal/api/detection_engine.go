@@ -1962,6 +1962,9 @@ func (e *DetectionEngine) matchIOC(ev store.Event,
 		if ioc := matchURLIOC(*ev.CommandLine, domainIOCs); ioc != nil {
 			return ioc
 		}
+		if ioc := matchHostsInText(*ev.CommandLine, ipIOCs, domainIOCs); ioc != nil {
+			return ioc
+		}
 	}
 
 	// Cloud events — SrcIP against IP IOCs

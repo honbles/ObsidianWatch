@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { Zap, Shield, ChevronDown, ChevronUp, ExternalLink, ToggleLeft, ToggleRight,
          RefreshCw, Globe, AlertCircle, CheckCircle, Clock, Monitor, Server, Apple, Cloud, GitBranch, Wifi, Code, Filter, Trash2 } from 'lucide-react'
 import api from '../api/client'
+import ManualIOCs from '../components/ManualIOCs'
 
 const SEV_LABEL = { 1:'Info', 2:'Low', 3:'Medium', 4:'High', 5:'Critical' }
 const SEV_COLOR = {
@@ -554,6 +555,7 @@ export default function Detections() {
               <SourceCard key={s.name} source={s} onUpdate={updateSource} onSync={syncSource} />
             ))}
           </div>
+          <ManualIOCs />
         </div>
       )}
 

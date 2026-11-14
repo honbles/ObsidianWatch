@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/lib/pq"
@@ -107,6 +108,67 @@ func (db *DB) AlertEntityMap(ctx context.Context, kind string, keys []string, pe
 			return nil, err
 		}
 		out[k] = append(out[k], id)
+	}
+	return out, rows.Err()
+}
+
+// EventsByFilePaths returns file events whose (lower-cased, 512-capped) path
+// is in paths: who wrote or changed these files. Callers pass paths already
+// lower-cased and capped (see LowerCap512).
+func (db *DB) EventsByFilePaths(ctx context.Context, agentID string, paths []string, from, to time.Time, limit int) ([]Event, error) {
+	return db.graphEvents(ctx, `agent_id=$1 AND event_type='file' AND left(lower(file_path),512) = ANY($2) AND time BETWEEN $3 AND $4`, agentID, paths, from, to, limit)
+}
+
+// EventsByImagePaths returns process events whose image path is in paths:
+// who ran these files.
+func (db *DB) EventsByImagePaths(ctx context.Context, agentID string, paths []string, from, to time.Time, limit int) ([]Event, error) {
+	return db.graphEvents(ctx, `agent_id=$1 AND event_type='process' AND left(lower(image_path),512) = ANY($2) AND time BETWEEN $3 AND $4`, agentID, paths, from, to, limit)
+}
+
+// LowerCap512 is the normalisation the path indexes use.
+func LowerCap512(s string) string {
+	s = strings.ToLower(s)
+	r := []rune(s)
+	if len(r) > 512 {
+		return string(r[:512])
+	}
+	return s
+}
+
+// AlertBrief is the small alert summary the graph shows on nodes and in the
+// campaign strip.
+type AlertBrief struct {
+	ID        int64     `json:"id"`
+	Title     string    `json:"title"`
+	Severity  int       `json:"severity"`
+	Status    string    `json:"status"`
+	Host      string    `json:"host"`
+	Category  string    `json:"category,omitempty"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+// AlertBriefs fetches summaries for many alerts in one query. Category is the
+// detection category the signature stamped into the description.
+func (db *DB) AlertBriefs(ctx context.Context, ids []int64) (map[int64]AlertBrief, error) {
+	out := map[int64]AlertBrief{}
+	if len(ids) == 0 {
+		return out, nil
+	}
+	rows, err := db.QueryContext(ctx, `
+		SELECT id, title, severity, status, COALESCE(host,''), created_at,
+		       COALESCE(substring(description from 'Category: ([^\n|]+)'), '')
+		FROM alerts WHERE id = ANY($1)`, pq.Array(ids))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var a AlertBrief
+		if err := rows.Scan(&a.ID, &a.Title, &a.Severity, &a.Status, &a.Host, &a.CreatedAt, &a.Category); err != nil {
+			return nil, err
+		}
+		a.Category = strings.TrimSpace(a.Category)
+		out[a.ID] = a
 	}
 	return out, rows.Err()
 }

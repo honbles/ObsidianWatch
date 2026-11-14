@@ -14,6 +14,7 @@ type fakeGraphSrc struct {
 	evs    []store.Event
 	calls  int
 	alerts map[string][]int64
+	briefs map[int64]store.AlertBrief
 }
 
 func (f *fakeGraphSrc) in(from, to, t time.Time) bool { return !t.Before(from) && !t.After(to) }
@@ -188,7 +189,7 @@ func TestAlertGraphChain(t *testing.T) {
 		t.Errorf("mode %q", g.Coverage.Mode)
 	}
 	// 1 seed + up: CMD, EXP (+1 miss none) + down: 2 levels + artifacts, plus alerts map
-	if f.calls > 9 {
+	if f.calls > 16 {
 		t.Errorf("too many queries: %d", f.calls)
 	}
 	if len(g.Timeline) == 0 || g.Timeline[0].T.After(g.Timeline[len(g.Timeline)-1].T) {
@@ -322,4 +323,45 @@ func TestAlertGraphFallbackNeverEmpty(t *testing.T) {
 	if g.Coverage.Mode != "fallback" || len(g.Nodes) != 3 || len(g.Edges) != 2 {
 		t.Fatalf("fallback shape: mode=%s nodes=%d edges=%d", g.Coverage.Mode, len(g.Nodes), len(g.Edges))
 	}
+}
+
+func (f *fakeGraphSrc) EventsByFilePaths(_ context.Context, agent string, paths []string, from, to time.Time, limit int) ([]store.Event, error) {
+	f.calls++
+	set := map[string]bool{}
+	for _, p := range paths {
+		set[p] = true
+	}
+	var out []store.Event
+	for _, e := range f.evs {
+		if e.AgentID == agent && e.EventType == "file" && e.FilePath != nil && set[store.LowerCap512(*e.FilePath)] && f.in(from, to, e.Time) {
+			out = append(out, e)
+		}
+	}
+	return out, nil
+}
+
+func (f *fakeGraphSrc) EventsByImagePaths(_ context.Context, agent string, paths []string, from, to time.Time, limit int) ([]store.Event, error) {
+	f.calls++
+	set := map[string]bool{}
+	for _, p := range paths {
+		set[p] = true
+	}
+	var out []store.Event
+	for _, e := range f.evs {
+		if e.AgentID == agent && e.EventType == "process" && e.ImagePath != nil && set[store.LowerCap512(*e.ImagePath)] && f.in(from, to, e.Time) {
+			out = append(out, e)
+		}
+	}
+	return out, nil
+}
+
+func (f *fakeGraphSrc) AlertBriefs(_ context.Context, ids []int64) (map[int64]store.AlertBrief, error) {
+	f.calls++
+	out := map[int64]store.AlertBrief{}
+	for _, id := range ids {
+		if b, ok := f.briefs[id]; ok {
+			out[id] = b
+		}
+	}
+	return out, nil
 }

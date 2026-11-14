@@ -126,3 +126,40 @@ func matchURLIOC(text string, domainIOCs map[string]store.IOCIndicator) *store.I
 	}
 	return nil
 }
+
+// matchHostsInText checks the host of every http(s) URL in text against the IP
+// and domain indicators (a process that fetches http://1.2.3.4/x or
+// https://evil.test/ is talking to a known-bad host even when the exact URL is
+// not listed, and DNS/connect telemetry may have missed it). Shared hosting
+// sites are skipped so a domain IOC on a big platform cannot flag every use.
+func matchHostsInText(text string, ipIOCs, domainIOCs map[string]store.IOCIndicator) *store.IOCIndicator {
+	if text == "" {
+		return nil
+	}
+	for _, m := range urlInTextRe.FindAllString(text, -1) {
+		host := urlHost(strings.TrimRight(m, ".,;:"))
+		if host == "" {
+			continue
+		}
+		if net.ParseIP(host) != nil {
+			if ioc, ok := ipIOCs[host]; ok {
+				return &ioc
+			}
+			continue
+		}
+		if isSharedHost(host) {
+			continue
+		}
+		for h := host; h != ""; {
+			if ioc, ok := domainIOCs[h]; ok && !strings.HasPrefix(h, urlIOCPrefix) {
+				return &ioc
+			}
+			i := strings.Index(h, ".")
+			if i < 0 || !strings.Contains(h[i+1:], ".") {
+				break
+			}
+			h = h[i+1:]
+		}
+	}
+	return nil
+}

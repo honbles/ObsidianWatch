@@ -22,6 +22,10 @@
 #
 # Run as a normal user on a host that has the ObsidianWatch Linux agent:
 #     bash tools/linux_detection_story.sh
+# FIRST add these three Manual indicators (Detections -> Threat Intel -> Manual
+# indicators; the script prints the exact values). Without them nothing in a
+# threat feed matches EICAR or example.com, so IOC alerts cannot fire. Adding
+# them AFTER the run also works: the platform hunts retained history.
 # Options (env):  OW_YES=1 skip the prompt   OW_HOLD=8 seconds each step stays
 #   alive (the agent polls processes, so keep >= its poll interval)
 #   OW_IPS="1.2.3.4:443 5.6.7.8:8080"  use these flagged IPs instead of the feed
@@ -63,6 +67,16 @@ if [ "${OW_YES:-}" != 1 ]; then
 fi
 mkdir -p "$W"
 
+# ── Pre-flight: indicators to add so the IOC engine has something to match ────
+EX_IPS="$(getent ahostsv4 example.com 2>/dev/null | awk '{print $1}' | sort -u | tr '\n' ' ')"
+EX_IP="${EX_IPS%% *}"
+echo
+echo "Manual indicators to add (Detections -> Threat Intel -> Manual indicators):"
+echo "   hash   275a021bbfb6489e54d471899f7db9d1663fc695ec2fe2a2c4538aabf651fd0f   (EICAR test file)"
+for i in $EX_IPS; do echo "   ip     $i   (example.com)"; done
+echo "   domain example.com"
+if [ "${OW_YES:-}" != 1 ]; then read -r -p "Added them (or will add after)? Press Enter to start. " _; fi
+
 # ── 1. Initial access / dropper ───────────────────────────────────────────────
 say "1. Dropper: shell pulls a payload into /tmp"
 note "Shell Suspicious Execution (T1059.004), curl/wget Suspicious Download (T1105)"
@@ -82,7 +96,7 @@ wait "$AGENT_PID" 2>/dev/null
 
 # ── 3. Known-bad file hash (EICAR test file) ─────────────────────────────────
 say "3. Drop the EICAR antivirus test file (hash flagged by every scanner)"
-note "File hash lookup (VirusTotal engine, if enabled) and any hash IOC feed; FIM create in /tmp"
+note "Hash IOC match on the file event (needs the EICAR hash added as a manual indicator); VirusTotal engine too if enabled"
 P1='X5O!P%@AP[4\PZX54(P^)7CC)7}$EICAR'; P2='-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*'
 printf '%s%s' "$P1" "$P2" > /tmp/ow_eicar.com
 if command -v sha256sum >/dev/null 2>&1; then
@@ -91,9 +105,30 @@ if command -v sha256sum >/dev/null 2>&1; then
 fi
 hold; hold
 
-# ── 4. Flagged IPs: live Feodo Tracker C2 list ───────────────────────────────
-say "4. Contact IPs currently on the Feodo Tracker botnet-C2 blocklist"
-note "Threat-intel IOC match on destination IP (feed sync must be enabled in Settings)"
+# ── 4. Flagged IPs ───────────────────────────────────────────────────────────
+# The agent samples /proc/net/tcp every 10s, so every connection here is held
+# open for 25s (a shorter one can fall between two samples and be missed).
+say "4a. Hold a connection to an indicator IP (example.com — add it as a manual IP indicator)"
+note "Threat-intel IOC match on destination IP"
+if [ -n "$EX_IP" ] && command -v python3 >/dev/null 2>&1; then
+  echo "    connecting to $EX_IP:80 and holding 25s"
+  python3 - "$EX_IP" 80 25 <<'PY'
+import socket, sys, time
+ip, port, hold = sys.argv[1], int(sys.argv[2]), int(sys.argv[3])
+s = socket.socket(); s.settimeout(10)
+try:
+    s.connect((ip, port)); time.sleep(hold)
+except Exception as e:
+    print("    connect failed:", e)
+finally:
+    s.close()
+PY
+else
+  echo "    could not resolve example.com or python3 missing, skipping"
+fi
+
+say "4b. Contact IPs currently on the Feodo Tracker botnet-C2 blocklist (SYN only, no data)"
+note "IOC match from the live feed (needs the Feodo source enabled and synced); many listed C2s are offline, so this may show only a pending connection"
 IPS="${OW_IPS:-}"
 if [ -z "$IPS" ] && command -v python3 >/dev/null 2>&1; then
   IPS="$(curl -s -m 15 https://feodotracker.abuse.ch/downloads/ipblocklist.json 2>/dev/null | python3 -c '
@@ -101,7 +136,7 @@ import sys, json
 try:
     d = json.load(sys.stdin)
     out = [e["ip_address"] + ":" + str(e.get("port") or 443) for e in d if e.get("ip_address")]
-    print(" ".join(out[:3]))
+    print(" ".join(out[:2]))
 except Exception:
     pass' 2>/dev/null)"
 fi
@@ -110,13 +145,13 @@ if [ -z "$IPS" ]; then
 else
   for t in $IPS; do
     ip="${t%%:*}"; port="${t##*:}"
-    echo "    connecting to $ip:$port (8s, no data sent)"
+    echo "    connecting to $ip:$port (up to 25s, no data sent)"
     python3 - "$ip" "$port" <<'PY'
 import socket, sys, time
 ip, port = sys.argv[1], int(sys.argv[2])
-s = socket.socket(); s.settimeout(8)
+s = socket.socket(); s.settimeout(25)
 try:
-    s.connect((ip, port)); time.sleep(5)
+    s.connect((ip, port)); time.sleep(12)
 except Exception:
     pass
 finally:
@@ -135,6 +170,10 @@ fi
 for d in $DOMS pastebin.com; do
   echo "    lookup $d"; getent hosts "$d" >/dev/null 2>&1; sleep 2
 done
+echo "    (Linux only sees DNS names when systemd-resolved is in use; the next step does not depend on that)"
+say "5b. Fetch headers from a URL on an indicator domain (example.com — add it as a manual domain indicator)"
+note "Command-line URL host matches a domain/IP indicator"
+curl -s -m 8 -I http://example.com/ -o /dev/null; sleep "$HOLD"
 
 # ── 6. Discovery ─────────────────────────────────────────────────────────────
 say "6. Discovery on the host"

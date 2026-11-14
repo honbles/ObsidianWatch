@@ -437,3 +437,45 @@ func (db *DB) DisabledSigmaRuleIDs(ctx context.Context) ([]string, error) {
 	}
 	return ids, rows.Err()
 }
+
+// ListIOCsBySource returns every indicator of one source (including expired),
+// newest first. Used by the Manual indicators list.
+func (db *DB) ListIOCsBySource(ctx context.Context, source string, limit int) ([]IOCIndicator, error) {
+	if limit <= 0 || limit > 5000 {
+		limit = 1000
+	}
+	rows, err := db.QueryContext(ctx, `
+		SELECT id, source, ioc_type, value, COALESCE(malware,''), COALESCE(threat_type,''),
+		       confidence, severity, COALESCE(tags,''), expires_at, created_at
+		FROM ioc_indicators WHERE source = $1 ORDER BY id DESC LIMIT $2`, source, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []IOCIndicator
+	for rows.Next() {
+		var i IOCIndicator
+		var exp sql.NullTime
+		if err := rows.Scan(&i.ID, &i.Source, &i.IOCType, &i.Value, &i.Malware, &i.ThreatType,
+			&i.Confidence, &i.Severity, &i.Tags, &exp, &i.CreatedAt); err != nil {
+			return nil, err
+		}
+		if exp.Valid {
+			t := exp.Time
+			i.ExpiresAt = &t
+		}
+		out = append(out, i)
+	}
+	return out, rows.Err()
+}
+
+// DeleteIOCByID removes one indicator, but only if it came from `source`
+// (so feed-synced indicators cannot be deleted through the manual API).
+func (db *DB) DeleteIOCByID(ctx context.Context, id int64, source string) (bool, error) {
+	res, err := db.ExecContext(ctx, `DELETE FROM ioc_indicators WHERE id=$1 AND source=$2`, id, source)
+	if err != nil {
+		return false, err
+	}
+	n, _ := res.RowsAffected()
+	return n > 0, nil
+}

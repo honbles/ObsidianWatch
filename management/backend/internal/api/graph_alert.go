@@ -27,6 +27,9 @@ type graphSource interface {
 	EventsByParentGUIDs(ctx context.Context, agentID string, guids []string, from, to time.Time, limit int) ([]store.Event, error)
 	EventsByPID(ctx context.Context, agentID string, pid int, from, to time.Time, limit int) ([]store.Event, error)
 	AlertEntityMap(ctx context.Context, kind string, keys []string, perKey int) (map[string][]int64, error)
+	EventsByFilePaths(ctx context.Context, agentID string, paths []string, from, to time.Time, limit int) ([]store.Event, error)
+	EventsByImagePaths(ctx context.Context, agentID string, paths []string, from, to time.Time, limit int) ([]store.Event, error)
+	AlertBriefs(ctx context.Context, ids []int64) (map[int64]store.AlertBrief, error)
 }
 
 type AGNode struct {
@@ -45,13 +48,27 @@ type AGNode struct {
 	Score      int               `json:"score"`
 	Confidence string            `json:"confidence,omitempty"` // high|low
 	Alerts     []int64           `json:"alerts,omitempty"`
+	AlertInfo  []store.AlertBrief `json:"alert_info,omitempty"`
 	Collapsed  int               `json:"collapsed,omitempty"`
+	// Items lists what a collapsed (burst) node stands for, so it can be expanded in the UI.
+	Items []AGItem `json:"items,omitempty"`
 	EventIDs   []string          `json:"event_ids,omitempty"`
 	Meta       map[string]string `json:"meta,omitempty"`
 	// Explain is a deterministic plain-language reading of the node built
 	// from its edges (no model involved).
 	Explain string `json:"explain,omitempty"`
 }
+
+// AGItem is one member of a collapsed burst node.
+type AGItem struct {
+	Label  string    `json:"label"`
+	Detail string    `json:"detail,omitempty"`
+	T      time.Time `json:"t"`
+	Count  int       `json:"count"`
+	Note   string    `json:"note,omitempty"` // e.g. beacon candidate
+}
+
+const graphBurstItems = 100
 
 type AGEdge struct {
 	Source     string    `json:"source"`
@@ -94,6 +111,7 @@ type AlertGraph struct {
 	Edges    []AGEdge               `json:"edges"`
 	Timeline []AGTimelineItem       `json:"timeline"`
 	Coverage AGCoverage             `json:"coverage"`
+	Campaign AGCampaign             `json:"campaign"`
 }
 
 type graphInput struct {
@@ -143,6 +161,8 @@ type gProc struct {
 	seed     bool
 	low      bool
 	parentOK bool // parent process was found (or is a stable root)
+	hash     string
+	rolePref string // origin | executed: joined by file evidence, not by parent link
 }
 
 type gBuilder struct {
@@ -158,6 +178,8 @@ type gBuilder struct {
 	queries int
 	trunc   bool
 	gaps    []AGGap
+	links   []gFileLink
+	urls    map[string]string // lower-cased path -> download URL (Mark-of-the-Web)
 }
 
 func procBase(ev store.Event) string {
@@ -263,7 +285,7 @@ func BuildAlertGraph(ctx context.Context, src graphSource, in graphInput) (*Aler
 	if in.MaxNodes <= 0 || in.MaxNodes > 200 {
 		in.MaxNodes = 60
 	}
-	b := &gBuilder{ctx: ctx, src: src, in: in, procs: map[string]*gProc{}, seenEv: map[string]bool{}}
+	b := &gBuilder{ctx: ctx, src: src, in: in, procs: map[string]*gProc{}, seenEv: map[string]bool{}, urls: map[string]string{}}
 	b.alertT = in.Alert.CreatedAt
 	if in.AnchorEvent != nil && !in.AnchorEvent.Time.IsZero() {
 		b.alertT = in.AnchorEvent.Time
@@ -349,6 +371,9 @@ func (b *gBuilder) ingest(events []store.Event) {
 }
 
 func (b *gBuilder) apply(p *gProc, ev store.Event) {
+	if u := downloadURL(ev); u != "" {
+		b.urls[urlKey(gs(ev.FilePath))] = u
+	}
 	if p.first.IsZero() || ev.Time.Before(p.first) {
 		p.first = ev.Time
 	}
@@ -382,6 +407,9 @@ func (b *gBuilder) apply(p *gProc, ev store.Event) {
 		}
 		if ev.PPID != nil {
 			p.ppid = *ev.PPID
+		}
+		if p.hash == "" {
+			p.hash = gs(ev.FileHash)
 		}
 	case isProcEndEvent(ev):
 		t := ev.Time
@@ -434,11 +462,29 @@ func (b *gBuilder) buildGUID(seeds []Anchor) error {
 		return nil
 	}
 
-	// Up: parents, one query per hop. Ancestors can predate the window by
-	// weeks (a long-lived shell), so the lower bound is wider.
+	if err := b.walkUp(b.seedKeys(), graphMaxUpHops); err != nil {
+		return err
+	}
+	if err := b.walkDown(b.seedKeys()); err != nil {
+		return err
+	}
+	all := make([]string, 0, len(b.procs))
+	for k := range b.procs {
+		all = append(all, k)
+	}
+	sort.Strings(all)
+	if err := b.fetchArts(all); err != nil {
+		return err
+	}
+	return b.joinFiles()
+}
+
+// walkUp follows parent GUIDs from the frontier, one query per hop. Ancestors
+// can predate the window by weeks (a long-lived shell), so the lower bound is
+// wider than the window.
+func (b *gBuilder) walkUp(frontier []string, hops int) error {
 	upFrom := b.alertT.AddDate(0, 0, -30)
-	frontier := b.seedKeys()
-	for hop := 0; hop < graphMaxUpHops && len(frontier) > 0; hop++ {
+	for hop := 0; hop < hops && len(frontier) > 0; hop++ {
 		var want []string
 		for _, k := range frontier {
 			p := b.procs[k]
@@ -464,12 +510,15 @@ func (b *gBuilder) buildGUID(seeds []Anchor) error {
 		}
 		frontier = next
 	}
+	return nil
+}
 
-	// Down: children by parent GUID, breadth-first.
-	level := b.seedKeys()
+// walkDown finds children by parent GUID, breadth-first.
+func (b *gBuilder) walkDown(level []string) error {
 	for depth := 0; depth < graphMaxDownDepth && len(level) > 0 && len(b.procs) < graphMaxProcs; depth++ {
+		lv := level
 		evs, err := b.query(func() ([]store.Event, error) {
-			return b.src.EventsByParentGUIDs(b.ctx, b.agent, level, b.from, b.to, graphEventLimit)
+			return b.src.EventsByParentGUIDs(b.ctx, b.agent, lv, b.from, b.to, graphEventLimit)
 		}, graphEventLimit)
 		if err != nil {
 			return err
@@ -488,19 +537,18 @@ func (b *gBuilder) buildGUID(seeds []Anchor) error {
 		sort.Strings(next)
 		level = next
 	}
+	return nil
+}
 
-	// Artifacts for the whole lineage in one query (chunked only if huge).
-	all := make([]string, 0, len(b.procs))
-	for k := range b.procs {
-		all = append(all, k)
-	}
-	sort.Strings(all)
-	for i := 0; i < len(all); i += 400 {
+// fetchArts loads every event of the given processes (network, DNS, file,
+// registry artifacts and refinements of the process records), chunked.
+func (b *gBuilder) fetchArts(keys []string) error {
+	for i := 0; i < len(keys); i += 400 {
 		j := i + 400
-		if j > len(all) {
-			j = len(all)
+		if j > len(keys) {
+			j = len(keys)
 		}
-		chunk := all[i:j]
+		chunk := keys[i:j]
 		evs, err := b.query(func() ([]store.Event, error) {
 			return b.src.EventsByProcessGUIDs(b.ctx, b.agent, chunk, b.from, b.to, graphEventLimit)
 		}, graphEventLimit)
@@ -641,6 +689,8 @@ type gArt struct {
 	sev                     int
 	score                   int
 	owner                   string // process nodeID
+	times                   []time.Time
+	beacon                  string
 }
 
 func suspiciousDir(p string) bool {
@@ -708,6 +758,9 @@ func (b *gBuilder) artifactsFor(p *gProc) []*gArt {
 			agg[id] = a
 		}
 		a.n++
+		if len(a.times) < 500 && (kind == "ip" || kind == "domain") {
+			a.times = append(a.times, ev.Time)
+		}
 		if ev.Time.Before(a.first) {
 			a.first = ev.Time
 		}
@@ -743,6 +796,9 @@ func (b *gBuilder) artifactsFor(p *gProc) []*gArt {
 		}
 		if a.sev >= 4 {
 			sc += 15
+		}
+		if a.beacon = beaconNote(a.times); a.beacon != "" {
+			sc += 25
 		}
 		a.score = sc
 		out = append(out, a)
@@ -830,6 +886,32 @@ func (b *gBuilder) assemble(g *AlertGraph) {
 			cur = par
 		}
 	}
+	// file-joined processes: writers of a lineage file (origin) and runners of
+	// a lineage-written file (executed). Their own parents stay "origin".
+	for _, k := range b.sortedProcKeys() {
+		p := b.procs[k]
+		if p.rolePref == "" {
+			continue
+		}
+		if _, ok := role[k]; ok {
+			continue
+		}
+		role[k], dist[k] = p.rolePref, 1
+		if p.rolePref == "origin" {
+			d, cur := 1, p
+			for cur != nil && cur.parent != "" && d < graphMaxUpHops+1 {
+				par := b.procs[cur.parent]
+				if par == nil {
+					break
+				}
+				d++
+				if _, ok := role[par.key]; !ok {
+					role[par.key], dist[par.key] = "origin", d
+				}
+				cur = par
+			}
+		}
+	}
 	// descendants: distance by climbing to the nearest classified ancestor
 	var keys []string
 	for k := range b.procs {
@@ -915,6 +997,8 @@ func (b *gBuilder) assemble(g *AlertGraph) {
 			return 1000
 		case "ancestor":
 			return 900 - dist[k]
+		case "origin", "executed":
+			return 880 - dist[k]
 		}
 		return 800 - 10*dist[k] + 5*p.sev
 	}
@@ -1004,6 +1088,7 @@ func (b *gBuilder) assemble(g *AlertGraph) {
 			first time.Time
 			last  time.Time
 			ids   []string
+			all   []AGItem
 		}
 		rests := map[string]*rest{}
 		for _, a := range b.artifactsFor(p) {
@@ -1018,6 +1103,9 @@ func (b *gBuilder) assemble(g *AlertGraph) {
 				rests[a.kind] = r
 			}
 			r.n++
+			if len(r.all) < graphBurstItems {
+				r.all = append(r.all, AGItem{Label: a.label, Detail: a.detail, T: a.first, Count: a.n, Note: a.beacon})
+			}
 			if len(r.items) < 5 {
 				r.items = append(r.items, a.label)
 			}
@@ -1053,7 +1141,7 @@ func (b *gBuilder) assemble(g *AlertGraph) {
 				meta["extensions"] = histString(r.ext)
 			}
 			bn := &AGNode{ID: bid, Type: "burst", Role: "burst", Label: fmt.Sprintf("+%d more %s", r.n, kindPlural(kind)),
-				Detail: "candidate: collapsed " + kind + " activity", First: r.first, Last: r.last, Score: 5, Collapsed: r.n, EventIDs: r.ids, Meta: meta}
+				Detail: "candidate: collapsed " + kind + " activity", First: r.first, Last: r.last, Score: 5, Collapsed: r.n, EventIDs: r.ids, Meta: meta, Items: r.all}
 			burstOf[bid] = bn
 			burstEdges = append(burstEdges, AGEdge{Source: p.nodeID, Target: bid, Type: burstEdgeType(kind), Evidence: "guid",
 				Confidence: 100, First: r.first, Last: r.last, Count: r.n, EventIDs: r.ids})
@@ -1085,6 +1173,9 @@ func (b *gBuilder) assemble(g *AlertGraph) {
 			t := a.kind
 			nodes[a.id] = &AGNode{ID: a.id, Type: t, Role: "artifact", Label: a.label, Detail: a.detail,
 				First: a.first, Last: a.last, Severity: a.sev, Score: a.score}
+			if a.beacon != "" {
+				nodes[a.id].Meta = map[string]string{"beacon": a.beacon}
+			}
 		} else {
 			n := nodes[a.id]
 			if a.first.Before(n.First) {
@@ -1109,6 +1200,9 @@ func (b *gBuilder) assemble(g *AlertGraph) {
 		edges = append(edges, artEdges[k])
 	}
 	edges = append(edges, burstEdges...)
+
+	// File bridges: writer -> file -> executing process, on exact path/hash.
+	b.addBridges(nodes, &edges)
 
 	// Edge budget: structure first, then artifact edges by target score.
 	if len(edges) > graphMaxEdges {
@@ -1159,6 +1253,7 @@ func (b *gBuilder) assemble(g *AlertGraph) {
 		g.Nodes = append(g.Nodes, *n)
 	}
 	g.Edges = edges
+	b.enrichAlerts(g)
 }
 
 func edgeRank(e AGEdge, nodes map[string]*AGNode) int {
@@ -1362,5 +1457,46 @@ func handleAlertGraph(db *store.DB) http.HandlerFunc {
 			return
 		}
 		writeJSON(w, 200, g)
+	}
+}
+
+func (b *gBuilder) sortedProcKeys() []string {
+	ks := make([]string, 0, len(b.procs))
+	for k := range b.procs {
+		ks = append(ks, k)
+	}
+	sort.Strings(ks)
+	return ks
+}
+
+// addBridges adds the file node and the wrote/executed edges for each join.
+// A bridge file is always kept (it is the story), whatever the artifact cap.
+func (b *gBuilder) addBridges(nodes map[string]*AGNode, edges *[]AGEdge) {
+	for _, l := range b.links {
+		w, e := b.procs[l.writer], b.procs[l.exec]
+		if w == nil || e == nil || nodes[w.nodeID] == nil || nodes[e.nodeID] == nil {
+			continue
+		}
+		fid := l.fileID()
+		fn := nodes[fid]
+		if fn == nil {
+			fn = &AGNode{ID: fid, Type: "file", Role: "bridge", Label: lastPathElem(l.path), Detail: l.path, First: l.t, Last: l.t, Score: 950}
+			nodes[fid] = fn
+		}
+		fn.Role, fn.Score = "bridge", 950
+		if fn.Meta == nil {
+			fn.Meta = map[string]string{}
+		}
+		if u := b.urls[urlKey(l.path)]; u != "" {
+			fn.Meta["download_url"] = u
+		}
+		ev, conf := "path", 90
+		if l.hashMatch {
+			ev, conf = "hash", 100
+			fn.Meta["hash_match"] = "true"
+		}
+		*edges = append(*edges,
+			AGEdge{Source: w.nodeID, Target: fid, Type: "wrote", Evidence: "guid", Confidence: 100, First: l.t, Last: l.t, Count: 1},
+			AGEdge{Source: fid, Target: e.nodeID, Type: "executed", Evidence: ev, Confidence: conf, First: e.first, Last: e.first, Count: 1})
 	}
 }
