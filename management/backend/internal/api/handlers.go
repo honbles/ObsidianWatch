@@ -261,6 +261,14 @@ func handleExportEvents(db *store.DB) http.HandlerFunc {
 		claims := auth.GetClaims(r)
 		f := parseEventFilter(r)
 		f.Limit = exportEventsLimit + 1 // +1 so we can detect truncation
+		if qs := strings.TrimSpace(r.URL.Query().Get("q")); qs != "" {
+			expr, perr := store.ParseEventQuery(qs)
+			if perr != nil {
+				writeJSON(w, 400, map[string]string{"error": perr.Error()})
+				return
+			}
+			f.Expr = expr
+		}
 		format := r.URL.Query().Get("format")
 		if format == "" {
 			format = "csv"

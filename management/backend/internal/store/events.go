@@ -83,6 +83,9 @@ type EventFilter struct {
 	Search      string   // free-text across key fields
 	Tokens      []string // multi-token search — all tokens must match (AND logic)
 	NotTokens   []string // F-07: events matching any of these tokens are excluded
+	// Expr is a parsed KQL-style query (AND/OR/NOT, fields, comparisons).
+	// It is ANDed with every other filter on this struct.
+	Expr *QueryExpr
 	Since       time.Time
 	Until       time.Time
 	// IngestedAfter (D-01/D-02): when set, filters and orders by
@@ -259,6 +262,15 @@ func (db *DB) QueryEvents(ctx context.Context, f EventFilter) ([]Event, int64, e
 			OR COALESCE(file_path,'') ILIKE $%d OR raw::text ILIKE $%d)`, n, n+1, n+2, n+3, n+4, n+5, n+6))
 		args = append(args, v, v, v, v, v, v, v)
 		n += 7
+	}
+	if f.Expr != nil {
+		clause, qargs, err := f.Expr.SQL(n)
+		if err != nil {
+			return nil, 0, err
+		}
+		where = append(where, clause)
+		args = append(args, qargs...)
+		n += len(qargs)
 	}
 	if !f.IngestedAfter.IsZero() {
 		where = append(where, fmt.Sprintf("ingested_at > $%d", n))

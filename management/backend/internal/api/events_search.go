@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strconv"
 	"strings"
@@ -29,7 +30,11 @@ func handleEventSearch(db *store.DB) http.HandlerFunc {
 
 		// Parse search query — split on whitespace into tokens
 		raw := strings.TrimSpace(q.Get("q"))
-		tokens, notTokens, specialFilters := parseSearchQuery(raw)
+		expr, perr := store.ParseEventQuery(raw)
+		if perr != nil {
+			writeJSON(w, 400, map[string]string{"error": perr.Error()})
+			return
+		}
 
 		// Time range
 		since := time.Now().Add(-24 * time.Hour) // default: last 24 hours
@@ -79,20 +84,23 @@ func handleEventSearch(db *store.DB) http.HandlerFunc {
 			}
 		}
 
-		f := store.EventFilter{
-			Tokens:    tokens,
-			NotTokens: notTokens,
-			Since:     since,
-			Until:     until,
-			Limit:     limit,
-		}
-		for _, apply := range specialFilters {
-			apply(&f)
-		}
+		// Start from the filter chips (severity, os, type, host, ...) so they
+		// combine with the query text instead of being dropped, then apply the
+		// search-specific time window, paging and expression.
+		f := parseEventFilter(r)
+		f.Search = ""
+		f.Expr = expr
+		f.Since, f.Until = since, until
+		f.Limit = limit
 
 		events, total, err := db.QueryEvents(ctx, f)
 		if err != nil {
-			writeJSON(w, 500, map[string]string{"error": err.Error()})
+			var qe *store.QueryError
+			if errors.As(err, &qe) {
+				writeJSON(w, 400, map[string]string{"error": qe.Error()})
+				return
+			}
+			writeJSON(w, 500, map[string]string{"error": "search failed"})
 			return
 		}
 
@@ -101,7 +109,6 @@ func handleEventSearch(db *store.DB) http.HandlerFunc {
 			"total":  total,
 			"limit":  limit,
 			"query":  raw,
-			"tokens": tokens,
 		})
 	}
 }

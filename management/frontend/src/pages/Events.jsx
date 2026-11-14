@@ -738,7 +738,33 @@ const TAG_COLORS = {
   proto:         'bg-green-900/30 text-green-300 border-green-700/40',
   host:          'bg-yellow-900/30 text-yellow-300 border-yellow-700/40',
   source:        'bg-pink-900/30 text-pink-300 border-pink-700/40',
+  kql:           'bg-violet-900/30 text-violet-300 border-violet-700/40 font-mono',
 }
+
+// Mirrors the backend query language: a field op value condition, parentheses,
+// or and/or/not make the input a query rather than a plain search word.
+const KQL_FIELDS = new Set(['host','os','user','proc','process','cmd','cmdline','image','file','path','hash','reg','regkey',
+  'regvalue','domain','channel','source','proto','guid','logon','src','src_ip','dst','dst_ip','ip','pid','ppid','port',
+  'dstport','srcport','event_id','eid','sev','severity','type','event','time'])
+export function looksLikeKQL(raw) {
+  const l = ' ' + String(raw).toLowerCase() + ' '
+  if (/[()]/.test(l) || / (and|or|not) /.test(l)) return true
+  return String(raw).split(/\s+/).some(w => {
+    const m = w.match(/^-?([a-z_]+)(>=|<=|!=|[:=<>])/i)
+    return !!m && KQL_FIELDS.has(m[1].toLowerCase())
+  })
+}
+
+const KQL_HELP = [
+  ['severity>=high and host:web*', 'AND / OR / NOT with ( ) grouping; adjacent terms are ANDed'],
+  ['proc:powershell cmd:"-enc"', 'field:value is "contains" (use * as a wildcard); quote values with spaces'],
+  ['type:(process or network)', 'one field, several values'],
+  ['user=SYSTEM   user!=SYSTEM', '= exact, != not equal'],
+  ['port>1024   pid<100   severity=critical', 'numbers compare with > >= < <= ; sev:high means high or worse'],
+  ['dst:203.0.113.7   ip:10.0.', 'dst/src/ip: exact for a full IP, otherwise contains'],
+  ['time>=2026-11-14T10:30', 'UTC date or date-time'],
+  ['-chrome   not user:SYSTEM', 'exclude'],
+]
 
 const PRESETS = [
   { label: '15m',  ms: 15*60000 },
@@ -759,6 +785,8 @@ export default function Events() {
 
   const [tags, setTags]     = useState([])
   const [inputVal, setInputVal] = useState('')
+  const [queryErr, setQueryErr] = useState('')
+  const [showHelp, setShowHelp] = useState(false)
   const [since, setSince]   = useState('')
   const [until, setUntil]   = useState('')
   const inputRef = useRef(null)
@@ -817,6 +845,7 @@ export default function Events() {
     const v = val.trim()
     if (!v) return null
     const lower = v.toLowerCase()
+    if (looksLikeKQL(v)) return { field: 'kql', label: v, value: v }
 
     if (/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(v))
       return { field: 'src_or_dst_ip', label: 'IP: ' + v, value: v }
@@ -872,7 +901,7 @@ export default function Events() {
   const removeTag = (id) => setTags(t => t.filter(tag => tag.id !== id))
 
   const handleKeyDown = (e) => {
-    if ((e.key === 'Enter' || e.key === ',') && inputVal.trim()) {
+    if ((e.key === 'Enter' || (e.key === ',' && !looksLikeKQL(inputVal))) && inputVal.trim()) {
       e.preventDefault(); addTag(inputVal)
     }
     if (e.key === 'Backspace' && !inputVal && tags.length > 0)
@@ -882,14 +911,18 @@ export default function Events() {
   const buildParams = useCallback((p = 0) => {
     const params = { limit, offset: p * limit }
     const searchTerms = []
+    const kql = []
     tags.forEach(tag => {
-      if (tag.field === 'src_or_dst_ip' || tag.field === 'search') {
+      if (tag.field === 'kql') {
+        kql.push('(' + tag.value + ')')
+      } else if (tag.field === 'src_or_dst_ip' || tag.field === 'search') {
         searchTerms.push(tag.value)
       } else {
         params[tag.field] = tag.value
       }
     })
     if (searchTerms.length > 0) params.search = searchTerms.join(' ')
+    if (kql.length > 0) params.q = kql.join(' ')
     if (since) params.since = new Date(since).toISOString()
     if (until) params.until = new Date(until + ':59').toISOString()
     return params
@@ -901,9 +934,12 @@ export default function Events() {
       const params = buildParams(p)
       // Combine tag-based search terms with live input
       const searchTokens = tags.filter(t => t.field === 'search').map(t => t.value)
-      // Split live input into tokens too
-      const liveTokens = liveInput.trim().split(/\s+/).filter(Boolean)
-      const allTokens = [...searchTokens, ...liveTokens]
+      const kqlTokens = tags.filter(t => t.field === 'kql').map(t => '(' + t.value + ')')
+      // A query typed live is kept whole; plain words are split as before.
+      const live = liveInput.trim()
+      const liveTokens = !live ? [] : looksLikeKQL(live) ? ['(' + live + ')'] : live.split(/\s+/).filter(Boolean)
+      const allTokens = [...kqlTokens, ...searchTokens, ...liveTokens]
+      setQueryErr('')
 
       if (allTokens.length > 0) {
         const searchParams = { ...params, q: allTokens.join(' ') }
@@ -918,6 +954,10 @@ export default function Events() {
         setEvents(data.events || [])
         setTotal(data.total || 0)
       }
+    } catch (e) {
+      // A bad query is the user's to fix: show why, keep the previous results.
+      const msg = e?.response?.status === 400 ? e.response.data?.error : ''
+      if (msg) setQueryErr(msg)
     } finally { setLoading(false) }
   }, [buildParams, tags])
 
@@ -1045,6 +1085,12 @@ export default function Events() {
             )}
           </div>
 
+          {queryErr && (
+            <div className="text-[11px] text-red-300 bg-red-950/30 border border-red-900/50 rounded-lg px-3 py-1.5">
+              Query problem: {queryErr}
+            </div>
+          )}
+
           {/* Saved searches button + hints */}
           <div className="flex items-center gap-2 flex-wrap">
             <button onClick={() => setShowSaved(s => !s)}
@@ -1054,6 +1100,10 @@ export default function Events() {
                   : 'border-siem-border text-siem-muted hover:border-siem-accent hover:text-siem-accent'
               }`}>
               <Search size={9}/> Saved Searches
+            </button>
+            <button onClick={() => setShowHelp(h => !h)}
+              className={`text-[10px] px-2.5 py-1 rounded-full border transition-colors ${showHelp ? 'bg-violet-900/30 border-violet-600 text-violet-300' : 'border-siem-border text-siem-muted hover:border-violet-500 hover:text-violet-300'}`}>
+              Query syntax
             </button>
             <span className="text-siem-border text-xs">|</span>
             {HINTS.map(hint => (
@@ -1067,6 +1117,19 @@ export default function Events() {
               </button>
             ))}
           </div>
+
+          {showHelp && (
+            <div className="rounded-lg border border-siem-border bg-siem-bg p-3 space-y-1.5">
+              <div className="text-[10px] uppercase tracking-wider text-siem-muted">Query language — press Enter to add it as a filter</div>
+              {KQL_HELP.map(([q, d]) => (
+                <div key={q} className="flex items-baseline gap-3 text-[11px]">
+                  <button onClick={() => addTag(q)} className="font-mono text-violet-300 hover:underline text-left shrink-0">{q}</button>
+                  <span className="text-siem-muted">{d}</span>
+                </div>
+              ))}
+              <div className="text-[10px] text-siem-muted pt-1">Fields: host os user proc cmd image file hash reg domain channel source proto src dst ip port pid ppid eid sev type time</div>
+            </div>
+          )}
 
           {/* Saved searches panel */}
           {showSaved && (
