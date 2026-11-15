@@ -3,6 +3,7 @@
 package collector
 
 import (
+	"golang.org/x/sys/windows/registry"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -190,17 +191,58 @@ func collectSystemInfo() SystemInfo {
 	return info
 }
 
+// uninstallKeys are the registry hives Windows records installed software in.
+// "Programs and Features" is built from exactly these.
+var uninstallKeys = []struct {
+	root registry.Key
+	path string
+	view uint32
+}{
+	{registry.LOCAL_MACHINE, `SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall`, registry.WOW64_64KEY},
+	{registry.LOCAL_MACHINE, `SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall`, registry.WOW64_32KEY},
+	{registry.CURRENT_USER, `SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall`, 0},
+}
+
+// collectPackages lists installed software from the registry. It replaces
+// "wmic product", which only sees MSI installs, is removed on current Windows
+// 11 builds, and triggers an MSI consistency check on every package it lists.
 func collectPackages() []InstalledPackage {
 	var pkgs []InstalledPackage
-
-	// Windows Management Instrumentation — works on all Windows versions
-	out, err := exec.Command("wmic", "product", "get", "Name,Version", "/format:csv").Output()
-	if err == nil {
-		for _, line := range strings.Split(string(out), "\n") {
-			parts := strings.SplitN(strings.TrimSpace(line), ",", 3)
-			if len(parts) == 3 && parts[1] != "" && parts[1] != "Name" {
-				pkgs = append(pkgs, InstalledPackage{Name: parts[1], Version: parts[2], Manager: "wmic"})
+	seen := map[string]bool{}
+	for _, k := range uninstallKeys {
+		root, err := registry.OpenKey(k.root, k.path, registry.ENUMERATE_SUB_KEYS|k.view)
+		if err != nil {
+			continue
+		}
+		names, _ := root.ReadSubKeyNames(-1)
+		root.Close()
+		for _, n := range names {
+			sub, err := registry.OpenKey(k.root, k.path+`\`+n, registry.QUERY_VALUE|k.view)
+			if err != nil {
+				continue
 			}
+			name, _, _ := sub.GetStringValue("DisplayName")
+			ver, _, _ := sub.GetStringValue("DisplayVersion")
+			pub, _, _ := sub.GetStringValue("Publisher")
+			sysComp, _, _ := sub.GetIntegerValue("SystemComponent")
+			parent, _, _ := sub.GetStringValue("ParentKeyName")
+			sub.Close()
+			name = strings.TrimSpace(name)
+			// skip hidden system components, patches/updates (they have a parent) and KB entries
+			if name == "" || sysComp == 1 || parent != "" || strings.HasPrefix(name, "Update for ") ||
+				(strings.HasPrefix(name, "Security Update for ") || strings.Contains(name, "(KB")) {
+				continue
+			}
+			id := strings.ToLower(name + "|" + ver)
+			if seen[id] {
+				continue
+			}
+			seen[id] = true
+			mgr := "registry"
+			if pub != "" {
+				mgr = "registry:" + strings.TrimSpace(pub)
+			}
+			pkgs = append(pkgs, InstalledPackage{Name: name, Version: strings.TrimSpace(ver), Manager: mgr})
 		}
 	}
 
@@ -208,7 +250,7 @@ func collectPackages() []InstalledPackage {
 	if out2, err2 := exec.Command("choco", "list", "--local-only").Output(); err2 == nil {
 		for _, line := range strings.Split(string(out2), "\n") {
 			parts := strings.Fields(line)
-			if len(parts) == 2 {
+			if len(parts) == 2 && !seen[strings.ToLower(parts[0]+"|"+parts[1])] {
 				pkgs = append(pkgs, InstalledPackage{Name: parts[0], Version: parts[1], Manager: "choco"})
 			}
 		}
@@ -216,7 +258,6 @@ func collectPackages() []InstalledPackage {
 
 	return pkgs
 }
-
 
 func collectServices() []RunningService {
 	var services []RunningService

@@ -7,6 +7,13 @@ import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, BarChart, 
 import api, { getWSTicket } from '../../api/client'
 import AgentMap from '../../components/AgentMap'
 
+// CPU% from older agents could be a raw tick count (trillions); treat anything
+// outside 0-6400 as unknown and cap the rest at 100 so the chart stays honest.
+const cpuTop = (list) => (list || [])
+  .map(p => ({ ...p, cpu_percent: Number.isFinite(p.cpu_percent) && p.cpu_percent >= 0 && p.cpu_percent <= 6400 ? Math.min(p.cpu_percent, 100) : 0 }))
+  .sort((a, b) => b.cpu_percent - a.cpu_percent).slice(0, 10)
+
+
 export function TabDevice({ agent }) {
   const [healthEvents, setHealthEvents] = useState([])
   const [loading, setLoading]           = useState(true)
@@ -170,12 +177,12 @@ export function TabDevice({ agent }) {
               <div className="text-[9px] text-siem-muted mb-2">CPU %</div>
               <div className="h-28">
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={[...raw.top_processes].sort((a,b) => b.cpu_percent - a.cpu_percent).slice(0,10)} layout="vertical" margin={{ top:0, right:40, bottom:0, left:80 }}>
-                    <XAxis type="number" tick={{ fontSize: 9, fill: '#64748b' }} tickLine={false} axisLine={false}/>
+                  <BarChart data={cpuTop(raw.top_processes)} layout="vertical" margin={{ top:0, right:40, bottom:0, left:80 }}>
+                    <XAxis type="number" domain={[0, 100]} tick={{ fontSize: 9, fill: '#64748b' }} tickLine={false} axisLine={false}/>
                     <YAxis type="category" dataKey="name" tick={{ fontSize: 9, fill: '#94a3b8' }} width={80} tickLine={false} axisLine={false}/>
                     <Tooltip contentStyle={{ background:'#0f1923', border:'1px solid #1e3a4a', borderRadius:6, fontSize:10 }} formatter={v => [`${Number(v).toFixed(1)}%`, 'CPU']}/>
                     <Bar dataKey="cpu_percent" radius={[0,3,3,0]}>
-                      {raw.top_processes.slice(0,10).map((p,i) => (
+                      {cpuTop(raw.top_processes).map((p,i) => (
                         <Cell key={i} fill={p.cpu_percent > 50 ? '#ef4444' : p.cpu_percent > 20 ? '#f97316' : '#22c55e'}/>
                       ))}
                     </Bar>

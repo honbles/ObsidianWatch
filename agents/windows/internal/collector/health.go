@@ -70,6 +70,7 @@ type HealthReporter struct {
 	lastKernelTime uint64
 	lastUserTime   uint64
 	lastProcTimes  map[uint32]uint64
+	lastProcAt     time.Time // when lastProcTimes was sampled
 }
 
 type ProcessMetric struct {
@@ -278,8 +279,10 @@ func (h *HealthReporter) readTopProcesses() []ProcessMetric {
 		var ct, et, kt, ut windows.Filetime
 		cpuTick := uint64(0)
 		if windows.GetProcessTimes(h, &ct, &et, &kt, &ut) == nil {
-			cpuTick = uint64(kt.HighDateTime)<<32 | uint64(kt.LowDateTime) +
-				uint64(ut.HighDateTime)<<32 | uint64(ut.LowDateTime)
+			// Parenthesised: in Go << binds tighter than | and +, which are the
+			// same level, so the unparenthesised sum mixed the halves wrongly.
+			cpuTick = (uint64(kt.HighDateTime)<<32 | uint64(kt.LowDateTime)) +
+				(uint64(ut.HighDateTime)<<32 | uint64(ut.LowDateTime))
 		}
 
 		// Memory
@@ -291,15 +294,27 @@ func (h *HealthReporter) readTopProcesses() []ProcessMetric {
 		items = append(items, raw{pid: pid, name: name, cpu: cpuTick, memWS: pmc.WorkingSetSize})
 	}
 
-	intervalTicks := uint64(h.interval.Seconds() * 1e7) // 100-ns intervals
+	// CPU% is the share of the whole machine used since the previous sample
+	// (Task Manager style, 0-100). A process with no previous sample, or whose
+	// counter went backwards (PID reuse), reports 0 rather than its lifetime
+	// CPU time, which used to show up as a percentage in the trillions.
+	now := time.Now()
+	elapsedTicks := uint64(0)
+	if !h.lastProcAt.IsZero() {
+		elapsedTicks = uint64(now.Sub(h.lastProcAt).Seconds() * 1e7) // 100-ns units
+	}
+	h.lastProcAt = now
+	cores := float64(runtime.NumCPU())
+	live := make(map[uint32]uint64, len(items))
 	metrics := make([]ProcessMetric, 0, len(items))
 	for _, item := range items {
-		prev := h.lastProcTimes[item.pid]
-		delta := item.cpu - prev
-		h.lastProcTimes[item.pid] = item.cpu
+		live[item.pid] = item.cpu
 		cpuPct := 0.0
-		if intervalTicks > 0 {
-			cpuPct = float64(delta) / float64(intervalTicks) * 100
+		if prev, seen := h.lastProcTimes[item.pid]; seen && elapsedTicks > 0 && item.cpu >= prev {
+			cpuPct = float64(item.cpu-prev) / (float64(elapsedTicks) * cores) * 100
+			if cpuPct > 100 {
+				cpuPct = 100
+			}
 		}
 		metrics = append(metrics, ProcessMetric{
 			PID:    item.pid,
@@ -309,6 +324,7 @@ func (h *HealthReporter) readTopProcesses() []ProcessMetric {
 		})
 	}
 
+	h.lastProcTimes = live // also drops exited processes
 	sort.Slice(metrics, func(i, j int) bool { return metrics[i].CPUPct > metrics[j].CPUPct })
 	top := 10
 	if len(metrics) < top {

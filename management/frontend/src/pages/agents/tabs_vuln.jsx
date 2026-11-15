@@ -308,7 +308,10 @@ export function TabVuln({ agent }) {
         {activeSection === "packages" && (
           <div className="p-5">
             {packages.length === 0 ? (
-              <div className="text-center text-sm text-siem-muted py-12">No package data collected</div>
+              <div className="text-center text-sm text-siem-muted py-12 px-6 space-y-1">
+                <div>No package inventory from this agent.</div>
+                <div className="text-[11px]">CVE lookups (NVD / OSV) run only on installed packages, so none were done. Ports and security findings above come from the agent's own checks. Updating the agent restores the installed-software list on Windows.</div>
+              </div>
             ) : (<>
               <div className="mb-3 flex items-center gap-3">
                 <button onClick={runOSV} disabled={osvBusy}

@@ -277,11 +277,14 @@ func (h *HealthReporter) readTopProcesses(hertzPerSec float64) []ProcessMetric {
 	isFirstPoll := len(h.lastProcStat) == 0
 	metrics := make([]ProcessMetric, 0, len(procs))
 	for _, p := range procs {
-		prev := h.lastProcStat[p.pid]
-		dCPU := float64((p.utime + p.stime) - (prev.utime + prev.stime))
-		// On first poll lastProcStat is empty — all deltas are since boot, skip CPU
+		prev, seen := h.lastProcStat[p.pid]
+		cur, was := p.utime+p.stime, prev.utime+prev.stime
+		// First poll, a process not seen before, or a counter that went
+		// backwards (PID reuse): no valid delta, so report 0 instead of its
+		// lifetime CPU time (or an unsigned underflow clamped to 100%).
 		cpuPct := 0.0
-		if !isFirstPoll && hertzPerSec > 0 {
+		if !isFirstPoll && seen && cur >= was && hertzPerSec > 0 {
+			dCPU := float64(cur - was)
 			cpuPct = dCPU / hertzPerSec * 100
 			if cpuPct > 100 {
 				cpuPct = 100
