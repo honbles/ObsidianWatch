@@ -61,7 +61,7 @@ export function TabCompliance({ agent }) {
         </div>
         {!hasPosture && (
           <div className="mb-3 text-xs text-amber-400 bg-siem-surface border border-siem-border rounded-xl p-3">
-            This scan has no posture results — the agent on this host is an older build. Rebuild it in Agent Builder and reinstall to get the full compliance checks.
+            This scan has no posture results - the agent on this host is an older build. Rebuild it in Agent Builder and reinstall to get the full compliance checks.
           </div>
         )}
         <div className="bg-siem-surface border border-siem-border rounded-xl">
@@ -72,7 +72,7 @@ export function TabCompliance({ agent }) {
               <span className="ml-2 text-siem-text">{c.id} {c.title}</span>
               {c.category && <span className="ml-2 text-siem-muted/60">{c.category}</span>}
               {c.status !== 'pass' && c.severity && <span className="ml-2 text-siem-muted uppercase">{c.severity}</span>}
-              {c.status !== 'pass' && <div className="text-siem-muted mt-0.5">{c.detail ? c.detail + ' — ' : ''}{c.fix}</div>}
+              {c.status !== 'pass' && <div className="text-siem-muted mt-0.5">{c.detail ? c.detail + ' - ' : ''}{c.fix}</div>}
             </div>
           ))}
         </div>

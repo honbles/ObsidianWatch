@@ -61,7 +61,7 @@ type AuthConfig struct {
 	// APIKeys is the list of accepted X-API-Key values.
 	// In production, use a secrets manager rather than plain text here.
 	APIKeys []string `yaml:"api_keys"`
-	// MTLSEnabled — if true, require a valid client certificate.
+	// MTLSEnabled - if true, require a valid client certificate.
 	// cert validation is done using TLSCAFile in ServerConfig.
 	MTLSEnabled bool `yaml:"mtls_enabled"`
 }
@@ -116,7 +116,7 @@ func defaults() *Config {
 
 // M-09: reject known placeholder values for the DB password and API keys so
 // a default from .env.example / docker-compose can't accidentally reach
-// production — see management/backend/internal/config/config.go for the
+// production - see management/backend/internal/config/config.go for the
 // same guard on the management service.
 func isPlaceholderSecret(v string) bool {
 	v = strings.ToLower(strings.TrimSpace(v))

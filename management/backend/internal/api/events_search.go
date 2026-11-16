@@ -21,14 +21,14 @@ const (
 	eventSearchTimeout     = 10 * time.Second
 )
 
-// handleEventSearch — tokenized full-text search across all events
+// handleEventSearch - tokenized full-text search across all events
 // GET /api/v1/events/search?q=root+ssh+failed&since=1h&until=now&limit=200
 func handleEventSearch(db *store.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
 		q := r.URL.Query()
 
-		// Parse search query — split on whitespace into tokens
+		// Parse search query - split on whitespace into tokens
 		raw := strings.TrimSpace(q.Get("q"))
 		expr, perr := store.ParseEventQuery(raw)
 		if perr != nil {
@@ -168,7 +168,7 @@ func parseSearchQuery(raw string) (tokens, notTokens []string, specialFilters []
 				case "source":
 					specialFilters = append(specialFilters, func(f *store.EventFilter) { f.Source = val })
 				default:
-					// Unknown prefix — treat as regular token
+					// Unknown prefix - treat as regular token
 					tokens = append(tokens, tok)
 				}
 			} else {
@@ -209,7 +209,7 @@ func splitSearchTerms(s string) []string {
 	return out
 }
 
-// handleSavedQueries — CRUD for saved search queries
+// handleSavedQueries - CRUD for saved search queries
 // GET  /api/v1/events/saved-queries
 // POST /api/v1/events/saved-queries
 // DELETE /api/v1/events/saved-queries/{id}

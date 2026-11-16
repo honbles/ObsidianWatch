@@ -1,6 +1,6 @@
 package api
 
-// graph_endpoint.go — Endpoint Threat Graph builder.
+// graph_endpoint.go - Endpoint Threat Graph builder.
 //
 // Builds a rich force-directed graph from all events for a given host.
 // Returns nodes and edges that the frontend renders with D3.
@@ -239,7 +239,7 @@ func (g *graphBuilder) handleProcess(ev store.Event) {
 	}
 
 	name := *ev.ProcessName
-	// Key by name only — all instances of chrome.exe become one node
+	// Key by name only - all instances of chrome.exe become one node
 	nodeID := fmt.Sprintf("proc-%s", strings.ToLower(name))
 
 	n := g.node(nodeID, "process", name, int(ev.Severity))
@@ -329,7 +329,7 @@ func (g *graphBuilder) handleNetwork(ev store.Event) {
 
 	// Only create explicit IP nodes for:
 	//   - High/critical severity connections (detection engine scored them)
-	//   - Connections to well-known shell/C2 ports (structural — not application-specific)
+	//   - Connections to well-known shell/C2 ports (structural - not application-specific)
 	// Everything else aggregates as a counter on the process node.
 	createNode := sev >= 4 || wellKnownShellPorts[dstPort]
 
@@ -357,7 +357,7 @@ func (g *graphBuilder) handleNetwork(ev store.Event) {
 			// Track top connections as metadata on the process node
 			conns, _ := proc.Meta["top_connections"].([]map[string]interface{})
 			entry := map[string]interface{}{"ip": dstIP, "port": dstPort, "ext": isExt}
-			// Deduplicate by ip:port — increment count
+			// Deduplicate by ip:port - increment count
 			found := false
 			for _, c := range conns {
 				if c["ip"] == dstIP && c["port"] == dstPort {
@@ -427,7 +427,7 @@ func (g *graphBuilder) handleFile(ev store.Event) {
 	}
 	path := *ev.FilePath
 
-	// Skip virtual/kernel filesystems — cross-platform, path-prefix based only.
+	// Skip virtual/kernel filesystems - cross-platform, path-prefix based only.
 	pathLow := strings.ToLower(path)
 	skipPrefixes := []string{
 		"/proc/", // Linux kernel virtual fs
@@ -440,7 +440,7 @@ func (g *graphBuilder) handleFile(ev store.Event) {
 			return
 		}
 	}
-	// Skip by extension — noisy temp/cache files from any application on any OS.
+	// Skip by extension - noisy temp/cache files from any application on any OS.
 	skipSuffixes := []string{
 		".log", ".tmp", ".cache", ".lock",
 		".db-shm", ".db-wal", ".crdownload", ".part", ".swp", ".swo",
@@ -697,7 +697,7 @@ func (g *graphBuilder) findProcessNode(ev store.Event) string {
 		if n, ok := g.pidProc[*ev.PID]; ok {
 			return n.ID
 		}
-		// PID known but node not yet created — use name from cache
+		// PID known but node not yet created - use name from cache
 		if name, ok := g.pidName[*ev.PID]; ok {
 			nodeID := fmt.Sprintf("proc-%s-%d", strings.ToLower(name), *ev.PID)
 			if _, exists := g.nodes[nodeID]; exists {
@@ -778,12 +778,12 @@ func handleEndpointGraph(db *store.DB) http.HandlerFunc {
 			}
 		}
 
-		// Optional process filter — only show graph for specific process
+		// Optional process filter - only show graph for specific process
 		processFilter := r.URL.Query().Get("process")
 
 		since := time.Now().Add(-time.Duration(hours) * time.Hour)
 		filter := store.EventFilter{
-			// F-10: exact match — this endpoint is scoped to one specific
+			// F-10: exact match - this endpoint is scoped to one specific
 			// host, so a substring match would silently pull in events
 			// from unrelated hosts (e.g. "web" matching "web-prod").
 			HostExact: host,
@@ -823,7 +823,7 @@ func handleEndpointGraph(db *store.DB) http.HandlerFunc {
 		graph.Meta.EventCount = len(events)
 		graph.Meta.Truncated = len(events) >= graphEventCap
 
-		// Correlate detection engine alerts — mark nodes suspicious based on real alerts
+		// Correlate detection engine alerts - mark nodes suspicious based on real alerts
 		// not heuristics. Pull open alerts for this host in the time window.
 		alerts, _ := db.ListAlertsForHost(r.Context(), host, since)
 		alertsByEventID := make(map[string]store.Alert)
@@ -1134,7 +1134,7 @@ func buildNetworkGraph(events []store.Event, since time.Time, agentsByHost map[s
 		edges[id] = &GraphEdge{ID: id, Source: src, Target: dst, Type: typ, Count: 1, Severity: sev}
 	}
 
-	// Seed device nodes from agents table — richer than inferring from events
+	// Seed device nodes from agents table - richer than inferring from events
 	for hostname, agent := range agentsByHost {
 		nodeID := fmt.Sprintf("device-%s", hostname)
 		n := addNode(nodeID, "device", hostname, 1)
@@ -1197,7 +1197,7 @@ func buildNetworkGraph(events []store.Event, since time.Time, agentsByHost map[s
 		}
 
 		if dstHostname != "" && dstHostname != ev.Host {
-			// Internal — agent to agent
+			// Internal - agent to agent
 			dstDeviceID := fmt.Sprintf("device-%s", dstHostname)
 			edgeID := fmt.Sprintf("%s→%s[connected]", srcDeviceID, dstDeviceID)
 			addEdge(srcDeviceID, dstDeviceID, "connected", sev)
@@ -1219,7 +1219,7 @@ func buildNetworkGraph(events []store.Event, since time.Time, agentsByHost map[s
 			extNode.Meta["is_external"] = true
 			addEdge(srcDeviceID, extNodeID, "connected", sev)
 		} else if isInternal(dstIP) && dstHostname == "" && !isLoopback(dstIP) {
-			// Internal IP with no agent — unknown device
+			// Internal IP with no agent - unknown device
 			unknownID := fmt.Sprintf("unknown-%s", dstIP)
 			unknownNode := addNode(unknownID, "unknown_device", dstIP, 2)
 			unknownNode.Meta["ip"] = dstIP
@@ -1271,7 +1271,7 @@ func isIPAddress(s string) bool {
 
 // Suspicious detection is handled by the detection engine alert pipeline.
 // Graph nodes are marked suspicious via alert correlation (see handleEndpointGraph).
-// The following functions handle structural facts only — not heuristic detection.
+// The following functions handle structural facts only - not heuristic detection.
 
 func isSensitivePath(path string) bool {
 	// These are security-relevant paths across all three platforms.
@@ -1280,9 +1280,9 @@ func isSensitivePath(path string) bool {
 		// Linux credential/config files
 		"/etc/passwd", "/etc/shadow", "/etc/sudoers", "/etc/crontab",
 		"/etc/cron.", "/etc/ssh/", "/etc/hosts",
-		// SSH keys — all platforms
+		// SSH keys - all platforms
 		".ssh/", "id_rsa", "id_ed25519", "id_ecdsa", "authorized_keys", "known_hosts",
-		// Cloud credentials — all platforms
+		// Cloud credentials - all platforms
 		".aws/credentials", ".aws/config", ".azure/", ".gcp/",
 		"gcloud/credentials", "application_default_credentials",
 		// Windows credential/system paths

@@ -1,4 +1,4 @@
--- 031_lr_transcripts.sql (F-04) — Live Response session transcripts
+-- 031_lr_transcripts.sql (F-04) - Live Response session transcripts
 CREATE TABLE IF NOT EXISTS lr_transcripts (
     id         BIGSERIAL PRIMARY KEY,
     session_id BIGINT NOT NULL,

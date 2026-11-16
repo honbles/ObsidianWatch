@@ -8,7 +8,7 @@ import (
 )
 
 // cursorSafetyMargin accounts for events whose INSERT started before this
-// poll's query ran but committed after it — without a small margin, a
+// poll's query ran but committed after it - without a small margin, a
 // cursor advanced all the way to "now" on an empty poll could jump past
 // such a row and it would never be picked up by a later poll either.
 const cursorSafetyMargin = 2 * time.Second
@@ -18,7 +18,7 @@ const cursorSafetyMargin = 2 * time.Second
 // by most engines. It pages events.ingested_at forward from a persisted
 // per-engine cursor instead of a fixed lookback window, so a burst of
 // events, a slow processing pass, or an agent that reconnects and flushes
-// a backlog can never fall outside the window and get silently skipped —
+// a backlog can never fall outside the window and get silently skipped -
 // every row is seen by exactly one poll, in ingested_at order.
 //
 // On an engine's first-ever run (no cursor row yet), it falls back to
@@ -40,7 +40,7 @@ func pageEventCursor(ctx context.Context, db *store.DB, engineName string, base 
 	f.IngestedAfter = cursor
 	f.SkipCount = true
 	// D-08: these are freshly-ingested events the normalizer already
-	// populated structured columns for — the per-row raw-JSON unmarshal
+	// populated structured columns for - the per-row raw-JSON unmarshal
 	// in enrichFromRaw is wasted work for every engine that pages through
 	// here on every tick.
 	f.SkipEnrich = true
@@ -57,13 +57,13 @@ func pageEventCursor(ctx context.Context, db *store.DB, engineName string, base 
 	var newCursor time.Time
 	pageFull := len(events) >= pageLimit
 	if pageFull {
-		// There may be more rows past this page — advance only to the
+		// There may be more rows past this page - advance only to the
 		// last row we actually saw, never past it, so the next poll
 		// picks up exactly where this one stopped.
 		newCursor = events[len(events)-1].IngestedAt
 	} else {
 		// We drained everything currently available. It's safe to advance
-		// up to "now minus a small safety margin" — the margin covers a
+		// up to "now minus a small safety margin" - the margin covers a
 		// transaction that started before our query ran but hadn't
 		// committed (and so wasn't visible) yet.
 		newCursor = time.Now().Add(-cursorSafetyMargin)

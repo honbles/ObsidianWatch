@@ -93,7 +93,7 @@ func handleIngest(db ingestStore, maxBatch int, logger *slog.Logger) http.Handle
 		}
 		metrics.clamped.Add(int64(clamped))
 		if clamped > 0 {
-			logger.Warn("ingest: agent clock skew — future-dated events clamped to receive time",
+			logger.Warn("ingest: agent clock skew - future-dated events clamped to receive time",
 				"agent", batch.AgentID, "clamped", clamped, "max_skew", maxFuture.Round(time.Second).String())
 		}
 		for i := range batch.Events {
@@ -134,7 +134,7 @@ func handleIngest(db ingestStore, maxBatch int, logger *slog.Logger) http.Handle
 		if err := db.UpsertAgent(r.Context(),
 			batch.AgentID, hostname, os, batch.AgentVer, remoteIP, batch.InstallKey, len(batch.Events),
 		); err != nil {
-			// Non-fatal — log and continue
+			// Non-fatal - log and continue
 			logger.Warn("ingest: upsert agent failed", "agent", batch.AgentID, "err", err)
 		}
 
@@ -176,7 +176,7 @@ func peerAddr(r *http.Request) string {
 }
 
 // remoteAddr returns the client IP. X-Forwarded-For is honoured only when the
-// direct peer is a configured trusted proxy — otherwise any client could set
+// direct peer is a configured trusted proxy - otherwise any client could set
 // the header and spoof last_ip (M-13). When trusted, the rightmost entry not
 // itself a trusted proxy is used (the leftmost is client-controlled).
 func remoteAddr(r *http.Request) string {

@@ -1,7 +1,7 @@
 # This file is kept for reference / development of the management stack alone.
 # For production, use the root docker-compose.yml which starts everything together.
 #
-# Usage (management stack only — requires an external TimescaleDB):
+# Usage (management stack only - requires an external TimescaleDB):
 #   cd management/docker
 #   sudo docker compose up -d --build
 
@@ -45,5 +45,5 @@ volumes:
 
 networks:
   obsidianwatch:
-    external: true   # must exist — created by root docker-compose.yml or backend stack
+    external: true   # must exist - created by root docker-compose.yml or backend stack
     name: obsidianwatch

@@ -82,7 +82,7 @@ func handleEndpointOSV(db, backendDB *store.DB) http.HandlerFunc {
 		}
 		eco, pkgs := endpointPkgs(events[0].Raw)
 		if eco == "" {
-			writeJSONError(w, http.StatusUnprocessableEntity, "unsupported OS for OSV matching (Ubuntu, Debian and Alpine are supported)")
+			writeJSONError(w, http.StatusUnprocessableEntity, "OSV matching covers Ubuntu, Debian and Alpine. Other hosts (Windows, macOS, RPM Linux) are checked against NVD automatically: see the CVEs tab")
 			return
 		}
 		ctx, cancel := context.WithTimeout(r.Context(), 90*time.Second)

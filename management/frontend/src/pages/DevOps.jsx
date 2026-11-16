@@ -595,7 +595,7 @@ function ConnectorDetail({ conn, onSync, onDisconnect, syncing }) {
             {!loading && filteredCommits.length === 0 && (
               <div className="flex flex-col items-center justify-center h-32 text-siem-muted text-xs gap-2">
                 <GitCommit size={20} className="opacity-30"/>
-                No commits yet — trigger a sync or wait for the next poll
+                No commits yet - trigger a sync or wait for the next poll
               </div>
             )}
             {filteredCommits.map(c => (
@@ -623,7 +623,7 @@ function ConnectorDetail({ conn, onSync, onDisconnect, syncing }) {
                       </span>
                       <span className="font-mono text-[10px] text-siem-muted shrink-0">{ev.event_type}</span>
                       {ev.user_name && <span className="text-xs text-siem-text truncate">{ev.user_name}</span>}
-                      {(() => { const f = Object.fromEntries(devopsFields(ev).filter(([, v]) => v)); return (f.Repo || f.Message) ? <span className="text-[11px] text-siem-muted truncate">{[f.Repo, f.Message && String(f.Message).split('\n')[0]].filter(Boolean).join(' — ')}</span> : null })()}
+                      {(() => { const f = Object.fromEntries(devopsFields(ev).filter(([, v]) => v)); return (f.Repo || f.Message) ? <span className="text-[11px] text-siem-muted truncate">{[f.Repo, f.Message && String(f.Message).split('\n')[0]].filter(Boolean).join(' - ')}</span> : null })()}
                     </div>
                     <span className="text-[10px] text-siem-muted shrink-0">
                       {ev.time ? formatDistanceToNow(new Date(ev.time), { addSuffix: true }) : ''}
@@ -636,7 +636,7 @@ function ConnectorDetail({ conn, onSync, onDisconnect, syncing }) {
 
         {tab === 'posture' && <PosturePanel conn={conn} />}
 
-        {/* SAST — Static Analysis */}
+        {/* SAST - Static Analysis */}
         {tab === 'sast' && (
           <div className="p-5 space-y-4">
 
@@ -708,7 +708,7 @@ function ConnectorDetail({ conn, onSync, onDisconnect, syncing }) {
                 <Code size={13} className={sasting ? 'animate-pulse' : ''}/>
                 {sasting ? 'Scanning source code…' : 'Run SAST Scan'}
               </button>
-              {sasting && <span className="text-[10px] text-siem-muted">Large repos can take 2-5 min — results saved automatically, refresh if page times out</span>}
+              {sasting && <span className="text-[10px] text-siem-muted">Large repos can take 2-5 min - results saved automatically, refresh if page times out</span>}
               {!sasting && sastResult?.scanned_at && (
                 <span className="text-[10px] text-siem-muted/60 flex items-center gap-1">
                   <Clock size={10}/>
@@ -881,7 +881,7 @@ function ConnectorDetail({ conn, onSync, onDisconnect, syncing }) {
                           const toggle = () => setExpandedFindings(p => ({...p, [i]: !p[i]}))
                           return (
                             <div key={i} className="border-b border-siem-border/20 last:border-0">
-                              {/* Summary row — always visible, click to expand */}
+                              {/* Summary row - always visible, click to expand */}
                               <div className="px-4 py-3 hover:bg-white/[0.02] cursor-pointer" onClick={toggle}>
                                 <div className="flex items-center justify-between gap-3">
                                   <div className="flex items-center gap-2 flex-wrap flex-1 min-w-0">
@@ -946,7 +946,7 @@ function ConnectorDetail({ conn, onSync, onDisconnect, syncing }) {
                                     </div>
                                   </div>
 
-                                  {/* Code snippet — full, not truncated */}
+                                  {/* Code snippet - full, not truncated */}
                                   {f.snippet && (
                                     <div>
                                       <div className="text-[9px] uppercase tracking-wider text-siem-muted/40 mb-1">Matched code</div>
@@ -1215,7 +1215,7 @@ function ConnectorDetail({ conn, onSync, onDisconnect, syncing }) {
       </div>
     </div>
 
-    {/* Alert detail panel — rendered at component root so it overlays correctly */}
+    {/* Alert detail panel - rendered at component root so it overlays correctly */}
     {selectedAlertId && (
       <div className="fixed inset-0 z-50 flex items-start justify-end bg-black/40"
         onClick={e => { if (e.target === e.currentTarget) setSelectedAlertId(null) }}>
@@ -1246,10 +1246,10 @@ export default function DevOps() {
       const { data } = await api.get('/api/v1/devops-connectors')
       const list = Array.isArray(data?.connectors) ? data.connectors : []
       setConnectors(list)
-      // Only auto-select first connector on initial load — use functional
+      // Only auto-select first connector on initial load - use functional
       // update to read current selected value without adding it as a dependency
       setSelected(cur => {
-        if (cur) return cur  // already selected — don't change
+        if (cur) return cur  // already selected - don't change
         return list.length > 0 ? list[0].id : null
       })
     } catch {} finally { setLoading(false) }

@@ -50,7 +50,7 @@ function HostCard({ agent, onClick, selected }) {
         </div>
         <div className="flex-1 min-w-0">
           <div className="text-xs font-bold text-siem-text truncate">{agent.hostname}</div>
-          <div className="text-[9px] text-siem-muted">{agent.last_ip || '—'} · {agent.os || '?'}</div>
+          <div className="text-[9px] text-siem-muted">{agent.last_ip || '-'} · {agent.os || '?'}</div>
         </div>
         <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${agent.online ? 'bg-emerald-400' : 'bg-slate-600'}`} />
       </div>
@@ -80,8 +80,8 @@ function RankBar({ rows, keyField, valueField, colorFn, onDrilldown, selectedKey
               isSel ? 'bg-siem-accent/10 border border-siem-accent/40' : 'hover:bg-white/[0.02] border border-transparent'
             }`}>
             <div className="flex items-center justify-between mb-1">
-              <span className="text-[10px] font-mono truncate flex-1 mr-2 text-siem-text" title={label || '—'}>
-                {label || '—'}
+              <span className="text-[10px] font-mono truncate flex-1 mr-2 text-siem-text" title={label || '-'}>
+                {label || '-'}
               </span>
               <span className="text-[9px] text-siem-muted shrink-0">{count.toLocaleString()}</span>
             </div>
@@ -131,7 +131,7 @@ function AlertRow({ alert }) {
             {formatDistanceToNow(new Date(alert.created_at), { addSuffix: true })}
           </span>
         </div>
-        <div className="text-siem-muted mt-0.5">{alert.event_type || '—'}</div>
+        <div className="text-siem-muted mt-0.5">{alert.event_type || '-'}</div>
       </div>
     </div>
   )
@@ -394,7 +394,7 @@ export default function ThreatIntel() {
               </button>
             </div>
 
-            {/* ── Threat indicators (top of page — most important) ── */}
+            {/* ── Threat indicators (top of page - most important) ── */}
             {activeAlerts.length > 0 && (
               <Section
                 title="Active Alerts"
@@ -633,7 +633,7 @@ export default function ThreatIntel() {
               </Section>
             </div>
 
-            {/* ── Drilldown — now actually navigates ── */}
+            {/* ── Drilldown - now actually navigates ── */}
             {drilldown && (
               <div className="bg-siem-surface border border-siem-accent/30 rounded-xl p-4">
                 <div className="flex items-center gap-2 mb-3">

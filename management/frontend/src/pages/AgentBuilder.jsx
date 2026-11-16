@@ -77,7 +77,7 @@ const FIELD_GROUPS = [
     title: 'CA Certificate',
     icon: '🔒',
     fields: [
-      { key: 'ca_cert', label: 'Backend CA Certificate (PEM)', placeholder: '-----BEGIN CERTIFICATE-----\n...', hint: 'CA cert for the agent backend (:8443) — embedded in the binary', textarea: true },
+      { key: 'ca_cert', label: 'Backend CA Certificate (PEM)', placeholder: '-----BEGIN CERTIFICATE-----\n...', hint: 'CA cert for the agent backend (:8443) - embedded in the binary', textarea: true },
       { key: 'management_ca_cert', label: 'Management CA Certificate (PEM)', placeholder: '-----BEGIN CERTIFICATE-----\n...', hint: 'Only needed if management uses HTTPS with a self-signed cert. Leave empty if HTTP.', textarea: true, optional: true },
     ],
   },
@@ -146,7 +146,7 @@ function PlatformCard({ platform, status, form, onBuild, onDownloadCached, build
 
       {/* Actions */}
       <div className="p-4 space-y-3">
-        {/* Download saved zip — main action, shown when ready */}
+        {/* Download saved zip - main action, shown when ready */}
         {hasZip && (
           <button
             onClick={() => onDownloadCached(platform)}
@@ -232,7 +232,7 @@ export default function AgentBuilder() {
     setBuilding(b => ({ ...b, [platform]: true }))
     try {
       await api.post('/api/v1/agent-builder/build', { platform, ...form })
-      setSuccess(`${platform} build started — this takes 1–2 minutes on first run.`)
+      setSuccess(`${platform} build started - this takes 1–2 minutes on first run.`)
     } catch (e) {
       setError('Build failed: ' + (e.response?.data?.error || e.message))
     }
@@ -280,7 +280,7 @@ export default function AgentBuilder() {
           </a>
         </div>
         <p className="text-siem-muted text-sm ml-11">
-          Configure the agents once. The server compiles each platform with your settings baked into the binary — no config file needed at deployment.
+          Configure the agents once. The server compiles each platform with your settings baked into the binary - no config file needed at deployment.
         </p>
       </div>
 
@@ -299,7 +299,7 @@ export default function AgentBuilder() {
               {group.title === 'Connection' && (
                 <label className="flex items-start gap-2 text-xs text-siem-muted">
                   <input type="checkbox" checked={!!form.enable_live_response} onChange={e => setForm(f => ({ ...f, enable_live_response: e.target.checked }))} />
-                  <span><b className="text-siem-text">Enable Live Response (remote shell)</b> — off by default. Agents built with this on accept analyst terminal sessions as root/SYSTEM.</span>
+                  <span><b className="text-siem-text">Enable Live Response (remote shell)</b> - off by default. Agents built with this on accept analyst terminal sessions as root/SYSTEM.</span>
                 </label>
               )}
               {/* [APP-BUILDER-BEGIN] */}

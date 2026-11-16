@@ -126,7 +126,7 @@ function AssignModal({ alert, users, onClose, onDone }) {
             {users.length > 0 ? (
               <select value={assignTo} onChange={e => setAssignTo(e.target.value)}
                 className="w-full bg-siem-bg border border-siem-border rounded-lg px-3 py-2 text-sm text-siem-text focus:outline-none focus:border-siem-accent">
-                <option value="">— Select analyst —</option>
+                <option value="">- Select analyst -</option>
                 {users.map(u => <option key={u.id} value={u.username}>{u.username} ({u.role})</option>)}
               </select>
             ) : (
@@ -371,7 +371,7 @@ function AIReport({ analysis, onRerun, loading }) {
         </div>
       )}
 
-      <p className="text-[9px] text-siem-muted/40 text-center">AI analysis — verify independently before taking action</p>
+      <p className="text-[9px] text-siem-muted/40 text-center">AI analysis - verify independently before taking action</p>
     </div>
   )
 }
@@ -455,7 +455,7 @@ function AlertPanel({ alertId, users, onClose, onStatusChange, inline = false })
         }
       } catch (e) { /* fall through to auto-run */ }
     }
-    // No cache — auto-run
+    // No cache - auto-run
     if (!aiAnalysis && !aiLoading) runAiAnalysis()
   }, [alert?.id])
 
@@ -472,7 +472,7 @@ function AlertPanel({ alertId, users, onClose, onStatusChange, inline = false })
       if (start !== -1 && end !== -1) jsonStr = jsonStr.slice(start, end + 1)
       setAiAnalysis(JSON.parse(jsonStr))
     } catch (err) {
-      // Silently fail if no AI configured — don't show error
+      // Silently fail if no AI configured - don't show error
       const msg = err.response?.data?.error || ''
       if (!msg.includes('No AI provider') && !msg.includes('no AI provider')) {
         setAiError(msg || 'Analysis failed')
@@ -623,8 +623,8 @@ function AlertPanel({ alertId, users, onClose, onStatusChange, inline = false })
                   </div>
                   {[
                     ['Alert ID',    `#${alert.id}`],
-                    ['Host',        alert.host || '—'],
-                    ['Event Type',  alert.event_type || '—'],
+                    ['Host',        alert.host || '-'],
+                    ['Event Type',  alert.event_type || '-'],
                     ['Status',      alert.status],
                     ['Assigned To', alert.assigned_to || 'Unassigned'],
                     ['Created',     format(new Date(alert.created_at), 'yyyy-MM-dd HH:mm:ss')],

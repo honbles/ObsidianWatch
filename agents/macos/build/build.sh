@@ -1,5 +1,5 @@
 #!/bin/bash
-# build.sh — Build ObsidianWatch macOS agent
+# build.sh - Build ObsidianWatch macOS agent
 # Run this on a macOS machine or cross-compile from Linux/macOS.
 #
 # Requirements: Go 1.22+

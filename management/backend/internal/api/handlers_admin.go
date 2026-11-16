@@ -219,7 +219,7 @@ func handleTestSMTP(mailer *notify.Mailer, db *store.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		cfg := smtpConfigFromDB(r.Context(), db)
 		if cfg.Host == "" {
-			writeJSON(w, 400, map[string]string{"error": "SMTP not configured — save settings first"})
+			writeJSON(w, 400, map[string]string{"error": "SMTP not configured - save settings first"})
 			return
 		}
 		testMailer := notify.NewMailer(cfg)
@@ -455,7 +455,7 @@ func handleToggleSigma(db *store.DB) http.HandlerFunc {
 // {"prefix":"45ccbd62"}. The admin supplies the first 8 hex characters of the
 // sigma_core.zip digest from the GitHub release page; if they match the hash
 // the server actually downloaded, that full hash is pinned. Verification still
-// happens against GitHub's page — it just avoids retyping 64 characters.
+// happens against GitHub's page - it just avoids retyping 64 characters.
 func handleSigmaPinSeen(db *store.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var body struct {
@@ -471,7 +471,7 @@ func handleSigmaPinSeen(db *store.DB) http.HandlerFunc {
 		ver, sha := sigmaSeenVer, sigmaSeenSHA
 		sigmaSeenMu.Unlock()
 		if sha == "" {
-			writeJSONError(w, http.StatusConflict, "no downloaded hash to confirm — press Sync now first")
+			writeJSONError(w, http.StatusConflict, "no downloaded hash to confirm - press Sync now first")
 			return
 		}
 		if len(prefix) < 8 || !strings.HasPrefix(sha, prefix) {
@@ -480,7 +480,7 @@ func handleSigmaPinSeen(db *store.DB) http.HandlerFunc {
 		}
 		cur, _ := db.GetSetting(r.Context(), "ti.sigma_pinned_version")
 		if strings.TrimSpace(cur) != ver {
-			writeJSONError(w, http.StatusConflict, "release tag changed since the download — press Sync now again")
+			writeJSONError(w, http.StatusConflict, "release tag changed since the download - press Sync now again")
 			return
 		}
 		_ = db.SetSetting(r.Context(), "ti.sigma_pinned_sha256", sha)

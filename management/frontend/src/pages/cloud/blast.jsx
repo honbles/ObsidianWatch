@@ -261,7 +261,7 @@ export function PanelBlastRadius({ blast, loading, scanning, onRunScan, conn }) 
         <div>
           <div style={{ fontSize:13, fontWeight:700, color:'var(--text)', marginBottom:2 }}>Blast Radius Analysis</div>
           <div style={{ fontSize:11, color:'var(--text3)' }}>
-            Click any principal to explore their access graph — what can they reach if compromised?
+            Click any principal to explore their access graph - what can they reach if compromised?
           </div>
         </div>
         <button onClick={onRunScan} disabled={scanning}
@@ -315,7 +315,7 @@ export function PanelBlastRadius({ blast, loading, scanning, onRunScan, conn }) 
 
             <div style={{ padding:'8px 10px', borderBottom:'1px solid var(--border)', flexShrink:0 }}>
               <div style={{ fontSize:10, fontWeight:700, color:'var(--text3)', textTransform:'uppercase', letterSpacing:'0.07em' }}>
-                {principals.length} Principals — click to explore
+                {principals.length} Principals - click to explore
               </div>
             </div>
 
@@ -391,7 +391,7 @@ export function PanelBlastRadius({ blast, loading, scanning, onRunScan, conn }) 
                 <div style={{ fontSize:36, opacity:0.4 }}>👤</div>
                 <div style={{ fontSize:13, fontWeight:600, color:'var(--text2)' }}>Select a principal</div>
                 <div style={{ fontSize:11, maxWidth:300, textAlign:'center', lineHeight:1.6 }}>
-                  Click any user or service account on the left to see their access graph — all resources they can reach, and the risk paths from their account.
+                  Click any user or service account on the left to see their access graph - all resources they can reach, and the risk paths from their account.
                 </div>
               </div>
             )}

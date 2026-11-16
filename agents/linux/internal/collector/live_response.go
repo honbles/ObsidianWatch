@@ -2,9 +2,9 @@
 
 package collector
 
-// live_response.go — Linux live response agent component.
+// live_response.go - Linux live response agent component.
 //
-// Spawns a shell directly via os/exec with a PTY — no SSH, no service account.
+// Spawns a shell directly via os/exec with a PTY - no SSH, no service account.
 // The agent already runs as root, so we just exec /bin/bash with a PTY and
 // pipe stdin/stdout through the existing management WebSocket tunnel.
 //
@@ -109,7 +109,7 @@ func (c *LiveResponseCollector) runTunnel(ctx context.Context) error {
 
 	c.logger.Info("live-response: tunnel connected")
 
-	// Register as direct-shell mode — no credentials needed
+	// Register as direct-shell mode - no credentials needed
 	conn.WriteJSON(map[string]interface{}{
 		"type": "register_credentials",
 		"payload": json.RawMessage(`{"username":"root","mode":"direct-shell"}`),
@@ -197,7 +197,7 @@ func (c *LiveResponseCollector) runTunnel(ctx context.Context) error {
 	}
 }
 
-// handleSession spawns /bin/bash directly with a PTY — no SSH needed.
+// handleSession spawns /bin/bash directly with a PTY - no SSH needed.
 func (c *LiveResponseCollector) handleSession(ctx context.Context, token string, inCh chan []byte, writeJSON func(interface{}) error, cols, rows int, entry *sessionEntry) {
 	// Open a PTY pair
 	ptm, pts, err := openPTY()
@@ -322,7 +322,7 @@ func openPTY() (*os.File, *os.File, error) {
 }
 
 func grantPT(f *os.File) error {
-	// On Linux, /dev/ptmx automatically grants access — no explicit grantpt needed
+	// On Linux, /dev/ptmx automatically grants access - no explicit grantpt needed
 	return nil
 }
 

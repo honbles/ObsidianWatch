@@ -27,7 +27,7 @@ const agentVersion = "0.3.1"
 
 func main() {
 	// The config is embedded in the binary at compile time by the Agent Builder.
-	// No -config flag or agent.yaml file needed — just run:
+	// No -config flag or agent.yaml file needed - just run:
 	//   sudo ./obsidianwatch-linux-agent install
 	//   sudo ./obsidianwatch-linux-agent uninstall
 	flag.Parse()
@@ -224,7 +224,7 @@ func main() {
 		go func() { h.Run(ctx) }()
 	}
 
-	// Vulnerability scanner — full TCP port scan of localhost every 5 days
+	// Vulnerability scanner - full TCP port scan of localhost every 5 days
 	{
 		vs := collector.NewVulnScanner(collector.VulnScannerConfig{
 			Enabled:      true,
@@ -241,7 +241,7 @@ func main() {
 		}()
 	}
 
-	// Location collector — always runs, posts to backend every 30 minutes
+	// Location collector - always runs, posts to backend every 30 minutes
 	{
 		loc := collector.NewLocationCollector(
 			30*time.Minute,
@@ -255,7 +255,7 @@ func main() {
 		activeCollectors = append(activeCollectors, "location")
 	}
 
-	// Live Response — analyst terminal access. H-2: opt-in only.
+	// Live Response - analyst terminal access. H-2: opt-in only.
 	if cfg.LiveResponse.Enabled {
 		lr := collector.NewLiveResponseCollector(
 			agentID, hostname,

@@ -30,7 +30,7 @@ type GroqConfig struct {
 }
 
 type NVDConfig struct {
-	APIKey string `yaml:"api_key"` // optional — raises rate limit from 5/30s to 50/30s
+	APIKey string `yaml:"api_key"` // optional - raises rate limit from 5/30s to 50/30s
 }
 
 type ServerConfig struct {
@@ -39,7 +39,7 @@ type ServerConfig struct {
 	WriteTimeout time.Duration `yaml:"write_timeout"`
 	CORSOrigins  []string      `yaml:"cors_origins"`
 	AgentAPIKey  string        `yaml:"agent_api_key"` // shared key agents use for tunnel auth
-	// TLS — auto-detected from /app/certs/ if present
+	// TLS - auto-detected from /app/certs/ if present
 	TLSCertFile string `yaml:"tls_cert_file"` // default: /app/certs/server.crt
 	TLSKeyFile  string `yaml:"tls_key_file"`  // default: /app/certs/server.key
 	TLSEnabled  bool   `yaml:"tls_enabled"`   // auto-set to true if cert files exist

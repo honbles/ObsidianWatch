@@ -1,6 +1,6 @@
 package api
 
-// cloud_aws_suppress.go — suppression rules for AWS CSPM findings.
+// cloud_aws_suppress.go - suppression rules for AWS CSPM findings.
 // Rules are kept as one JSON document in the settings table (no migration);
 // applied inside RunAWSCSPM so manual, scheduled and CIS paths all honour them.
 //

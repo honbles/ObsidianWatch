@@ -40,7 +40,7 @@ var windowsTamperSignatures = []ThreatSig{
 	},
 	{
 		ID: "W-T1562.002", Name: "Audit Policy Changed",
-		Description: "System audit policy was modified (4719) — attackers disable auditing to hide activity.",
+		Description: "System audit policy was modified (4719) - attackers disable auditing to hide activity.",
 		Severity:    4, MITRE: "T1562.002", Category: "Defence Evasion",
 		Match: func(ev store.Event) bool {
 			return ev.EventID != nil && *ev.EventID == 4719
@@ -48,7 +48,7 @@ var windowsTamperSignatures = []ThreatSig{
 	},
 	{
 		ID: "W-T1562.006", Name: "Sysmon Driver Unloaded or Config Changed",
-		Description: "Sysmon reported a configuration change (16) or a service state change (4) — possible tampering with telemetry.",
+		Description: "Sysmon reported a configuration change (16) or a service state change (4) - possible tampering with telemetry.",
 		Severity:    4, MITRE: "T1562.006", Category: "Defence Evasion",
 		Match: func(ev store.Event) bool {
 			if ev.EventID == nil || ev.Channel == nil ||
@@ -60,7 +60,7 @@ var windowsTamperSignatures = []ThreatSig{
 	},
 	{
 		ID: "W-T1543.003b", Name: "New Service Installed",
-		Description: "A new service was installed (7045 / 4697) — review binary path for persistence or driver abuse.",
+		Description: "A new service was installed (7045 / 4697) - review binary path for persistence or driver abuse.",
 		Severity:    3, MITRE: "T1543.003", Category: "Persistence",
 		Match: func(ev store.Event) bool {
 			if ev.EventID == nil || (*ev.EventID != 7045 && *ev.EventID != 4697) {
@@ -82,7 +82,7 @@ var windowsTamperSignatures = []ThreatSig{
 	},
 	{
 		ID: "W-T1546.003b", Name: "WMI Event Subscription Persistence",
-		Description: "WMI-Activity reported a permanent event consumer binding (5861) — a common fileless persistence mechanism.",
+		Description: "WMI-Activity reported a permanent event consumer binding (5861) - a common fileless persistence mechanism.",
 		Severity:    4, MITRE: "T1546.003", Category: "Persistence",
 		Match: func(ev store.Event) bool {
 			return ev.EventID != nil && *ev.EventID == 5861 && ev.Channel != nil &&

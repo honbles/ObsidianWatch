@@ -1,13 +1,13 @@
 package api
 
-// dns_categorization.go — DNS-based web content categorization.
+// dns_categorization.go - DNS-based web content categorization.
 //
 // Three free, no-key-required sources:
 //
-// 1. Quad9 (9.9.9.9) — resolves domain. NXDOMAIN = blocked (malicious/phishing).
+// 1. Quad9 (9.9.9.9) - resolves domain. NXDOMAIN = blocked (malicious/phishing).
 //    Blocks ~150k malicious domains. No false positives on legitimate sites.
 //
-// 2. SURBL (multi.surbl.org) — DNS blocklist covering spam, phishing, malware, abuse.
+// 2. SURBL (multi.surbl.org) - DNS blocklist covering spam, phishing, malware, abuse.
 //    Returns 127.0.0.x where bit flags in last octet indicate categories:
 //      bit 1  (1)  = SpamCop
 //      bit 2  (2)  = SURBL (spam)
@@ -18,7 +18,7 @@ package api
 //      bit 7  (64) = phishing (JWSPAM)
 //    NXDOMAIN = clean.
 //
-// 3. Spamhaus DBL (dbl.spamhaus.org) — domain blocklist.
+// 3. Spamhaus DBL (dbl.spamhaus.org) - domain blocklist.
 //    Returns 127.0.1.x:
 //      127.0.1.2  = spam domain
 //      127.0.1.4  = phishing domain
@@ -69,7 +69,7 @@ func CategorizeDomain(ctx context.Context, domain string, db *store.DB) (*Domain
 		return nil, nil
 	}
 
-	// Check cache first — ioc_type="domain_category"
+	// Check cache first - ioc_type="domain_category"
 	existing, err := db.GetIOCByTypeAndValue(ctx, "domain_category", strings.ToLower(domain))
 	if err == nil && existing != nil {
 		// Cache hit
@@ -78,7 +78,7 @@ func CategorizeDomain(ctx context.Context, domain string, db *store.DB) (*Domain
 
 	result := &DomainCategory{Domain: domain}
 
-	// Check 1: Quad9 — NXDOMAIN = blocked malicious
+	// Check 1: Quad9 - NXDOMAIN = blocked malicious
 	if blocked, _ := checkQuad9(ctx, domain); blocked {
 		result.Blocked = true
 		result.Categories = append(result.Categories, "malicious")
@@ -113,7 +113,7 @@ func CategorizeDomain(ctx context.Context, domain string, db *store.DB) (*Domain
 	}
 
 	if len(result.Categories) == 0 && !result.Blocked {
-		// Clean — cache the clean result too to avoid repeated lookups
+		// Clean - cache the clean result too to avoid repeated lookups
 		db.StoreIOC(ctx, store.IOCIndicator{
 			Source:     "dns_cat",
 			IOCType:    "domain_category",
@@ -160,11 +160,11 @@ func iocToDomainCategory(ioc *store.IOCIndicator) *DomainCategory {
 // checkQuad9 resolves a domain via Quad9 (9.9.9.9).
 // Returns true if Quad9 blocks it (NXDOMAIN when it shouldn't be).
 func checkQuad9(ctx context.Context, domain string) (bool, error) {
-	// First verify Quad9 is reachable — if not, skip check entirely
+	// First verify Quad9 is reachable - if not, skip check entirely
 	// (avoids false positives when Quad9 is blocked by firewall/proxy)
 	conn, testErr := net.DialTimeout("udp", "9.9.9.9:53", 2*time.Second)
 	if testErr != nil {
-		// Quad9 unreachable — cannot determine block status
+		// Quad9 unreachable - cannot determine block status
 		return false, nil
 	}
 	conn.Close()
@@ -319,7 +319,7 @@ func NewDomainCategorizationWorker(db *store.DB, logger *slog.Logger) *DomainCat
 func (w *DomainCategorizationWorker) Run(ctx context.Context) {
 	w.logger.Info("dns-cat: domain categorization worker started")
 
-	// Run every 10 minutes — process new DNS events seen since last run
+	// Run every 10 minutes - process new DNS events seen since last run
 	ticker := time.NewTicker(10 * time.Minute)
 	defer ticker.Stop()
 
@@ -388,7 +388,7 @@ func (w *DomainCategorizationWorker) categorizeRecentDomains(ctx context.Context
 				"severity", cat.Severity)
 		}
 
-		// Rate limit — be a good citizen with free DNS services
+		// Rate limit - be a good citizen with free DNS services
 		time.Sleep(200 * time.Millisecond)
 	}
 }

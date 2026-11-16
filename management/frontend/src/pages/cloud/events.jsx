@@ -163,7 +163,7 @@ export function CloudEventPanel({ event, onClose }) {
               <div className="space-y-4">
                 <div className="bg-siem-bg rounded-xl border border-siem-border overflow-hidden">
                   {[
-                    ['Time',       ev.time ? format(new Date(ev.time), 'yyyy-MM-dd HH:mm:ss') : '—'],
+                    ['Time',       ev.time ? format(new Date(ev.time), 'yyyy-MM-dd HH:mm:ss') : '-'],
                     ['Event Type', ev.event_type],
                     ['Source',     ev.source],
                     ['Host',       ev.host],
@@ -254,7 +254,7 @@ export function CloudEventsAlerts({ tab, events, alerts, loadingE, loadingA, sea
               <div className="flex items-center justify-between gap-3">
                 <div className="flex items-center gap-2 min-w-0">
                   <span className={`text-[10px] font-mono border rounded px-1.5 py-0.5 shrink-0 ${SEV_COLORS_CLS[ev.severity]||'text-siem-muted'} border-current/30`}>
-                    {SEV_LABELS[ev.severity]||'—'}
+                    {SEV_LABELS[ev.severity]||'-'}
                   </span>
                   <span className="text-[10px] font-mono text-siem-accent shrink-0">{ev.event_type}</span>
                   <span className="text-xs text-siem-text truncate">{ev.source || ev.host}</span>
@@ -292,7 +292,7 @@ export function CloudEventsAlerts({ tab, events, alerts, loadingE, loadingA, sea
                 <div className="flex items-center justify-between gap-3">
                   <div className="flex items-center gap-2 min-w-0">
                     <span className={`text-[10px] font-mono shrink-0 ${sevColor}`}>
-                      {SEV_LABELS[a.severity]||'—'}
+                      {SEV_LABELS[a.severity]||'-'}
                     </span>
                     <span className="text-xs font-medium text-siem-text truncate">{a.title}</span>
                   </div>

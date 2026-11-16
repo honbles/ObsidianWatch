@@ -1,6 +1,6 @@
 package collector
 
-// analysis.go — Analysis engine
+// analysis.go - Analysis engine
 // Runs scheduled SQL queries on the local SQLite database,
 // computes summaries and detects anomalies,
 // then sends only the results upstream (never raw data).
@@ -61,7 +61,7 @@ func (e *AnalysisEngine) runAll(ctx context.Context) {
 	e.analyzeFirewallDenies(ctx)
 }
 
-// ── Bandwidth summary — top talkers in last hour ──────────────────────────────
+// ── Bandwidth summary - top talkers in last hour ──────────────────────────────
 func (e *AnalysisEngine) analyzeBandwidth(ctx context.Context) {
 	talkers, err := e.db.GetTopTalkers(ctx, 1, 20)
 	if err != nil || len(talkers) == 0 {
@@ -84,7 +84,7 @@ func (e *AnalysisEngine) analyzeBandwidth(ctx context.Context) {
 	e.logger.Debug("analysis: bandwidth summary sent", "talkers", len(talkers))
 }
 
-// ── Top destinations — what are devices connecting to most ───────────────────
+// ── Top destinations - what are devices connecting to most ───────────────────
 func (e *AnalysisEngine) analyzeTopDestinations(ctx context.Context) {
 	destinations, err := e.db.GetTopDestinations(ctx, 1, 20)
 	if err != nil || len(destinations) == 0 {
@@ -106,7 +106,7 @@ func (e *AnalysisEngine) analyzeTopDestinations(ctx context.Context) {
 	})
 }
 
-// ── Auth failure summary — devices with brute force attempts ─────────────────
+// ── Auth failure summary - devices with brute force attempts ─────────────────
 func (e *AnalysisEngine) analyzeAuthFailures(ctx context.Context) {
 	failures, err := e.db.GetAuthFailureSummary(ctx, 60) // last 60 min
 	if err != nil || len(failures) == 0 {
@@ -147,7 +147,7 @@ func (e *AnalysisEngine) analyzeAuthFailures(ctx context.Context) {
 	}
 }
 
-// ── Device activity — devices not seen in a while (went offline) ─────────────
+// ── Device activity - devices not seen in a while (went offline) ─────────────
 func (e *AnalysisEngine) analyzeDeviceActivity(ctx context.Context) {
 	// Devices seen in last 24h but not in last 10 min (went offline)
 	offline, err := e.db.GetRecentlyOfflineDevices(ctx, 10, 1440) // 10 min, 24h
@@ -172,7 +172,7 @@ func (e *AnalysisEngine) analyzeDeviceActivity(ctx context.Context) {
 	})
 }
 
-// ── Firewall deny summary — top blocked sources ───────────────────────────────
+// ── Firewall deny summary - top blocked sources ───────────────────────────────
 func (e *AnalysisEngine) analyzeFirewallDenies(ctx context.Context) {
 	denies, err := e.db.GetTopFirewallDenies(ctx, 60, 15) // last 60 min, top 15
 	if err != nil || len(denies) == 0 {

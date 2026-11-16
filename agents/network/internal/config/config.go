@@ -78,7 +78,7 @@ type ARPConfig struct {
 	Enabled      bool     `yaml:"enabled"`
 	Interfaces   []string `yaml:"interfaces"`    // e.g. ["eth0", "eth1"]
 	PollInterval string   `yaml:"poll_interval"` // default 30s
-	// Known devices — don't alert on these
+	// Known devices - don't alert on these
 	KnownMACs []string `yaml:"known_macs"`
 }
 
@@ -92,7 +92,7 @@ type DetectionConfig struct {
 	BandwidthSpikeMultiplier float64 `yaml:"bandwidth_spike_multiplier"` // 3x baseline
 	// Lateral movement (east-west new connection)
 	LateralMovementEnabled bool `yaml:"lateral_movement_enabled"`
-	// Known subnets — traffic outside these is flagged
+	// Known subnets - traffic outside these is flagged
 	InternalSubnets []string `yaml:"internal_subnets"` // e.g. ["192.168.0.0/16"]
 }
 

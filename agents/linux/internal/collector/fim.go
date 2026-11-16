@@ -2,13 +2,13 @@
 
 package collector
 
-// fim.go — Linux File Integrity Monitoring.
+// fim.go - Linux File Integrity Monitoring.
 //
-// Primary: fanotify() — provides PID with every file event.
+// Primary: fanotify() - provides PID with every file event.
 //   Requires CAP_SYS_ADMIN (agent runs as root).
-//   Gives: path, action, PID, process name — exactly what we need for graph.
+//   Gives: path, action, PID, process name - exactly what we need for graph.
 //
-// Fallback: inotify() — no PID, but works without elevated privileges.
+// Fallback: inotify() - no PID, but works without elevated privileges.
 //   Used when fanotify init fails.
 //
 // Events emitted: event_type="file", source="fanotify" or "inotify"
@@ -68,7 +68,7 @@ func (f *FIMCollector) Run(ctx context.Context) error {
 	// inotify is the supported FIM backend. The old fanotify path asked for
 	// directory-entry events (create/delete/move) on mount marks, which the
 	// kernel rejects with EINVAL on every kernel (they need FAN_REPORT_FID),
-	// so it never produced events — it only logged six warnings and fell back.
+	// so it never produced events - it only logged six warnings and fell back.
 	// It is kept (runFanotify) for a future FID-based implementation.
 	return f.runInotify(ctx)
 }
@@ -76,7 +76,7 @@ func (f *FIMCollector) Run(ctx context.Context) error {
 // ── fanotify implementation ──────────────────────────────────────────────────
 
 // fanotify syscall numbers and constants
-// fanotify constants — use unix package values where available
+// fanotify constants - use unix package values where available
 // These match linux/fanotify.h
 const (
 	fanClassNotifContent = 0x00000004
@@ -123,7 +123,7 @@ func (f *FIMCollector) runFanotify(ctx context.Context) error {
 
 	successfulMarks := 0
 	for _, dir := range f.cfg.Dirs {
-		// Resolve symlinks — Ubuntu 22+ has /bin → /usr/bin etc.
+		// Resolve symlinks - Ubuntu 22+ has /bin → /usr/bin etc.
 		// fanotify cannot mark symlinks, only real directories
 		realPath, err := filepath.EvalSymlinks(dir.Path)
 		if err != nil {
@@ -374,7 +374,7 @@ func (f *FIMCollector) parseInotifyEvents(fd int, mask uint32, buf []byte, wdToP
 		if action == "" {
 			continue
 		}
-		// No PID in inotify — emit with 0
+		// No PID in inotify - emit with 0
 		f.emit(fullPath, action, 0, "")
 	}
 }

@@ -58,11 +58,11 @@ function RuleForm({ initial, onSave, onCancel }) {
             <label className="block text-xs text-siem-muted mb-1">Min severity</label>
             <select className="w-full bg-siem-surface border border-siem-border rounded-lg px-3 py-2 text-sm text-siem-text focus:outline-none"
               value={rule.severity} onChange={e => set('severity', Number(e.target.value))}>
-              <option value={1}>1 — Info</option>
-              <option value={2}>2 — Low</option>
-              <option value={3}>3 — Medium</option>
-              <option value={4}>4 — High</option>
-              <option value={5}>5 — Critical</option>
+              <option value={1}>1 - Info</option>
+              <option value={2}>2 - Low</option>
+              <option value={3}>3 - Medium</option>
+              <option value={4}>4 - High</option>
+              <option value={5}>5 - Critical</option>
             </select>
           </div>
           <div>
@@ -113,7 +113,7 @@ function RuleForm({ initial, onSave, onCancel }) {
             hint="Matches dst_ip on network events" />
           <div className="col-span-2">
             <Field label="DNS domain contains"   value={rule.dns_match}    onChange={v => set('dns_match', v)}
-              hint="Only matches dns events — dst_ip holds the queried domain name" />
+              hint="Only matches dns events - dst_ip holds the queried domain name" />
           </div>
         </div>
       </div>
@@ -151,7 +151,7 @@ function FilterBadges({ rule }) {
     rule.source_match        && `source:${rule.source_match}`,
   ].filter(Boolean)
 
-  if (badges.length === 0) return <span className="text-siem-muted">—</span>
+  if (badges.length === 0) return <span className="text-siem-muted">-</span>
   return (
     <div className="flex flex-wrap gap-1">
       {badges.map(b => (
@@ -202,7 +202,7 @@ export default function AlertRules() {
 
       <div className="text-xs text-siem-muted bg-siem-surface border border-siem-border rounded-xl p-3">
         Rules are evaluated every 30 seconds. All conditions must match (AND logic). Leave a field blank to match any value.
-        The <span className="text-siem-accent">DNS domain</span> filter only matches <code>dns</code> events — the queried domain is stored in the destination IP field on all platforms.
+        The <span className="text-siem-accent">DNS domain</span> filter only matches <code>dns</code> events - the queried domain is stored in the destination IP field on all platforms.
       </div>
 
       {showCreate && <RuleForm onSave={create} onCancel={() => setShowCreate(false)} />}
@@ -223,7 +223,7 @@ export default function AlertRules() {
             {loading ? (
               <tr><td colSpan={6} className="text-center py-10 text-siem-muted">Loading...</td></tr>
             ) : rules.length === 0 ? (
-              <tr><td colSpan={6} className="text-center py-10 text-siem-muted">No rules yet — create one above.</td></tr>
+              <tr><td colSpan={6} className="text-center py-10 text-siem-muted">No rules yet - create one above.</td></tr>
             ) : rules.map(rule => (
               <>
                 <tr key={rule.id} className="border-b border-siem-border/40">
@@ -232,7 +232,7 @@ export default function AlertRules() {
                     {rule.description && <div className="text-xs text-siem-muted">{rule.description}</div>}
                   </td>
                   <td className={`px-4 py-3 font-medium ${severityColor(rule.severity)}`}>
-                    {rule.severity} — {severityLabel(rule.severity)}
+                    {rule.severity} - {severityLabel(rule.severity)}
                   </td>
                   <td className="px-4 py-3 text-siem-accent">{rule.event_type || 'Any'}</td>
                   <td className="px-4 py-3"><FilterBadges rule={rule} /></td>

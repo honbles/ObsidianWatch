@@ -1,6 +1,6 @@
 package collector
 
-// ratelimit.go — identical to Windows agent ratelimit.go, cross-platform pure Go.
+// ratelimit.go - identical to Windows agent ratelimit.go, cross-platform pure Go.
 
 import (
 	"sync"

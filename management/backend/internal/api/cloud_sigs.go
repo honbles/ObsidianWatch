@@ -13,13 +13,13 @@ import (
 var cloudSignaturesExtended = []ThreatSig{
 
 	// ══════════════════════════════════════════════════════════════════════════
-	// AWS — 30 additional rules
+	// AWS - 30 additional rules
 	// ══════════════════════════════════════════════════════════════════════════
 
 	// ── Storage / Data Exfiltration ───────────────────────────────────────────
 	{
 		ID: "C-AWS-011", Name: "S3 Bucket Replication to External Account",
-		Description: "S3 replication configured to an external AWS account — possible data exfiltration.",
+		Description: "S3 replication configured to an external AWS account - possible data exfiltration.",
 		Severity: 4, MITRE: "T1537", Category: "Exfiltration",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "cloud.cloudtrail" &&
@@ -29,7 +29,7 @@ var cloudSignaturesExtended = []ThreatSig{
 	},
 	{
 		ID: "C-AWS-012", Name: "S3 Bucket Versioning Disabled",
-		Description: "S3 versioning disabled — could be preparation for ransomware (delete all versions).",
+		Description: "S3 versioning disabled - could be preparation for ransomware (delete all versions).",
 		Severity: 3, MITRE: "T1485", Category: "Impact",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "cloud.cloudtrail" &&
@@ -39,7 +39,7 @@ var cloudSignaturesExtended = []ThreatSig{
 	},
 	{
 		ID: "C-AWS-013", Name: "S3 Server Access Logging Disabled",
-		Description: "S3 access logging disabled — attacker hiding data access activity.",
+		Description: "S3 access logging disabled - attacker hiding data access activity.",
 		Severity: 3, MITRE: "T1562.008", Category: "Defense Evasion",
 		Match: func(ev store.Event) bool {
 			// Only fire when logging is being REMOVED (LoggingEnabled absent = disabled)
@@ -51,7 +51,7 @@ var cloudSignaturesExtended = []ThreatSig{
 	},
 	{
 		ID: "C-AWS-014", Name: "Large S3 Data Download",
-		Description: "Bulk S3 object retrieval — possible data theft. Requires S3 Data Events enabled in CloudTrail.",
+		Description: "Bulk S3 object retrieval - possible data theft. Requires S3 Data Events enabled in CloudTrail.",
 		Severity: 3, MITRE: "T1530", Category: "Collection",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "cloud.cloudtrail" &&
@@ -72,7 +72,7 @@ var cloudSignaturesExtended = []ThreatSig{
 	// ── Identity & Access Management ─────────────────────────────────────────
 	{
 		ID: "C-AWS-016", Name: "IAM User Created",
-		Description: "New IAM user created — monitor for backdoor accounts.",
+		Description: "New IAM user created - monitor for backdoor accounts.",
 		Severity: 2, MITRE: "T1136.003", Category: "Persistence",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "cloud.cloudtrail" &&
@@ -92,7 +92,7 @@ var cloudSignaturesExtended = []ThreatSig{
 	},
 	{
 		ID: "C-AWS-018", Name: "IAM Password Policy Weakened",
-		Description: "IAM account password policy relaxed — reduced authentication security.",
+		Description: "IAM account password policy relaxed - reduced authentication security.",
 		Severity: 3, MITRE: "T1556", Category: "Credential Access",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "cloud.cloudtrail" &&
@@ -101,7 +101,7 @@ var cloudSignaturesExtended = []ThreatSig{
 	},
 	{
 		ID: "C-AWS-019", Name: "MFA Device Deregistered",
-		Description: "MFA device removed from IAM user — reduces account security.",
+		Description: "MFA device removed from IAM user - reduces account security.",
 		Severity: 4, MITRE: "T1556.006", Category: "Defense Evasion",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "cloud.cloudtrail" &&
@@ -110,7 +110,7 @@ var cloudSignaturesExtended = []ThreatSig{
 	},
 	{
 		ID: "C-AWS-020", Name: "STS AssumeRole Cross-Account",
-		Description: "IAM role assumed from a different AWS account — verify legitimacy.",
+		Description: "IAM role assumed from a different AWS account - verify legitimacy.",
 		Severity: 3, MITRE: "T1199", Category: "Initial Access",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "cloud.cloudtrail" &&
@@ -123,7 +123,7 @@ var cloudSignaturesExtended = []ThreatSig{
 	// ── Network & Compute ─────────────────────────────────────────────────────
 	{
 		ID: "C-AWS-021", Name: "EC2 Instance Created with Public IP",
-		Description: "EC2 instance launched with a public IP — check if intentional.",
+		Description: "EC2 instance launched with a public IP - check if intentional.",
 		Severity: 2, MITRE: "T1583.003", Category: "Resource Development",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "cloud.cloudtrail" &&
@@ -133,7 +133,7 @@ var cloudSignaturesExtended = []ThreatSig{
 	},
 	{
 		ID: "C-AWS-022", Name: "EC2 Snapshot Made Public",
-		Description: "EC2 snapshot shared publicly — data exposure risk.",
+		Description: "EC2 snapshot shared publicly - data exposure risk.",
 		Severity: 4, MITRE: "T1530", Category: "Collection",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "cloud.cloudtrail" &&
@@ -143,7 +143,7 @@ var cloudSignaturesExtended = []ThreatSig{
 	},
 	{
 		ID: "C-AWS-023", Name: "EC2 AMI Made Public",
-		Description: "EC2 AMI shared publicly — may expose sensitive data in the image.",
+		Description: "EC2 AMI shared publicly - may expose sensitive data in the image.",
 		Severity: 4, MITRE: "T1530", Category: "Collection",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "cloud.cloudtrail" &&
@@ -153,7 +153,7 @@ var cloudSignaturesExtended = []ThreatSig{
 	},
 	{
 		ID: "C-AWS-024", Name: "VPC Flow Logs Disabled",
-		Description: "VPC flow logs deleted or disabled — network visibility lost.",
+		Description: "VPC flow logs deleted or disabled - network visibility lost.",
 		Severity: 4, MITRE: "T1562.008", Category: "Defense Evasion",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "cloud.cloudtrail" &&
@@ -162,7 +162,7 @@ var cloudSignaturesExtended = []ThreatSig{
 	},
 	{
 		ID: "C-AWS-025", Name: "EC2 SSH Key Pair Created",
-		Description: "New EC2 key pair created — possible backdoor access.",
+		Description: "New EC2 key pair created - possible backdoor access.",
 		Severity: 3, MITRE: "T1098", Category: "Persistence",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "cloud.cloudtrail" &&
@@ -173,7 +173,7 @@ var cloudSignaturesExtended = []ThreatSig{
 	// ── Secrets & Credentials ─────────────────────────────────────────────────
 	{
 		ID: "C-AWS-026", Name: "Secrets Manager Secret Accessed",
-		Description: "AWS Secrets Manager secret retrieved — monitor for credential harvesting. Requires Secrets Manager Data Events in CloudTrail.",
+		Description: "AWS Secrets Manager secret retrieved - monitor for credential harvesting. Requires Secrets Manager Data Events in CloudTrail.",
 		Severity: 3, MITRE: "T1552.001", Category: "Credential Access",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "cloud.cloudtrail" &&
@@ -182,7 +182,7 @@ var cloudSignaturesExtended = []ThreatSig{
 	},
 	{
 		ID: "C-AWS-027", Name: "Secrets Manager Secret Deleted",
-		Description: "AWS Secrets Manager secret deleted — possible sabotage or cleanup after exfiltration.",
+		Description: "AWS Secrets Manager secret deleted - possible sabotage or cleanup after exfiltration.",
 		Severity: 4, MITRE: "T1485", Category: "Impact",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "cloud.cloudtrail" &&
@@ -270,7 +270,7 @@ var cloudSignaturesExtended = []ThreatSig{
 	},
 	{
 		ID: "C-AWS-034", Name: "Lambda Environment Variables Modified",
-		Description: "Lambda function environment variables updated — could inject malicious config.",
+		Description: "Lambda function environment variables updated - could inject malicious config.",
 		Severity: 3, MITRE: "T1525", Category: "Persistence",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "cloud.cloudtrail" &&
@@ -282,7 +282,7 @@ var cloudSignaturesExtended = []ThreatSig{
 	// ── CloudFormation / Infrastructure ──────────────────────────────────────
 	{
 		ID: "C-AWS-035", Name: "CloudFormation Stack Deleted",
-		Description: "CloudFormation stack deleted — infrastructure destruction.",
+		Description: "CloudFormation stack deleted - infrastructure destruction.",
 		Severity: 3, MITRE: "T1485", Category: "Impact",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "cloud.cloudtrail" &&
@@ -291,7 +291,7 @@ var cloudSignaturesExtended = []ThreatSig{
 	},
 	{
 		ID: "C-AWS-036", Name: "AWS Config Recorder Stopped",
-		Description: "AWS Config recorder stopped — compliance and change tracking disabled.",
+		Description: "AWS Config recorder stopped - compliance and change tracking disabled.",
 		Severity: 4, MITRE: "T1562.008", Category: "Defense Evasion",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "cloud.cloudtrail" &&
@@ -300,7 +300,7 @@ var cloudSignaturesExtended = []ThreatSig{
 	},
 	{
 		ID: "C-AWS-037", Name: "Route53 DNS Record Modified",
-		Description: "DNS record modified — possible DNS hijacking.",
+		Description: "DNS record modified - possible DNS hijacking.",
 		Severity: 4, MITRE: "T1584.002", Category: "Resource Development",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "cloud.cloudtrail" &&
@@ -309,7 +309,7 @@ var cloudSignaturesExtended = []ThreatSig{
 	},
 	{
 		ID: "C-AWS-038", Name: "CloudWatch Alarm Deleted",
-		Description: "CloudWatch alarm deleted — monitoring gap created.",
+		Description: "CloudWatch alarm deleted - monitoring gap created.",
 		Severity: 3, MITRE: "T1562.001", Category: "Defense Evasion",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "cloud.cloudtrail" &&
@@ -328,7 +328,7 @@ var cloudSignaturesExtended = []ThreatSig{
 	},
 	{
 		ID: "C-AWS-040", Name: "RDS Snapshot Made Public",
-		Description: "RDS database snapshot shared publicly — database contents exposed.",
+		Description: "RDS database snapshot shared publicly - database contents exposed.",
 		Severity: 5, MITRE: "T1530", Category: "Collection",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "cloud.cloudtrail" &&
@@ -338,13 +338,13 @@ var cloudSignaturesExtended = []ThreatSig{
 	},
 
 	// ══════════════════════════════════════════════════════════════════════════
-	// Azure — 25 additional rules
+	// Azure - 25 additional rules
 	// ══════════════════════════════════════════════════════════════════════════
 
 	// ── Storage ───────────────────────────────────────────────────────────────
 	{
 		ID: "C-AZ-006", Name: "Azure Blob Storage Container Made Public",
-		Description: "Azure Blob container access level set to public — data exposure risk.",
+		Description: "Azure Blob container access level set to public - data exposure risk.",
 		Severity: 4, MITRE: "T1530", Category: "Collection",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "cloud.azure_activity" &&
@@ -353,7 +353,7 @@ var cloudSignaturesExtended = []ThreatSig{
 	},
 	{
 		ID: "C-AZ-007", Name: "Azure Storage Account Firewall Disabled",
-		Description: "Storage account network rules removed — storage accessible from internet.",
+		Description: "Storage account network rules removed - storage accessible from internet.",
 		Severity: 4, MITRE: "T1562.007", Category: "Defense Evasion",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "cloud.azure_activity" &&
@@ -384,7 +384,7 @@ var cloudSignaturesExtended = []ThreatSig{
 	// ── Identity & Access ─────────────────────────────────────────────────────
 	{
 		ID: "C-AZ-010", Name: "Azure AD User Created",
-		Description: "New Azure AD user account created — monitor for backdoor accounts.",
+		Description: "New Azure AD user account created - monitor for backdoor accounts.",
 		Severity: 2, MITRE: "T1136.003", Category: "Persistence",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "cloud.azure_activity" &&
@@ -393,7 +393,7 @@ var cloudSignaturesExtended = []ThreatSig{
 	},
 	{
 		ID: "C-AZ-011", Name: "Azure AD User MFA Disabled",
-		Description: "MFA disabled for an Azure AD user — reduces account security.",
+		Description: "MFA disabled for an Azure AD user - reduces account security.",
 		Severity: 4, MITRE: "T1556.006", Category: "Defense Evasion",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "cloud.azure_activity" &&
@@ -403,7 +403,7 @@ var cloudSignaturesExtended = []ThreatSig{
 	},
 	{
 		ID: "C-AZ-012", Name: "Azure AD Application Created",
-		Description: "New Azure AD app registration created — could be used for persistence.",
+		Description: "New Azure AD app registration created - could be used for persistence.",
 		Severity: 3, MITRE: "T1550.001", Category: "Defense Evasion",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "cloud.azure_activity" &&
@@ -412,7 +412,7 @@ var cloudSignaturesExtended = []ThreatSig{
 	},
 	{
 		ID: "C-AZ-013", Name: "Azure Service Principal Credentials Added",
-		Description: "New credential added to service principal — backdoor access path.",
+		Description: "New credential added to service principal - backdoor access path.",
 		Severity: 4, MITRE: "T1098.001", Category: "Persistence",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "cloud.azure_activity" &&
@@ -421,7 +421,7 @@ var cloudSignaturesExtended = []ThreatSig{
 	},
 	{
 		ID: "C-AZ-014", Name: "Azure Entra ID Conditional Access Policy Disabled",
-		Description: "Conditional Access policy deleted or disabled — security control bypassed.",
+		Description: "Conditional Access policy deleted or disabled - security control bypassed.",
 		Severity: 4, MITRE: "T1556", Category: "Defense Evasion",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "cloud.azure_activity" &&
@@ -431,7 +431,7 @@ var cloudSignaturesExtended = []ThreatSig{
 	},
 	{
 		ID: "C-AZ-015", Name: "Entra ID Guest Account Added",
-		Description: "External guest user invited — verify legitimacy.",
+		Description: "External guest user invited - verify legitimacy.",
 		Severity: 2, MITRE: "T1136.003", Category: "Persistence",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "cloud.azure_activity" &&
@@ -442,7 +442,7 @@ var cloudSignaturesExtended = []ThreatSig{
 	// ── Network ───────────────────────────────────────────────────────────────
 	{
 		ID: "C-AZ-016", Name: "Azure Firewall Deleted",
-		Description: "Azure Firewall resource deleted — network security boundary removed.",
+		Description: "Azure Firewall resource deleted - network security boundary removed.",
 		Severity: 5, MITRE: "T1562.007", Category: "Defense Evasion",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "cloud.azure_activity" &&
@@ -460,7 +460,7 @@ var cloudSignaturesExtended = []ThreatSig{
 	},
 	{
 		ID: "C-AZ-018", Name: "Azure VPN Gateway Configuration Changed",
-		Description: "VPN gateway modified — network routing change.",
+		Description: "VPN gateway modified - network routing change.",
 		Severity: 3, MITRE: "T1572", Category: "Command and Control",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "cloud.azure_activity" &&
@@ -469,7 +469,7 @@ var cloudSignaturesExtended = []ThreatSig{
 	},
 	{
 		ID: "C-AZ-019", Name: "Azure Public IP Allocated",
-		Description: "New public IP address allocated — new internet-exposed surface.",
+		Description: "New public IP address allocated - new internet-exposed surface.",
 		Severity: 2, MITRE: "T1583.003", Category: "Resource Development",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "cloud.azure_activity" &&
@@ -480,7 +480,7 @@ var cloudSignaturesExtended = []ThreatSig{
 	// ── Compute ───────────────────────────────────────────────────────────────
 	{
 		ID: "C-AZ-020", Name: "Azure VM Extension Installed",
-		Description: "VM extension installed — could be used to execute code on VM.",
+		Description: "VM extension installed - could be used to execute code on VM.",
 		Severity: 3, MITRE: "T1059", Category: "Execution",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "cloud.azure_activity" &&
@@ -489,7 +489,7 @@ var cloudSignaturesExtended = []ThreatSig{
 	},
 	{
 		ID: "C-AZ-021", Name: "Azure Disk Snapshot Exported",
-		Description: "Managed disk snapshot exported to storage — possible data exfiltration.",
+		Description: "Managed disk snapshot exported to storage - possible data exfiltration.",
 		Severity: 3, MITRE: "T1537", Category: "Exfiltration",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "cloud.azure_activity" &&
@@ -498,7 +498,7 @@ var cloudSignaturesExtended = []ThreatSig{
 	},
 	{
 		ID: "C-AZ-022", Name: "Azure Automation Runbook Created",
-		Description: "New automation runbook created — could execute code in Azure environment.",
+		Description: "New automation runbook created - could execute code in Azure environment.",
 		Severity: 3, MITRE: "T1053.005", Category: "Persistence",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "cloud.azure_activity" &&
@@ -509,7 +509,7 @@ var cloudSignaturesExtended = []ThreatSig{
 	// ── Monitoring & Audit ────────────────────────────────────────────────────
 	{
 		ID: "C-AZ-023", Name: "Azure Diagnostic Settings Deleted",
-		Description: "Diagnostic settings removed — audit log forwarding stopped.",
+		Description: "Diagnostic settings removed - audit log forwarding stopped.",
 		Severity: 4, MITRE: "T1562.008", Category: "Defense Evasion",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "cloud.azure_activity" &&
@@ -518,7 +518,7 @@ var cloudSignaturesExtended = []ThreatSig{
 	},
 	{
 		ID: "C-AZ-024", Name: "Azure Monitor Alert Rule Deleted",
-		Description: "Azure Monitor alert rule deleted — monitoring blind spot created.",
+		Description: "Azure Monitor alert rule deleted - monitoring blind spot created.",
 		Severity: 3, MITRE: "T1562.001", Category: "Defense Evasion",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "cloud.azure_activity" &&
@@ -527,7 +527,7 @@ var cloudSignaturesExtended = []ThreatSig{
 	},
 	{
 		ID: "C-AZ-025", Name: "Azure Policy Assignment Deleted",
-		Description: "Azure Policy assignment removed — compliance enforcement disabled.",
+		Description: "Azure Policy assignment removed - compliance enforcement disabled.",
 		Severity: 3, MITRE: "T1562.001", Category: "Defense Evasion",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "cloud.azure_activity" &&
@@ -536,7 +536,7 @@ var cloudSignaturesExtended = []ThreatSig{
 	},
 	{
 		ID: "C-AZ-026", Name: "Azure SQL Database Firewall Rule Modified",
-		Description: "SQL database firewall rule changed — potential database exposure.",
+		Description: "SQL database firewall rule changed - potential database exposure.",
 		Severity: 3, MITRE: "T1190", Category: "Initial Access",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "cloud.azure_activity" &&
@@ -566,7 +566,7 @@ var cloudSignaturesExtended = []ThreatSig{
 	},
 	{
 		ID: "C-AZ-029", Name: "Azure Logic App Workflow Modified",
-		Description: "Logic App workflow created or modified — potential code execution path.",
+		Description: "Logic App workflow created or modified - potential code execution path.",
 		Severity: 3, MITRE: "T1053", Category: "Persistence",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "cloud.azure_activity" &&
@@ -584,7 +584,7 @@ var cloudSignaturesExtended = []ThreatSig{
 	},
 
 	// ══════════════════════════════════════════════════════════════════════════
-	// GCP — 15 additional rules
+	// GCP - 15 additional rules
 	// ══════════════════════════════════════════════════════════════════════════
 
 	{
@@ -610,7 +610,7 @@ var cloudSignaturesExtended = []ThreatSig{
 	},
 	{
 		ID: "C-GCP-008", Name: "GCP VPC Firewall Rule Deleted",
-		Description: "Firewall rule deleted — network security boundary change.",
+		Description: "Firewall rule deleted - network security boundary change.",
 		Severity: 3, MITRE: "T1562.007", Category: "Defense Evasion",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "cloud.gcp_audit" &&
@@ -619,7 +619,7 @@ var cloudSignaturesExtended = []ThreatSig{
 	},
 	{
 		ID: "C-GCP-009", Name: "GCP Project Deleted",
-		Description: "GCP project deleted — catastrophic data and infrastructure loss.",
+		Description: "GCP project deleted - catastrophic data and infrastructure loss.",
 		Severity: 5, MITRE: "T1485", Category: "Impact",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "cloud.gcp_audit" &&
@@ -628,7 +628,7 @@ var cloudSignaturesExtended = []ThreatSig{
 	},
 	{
 		ID: "C-GCP-010", Name: "GCP Service Account Disabled",
-		Description: "Service account disabled — could cause service disruption.",
+		Description: "Service account disabled - could cause service disruption.",
 		Severity: 3, MITRE: "T1531", Category: "Impact",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "cloud.gcp_audit" &&
@@ -658,7 +658,7 @@ var cloudSignaturesExtended = []ThreatSig{
 	},
 	{
 		ID: "C-GCP-013", Name: "GCP Pub/Sub Subscription Made Public",
-		Description: "Pub/Sub subscription IAM grants access to allUsers — message data exposed.",
+		Description: "Pub/Sub subscription IAM grants access to allUsers - message data exposed.",
 		Severity: 3, MITRE: "T1530", Category: "Collection",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "cloud.gcp_audit" &&
@@ -668,7 +668,7 @@ var cloudSignaturesExtended = []ThreatSig{
 	},
 	{
 		ID: "C-GCP-014", Name: "GCP BigQuery Dataset Made Public",
-		Description: "BigQuery dataset IAM policy grants access to all users — data exposure.",
+		Description: "BigQuery dataset IAM policy grants access to all users - data exposure.",
 		Severity: 4, MITRE: "T1530", Category: "Collection",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "cloud.gcp_audit" &&
@@ -678,7 +678,7 @@ var cloudSignaturesExtended = []ThreatSig{
 	},
 	{
 		ID: "C-GCP-015", Name: "GCP Secret Manager Secret Accessed",
-		Description: "GCP Secret Manager secret version accessed — credential monitoring.",
+		Description: "GCP Secret Manager secret version accessed - credential monitoring.",
 		Severity: 3, MITRE: "T1552.001", Category: "Credential Access",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "cloud.gcp_audit" &&
@@ -687,7 +687,7 @@ var cloudSignaturesExtended = []ThreatSig{
 	},
 	{
 		ID: "C-GCP-016", Name: "GCP Cloud Function Created or Updated",
-		Description: "Cloud Function created or updated — serverless code execution.",
+		Description: "Cloud Function created or updated - serverless code execution.",
 		Severity: 2, MITRE: "T1525", Category: "Persistence",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "cloud.gcp_audit" &&
@@ -696,7 +696,7 @@ var cloudSignaturesExtended = []ThreatSig{
 	},
 	{
 		ID: "C-GCP-017", Name: "GCP Cloud Scheduler Job Created",
-		Description: "Cloud Scheduler job created — scheduled code execution.",
+		Description: "Cloud Scheduler job created - scheduled code execution.",
 		Severity: 2, MITRE: "T1053", Category: "Persistence",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "cloud.gcp_audit" &&
@@ -725,7 +725,7 @@ var cloudSignaturesExtended = []ThreatSig{
 	},
 	{
 		ID: "C-GCP-020", Name: "GCP Organization Policy Constraint Disabled",
-		Description: "Organization policy constraint disabled — guardrails removed.",
+		Description: "Organization policy constraint disabled - guardrails removed.",
 		Severity: 4, MITRE: "T1562.001", Category: "Defense Evasion",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "cloud.gcp_audit" &&
@@ -734,7 +734,7 @@ var cloudSignaturesExtended = []ThreatSig{
 	},
 
 	// ══════════════════════════════════════════════════════════════════════════
-	// Cross-Cloud — 10 rules matching across all providers
+	// Cross-Cloud - 10 rules matching across all providers
 	// ══════════════════════════════════════════════════════════════════════════
 
 	{
@@ -750,7 +750,7 @@ var cloudSignaturesExtended = []ThreatSig{
 	},
 	{
 		ID: "C-XCLOUD-002", Name: "Critical Cloud Resource Deleted",
-		Description: "High-severity cloud resource deleted — database, firewall, vault, or logging infrastructure.",
+		Description: "High-severity cloud resource deleted - database, firewall, vault, or logging infrastructure.",
 		Severity: 4, MITRE: "T1485", Category: "Impact",
 		Match: func(ev store.Event) bool {
 			return isCloudEvent(ev) && ev.Severity >= 4 &&
@@ -784,7 +784,7 @@ var cloudSignaturesExtended = []ThreatSig{
 	},
 	{
 		ID: "C-XCLOUD-005", Name: "Cloud Encryption Key Destroyed",
-		Description: "Encryption key deleted or destroyed across any cloud — ransomware or sabotage.",
+		Description: "Encryption key deleted or destroyed across any cloud - ransomware or sabotage.",
 		Severity: 5, MITRE: "T1485", Category: "Impact",
 		Match: func(ev store.Event) bool {
 			return isCloudEvent(ev) &&
@@ -820,7 +820,7 @@ var cloudSignaturesExtended = []ThreatSig{
 	},
 	{
 		ID: "C-XCLOUD-008", Name: "Cloud Security Tool Disabled",
-		Description: "Security service disabled across any cloud — GuardDuty, Defender, Security Command Center.",
+		Description: "Security service disabled across any cloud - GuardDuty, Defender, Security Command Center.",
 		Severity: 5, MITRE: "T1562.001", Category: "Defense Evasion",
 		Match: func(ev store.Event) bool {
 			return isCloudEvent(ev) &&
@@ -848,7 +848,7 @@ var cloudSignaturesExtended = []ThreatSig{
 	},
 	{
 		ID: "C-XCLOUD-010", Name: "Cloud Credentials Exfiltration Attempt",
-		Description: "Cloud metadata endpoint or credential file accessed — possible credential theft.",
+		Description: "Cloud metadata endpoint or credential file accessed - possible credential theft.",
 		Severity: 4, MITRE: "T1552.005", Category: "Credential Access",
 		Match: func(ev store.Event) bool {
 			return (isCloudEvent(ev) || ev.EventType == "network" || ev.EventType == "file") &&
@@ -862,12 +862,12 @@ var cloudSignaturesExtended = []ThreatSig{
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// Cloud — Reconnaissance / Discovery signatures
+// Cloud - Reconnaissance / Discovery signatures
 // ══════════════════════════════════════════════════════════════════════════════
 var cloudReconSignatures = []ThreatSig{
 	{
-		ID: "C-RECON-001", Name: "AWS Cloud Enumeration — ListBuckets/DescribeInstances Burst",
-		Description: "Rapid succession of AWS list/describe API calls — consistent with automated enumeration (prowler, ScoutSuite, Pacu, CloudMapper).",
+		ID: "C-RECON-001", Name: "AWS Cloud Enumeration - ListBuckets/DescribeInstances Burst",
+		Description: "Rapid succession of AWS list/describe API calls - consistent with automated enumeration (prowler, ScoutSuite, Pacu, CloudMapper).",
 		Severity: 3, MITRE: "T1526", Category: "Discovery",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "cloud.cloudtrail" &&
@@ -879,7 +879,7 @@ var cloudReconSignatures = []ThreatSig{
 	},
 	{
 		ID: "C-RECON-002", Name: "AWS IAM Credential Report Generated",
-		Description: "IAM credential report generated — maps all users, password ages, access keys, MFA status. Commonly used by attackers to identify weak accounts.",
+		Description: "IAM credential report generated - maps all users, password ages, access keys, MFA status. Commonly used by attackers to identify weak accounts.",
 		Severity: 3, MITRE: "T1087.004", Category: "Discovery",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "cloud.cloudtrail" &&
@@ -888,7 +888,7 @@ var cloudReconSignatures = []ThreatSig{
 	},
 	{
 		ID: "C-RECON-003", Name: "Cloud Account Metadata Enumeration",
-		Description: "Cloud account or organization structure enumerated — consistent with attacker mapping the environment.",
+		Description: "Cloud account or organization structure enumerated - consistent with attacker mapping the environment.",
 		Severity: 2, MITRE: "T1526", Category: "Discovery",
 		Match: func(ev store.Event) bool {
 			return isCloudEvent(ev) &&
@@ -900,7 +900,7 @@ var cloudReconSignatures = []ThreatSig{
 	},
 	{
 		ID: "C-RECON-004", Name: "Azure Subscription and Resource Enumeration",
-		Description: "Mass resource listing across an Azure subscription — possible recon with az CLI or automated tool.",
+		Description: "Mass resource listing across an Azure subscription - possible recon with az CLI or automated tool.",
 		Severity: 2, MITRE: "T1526", Category: "Discovery",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "cloud.azure_activity" &&
@@ -912,7 +912,7 @@ var cloudReconSignatures = []ThreatSig{
 	},
 	{
 		ID: "C-RECON-005", Name: "GCP Service Account Keys Listed",
-		Description: "All service account keys enumerated — attacker mapping credential exposure.",
+		Description: "All service account keys enumerated - attacker mapping credential exposure.",
 		Severity: 3, MITRE: "T1087.004", Category: "Discovery",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "cloud.gcp_audit" &&
@@ -923,12 +923,12 @@ var cloudReconSignatures = []ThreatSig{
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// Cloud — Network anomaly signatures
+// Cloud - Network anomaly signatures
 // ══════════════════════════════════════════════════════════════════════════════
 var cloudNetworkSignatures = []ThreatSig{
 	{
 		ID: "C-NET-001", Name: "Cloud Security Group Opens SSH/RDP to Internet",
-		Description: "Security group or firewall rule created allowing SSH (22) or RDP (3389) from 0.0.0.0/0 — critical exposure.",
+		Description: "Security group or firewall rule created allowing SSH (22) or RDP (3389) from 0.0.0.0/0 - critical exposure.",
 		Severity: 5, MITRE: "T1190", Category: "Initial Access",
 		Match: func(ev store.Event) bool {
 			raw := strings.ToLower(rawStr(ev))
@@ -955,7 +955,7 @@ var cloudNetworkSignatures = []ThreatSig{
 	},
 	{
 		ID: "C-NET-003", Name: "Cloud VPN Tunnel Deleted",
-		Description: "VPN tunnel or connection deleted — corporate network connectivity severed.",
+		Description: "VPN tunnel or connection deleted - corporate network connectivity severed.",
 		Severity: 4, MITRE: "T1562.007", Category: "Defense Evasion",
 		Match: func(ev store.Event) bool {
 			return isCloudEvent(ev) &&
@@ -967,7 +967,7 @@ var cloudNetworkSignatures = []ThreatSig{
 	},
 	{
 		ID: "C-NET-004", Name: "AWS Direct Connect or Transit Gateway Modified",
-		Description: "Core network routing infrastructure modified — possible traffic interception.",
+		Description: "Core network routing infrastructure modified - possible traffic interception.",
 		Severity: 3, MITRE: "T1557", Category: "Collection",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "cloud.cloudtrail" &&
@@ -979,7 +979,7 @@ var cloudNetworkSignatures = []ThreatSig{
 	},
 	{
 		ID: "C-NET-005", Name: "Cloud Metadata Service Accessed from Unexpected IP",
-		Description: "Cloud instance metadata endpoint (169.254.169.254) queried from a source that is not the instance itself — SSRF or credential theft attempt.",
+		Description: "Cloud instance metadata endpoint (169.254.169.254) queried from a source that is not the instance itself - SSRF or credential theft attempt.",
 		Severity: 5, MITRE: "T1552.005", Category: "Credential Access",
 		Match: func(ev store.Event) bool {
 			return (ev.EventType == "network" || ev.EventType == "cloud.cloudtrail") &&
@@ -990,12 +990,12 @@ var cloudNetworkSignatures = []ThreatSig{
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// Cloud — Lateral Movement signatures
+// Cloud - Lateral Movement signatures
 // ══════════════════════════════════════════════════════════════════════════════
 var cloudLateralSignatures = []ThreatSig{
 	{
 		ID: "C-LAT-001", Name: "AWS EC2 Instance Connect Used",
-		Description: "EC2 Instance Connect used to push an SSH public key — agentless shell access to EC2 without a persistent key pair.",
+		Description: "EC2 Instance Connect used to push an SSH public key - agentless shell access to EC2 without a persistent key pair.",
 		Severity: 3, MITRE: "T1021.004", Category: "Lateral Movement",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "cloud.cloudtrail" &&
@@ -1004,7 +1004,7 @@ var cloudLateralSignatures = []ThreatSig{
 	},
 	{
 		ID: "C-LAT-002", Name: "AWS SSM RunCommand Executed on Multiple Instances",
-		Description: "AWS Systems Manager RunCommand executed — remote code execution on EC2 instances without SSH.",
+		Description: "AWS Systems Manager RunCommand executed - remote code execution on EC2 instances without SSH.",
 		Severity: 4, MITRE: "T1021.006", Category: "Lateral Movement",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "cloud.cloudtrail" &&
@@ -1014,7 +1014,7 @@ var cloudLateralSignatures = []ThreatSig{
 	},
 	{
 		ID: "C-LAT-003", Name: "AWS Role Chaining Detected",
-		Description: "IAM role assumed then used to assume another role (role chaining) — escalating privilege across trust boundaries.",
+		Description: "IAM role assumed then used to assume another role (role chaining) - escalating privilege across trust boundaries.",
 		Severity: 4, MITRE: "T1548.005", Category: "Privilege Escalation",
 		Match: func(ev store.Event) bool {
 			raw := strings.ToLower(rawStr(ev))
@@ -1026,7 +1026,7 @@ var cloudLateralSignatures = []ThreatSig{
 	},
 	{
 		ID: "C-LAT-004", Name: "Azure VM Run Command Executed",
-		Description: "Azure VM Run Command used — remote code execution on VM without RDP/SSH.",
+		Description: "Azure VM Run Command used - remote code execution on VM without RDP/SSH.",
 		Severity: 4, MITRE: "T1021.006", Category: "Lateral Movement",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "cloud.azure_activity" &&
@@ -1037,7 +1037,7 @@ var cloudLateralSignatures = []ThreatSig{
 	},
 	{
 		ID: "C-LAT-005", Name: "GCP OS Login SSH Key Added",
-		Description: "SSH key added via GCP OS Login — persistent remote access to GCE instances.",
+		Description: "SSH key added via GCP OS Login - persistent remote access to GCE instances.",
 		Severity: 3, MITRE: "T1098.004", Category: "Persistence",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "cloud.gcp_audit" &&
@@ -1050,12 +1050,12 @@ var cloudLateralSignatures = []ThreatSig{
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// Cloud — Compute abuse / Cryptomining signatures
+// Cloud - Compute abuse / Cryptomining signatures
 // ══════════════════════════════════════════════════════════════════════════════
 var cloudComputeAbuseSignatures = []ThreatSig{
 	{
 		ID: "C-ABUSE-001", Name: "Unusual EC2 Instance Type Launched",
-		Description: "High-compute EC2 instance launched (GPU/HPC family) — possible cryptomining or abuse.",
+		Description: "High-compute EC2 instance launched (GPU/HPC family) - possible cryptomining or abuse.",
 		Severity: 3, MITRE: "T1496", Category: "Impact",
 		Match: func(ev store.Event) bool {
 			raw := strings.ToLower(rawStr(ev))
@@ -1067,7 +1067,7 @@ var cloudComputeAbuseSignatures = []ThreatSig{
 	},
 	{
 		ID: "C-ABUSE-002", Name: "Cloud Compute Quota Increase Requested",
-		Description: "Cloud compute quota increase requested — may precede large-scale resource abuse.",
+		Description: "Cloud compute quota increase requested - may precede large-scale resource abuse.",
 		Severity: 2, MITRE: "T1496", Category: "Impact",
 		Match: func(ev store.Event) bool {
 			return isCloudEvent(ev) &&
@@ -1078,7 +1078,7 @@ var cloudComputeAbuseSignatures = []ThreatSig{
 	},
 	{
 		ID: "C-ABUSE-003", Name: "AWS Spot Instance Fleet or Batch Job Created",
-		Description: "Spot fleet or Batch compute environment created — common pattern for cost-effective cryptomining.",
+		Description: "Spot fleet or Batch compute environment created - common pattern for cost-effective cryptomining.",
 		Severity: 3, MITRE: "T1496", Category: "Impact",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "cloud.cloudtrail" &&

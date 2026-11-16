@@ -6,14 +6,14 @@ import (
 	"obsidianwatch/management/internal/store"
 )
 
-// devopsSignatures — detection rules for GitHub/GitLab/Azure DevOps events.
+// devopsSignatures - detection rules for GitHub/GitLab/Azure DevOps events.
 // All match on EventType starting with "devops." and parse the Raw JSON field.
 var devopsSignatures = []ThreatSig{
 
 	// ── Secret / Credential Exposure ──────────────────────────────────────────
 	{
 		ID: "DEV-001", Name: "Secret or Credential Pushed to Repository",
-		Description: "A commit was pushed containing a detected secret — API key, password, private key, or token. Immediate rotation required. The credential should be considered compromised.",
+		Description: "A commit was pushed containing a detected secret - API key, password, private key, or token. Immediate rotation required. The credential should be considered compromised.",
 		Severity: 5, MITRE: "T1552.001", Category: "Credential Access",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "devops.secret_push"
@@ -21,7 +21,7 @@ var devopsSignatures = []ThreatSig{
 	},
 	{
 		ID: "DEV-002", Name: "Sensitive File Committed (.env, .pem, credentials)",
-		Description: "A commit included a file type commonly containing secrets — .env, .pem, .key, credentials.json, terraform.tfvars, etc.",
+		Description: "A commit included a file type commonly containing secrets - .env, .pem, .key, credentials.json, terraform.tfvars, etc.",
 		Severity: 4, MITRE: "T1552.001", Category: "Credential Access",
 		Match: func(ev store.Event) bool {
 			return ev.EventType == "devops.sensitive_file"
@@ -53,7 +53,7 @@ var devopsSignatures = []ThreatSig{
 	},
 	{
 		ID: "DEV-005", Name: "Pipeline Secret or Variable Accessed from Unexpected Branch",
-		Description: "A pipeline job ran and accessed secrets from a branch other than main/master/develop. This is the classic fork PR attack — untrusted code accessing privileged secrets.",
+		Description: "A pipeline job ran and accessed secrets from a branch other than main/master/develop. This is the classic fork PR attack - untrusted code accessing privileged secrets.",
 		Severity: 4, MITRE: "T1195.002", Category: "Supply Chain",
 		Match: func(ev store.Event) bool {
 			if ev.EventType != "devops.workflow_run" {
@@ -70,7 +70,7 @@ var devopsSignatures = []ThreatSig{
 	// ── Repository Exposure ───────────────────────────────────────────────────
 	{
 		ID: "DEV-006", Name: "Private Repository Made Public",
-		Description: "A repository was changed from private to public — all code, commit history, and any hardcoded secrets are now publicly accessible.",
+		Description: "A repository was changed from private to public - all code, commit history, and any hardcoded secrets are now publicly accessible.",
 		Severity: 5, MITRE: "T1530", Category: "Exfiltration",
 		Match: func(ev store.Event) bool {
 			if !isDevOpsEvent(ev) {
@@ -84,7 +84,7 @@ var devopsSignatures = []ThreatSig{
 	},
 	{
 		ID: "DEV-007", Name: "Repository Deleted",
-		Description: "A repository was deleted — code and history permanently removed.",
+		Description: "A repository was deleted - code and history permanently removed.",
 		Severity: 4, MITRE: "T1485", Category: "Impact",
 		Match: func(ev store.Event) bool {
 			return isDevOpsEvent(ev) &&
@@ -94,7 +94,7 @@ var devopsSignatures = []ThreatSig{
 	},
 	{
 		ID: "DEV-008", Name: "Repository Transferred to External Account",
-		Description: "A repository was transferred to a different organization or user — possible data exfiltration.",
+		Description: "A repository was transferred to a different organization or user - possible data exfiltration.",
 		Severity: 4, MITRE: "T1537", Category: "Exfiltration",
 		Match: func(ev store.Event) bool {
 			return isDevOpsEvent(ev) &&
@@ -120,7 +120,7 @@ var devopsSignatures = []ThreatSig{
 	},
 	{
 		ID: "DEV-010", Name: "Personal Access Token Created",
-		Description: "A Personal Access Token was created — PATs provide programmatic access and can persist after password changes or MFA enforcement. Long-lived PATs are a common backdoor.",
+		Description: "A Personal Access Token was created - PATs provide programmatic access and can persist after password changes or MFA enforcement. Long-lived PATs are a common backdoor.",
 		Severity: 4, MITRE: "T1098", Category: "Persistence",
 		Match: func(ev store.Event) bool {
 			return isDevOpsEvent(ev) &&
@@ -130,7 +130,7 @@ var devopsSignatures = []ThreatSig{
 	},
 	{
 		ID: "DEV-011", Name: "Deploy Key Added to Repository",
-		Description: "An SSH deploy key was added to a repository — provides persistent read (or write) access to the repo without using a user account.",
+		Description: "An SSH deploy key was added to a repository - provides persistent read (or write) access to the repo without using a user account.",
 		Severity: 3, MITRE: "T1098.004", Category: "Persistence",
 		Match: func(ev store.Event) bool {
 			return isDevOpsEvent(ev) &&
@@ -171,7 +171,7 @@ var devopsSignatures = []ThreatSig{
 	},
 	{
 		ID: "DEV-014", Name: "Force Push to Protected Branch",
-		Description: "A force push was made directly to main/master or another protected branch — rewrites history and can remove evidence of malicious commits.",
+		Description: "A force push was made directly to main/master or another protected branch - rewrites history and can remove evidence of malicious commits.",
 		Severity: 4, MITRE: "T1562", Category: "Defense Evasion",
 		Match: func(ev store.Event) bool {
 			if !isDevOpsEvent(ev) {
@@ -194,7 +194,7 @@ var devopsSignatures = []ThreatSig{
 	},
 	{
 		ID: "DEV-015", Name: "Audit Log Streaming Disabled",
-		Description: "GitHub or GitLab audit log streaming was disabled — security events will no longer be forwarded to SIEM.",
+		Description: "GitHub or GitLab audit log streaming was disabled - security events will no longer be forwarded to SIEM.",
 		Severity: 5, MITRE: "T1562.008", Category: "Defense Evasion",
 		Match: func(ev store.Event) bool {
 			return isDevOpsEvent(ev) &&
@@ -204,7 +204,7 @@ var devopsSignatures = []ThreatSig{
 	},
 	{
 		ID: "DEV-016", Name: "Webhook Created on Organization",
-		Description: "A new webhook was created on the org — could be used to exfiltrate events, code, or to receive C2 callbacks.",
+		Description: "A new webhook was created on the org - could be used to exfiltrate events, code, or to receive C2 callbacks.",
 		Severity: 3, MITRE: "T1071.001", Category: "Command and Control",
 		Match: func(ev store.Event) bool {
 			return isDevOpsEvent(ev) &&
@@ -216,7 +216,7 @@ var devopsSignatures = []ThreatSig{
 	// ── After Hours Activity ──────────────────────────────────────────────────
 	{
 		ID: "DEV-017", Name: "Repository Made Public Outside Business Hours",
-		Description: "A repository was made public outside normal business hours — suspicious timing.",
+		Description: "A repository was made public outside normal business hours - suspicious timing.",
 		Severity: 5, MITRE: "T1530", Category: "Exfiltration",
 		Match: func(ev store.Event) bool {
 			if !isDevOpsEvent(ev) {
@@ -229,19 +229,19 @@ var devopsSignatures = []ThreatSig{
 	},
 	{
 		ID: "DEV-019", Name: "Mass Deletion Commit",
-		Description: "A single commit deleted 1,000+ lines with far fewer additions — possible sabotage, history laundering or removal of evidence.",
+		Description: "A single commit deleted 1,000+ lines with far fewer additions - possible sabotage, history laundering or removal of evidence.",
 		Severity: 3, MITRE: "T1485", Category: "Impact",
 		Match: func(ev store.Event) bool { return ev.EventType == "devops.mass_deletion" },
 	},
 	{
 		ID: "DEV-020", Name: "Dependency Manifest Modified",
-		Description: "A dependency manifest or lockfile changed — review for dependency confusion, typosquatted or malicious packages.",
+		Description: "A dependency manifest or lockfile changed - review for dependency confusion, typosquatted or malicious packages.",
 		Severity: 2, MITRE: "T1195.001", Category: "Initial Access",
 		Match: func(ev store.Event) bool { return ev.EventType == "devops.dependency_change" },
 	},
 	{
 		ID: "DEV-021", Name: "Commit Committer/Author Mismatch Without Signature",
-		Description: "The committer differs from the author and the commit is not signature-verified — possible forged authorship or rewritten history.",
+		Description: "The committer differs from the author and the commit is not signature-verified - possible forged authorship or rewritten history.",
 		Severity: 3, MITRE: "T1565", Category: "Defense Evasion",
 		Match: func(ev store.Event) bool {
 			if ev.EventType != "devops.push" {

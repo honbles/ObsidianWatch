@@ -1,6 +1,6 @@
 package api
 
-// engine_hooks.go — the only integration points the Network and Application
+// engine_hooks.go - the only integration points the Network and Application
 // builds have into the detection engine. Owned by the integration owner.
 // A side registers from an init() in its own file; it never edits the engine.
 

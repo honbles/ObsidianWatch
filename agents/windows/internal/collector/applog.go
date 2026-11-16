@@ -1,18 +1,18 @@
 package collector
 
-// applog.go — tails one or more application log files and ships each line
+// applog.go - tails one or more application log files and ships each line
 // as a schema.Event to the SIEM backend.
 //
 // Supports three log formats:
-//   json     — each line is a JSON object; fields are mapped to Event fields
-//   text     — each line is treated as a plain message stored in Raw
-//   combined — Apache/nginx "combined" access log format
+//   json     - each line is a JSON object; fields are mapped to Event fields
+//   text     - each line is treated as a plain message stored in Raw
+//   combined - Apache/nginx "combined" access log format
 //
 // The collector remembers its file offset via a small state file so it
 // never re-ships lines after a restart, and picks up rotated files when the
 // inode/size changes.
 //
-// Build constraint: none — this file is pure Go and works on all platforms.
+// Build constraint: none - this file is pure Go and works on all platforms.
 // The agent binary is Windows-only via main.go's build tag, but this
 // collector itself is portable.
 
@@ -41,7 +41,7 @@ type AppLogConfig struct {
 	Format    string `yaml:"format"`     // json | text | combined
 	EventType string `yaml:"event_type"` // any string, defaults to "applog"
 	Severity  int    `yaml:"severity"`   // 1–5 default severity for lines from this file
-	// StateDir is set by the agent at startup — users don't need to set it.
+	// StateDir is set by the agent at startup - users don't need to set it.
 	StateDir string `yaml:"-"`
 }
 
@@ -109,7 +109,7 @@ func (a *AppLogCollector) Run(ctx context.Context) error {
 }
 
 // ---------------------------------------------------------------------------
-// fileTailer — tails a single file
+// fileTailer - tails a single file
 // ---------------------------------------------------------------------------
 
 type fileTailer struct {
@@ -146,7 +146,7 @@ func (t *fileTailer) tail(ctx context.Context) error {
 		}
 		f, err = os.Open(t.cfg.Path)
 		if err != nil {
-			// File may not exist yet — that's fine, we'll retry.
+			// File may not exist yet - that's fine, we'll retry.
 			return
 		}
 		// If saved offset is beyond the file size (rotation), start from 0.
@@ -277,7 +277,7 @@ func (t *fileTailer) parseJSON(line string, ev *schema.Event) {
 
 	var obj map[string]interface{}
 	if err := json.Unmarshal([]byte(line), &obj); err != nil {
-		// Not valid JSON — treat as text.
+		// Not valid JSON - treat as text.
 		raw, _ := json.Marshal(map[string]string{"message": line})
 		ev.Raw = raw
 		return
@@ -455,7 +455,7 @@ func (t *fileTailer) parseCombined(line string, ev *schema.Event) {
 }
 
 // ---------------------------------------------------------------------------
-// Offset persistence — simple text file with the byte offset as a decimal int
+// Offset persistence - simple text file with the byte offset as a decimal int
 // ---------------------------------------------------------------------------
 
 func (t *fileTailer) stateFile() string {

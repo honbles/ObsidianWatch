@@ -367,7 +367,7 @@ func classifyAndEnrichEvent(ev *schema.Event, data map[string]string) {
 		// Skip noisy background logons: 3=Network, 4=Batch, 5=Service, 0=System
 		// Keep: 2=Interactive, 7=Unlock, 10=RemoteInteractive(RDP), 11=CachedInteractive
 		if lt == "3" || lt == "4" || lt == "5" || lt == "0" {
-			// Skip — mark as skippable by clearing EventType so parseEvent drops it
+			// Skip - mark as skippable by clearing EventType so parseEvent drops it
 			ev.EventType = ""
 			return
 		}
@@ -464,7 +464,7 @@ func classifyAndEnrichEvent(ev *schema.Event, data map[string]string) {
 		}
 
 	// -- Domain Controller Events -----------------------------------------------
-	// 4662 — Object operation in AD (DCSync uses LDAP replication on DS-Replication objects)
+	// 4662 - Object operation in AD (DCSync uses LDAP replication on DS-Replication objects)
 	case 4662:
 		ev.EventType = "ad_object_access"
 		ev.Severity = schema.SeverityMedium
@@ -474,7 +474,7 @@ func classifyAndEnrichEvent(ev *schema.Event, data map[string]string) {
 		if v := data["ObjectName"]; v != "" {
 			ev.FilePath = v
 		}
-	// 4768 — Kerberos TGT request
+	// 4768 - Kerberos TGT request
 	case 4768:
 		ev.EventType = "kerberos"
 		ev.Severity = schema.SeverityLow
@@ -484,7 +484,7 @@ func classifyAndEnrichEvent(ev *schema.Event, data map[string]string) {
 		if v := data["IpAddress"]; v != "" {
 			ev.SrcIP = v
 		}
-	// 4769 — Kerberos service ticket request
+	// 4769 - Kerberos service ticket request
 	case 4769:
 		ev.EventType = "kerberos"
 		ev.Severity = schema.SeverityLow
@@ -497,11 +497,11 @@ func classifyAndEnrichEvent(ev *schema.Event, data map[string]string) {
 		if v := data["ServiceName"]; v != "" {
 			ev.ProcessName = v
 		}
-	// 4770 — Kerberos service ticket renewed
+	// 4770 - Kerberos service ticket renewed
 	case 4770:
 		ev.EventType = "kerberos"
 		ev.Severity = schema.SeverityInfo
-	// 4771 — Kerberos pre-auth failed (bad password at DC)
+	// 4771 - Kerberos pre-auth failed (bad password at DC)
 	case 4771:
 		ev.EventType = "kerberos"
 		ev.Severity = schema.SeverityMedium
@@ -511,7 +511,7 @@ func classifyAndEnrichEvent(ev *schema.Event, data map[string]string) {
 		if v := data["IpAddress"]; v != "" {
 			ev.SrcIP = v
 		}
-	// 5136 — AD directory object modified
+	// 5136 - AD directory object modified
 	case 5136:
 		ev.EventType = "ad_change"
 		ev.Severity = schema.SeverityHigh
@@ -524,33 +524,33 @@ func classifyAndEnrichEvent(ev *schema.Event, data map[string]string) {
 		if v := data["AttributeValue"]; v != "" {
 			ev.RegValue = v
 		}
-	// 5137 — AD directory object created
+	// 5137 - AD directory object created
 	case 5137:
 		ev.EventType = "ad_change"
 		ev.Severity = schema.SeverityHigh
 		if v := data["ObjectDN"]; v != "" {
 			ev.FilePath = v
 		}
-	// 5141 — AD directory object deleted
+	// 5141 - AD directory object deleted
 	case 5141:
 		ev.EventType = "ad_change"
 		ev.Severity = schema.SeverityHigh
 		if v := data["ObjectDN"]; v != "" {
 			ev.FilePath = v
 		}
-	// 4742 — Computer account changed
+	// 4742 - Computer account changed
 	case 4742:
 		ev.EventType = "ad_change"
 		ev.Severity = schema.SeverityMedium
-	// 4741 — Computer account created
+	// 4741 - Computer account created
 	case 4741:
 		ev.EventType = "ad_change"
 		ev.Severity = schema.SeverityHigh
-	// 4743 — Computer account deleted
+	// 4743 - Computer account deleted
 	case 4743:
 		ev.EventType = "ad_change"
 		ev.Severity = schema.SeverityHigh
-	// 4739 — Domain policy changed
+	// 4739 - Domain policy changed
 	case 4739:
 		ev.EventType = "ad_change"
 		ev.Severity = schema.SeverityCritical
@@ -816,7 +816,7 @@ func classifyAndEnrichEvent(ev *schema.Event, data map[string]string) {
 		if v := firstOf(data, "Path", "Process Name"); v != "" {
 			ev.FilePath = v
 		}
-	// W-08: Defender posture changes — real-time protection / scanning
+	// W-08: Defender posture changes - real-time protection / scanning
 	// disabled (5001, 5010, 5012) and configuration changes (5007), which
 	// include exclusion additions (Exclusions\Paths / Extensions / Processes).
 	case 5001, 5010, 5012:

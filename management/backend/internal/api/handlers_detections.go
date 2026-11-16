@@ -43,7 +43,7 @@ func handleListDetections(db *store.DB) http.HandlerFunc {
 		allSigs = append(allSigs, dcSignatures...)
 		allSigs = append(allSigs, devopsSignatures...)
 		allSigs = append(allSigs, networkSignatures...)
-		// Cloud — base + extended cross-cloud
+		// Cloud - base + extended cross-cloud
 		allSigs = append(allSigs, cloudSignaturesExtended...)
 		allSigs = append(allSigs, cloudReconSignatures...)
 		allSigs = append(allSigs, cloudNetworkSignatures...)
@@ -85,7 +85,7 @@ func handleListDetections(db *store.DB) http.HandlerFunc {
 			}
 			out[i] = SigInfo{s.ID, s.Name, s.Description, sev, s.MITRE, s.Category, enabled}
 		}
-		// Sigma rules — just return enabled/disabled state (single toggle for all)
+		// Sigma rules - just return enabled/disabled state (single toggle for all)
 		sigmaEnabled := true
 		if v, _ := db.GetSetting(r.Context(), "detection.sigma_enabled"); v == "false" {
 			sigmaEnabled = false
@@ -274,8 +274,8 @@ func handleTriggerSync(engine *ThreatIntelEngine, db *store.DB) http.HandlerFunc
 }
 
 // handleSetTamperLock (F-01): the real protection against unauthorized
-// uninstall is enforced on the agent itself — chattr +i on Linux, a
-// restrictive service DACL on Windows, chflags uchg on macOS — and only
+// uninstall is enforced on the agent itself - chattr +i on Linux, a
+// restrictive service DACL on Windows, chflags uchg on macOS - and only
 // lifts once the correct install key is entered locally. This dashboard
 // flag is just a record of that state for display; it must never be the
 // thing that GRANTS protection; the agent decides that, not an API call.

@@ -1,24 +1,24 @@
 package api
 
-// virustotal.go — Tiered hash reputation engine
+// virustotal.go - Tiered hash reputation engine
 //
 // Pipeline (cheapest/fastest first, escalates only when needed):
 //
-//  Tier 0 — Team Cymru MHR (Malware Hash Registry)
+//  Tier 0 - Team Cymru MHR (Malware Hash Registry)
 //           DNS-based lookup, no API key, ~50ms per hash, very high throughput
 //           Returns last_seen date + AV detection % for known malware
 //
-//  Tier 1 — MalwareBazaar (abuse.ch)
+//  Tier 1 - MalwareBazaar (abuse.ch)
 //           Free, no API key required, 100% confidence hits
 //
-//  Tier 2 — CIRCL HASHLOOKUP
+//  Tier 2 - CIRCL HASHLOOKUP
 //           Free, no API key, 100M+ known-good (NSRL) + malware hashes
-//           Filters known-good system files — stops wasting paid API calls
+//           Filters known-good system files - stops wasting paid API calls
 //
-//  Tier 3 — Hybrid Analysis (CrowdStrike Falcon Sandbox)
+//  Tier 3 - Hybrid Analysis (CrowdStrike Falcon Sandbox)
 //           Free tier: 200 req/min, requires free API key
 //
-//  Tier 4 — VirusTotal (optional, paid enterprise tier)
+//  Tier 4 - VirusTotal (optional, paid enterprise tier)
 //           Only queried if all above inconclusive AND VT key configured
 //           Free tier: 4 req/min (queue + rate limit applies)
 //           Enterprise: 20,000 req/min
@@ -51,7 +51,7 @@ func NewVirusTotalEngine(db *store.DB, logger *slog.Logger) *VirusTotalEngine {
 }
 
 func (e *VirusTotalEngine) Run(ctx context.Context) {
-	// Ingest ticker — check for new file hashes every 30 seconds
+	// Ingest ticker - check for new file hashes every 30 seconds
 	ingestTicker := time.NewTicker(30 * time.Second)
 	defer ingestTicker.Stop()
 
@@ -216,29 +216,29 @@ func (e *VirusTotalEngine) processQueue(ctx context.Context) {
 // ── Tiered lookup ─────────────────────────────────────────────────────────────
 
 func (e *VirusTotalEngine) tieredLookup(ctx context.Context, hash, haKey, vtKey string) *hashResult {
-	// Tier 0: Team Cymru MHR — DNS, no key, ~50ms
+	// Tier 0: Team Cymru MHR - DNS, no key, ~50ms
 	if r := e.checkMHR(ctx, hash); r != nil && r.verdict != "undetected" {
 		e.logger.Info("hash-intel: mhr hit", "hash", hash[:16])
 		return r
 	}
-	// Tier 1: MalwareBazaar — free, high confidence
+	// Tier 1: MalwareBazaar - free, high confidence
 	if r, err := e.checkMalwareBazaar(ctx, hash); err == nil && r != nil {
 		e.logger.Info("hash-intel: malwarebazaar hit", "hash", hash[:16])
 		return r
 	}
-	// Tier 2: CIRCL HASHLOOKUP — free, known-good filter
+	// Tier 2: CIRCL HASHLOOKUP - free, known-good filter
 	if r, err := e.checkCIRCL(ctx, hash); err == nil && r != nil {
 		e.logger.Info("hash-intel: circl hit", "hash", hash[:16])
 		return r
 	}
-	// Tier 3: Hybrid Analysis — free tier, needs API key
+	// Tier 3: Hybrid Analysis - free tier, needs API key
 	if haKey != "" {
 		if r, err := e.checkHybridAnalysis(ctx, hash, haKey); err == nil && r != nil {
 			e.logger.Info("hash-intel: hybrid-analysis hit", "hash", hash[:16])
 			return r
 		}
 	}
-	// Tier 4: VirusTotal — optional paid
+	// Tier 4: VirusTotal - optional paid
 	if vtKey != "" {
 		if r, err := e.checkVirusTotal(ctx, hash, vtKey); err == nil && r != nil {
 			e.logger.Info("hash-intel: virustotal hit", "hash", hash[:16])
@@ -489,7 +489,7 @@ type hashResult struct {
 	source    string
 }
 
-// vtResult kept as alias — existing code referencing vtResult still compiles
+// vtResult kept as alias - existing code referencing vtResult still compiles
 type vtResult = hashResult
 
 func (e *VirusTotalEngine) createHashAlert(ctx context.Context, hash, fileName, host string, result *hashResult) {
@@ -497,11 +497,11 @@ func (e *VirusTotalEngine) createHashAlert(ctx context.Context, hash, fileName, 
 	if label == "" {
 		label = "HASH-INTEL"
 	}
-	title := fmt.Sprintf("[%s] Malicious File Hash — %s", label, fileName)
+	title := fmt.Sprintf("[%s] Malicious File Hash - %s", label, fileName)
 	if fileName == "" {
-		title = fmt.Sprintf("[%s] Malicious File Hash — %s...", label, hash[:16])
+		title = fmt.Sprintf("[%s] Malicious File Hash - %s...", label, hash[:16])
 	}
-	// Dedup per host per hash per day — same file on same host today = one alert
+	// Dedup per host per hash per day - same file on same host today = one alert
 	// But different day = new alert (re-infection or new download)
 	dayKey := fmt.Sprintf("vt:hash:%s:%s:%s", host, hash, time.Now().UTC().Format("2006-01-02"))
 	e.db.CreateAlertDeduped(ctx, store.Alert{

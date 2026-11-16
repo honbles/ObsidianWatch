@@ -1,6 +1,6 @@
 package api
 
-// sast_engine.go — SAST engine using Semgrep for static analysis
+// sast_engine.go - SAST engine using Semgrep for static analysis
 //
 // Flow:
 //  1. List repos from connector's synced commits
@@ -138,7 +138,7 @@ func runCodeQL(ctx context.Context, repoDir, repoName string, logger *slog.Logge
 	// Detect primary language in repo
 	lang := detectLanguage(repoDir)
 	if lang == "" {
-		return nil, nil // unsupported language — skip silently
+		return nil, nil // unsupported language - skip silently
 	}
 
 	// Create CodeQL database
@@ -321,7 +321,7 @@ func runSemgrep(ctx context.Context, dir string, logger *slog.Logger) ([]semgrep
 	cmd.Env = scannerEnv()
 	out, err := cmd.Output()
 	if err != nil {
-		// semgrep exits non-zero when it finds issues — that's expected
+		// semgrep exits non-zero when it finds issues - that's expected
 		// Only treat it as error if no output was produced
 		if len(out) == 0 {
 			return nil, fmt.Errorf("semgrep failed with no output: %w", err)
@@ -386,7 +386,7 @@ func convertSemgrepFindings(results []semgrepResult, repoName, baseDir string) [
 
 		// Read actual source lines from the file on disk
 		// r.Extra.Lines from Semgrep often shows function context (e.g. "requires login")
-		// rather than the exact matched line — reading the file directly is more accurate
+		// rather than the exact matched line - reading the file directly is more accurate
 		snippet := ""
 		if fileData, err := os.ReadFile(r.Path); err == nil {
 			fileLines := strings.Split(string(fileData), "\n")
@@ -522,7 +522,7 @@ func fetchGitLabTree(ctx context.Context, token, baseURL, projectID, branch stri
 	if baseURL == "" { baseURL = "https://gitlab.com" }
 	if branch == "" || branch == "unknown" { branch = "HEAD" }
 	encoded := gitlabEncodeProject(projectID)
-	// GitLab tree API — paginate to get all files (default per_page=20, max=100)
+	// GitLab tree API - paginate to get all files (default per_page=20, max=100)
 	var out []ghTreeEntry
 	page := 1
 	for {
@@ -544,7 +544,7 @@ func fetchGitLabTree(ctx context.Context, token, baseURL, projectID, branch stri
 		}
 		if len(entries) < 100 { break } // last page
 		page++
-		if page > 20 { break } // safety cap — max 2000 files
+		if page > 20 { break } // safety cap - max 2000 files
 	}
 	return out, nil
 }
@@ -588,7 +588,7 @@ func handleSAST(cfg *config.Config, db *store.DB, logger *slog.Logger) http.Hand
 			return
 		}
 
-		// Optional filters — scan a specific repo and/or branch
+		// Optional filters - scan a specific repo and/or branch
 		filterRepo   := r.URL.Query().Get("repo")
 		filterBranch := r.URL.Query().Get("branch")
 
@@ -596,14 +596,14 @@ func handleSAST(cfg *config.Config, db *store.DB, logger *slog.Logger) http.Hand
 		defaultBranch := map[string]string{}
 
 		if filterRepo != "" {
-			// Explicit repo selected — use it directly, no DB lookup needed
+			// Explicit repo selected - use it directly, no DB lookup needed
 			// This allows scanning repos with no recent commits (no sync history)
 			repoSet[filterRepo] = true
 			branch := filterBranch
 			if branch == "" { branch = "HEAD" }
 			defaultBranch[filterRepo] = branch
 		} else {
-			// No filter — scan all repos from DB commits
+			// No filter - scan all repos from DB commits
 			commits, err := db.ListDevOpsCommits(ctx, connID, "", 500)
 			if err != nil {
 				writeJSON(w, 500, map[string]string{"error": "failed to list commits"})
@@ -751,7 +751,7 @@ func handleSAST(cfg *config.Config, db *store.DB, logger *slog.Logger) http.Hand
 				// Write file preserving directory structure
 				filePath := filepath.Join(repoDir, f.Path)
 				// SA-03: paths come from a provider API (possibly a self-hosted
-				// server we don't control) — never write outside repoDir.
+				// server we don't control) - never write outside repoDir.
 				if rel, relErr := filepath.Rel(repoDir, filePath); relErr != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) || filepath.IsAbs(f.Path) {
 					logger.Warn("sast: skipping file with unsafe path", "path", f.Path)
 					continue
@@ -784,7 +784,7 @@ func handleSAST(cfg *config.Config, db *store.DB, logger *slog.Logger) http.Hand
 				allFindings = append(allFindings, scaFindingsList...)
 			}
 
-			// Scan 2: Built-in regex rules — always run (catches secrets, hardcoded creds, etc.)
+			// Scan 2: Built-in regex rules - always run (catches secrets, hardcoded creds, etc.)
 			builtinFindings := runBuiltinRulesOnDir(repo, repoDir)
 			if len(builtinFindings) > 0 {
 				logger.Info("sast: built-in rules findings", "repo", repo, "count", len(builtinFindings))
@@ -793,7 +793,7 @@ func handleSAST(cfg *config.Config, db *store.DB, logger *slog.Logger) http.Hand
 
 			// Run CodeQL alongside Semgrep for deeper dataflow analysis
 			// CodeQL supports: Go, JavaScript/TypeScript, Python, Java, C#, Ruby
-			// PHP is not supported — Semgrep handles it
+			// PHP is not supported - Semgrep handles it
 			if useCodeQL {
 				codeqlCtx, cancelCQ := context.WithTimeout(ctx, 10*time.Minute)
 				codeqlFindings, codeqlErr := runCodeQL(codeqlCtx, repoDir, repo, logger)
@@ -814,7 +814,7 @@ func handleSAST(cfg *config.Config, db *store.DB, logger *slog.Logger) http.Hand
 		for _, f := range allFindings { counts[f.Severity]++ }
 
 		findingsJSON, _ := json.Marshal(allFindings)
-		// Store results per repo — upsert so rescanning overwrites previous result
+		// Store results per repo - upsert so rescanning overwrites previous result
 		// If filterRepo is set, store for that specific repo; otherwise store summary
 		saveRepo := filterRepo
 		saveBranch := filterBranch
@@ -955,7 +955,7 @@ func handleListSASTRepos(db *store.DB, logger *slog.Logger) http.HandlerFunc {
 				}
 			}
 		} else {
-			// GitHub — try org repos first, fall back to user repos
+			// GitHub - try org repos first, fall back to user repos
 			var repos []struct {
 				FullName      string `json:"full_name"`
 				DefaultBranch string `json:"default_branch"`
@@ -1023,7 +1023,7 @@ func handleGetSASTResults(db *store.DB) http.HandlerFunc {
 			writeJSON(w, 400, map[string]string{"error": "invalid id"})
 			return
 		}
-		// Optional repo filter — fetch result for specific repo
+		// Optional repo filter - fetch result for specific repo
 		filterRepo   := r.URL.Query().Get("repo")
 		filterBranch := r.URL.Query().Get("branch")
 
@@ -1062,7 +1062,7 @@ func handleGetSASTResults(db *store.DB) http.HandlerFunc {
 				&result.Findings, &result.AISummary)
 			_ = branch
 		} else {
-			// No repo filter — fetch most recent scan for this connector
+			// No repo filter - fetch most recent scan for this connector
 			queryErr = db.QueryRowContext(r.Context(), `
 				SELECT id, connector_id, COALESCE(repo,''), COALESCE(branch,''), COALESCE(engine,'semgrep'),
 				       scanned_at, repo_count, file_count, finding_count,
@@ -1149,7 +1149,7 @@ func handleSASTAI(cfg *config.Config, db *store.DB) http.HandlerFunc {
 These findings were produced by Semgrep (where engine="semgrep") and/or built-in rules.
 Semgrep findings are generally high quality. Built-in findings may have more false positives.
 
-Return ONLY this JSON — no markdown:
+Return ONLY this JSON - no markdown:
 {
   "risk_score": <0-100>,
   "risk_label": "Critical|High|Medium|Low|Clean",
@@ -1268,7 +1268,7 @@ func deduplicateSASTFindings(findings []SASTFinding) []SASTFinding {
 		}
 	}
 
-	// Phase 2: cross-engine dedup — only deduplicate if SAME file AND line within ±2
+	// Phase 2: cross-engine dedup - only deduplicate if SAME file AND line within ±2
 	// Keep BOTH if they flag different aspects of the same area
 	// Only merge if one is strictly a subset of the other
 	type fileLineKey struct{ file string; line int }
@@ -1286,14 +1286,14 @@ func deduplicateSASTFindings(findings []SASTFinding) []SASTFinding {
 		duped := false
 		for dl := -2; dl <= 2; dl++ {
 			if idx, ok := semgrepByLoc[fileLineKey{f.File, f.Line + dl}]; ok {
-				// Same location — upgrade the semgrep finding with CodeQL engine tag
+				// Same location - upgrade the semgrep finding with CodeQL engine tag
 				out[idx].Engine = "semgrep+codeql"
 				duped = true
 				break
 			}
 		}
 		if !duped {
-			// CodeQL found something Semgrep missed — add it
+			// CodeQL found something Semgrep missed - add it
 			out = append(out, f)
 		}
 	}

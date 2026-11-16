@@ -135,10 +135,10 @@ func (e *ThreatIntelEngine) SyncSource(ctx context.Context, name string, apiKey 
 }
 
 func (e *ThreatIntelEngine) syncThreatFox(ctx context.Context, apiKey *string) (int, error) {
-	// ThreatFox API — free API key required (get one at threatfox.abuse.ch)
+	// ThreatFox API - free API key required (get one at threatfox.abuse.ch)
 	// Without a key you get HTTP 401
 	if apiKey == nil || *apiKey == "" {
-		return 0, fmt.Errorf("ThreatFox API key not configured — get a free key at threatfox.abuse.ch and add it in Intel Sources")
+		return 0, fmt.Errorf("ThreatFox API key not configured - get a free key at threatfox.abuse.ch and add it in Intel Sources")
 	}
 
 	payload := map[string]interface{}{
@@ -163,7 +163,7 @@ func (e *ThreatIntelEngine) syncThreatFox(ctx context.Context, apiKey *string) (
 	defer resp.Body.Close()
 
 	if resp.StatusCode == 401 {
-		return 0, fmt.Errorf("ThreatFox API key invalid or missing — check your key at threatfox.abuse.ch")
+		return 0, fmt.Errorf("ThreatFox API key invalid or missing - check your key at threatfox.abuse.ch")
 	}
 	if resp.StatusCode != 200 {
 		return 0, fmt.Errorf("ThreatFox HTTP %d", resp.StatusCode)
@@ -192,7 +192,7 @@ func (e *ThreatIntelEngine) syncThreatFox(ctx context.Context, apiKey *string) (
 		if len(preview) > 300 {
 			preview = preview[:300]
 		}
-		return 0, fmt.Errorf("ThreatFox decode failed: %w — response: %s", err, preview)
+		return 0, fmt.Errorf("ThreatFox decode failed: %w - response: %s", err, preview)
 	}
 	switch result.QueryStatus {
 	case "ok":
@@ -358,13 +358,13 @@ func normalizeOTXType(t string) string {
 // ── Sigma ─────────────────────────────────────────────────────────────────────
 
 // D-13: the rule pack used to be pulled from GitHub's "releases/latest",
-// with no version pin and no integrity check — a supply-chain risk, since
+// with no version pin and no integrity check - a supply-chain risk, since
 // whatever SigmaHQ (or anyone able to tamper with that endpoint) publishes
 // next gets imported and matched against live security events sight
 // unseen. syncSigma now requires an explicit pinned release tag and its
 // expected SHA-256 (set via the ti.sigma_pinned_version /
 // ti.sigma_pinned_sha256 settings, e.g. from the admin UI), and fails
-// closed — importing nothing — if either is unset or the downloaded zip's
+// closed - importing nothing - if either is unset or the downloaded zip's
 // hash doesn't match. Bumping the pin is a deliberate action: review the
 // diff against the previous ruleset before updating these settings.
 var (
@@ -423,7 +423,7 @@ func (e *ThreatIntelEngine) syncSigma(ctx context.Context) (int, error) {
 	gotSHA := hex.EncodeToString(sum[:])
 	if gotSHA != expectedSHA {
 		recordSigmaSeen(version, gotSHA)
-		return 0, fmt.Errorf("Sigma integrity check failed: downloaded %s but pinned ti.sigma_pinned_sha256 is %s — refusing to import unverified rules", gotSHA, expectedSHA)
+		return 0, fmt.Errorf("Sigma integrity check failed: downloaded %s but pinned ti.sigma_pinned_sha256 is %s - refusing to import unverified rules", gotSHA, expectedSHA)
 	}
 
 	zr, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))

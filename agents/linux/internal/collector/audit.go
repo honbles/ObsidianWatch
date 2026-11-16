@@ -2,7 +2,7 @@
 
 package collector
 
-// audit.go — Linux audit log collector.
+// audit.go - Linux audit log collector.
 //
 // Tails /var/log/audit/audit.log and parses auditd records.
 // This is the equivalent of the Windows Security event log (4624, 4625, 4688 etc).
@@ -66,7 +66,7 @@ func (c *AuditCollector) Run(ctx context.Context) error {
 	}
 	defer f.Close()
 
-	// Seek to end — only process new entries
+	// Seek to end - only process new entries
 	if _, err := f.Seek(0, io.SeekEnd); err != nil {
 		return fmt.Errorf("audit: seek: %w", err)
 	}
@@ -93,7 +93,7 @@ func (c *AuditCollector) Run(ctx context.Context) error {
 		line, err := reader.ReadString('\n')
 		if err != nil {
 			if err == io.EOF {
-				// No new data — wait and retry
+				// No new data - wait and retry
 				time.Sleep(200 * time.Millisecond)
 
 				// Check for log rotation

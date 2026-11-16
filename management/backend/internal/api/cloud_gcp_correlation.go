@@ -1,6 +1,6 @@
 package api
 
-// cloud_gcp_correlation.go — Stateful multi-event correlation engine for GCP.
+// cloud_gcp_correlation.go - Stateful multi-event correlation engine for GCP.
 //
 // Single-event rules miss attack sequences. This engine maintains sliding-window
 // state keyed by (project, principal) and fires when a sequence of related
@@ -79,7 +79,7 @@ func NewGCPCorrelationEngine(db *store.DB, logger *slog.Logger) *GCPCorrelationE
 
 func (e *GCPCorrelationEngine) Run(ctx context.Context) {
 	// G-02: cursor-based paging over events.ingested_at (see pageEventCursor)
-	// instead of a 2-5 minute wall-clock window — GCP audit events can land
+	// instead of a 2-5 minute wall-clock window - GCP audit events can land
 	// in the DB 5+ minutes after they occurred (poll interval + log latency),
 	// which made the old windowed query silently skip most events.
 	ticker := time.NewTicker(30 * time.Second)
@@ -247,7 +247,7 @@ func (e *GCPCorrelationEngine) ingest(ctx context.Context, ev store.Event) {
 		}
 	}
 
-	// ── CORR-GCP-003: Recon burst — 5+ list/describe in 2 min ───────────────
+	// ── CORR-GCP-003: Recon burst - 5+ list/describe in 2 min ───────────────
 	// G-28: matched on the final methodName segment's verb, not as a
 	// substring of the whole name ("get" used to match "target", "budget").
 	if isGCPReconMethod(method) {
@@ -261,7 +261,7 @@ func (e *GCPCorrelationEngine) ingest(ctx context.Context, ev store.Event) {
 		if reconCount >= 5 {
 			e.fireAlert(ctx, "CORR-GCP-003",
 				"[CORR] GCP Reconnaissance Burst Detected",
-				fmt.Sprintf("Principal %s made %d list/describe API calls within 2 minutes on project %s — consistent with automated enumeration (ScoutSuite, Prowler, custom scripts).",
+				fmt.Sprintf("Principal %s made %d list/describe API calls within 2 minutes on project %s - consistent with automated enumeration (ScoutSuite, Prowler, custom scripts).",
 					principal, reconCount, project),
 				4, "T1526", "Discovery", ev)
 		}
@@ -418,7 +418,7 @@ func (e *GCPCorrelationEngine) ingest(ctx context.Context, ev store.Event) {
 			"uploadserviceaccountkey", "setiam") {
 			e.fireAlert(ctx, "CORR-GCP-011",
 				"[CORR] Org Policy Guardrail Removed Then IAM Change",
-				fmt.Sprintf("Principal %s deleted/disabled an org policy constraint at %s, then performed IAM operation '%s' within 10 minutes. The policy deletion was likely specifically to unblock this IAM change — a deliberate guardrail bypass.",
+				fmt.Sprintf("Principal %s deleted/disabled an org policy constraint at %s, then performed IAM operation '%s' within 10 minutes. The policy deletion was likely specifically to unblock this IAM change - a deliberate guardrail bypass.",
 					principal, s.orgPolicyDeletedAt.Format(time.RFC3339), raw.MethodName),
 				5, "T1562.001", "Defense Evasion", ev)
 			s.orgPolicyDeletedAt = nil

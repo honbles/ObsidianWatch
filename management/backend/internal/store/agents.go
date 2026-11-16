@@ -150,12 +150,12 @@ func (db *DB) GetAgentByInstallKey(ctx context.Context, key string) (*Agent, err
 // connected yet.
 //
 // I-02: this is reachable with nothing more than the one fleet-wide API
-// key baked into every agent binary (see handleAgentRegisterKey) — not an
+// key baked into every agent binary (see handleAgentRegisterKey) - not an
 // admin-authenticated action. It used to unconditionally overwrite
 // whatever install_key was already on file, which means anyone holding
 // that one shared key could silently replace any agent's uninstall key at
 // any time, not just at genuine first install, and then use the key they
-// just planted to pass tamper-lock verification and uninstall the agent —
+// just planted to pass tamper-lock verification and uninstall the agent -
 // defeating the very guarantee tamper protection exists for ("only the
 // key can uninstall the agent" only holds if the key can't be swapped out
 // from under the agent). The key is now set once and never silently

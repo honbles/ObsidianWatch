@@ -1,6 +1,6 @@
 package collector
 
-// arp.go — Active ARP monitoring via /proc/net/arp (Linux)
+// arp.go - Active ARP monitoring via /proc/net/arp (Linux)
 // Reads the kernel ARP table periodically.
 // Detects: new devices, MAC changes (ARP spoofing), stale devices.
 
@@ -73,7 +73,7 @@ func (c *ARPCollector) poll(ctx context.Context) {
 		// Check for MAC change on same IP (ARP spoofing indicator)
 		macChanged, oldMAC, _ := c.db.UpsertARP(ctx, e.IP, e.MAC, e.Iface)
 		if macChanged {
-			c.logger.Warn("arp: MAC change detected — possible ARP spoofing",
+			c.logger.Warn("arp: MAC change detected - possible ARP spoofing",
 				"ip", e.IP, "old_mac", oldMAC, "new_mac", e.MAC)
 			c.emit(schema.ProbeEvent{
 				ID:        eventID("mac-change", e.IP),
@@ -88,7 +88,7 @@ func (c *ARPCollector) poll(ctx context.Context) {
 					"old_mac": oldMAC,
 					"new_mac": e.MAC,
 					"iface":   e.Iface,
-					"note":    "IP address changed MAC — possible ARP spoofing / MITM attack",
+					"note":    "IP address changed MAC - possible ARP spoofing / MITM attack",
 				}),
 			})
 		}

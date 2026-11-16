@@ -15,7 +15,7 @@ import (
 )
 
 // handleGetVulnScan returns the latest vulnerability.scan event for a host
-func handleGetVulnScan(db *store.DB, backendDB *store.DB) http.HandlerFunc {
+func handleGetVulnScan(cfg *config.Config, db *store.DB, backendDB *store.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		host := r.PathValue("host")
 		if host == "" {
@@ -30,7 +30,7 @@ func handleGetVulnScan(db *store.DB, backendDB *store.DB) http.HandlerFunc {
 			Limit:     1,
 		})
 		if (err != nil || len(events) == 0) && backendDB != nil {
-			// Events are stored in the backend DB — try there too
+			// Events are stored in the backend DB - try there too
 			events, _, err = backendDB.QueryEvents(ctx, store.EventFilter{
 				HostExact: host,
 				EventType: "vulnerability.scan",
@@ -41,11 +41,18 @@ func handleGetVulnScan(db *store.DB, backendDB *store.DB) http.HandlerFunc {
 			writeJSON(w, http.StatusOK, map[string]interface{}{"scan": nil})
 			return
 		}
-		writeJSON(w, http.StatusOK, map[string]interface{}{"scan": events[0]})
+		// Hosts without a distro feed (Windows, macOS, ...) get CVEs from NVD by
+		// CPE + exact version. This never blocks: a missing result starts a
+		// background run and the page polls while status is "running".
+		resp := map[string]interface{}{"scan": events[0]}
+		if cve := hostCVEView(ctx, db, nvdKey(ctx, db, cfg.NVD.APIKey), host, events[0].Time, events[0].Raw); cve != nil {
+			resp["cve"] = cve
+		}
+		writeJSON(w, http.StatusOK, resp)
 	}
 }
 
-// handleVulnAIAnalysis — runs AI analysis on a vulnerability scan result
+// handleVulnAIAnalysis - runs AI analysis on a vulnerability scan result
 func handleVulnAIAnalysis(cfg *config.Config, db *store.DB, backendDB *store.DB, logger *slog.Logger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
@@ -90,16 +97,17 @@ func handleVulnAIAnalysis(cfg *config.Config, db *store.DB, backendDB *store.DB,
 		// ── NVD-powered CVE lookup + AI analysis ─────────────────────────────
 		//
 		// Phase 1: Query NVD (National Vulnerability Database) for real CVEs.
-		//   - No AI guessing — real CVE IDs with real CVSS scores
+		//   - No AI guessing - real CVE IDs with real CVSS scores
 		//   - Results cached 24h to avoid re-querying on every analysis
 		//   - Rate limited to stay within NVD free tier (5 req/30s)
 		//
 		// Phase 2: Single AI call with confirmed CVEs + ports + findings.
 		//   - AI produces narrative, attack surface, remediation plan
-		//   - No package list sent to AI — just confirmed vulnerabilities
+		//   - No package list sent to AI - just confirmed vulnerabilities
 
 		pkgCount := 0
 		var nvdFindings []CVEFinding
+		var cveCheck map[string]interface{}
 
 		if pkgs, ok := scan["packages"].([]interface{}); ok && len(pkgs) > 0 {
 			pkgCount = len(pkgs)
@@ -143,6 +151,41 @@ func handleVulnAIAnalysis(cfg *config.Config, db *store.DB, backendDB *store.DB,
 					}
 				}
 
+				// Hosts without a distro feed: the same CPE + exact-version NVD
+				// matching the Vulnerability page shows, so both places agree.
+				cveCheck = nil
+				if !osvDone {
+					osRel := ""
+					if sys, ok := scan["system"].(map[string]interface{}); ok {
+						osRel, _ = sys["os_release"].(string)
+					}
+					var sp []scanPkg
+					for _, pm := range pkgMaps {
+						n, _ := pm["name"].(string)
+						v, _ := pm["version"].(string)
+						sp = append(sp, scanPkg{Name: n, Version: v})
+					}
+					if hostUsesCPEPath(osRel, sp) {
+						key := nvdKey(r.Context(), db, cfg.NVD.APIKey)
+						cveCtx, cveCancel := context.WithTimeout(ctx, 25*time.Second)
+						var res *HostCVEResult
+						if b, _, at, ok := db.HostCVEGet(r.Context(), req.Host); ok && time.Since(at) < cpeCacheMaxAge {
+							var stored HostCVEResult
+							if json.Unmarshal(b, &stored) == nil {
+								res = &stored
+							}
+						}
+						if res == nil {
+							res = computeHostCVE(cveCtx, db, key, sp, nil) // partial results are cached per product
+						}
+						cveCancel()
+						nvdFindings, osvDone = res.asCVEFindings(), true
+						cveCheck = map[string]interface{}{"method": res.Method, "packages_total": res.PackagesTotal,
+							"products_checked": len(res.Checked), "products_failed": res.Failed, "not_assessed": res.Unmapped,
+							"checked": res.Checked, "note": res.Note, "complete": res.Status == "done"}
+					}
+				}
+
 				var nvdErr error
 				if !osvDone {
 					nvdKey := cfg.NVD.APIKey
@@ -151,7 +194,7 @@ func handleVulnAIAnalysis(cfg *config.Config, db *store.DB, backendDB *store.DB,
 					}
 					nvdClient := NewNVDClient(nvdKey, logger)
 
-					// Cap at 20s — stays within server write timeout
+					// Cap at 20s - stays within server write timeout
 					nvdCtx, nvdCancel := context.WithTimeout(ctx, 20*time.Second)
 					nvdFindings, nvdErr = nvdClient.LookupPackages(nvdCtx, pkgMaps, 4.0)
 					nvdCancel()
@@ -185,6 +228,7 @@ func handleVulnAIAnalysis(cfg *config.Config, db *store.DB, backendDB *store.DB,
 			"scan_duration_secs": scan["scan_duration_secs"],
 			"total_packages":     pkgCount,
 			"confirmed_cves":     nvdFindings, // real CVEs from NVD, not AI guesses
+			"cve_check":          cveCheck,    // how far the CVE check got (nil for distro-feed hosts)
 		}
 		analysisScanJSON, _ := json.Marshal(analysisScan)
 
@@ -221,7 +265,7 @@ func callVulnAI(ctx context.Context, apiKey, model, prompt string) (string, erro
 		"messages": []map[string]interface{}{
 			{
 				"role":    "system",
-				"content": "You are a cybersecurity vulnerability analyst. Always respond with valid JSON only. No markdown, no code blocks, no explanations — just the raw JSON.",
+				"content": "You are a cybersecurity vulnerability analyst. Always respond with valid JSON only. No markdown, no code blocks, no explanations - just the raw JSON.",
 			},
 			{"role": "user", "content": prompt},
 		},
@@ -294,13 +338,15 @@ func buildVulnAnalysisPrompt(scanJSON, host string) string {
 	return fmt.Sprintf(`You are an enterprise security engineer performing a vulnerability assessment review.
 
 You have been given a full vulnerability scan result from host "%s" in JSON format.
-The scan includes: open TCP/UDP ports with service versions, ALL installed packages (analyse every package for known CVEs and outdated versions — golang, php, python, openssl, nginx, ssh, mysql, etc.), running services, and security findings.
+The scan includes: open TCP/UDP ports with service versions, ALL installed packages (analyse every package for known CVEs and outdated versions - golang, php, python, openssl, nginx, ssh, mysql, etc.), running services, and security findings.
 
-Analyse the scan data and return ONLY a valid JSON object — no markdown, no code blocks, no extra text.
+If "cve_check" is present, "confirmed_cves" came from NVD matched by CPE on exact installed versions, but ONLY for the products listed in cve_check.checked; the rest of the installed software was not assessed, so never say it is free of vulnerabilities. If cve_check.complete is false the check was partial.
+
+Analyse the scan data and return ONLY a valid JSON object - no markdown, no code blocks, no extra text.
 
 Return this exact JSON structure:
 {
-  "executive_summary": "2-3 sentence plain English summary for a CISO — overall risk posture and top concerns",
+  "executive_summary": "2-3 sentence plain English summary for a CISO - overall risk posture and top concerns",
   "risk_score": <integer 0-100 representing overall risk, 100=most critical>,
   "risk_label": "Critical|High|Medium|Low|Minimal",
   "critical_findings": [
@@ -367,7 +413,7 @@ func filterInterestingPackages(pkgs []interface{}) []interface{} {
 // against the alert so subsequent opens don't need to re-call the AI.
 func saveAlertAnalysis(ctx context.Context, db *store.DB, req AlertAnalysisRequest, result map[string]interface{}) {
 	if req.AlertID == 0 {
-		return // no alert ID — can't save
+		return // no alert ID - can't save
 	}
 	// Extract text content from AI response
 	text := ""

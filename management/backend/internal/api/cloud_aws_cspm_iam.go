@@ -221,7 +221,7 @@ func runAWSCSPMIAM(ctx context.Context, iamCreds awsCreds, policyBody []byte, po
 	for i := 0; i < 8 && report == nil; i++ {
 		gb, gc, err := awsQueryCall(ctx, iamCreds, "iam", "iam.amazonaws.com", "Action=GenerateCredentialReport&Version=2010-05-08")
 		if err != nil || gc != 200 {
-			skip("iam_credential_report", "GenerateCredentialReport denied or failed — grant iam:GenerateCredentialReport / SecurityAudit")
+			skip("iam_credential_report", "GenerateCredentialReport denied or failed - grant iam:GenerateCredentialReport / SecurityAudit")
 			break
 		}
 		var st struct {
@@ -265,7 +265,7 @@ func runAWSCSPMIAM(ctx context.Context, iamCreds awsCreds, policyBody []byte, po
 		}
 		b, c, err := awsQueryCall(ctx, iamCreds, "iam", "iam.amazonaws.com", form)
 		if err != nil || c != 200 {
-			skip("iam_policies", "GetAccountAuthorizationDetails denied or failed — grant iam:GetAccountAuthorizationDetails / SecurityAudit")
+			skip("iam_policies", "GetAccountAuthorizationDetails denied or failed - grant iam:GetAccountAuthorizationDetails / SecurityAudit")
 			return
 		}
 		add(awsAdminPolicyFindings(b))

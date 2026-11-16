@@ -2,9 +2,9 @@
 
 package collector
 
-// live_response.go — macOS live response agent component.
+// live_response.go - macOS live response agent component.
 //
-// Spawns a shell directly via os/exec with a PTY — no SSH, no user creation.
+// Spawns a shell directly via os/exec with a PTY - no SSH, no user creation.
 // The agent already runs as root, so we just exec /bin/zsh with a PTY and
 // pipe stdin/stdout through the existing management WebSocket tunnel.
 

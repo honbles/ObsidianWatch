@@ -1,6 +1,6 @@
 package api
 
-// cloud_gcp_scc.go — Google Security Command Center (SCC) integration
+// cloud_gcp_scc.go - Google Security Command Center (SCC) integration
 //
 // SCC is GCP's native CSPM/threat detection service.
 // It aggregates findings from:
@@ -14,7 +14,7 @@ package api
 // API: https://securitycenter.googleapis.com/v1
 // Requires: Security Command Center API enabled + roles/securitycenter.findingsViewer
 //
-// We call SCC in addition to our own CSPM checks — this gives us:
+// We call SCC in addition to our own CSPM checks - this gives us:
 //   1. GCP's own 500+ built-in checks (Security Health Analytics)
 //   2. Threat detections (Event Threat Detection, Container Threat Detection)
 //   3. Active vulnerabilities (OS vulnerability scanning)
@@ -121,7 +121,7 @@ func RunSCC(ctx context.Context, saJSON, projectID string) (*SCCResult, error) {
 	// SCC can be accessed at: organizations/*/sources/-/findings, folders/*/... or projects/*/...
 	findings, sources, err := fetchSCCFindings(ctx, token, projectID)
 	if err != nil {
-		// scc_unavailable means API not enabled — not a real error, just unavailable
+		// scc_unavailable means API not enabled - not a real error, just unavailable
 		if strings.HasPrefix(err.Error(), "scc_unavailable:") {
 			result.SCCEnabled = false
 			return result, nil
@@ -196,7 +196,7 @@ func fetchSCCFindingsFiltered(ctx context.Context, token, projectID, sccFilter s
 		}
 
 		if err := gcpCSPMGet(ctx, token, url, &resp); err != nil {
-			// 403 means SCC API not enabled or SA lacks securitycenter permission —
+			// 403 means SCC API not enabled or SA lacks securitycenter permission -
 			// treat as "SCC not available" rather than a hard error.
 			errMsg := err.Error()
 			if strings.Contains(errMsg, "403") ||
@@ -331,7 +331,7 @@ func sccCategoryToCSPMCategory(cat, class string) string {
 }
 
 func sccCategoryToTitle(cat string) string {
-	// SCC categories are SCREAMING_SNAKE_CASE — convert to human readable
+	// SCC categories are SCREAMING_SNAKE_CASE - convert to human readable
 	words := strings.Split(cat, "_")
 	for i, w := range words {
 		if len(w) > 0 {
@@ -355,7 +355,7 @@ func sccResourceType(resourceName string) string {
 }
 
 func resourceShortName(name string) string {
-	if name == "" { return "—" }
+	if name == "" { return "-" }
 	parts := strings.Split(name, "/")
 	return parts[len(parts)-1]
 }

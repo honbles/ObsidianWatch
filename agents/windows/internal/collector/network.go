@@ -2,7 +2,7 @@
 
 package collector
 
-// network.go — snapshots active TCP/UDP connections using iphlpapi.dll
+// network.go - snapshots active TCP/UDP connections using iphlpapi.dll
 // (GetExtendedTcpTable / GetExtendedUdpTable), then diffs against the
 // previous snapshot to emit connect/disconnect events.
 

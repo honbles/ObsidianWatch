@@ -1,6 +1,6 @@
 package api
 
-// cloud_gcp_blast_radius.go — Resource relationship mapping and blast radius analysis.
+// cloud_gcp_blast_radius.go - Resource relationship mapping and blast radius analysis.
 //
 // Answers: "If this resource is compromised, what can the attacker reach?"
 //
@@ -350,7 +350,7 @@ func traceHighRiskPaths(nodes map[string]*BlastNode, edges []*BlastEdge) []Blast
 				if strings.Contains(target, "roles/owner") || strings.Contains(target, "roles/editor") {
 					endPriv = "project_owner_or_editor"
 					sev = "critical"
-					desc = fmt.Sprintf("Path from %s reaches %s — full project access", start, target)
+					desc = fmt.Sprintf("Path from %s reaches %s - full project access", start, target)
 				} else if targetNode.Type == "storage_bucket" && targetNode.Risk == "critical" {
 					endPriv = "public_data_exposure"
 					sev = "critical"
@@ -384,7 +384,7 @@ func traceHighRiskPaths(nodes map[string]*BlastNode, edges []*BlastEdge) []Blast
 		dfs(start, 0)
 	}
 
-	// Most severe, then shortest, first — so the 20-path cap below drops the
+	// Most severe, then shortest, first - so the 20-path cap below drops the
 	// least interesting paths rather than whichever the DFS happened to find last.
 	sort.SliceStable(paths, func(i, j int) bool {
 		if ri, rj := sevRank(paths[i].Severity), sevRank(paths[j].Severity); ri != rj {

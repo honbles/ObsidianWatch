@@ -71,7 +71,7 @@ func New(cfg *config.Config, db *store.DB, backendDB *store.DB, logger *slog.Log
 
 	mux := http.NewServeMux()
 
-	// Setup wizard (public — needed before login on first run)
+	// Setup wizard (public - needed before login on first run)
 	mux.HandleFunc("GET /api/v1/setup/status", handleSetupStatus(db, jwt))
 	mux.HandleFunc("POST /api/v1/setup/complete", handleSetupComplete(db, jwt))
 
@@ -159,7 +159,7 @@ func New(cfg *config.Config, db *store.DB, backendDB *store.DB, logger *slog.Log
 	protected.HandleFunc("POST /api/v1/ai/analyse", aiLimited(handleAIAnalysis(cfg, db)))
 	protected.HandleFunc("POST /api/v1/ai/chat", aiLimited(handleAIChat(cfg, db)))
 
-	// Live Response — WebSocket tunnel + session management
+	// Live Response - WebSocket tunnel + session management
 	// Agent tunnel endpoint is public (agents auth via X-API-Key header)
 	mux.HandleFunc("GET /api/v1/live-response/agent-tunnel", handleAgentTunnel(db, lrRegistry, logger, cfg.Server.AgentAPIKey))
 	// Analyst-facing endpoints are protected
@@ -204,7 +204,7 @@ func New(cfg *config.Config, db *store.DB, backendDB *store.DB, logger *slog.Log
 	protected.HandleFunc("GET /api/v1/cloud-connectors/suppress/aws", handleListAWSSuppressRules(activeAWSSuppressor))
 	protected.HandleFunc("POST /api/v1/cloud-connectors/suppress/aws", adminOnly(handleCreateAWSSuppressRule(activeAWSSuppressor)))
 	protected.HandleFunc("DELETE /api/v1/cloud-connectors/suppress/aws/{id}", adminOnly(handleDeleteAWSSuppressRule(activeAWSSuppressor)))
-	// Asset Inventory (CMDB) — GCP and Azure
+	// Asset Inventory (CMDB) - GCP and Azure
 	protected.HandleFunc("GET /api/v1/cloud-connectors/{id}/assets", handleCloudAssets(db))
 	protected.HandleFunc("POST /api/v1/cloud-connectors/{id}/assets", handleRunCloudAssets(db, logger))
 	protected.HandleFunc("GET /api/v1/cloud-connectors/{id}/blast", handleGetBlastRadius(db))
@@ -225,7 +225,7 @@ func New(cfg *config.Config, db *store.DB, backendDB *store.DB, logger *slog.Log
 	protected.HandleFunc("GET /api/v1/devops-connectors/{id}/code-scan", handleGetCodeScanResults(db))
 	protected.HandleFunc("POST /api/v1/devops-connectors/{id}/code-scan/ai", handleCodeScanAI(cfg, db))
 
-	// SAST — static analysis on full repo source
+	// SAST - static analysis on full repo source
 	protected.HandleFunc("GET /api/v1/devops-connectors/{id}/posture", handleGetDevOpsPosture(db))
 	protected.HandleFunc("POST /api/v1/devops-connectors/{id}/posture", asyncJob(handleDevOpsPosture(db)))
 	protected.HandleFunc("POST /api/v1/devops-connectors/{id}/sast", asyncJob(handleSAST(cfg, db, logger)))
@@ -234,7 +234,7 @@ func New(cfg *config.Config, db *store.DB, backendDB *store.DB, logger *slog.Log
 	protected.HandleFunc("GET /api/v1/devops-connectors/{id}/sast/repos", handleListSASTRepos(db, logger))
 	protected.HandleFunc("POST /api/v1/devops-connectors/{id}/sast/ai", handleSASTAI(cfg, db))
 
-	protected.HandleFunc("GET /api/v1/agents/{host}/vuln", handleGetVulnScan(db, backendDB))
+	protected.HandleFunc("GET /api/v1/agents/{host}/vuln", handleGetVulnScan(cfg, db, backendDB))
 	protected.HandleFunc("POST /api/v1/agents/{host}/vuln/osv", asyncJob(handleEndpointOSV(db, backendDB)))
 	protected.HandleFunc("GET /api/v1/agents/{host}/compliance", handleEndpointCompliance(db, backendDB))
 	protected.HandleFunc("GET /api/v1/inventory/search", handleInventorySearch(db, backendDB))
@@ -286,7 +286,7 @@ func New(cfg *config.Config, db *store.DB, backendDB *store.DB, logger *slog.Log
 	protected.HandleFunc("POST /api/v1/agent-builder/download", adminOnly(handleAgentBuilderDownload(db)))
 	protected.HandleFunc("GET /api/v1/agent-builder/download/{platform}", adminOnly(handleAgentDownloadCached()))
 
-	// Settings — SMTP email notifications
+	// Settings - SMTP email notifications
 	protected.HandleFunc("GET /api/v1/settings/smtp", handleGetSMTPSettings(cfg, db))
 	// API Keys settings
 	protected.HandleFunc("GET /api/v1/settings/api-keys", handleGetAPIKeys(db))
@@ -345,7 +345,7 @@ func (s *Server) Start(ctx context.Context) error {
 	go agentHealth.Run(ctx)
 	// P-07: scheduled saved searches.
 	go NewScheduledSearchEngine(s.db, s.logger).Run(ctx)
-	// Auto-detect TLS — use cert files if they exist
+	// Auto-detect TLS - use cert files if they exist
 	certFile := s.cfg.Server.TLSCertFile
 	keyFile := s.cfg.Server.TLSKeyFile
 	if certFile == "" {
@@ -368,7 +368,7 @@ func (s *Server) Start(ctx context.Context) error {
 	if useTLS {
 		s.logger.Info("management server starting (TLS)", "addr", s.cfg.Server.ListenAddr,
 			"cert", certFile)
-		// Configure TLS — support TLS 1.2+ with strong ciphers
+		// Configure TLS - support TLS 1.2+ with strong ciphers
 		s.http.TLSConfig = &tls.Config{
 			MinVersion: tls.VersionTLS12,
 			CipherSuites: []uint16{

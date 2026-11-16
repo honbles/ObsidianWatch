@@ -1,6 +1,6 @@
 package collector
 
-// es_exec_parse.go — parser for `eslogger exec` output (macOS 13+).
+// es_exec_parse.go - parser for `eslogger exec` output (macOS 13+).
 //
 // eslogger streams one JSON object per Endpoint Security event. Only the exec
 // fields we need are decoded. The schema is Apple-defined and not versioned in

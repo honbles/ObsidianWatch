@@ -1,18 +1,18 @@
 package api
 
-// cloud_azure_cspm.go — Azure Cloud Security Posture Management
+// cloud_azure_cspm.go - Azure Cloud Security Posture Management
 //
 // Checks implemented:
-//  1.  IAM / RBAC          — Owner/Contributor to guests, classic admins, no PIM
-//  2.  Network             — NSG 0.0.0.0/0 on risky ports, no WAF, public IPs
-//  3.  Storage             — Public blob access, no encryption, SAS without expiry
-//  4.  Compute VMs         — No disk encryption, no endpoint protection, public IP
-//  5.  Key Vault           — No soft-delete, public network access, no RBAC auth
-//  6.  SQL / Database      — Public endpoint, TDE disabled, no auditing
-//  7.  AKS Kubernetes      — RBAC disabled, public API, no network policy
-//  8.  Logging / Monitor   — No diagnostic settings, no activity log alerts
-//  9.  Defender for Cloud  — MDC not enabled, low-tier plans
-// 10.  Entra ID            — No MFA, guest access unrestricted, no CA policies
+//  1.  IAM / RBAC          - Owner/Contributor to guests, classic admins, no PIM
+//  2.  Network             - NSG 0.0.0.0/0 on risky ports, no WAF, public IPs
+//  3.  Storage             - Public blob access, no encryption, SAS without expiry
+//  4.  Compute VMs         - No disk encryption, no endpoint protection, public IP
+//  5.  Key Vault           - No soft-delete, public network access, no RBAC auth
+//  6.  SQL / Database      - Public endpoint, TDE disabled, no auditing
+//  7.  AKS Kubernetes      - RBAC disabled, public API, no network policy
+//  8.  Logging / Monitor   - No diagnostic settings, no activity log alerts
+//  9.  Defender for Cloud  - MDC not enabled, low-tier plans
+// 10.  Entra ID            - No MFA, guest access unrestricted, no CA policies
 
 import (
 	"context"
@@ -134,7 +134,7 @@ func RunAzureCSPM(ctx context.Context, tenantID, clientID, clientSecret, subscri
 				strings.Contains(e.Error(), "not found") || strings.Contains(e.Error(), "disabled") {
 				reason := "resource provider not present in this subscription"
 				if strings.Contains(e.Error(), "403") || strings.Contains(e.Error(), "permission") {
-					reason = "permission denied — grant Reader (and Security Reader) on the subscription"
+					reason = "permission denied - grant Reader (and Security Reader) on the subscription"
 				}
 				result.NotAssessed = append(result.NotAssessed, NotAssessedCheck{Check: name, Reason: reason})
 				return
@@ -154,7 +154,7 @@ func RunAzureCSPM(ctx context.Context, tenantID, clientID, clientSecret, subscri
 	run("storage",    func() ([]CSPMFinding, int, error) { return azureCheckStorage(ctx, token.AccessToken, sub) })
 	run("compute",    func() ([]CSPMFinding, int, error) { return azureCheckCompute(ctx, token.AccessToken, sub) })
 	run("logging",    func() ([]CSPMFinding, int, error) { return azureCheckLogging(ctx, token.AccessToken, sub) })
-	// Optional — require additional permissions or may not be provisioned
+	// Optional - require additional permissions or may not be provisioned
 	runOptional("keyvault",  func() ([]CSPMFinding, int, error) { return azureCheckKeyVault(ctx, token.AccessToken, sub) })
 	runOptional("sql",       func() ([]CSPMFinding, int, error) { return azureCheckSQL(ctx, token.AccessToken, sub) })
 	runOptional("aks",                func() ([]CSPMFinding, int, error) { return azureCheckAKS(ctx, token.AccessToken, sub) })
@@ -167,7 +167,7 @@ func RunAzureCSPM(ctx context.Context, tenantID, clientID, clientSecret, subscri
 	// Entra ID checks use Graph API
 	graphToken, graphErr := getAzureToken(ctx, tenantID, clientID, clientSecret, "https://graph.microsoft.com/")
 	if graphErr != nil {
-		result.NotAssessed = append(result.NotAssessed, NotAssessedCheck{Check: "entra", Reason: "Graph token request failed — grant Directory.Read.All with admin consent"})
+		result.NotAssessed = append(result.NotAssessed, NotAssessedCheck{Check: "entra", Reason: "Graph token request failed - grant Directory.Read.All with admin consent"})
 	}
 	if graphErr == nil {
 		runOptional("entra", func() ([]CSPMFinding, int, error) { return azureCheckEntra(ctx, graphToken.AccessToken, tenantID) })
@@ -299,7 +299,7 @@ func azureCheckIAM(ctx context.Context, token, sub string) ([]CSPMFinding, int, 
 		}
 	}
 
-	// Check for classic administrators (legacy — should not exist)
+	// Check for classic administrators (legacy - should not exist)
 	classicURL := fmt.Sprintf("https://management.azure.com/subscriptions/%s/providers/Microsoft.Authorization/classicAdministrators?api-version=2015-06-01", sub)
 	var classic struct {
 		Value []struct {
@@ -547,7 +547,7 @@ func azureCheckStorage(ctx context.Context, token, sub string) ([]CSPMFinding, i
 			saClean = false
 		}
 
-		// Network access — open to all
+		// Network access - open to all
 		if p.NetworkAcls.DefaultAction == "Allow" {
 			findings = append(findings, CSPMFinding{
 				Title:        fmt.Sprintf("Storage account '%s' network firewall allows all networks", sa.Name),
@@ -566,7 +566,7 @@ func azureCheckStorage(ctx context.Context, token, sub string) ([]CSPMFinding, i
 		if p.AllowSharedKeyAccess == nil || *p.AllowSharedKeyAccess {
 			findings = append(findings, CSPMFinding{
 				Title:        fmt.Sprintf("Storage account '%s' allows shared key authentication", sa.Name),
-				Description:  "Shared key access is enabled. Access keys bypass Azure AD RBAC and Conditional Access — anyone with a key has full access regardless of identity controls.",
+				Description:  "Shared key access is enabled. Access keys bypass Azure AD RBAC and Conditional Access - anyone with a key has full access regardless of identity controls.",
 				Severity:     "medium",
 				Category:     "storage",
 				Resource:     sa.Name,
@@ -994,7 +994,7 @@ func azureCheckAKS(ctx context.Context, token, sub string) ([]CSPMFinding, int, 
 			p.NetworkProfile.NetworkPolicy != "calico" && p.NetworkProfile.NetworkPolicy != "cilium") {
 			findings = append(findings, CSPMFinding{
 				Title:        fmt.Sprintf("AKS cluster '%s' has no Kubernetes network policy configured", cluster.Name),
-				Description:  "No Kubernetes network policy is configured. All pods can communicate with all other pods across all namespaces — no east-west traffic segmentation.",
+				Description:  "No Kubernetes network policy is configured. All pods can communicate with all other pods across all namespaces - no east-west traffic segmentation.",
 				Severity:     "medium",
 				Category:     "compute",
 				Resource:     cluster.Name,
@@ -1213,7 +1213,7 @@ func azureCheckEntra(ctx context.Context, graphToken, tenantID string) ([]CSPMFi
 		if enabledPolicies == 0 {
 			findings = append(findings, CSPMFinding{
 				Title:        "No enabled Conditional Access policies found",
-				Description:  "No Conditional Access policies are enabled. Without CA policies, there is no enforcement of MFA, device compliance, or location-based access controls — any valid credential can access any resource from anywhere.",
+				Description:  "No Conditional Access policies are enabled. Without CA policies, there is no enforcement of MFA, device compliance, or location-based access controls - any valid credential can access any resource from anywhere.",
 				Severity:     "critical",
 				Category:     "iam",
 				Resource:     tenantID,
@@ -1301,7 +1301,7 @@ func azureCheckAppService(ctx context.Context, token, sub string) ([]CSPMFinding
 	passed := 0
 
 	for _, site := range resp.Value {
-		// Skip function apps — covered by azureCheckFunctionApps
+		// Skip function apps - covered by azureCheckFunctionApps
 		if strings.Contains(site.Kind, "functionapp") { continue }
 		siteClean := true
 		p := site.Properties
@@ -1381,7 +1381,7 @@ func azureCheckAppService(ctx context.Context, token, sub string) ([]CSPMFinding
 			if !authResp.Properties.Platform.Enabled {
 				findings = append(findings, CSPMFinding{
 					Title:        fmt.Sprintf("App Service '%s' has no authentication configured", site.Name),
-					Description:  "App Service authentication (Easy Auth) is not enabled. The application has no enforced identity layer — any user on the internet can access it without authentication.",
+					Description:  "App Service authentication (Easy Auth) is not enabled. The application has no enforced identity layer - any user on the internet can access it without authentication.",
 					Severity:     "high",
 					Category:     "iam",
 					Resource:     site.Name,
@@ -1429,11 +1429,11 @@ func azureCheckContainerRegistry(ctx context.Context, token, sub string) ([]CSPM
 		acrClean := true
 		p := acr.Properties
 
-		// Admin user enabled — shared credential, bypasses RBAC and AAD
+		// Admin user enabled - shared credential, bypasses RBAC and AAD
 		if p.AdminUserEnabled {
 			findings = append(findings, CSPMFinding{
 				Title:        fmt.Sprintf("Container Registry '%s' has admin user enabled", acr.Name),
-				Description:  "The admin user is enabled on this registry. The admin account has full access and is a shared credential — it cannot be tied to an individual identity, making audit trails useless for admin operations.",
+				Description:  "The admin user is enabled on this registry. The admin account has full access and is a shared credential - it cannot be tied to an individual identity, making audit trails useless for admin operations.",
 				Severity:     "high",
 				Category:     "iam",
 				Resource:     acr.Name,
@@ -1444,7 +1444,7 @@ func azureCheckContainerRegistry(ctx context.Context, token, sub string) ([]CSPM
 			acrClean = false
 		}
 
-		// Public network access — should be disabled for production
+		// Public network access - should be disabled for production
 		if p.PublicNetworkAccess == "Enabled" || p.PublicNetworkAccess == "" {
 			findings = append(findings, CSPMFinding{
 				Title:        fmt.Sprintf("Container Registry '%s' is publicly accessible from internet", acr.Name),
@@ -1459,7 +1459,7 @@ func azureCheckContainerRegistry(ctx context.Context, token, sub string) ([]CSPM
 			acrClean = false
 		}
 
-		// Customer-managed key encryption — Premium tier only
+		// Customer-managed key encryption - Premium tier only
 		if acr.Sku.Name == "Premium" && p.Encryption.Status != "enabled" {
 			findings = append(findings, CSPMFinding{
 				Title:        fmt.Sprintf("Container Registry '%s' (Premium) has no customer-managed encryption", acr.Name),

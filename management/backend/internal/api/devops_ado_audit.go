@@ -1,6 +1,6 @@
 package api
 
-// devops_ado_audit.go — DO-11: Azure DevOps audit log and pipeline runs.
+// devops_ado_audit.go - DO-11: Azure DevOps audit log and pipeline runs.
 // The audit stream needs auditing enabled on the organisation and a PAT with
 // the Auditing (read) scope; if it is not available the sync continues with
 // the other sources.

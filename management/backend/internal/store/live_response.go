@@ -20,7 +20,7 @@ type LRCredential struct {
 // UpsertLRCredential records that an agent has a live-response session
 // mode registered. M-05: this previously also stored a bcrypt hash AND a
 // plaintext password, neither of which is read back anywhere in the
-// backend — a DB leak handed over a live credential for every agent for
+// backend - a DB leak handed over a live credential for every agent for
 // nothing. Only the username (for display) and mode are persisted now.
 func (db *DB) UpsertLRCredential(ctx context.Context, agentID, username, mode string) error {
 	if mode == "" {

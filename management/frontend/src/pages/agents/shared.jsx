@@ -70,7 +70,7 @@ export function RankBar({ rows, keyField, valueField, colorFn, onDrilldown, sele
         return (
           <div key={i} onClick={()=>onDrilldown?.(row)} className={`rounded-lg px-2 py-1.5 cursor-pointer transition-all ${isSel?'bg-siem-accent/10 border border-siem-accent/40':'hover:bg-white/[0.02] border border-transparent'}`}>
             <div className="flex items-center justify-between mb-1">
-              <span className="text-[10px] font-mono truncate flex-1 mr-2 text-siem-text" title={label||'—'}>{label||'—'}</span>
+              <span className="text-[10px] font-mono truncate flex-1 mr-2 text-siem-text" title={label||'-'}>{label||'-'}</span>
               <span className="text-[9px] text-siem-muted shrink-0">{count.toLocaleString()}</span>
             </div>
             <div className="h-1 bg-siem-border/30 rounded-full overflow-hidden"><div className="h-full rounded-full" style={{width:pct+'%',background:color}}/></div>
@@ -139,7 +139,7 @@ export function MiniTable({ cols, rows, empty='No data', onRowClick }) {
                 onClick={() => onRowClick?.(row)}>
                 {cols.map(c => (
                   <td key={c.key} className={`px-4 py-2.5 ${c.cls||'text-siem-text font-mono text-[10px]'} ${c.truncate?'truncate max-w-[180px]':''}`}>
-                    {c.render ? c.render(row) : (row[c.key] ?? '—')}
+                    {c.render ? c.render(row) : (row[c.key] ?? '-')}
                   </td>
                 ))}
               </tr>
@@ -211,7 +211,7 @@ export function PortRow({ port, st, forceExpand }) {
         <span className="text-[10px] text-siem-muted uppercase font-mono">{port.protocol}</span>
         <div className="min-w-0">
           <span className={"text-[11px] font-medium " + (port.product ? "text-siem-text" : "text-siem-muted/50")}>
-            {port.product || port.service || "—"}
+            {port.product || port.service || "-"}
           </span>
           {port.version && (
             <span className="ml-1.5 text-[9px] font-mono bg-siem-bg border border-siem-border px-1.5 py-0.5 rounded text-siem-muted">
@@ -224,7 +224,7 @@ export function PortRow({ port, st, forceExpand }) {
             ? <span className={"text-[11px] truncate block " + st.text}>⚠ {port.risk_label}</span>
             : port.banner
             ? <span className="text-[10px] font-mono text-siem-muted/40 truncate block">{port.banner.slice(0,60)}</span>
-            : <span className="text-[10px] text-siem-muted/20">—</span>}
+            : <span className="text-[10px] text-siem-muted/20">-</span>}
         </div>
         <div className="flex justify-end">
           <span className={"text-[9px] font-bold px-2 py-0.5 rounded border " + st.bg + " " + st.border + " " + st.text}>

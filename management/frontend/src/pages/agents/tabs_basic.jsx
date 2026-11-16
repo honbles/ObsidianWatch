@@ -17,14 +17,14 @@ export function TabOverview({ agent }) {
   return (
     <div className="p-5 space-y-4">
       <div className="grid grid-cols-4 gap-3">
-        {[{label:'Status',value:agent.online?'Online':'Offline',color:agent.online?'text-emerald-400':'text-siem-muted'},{label:'OS',value:agent.os||'—',color:'text-siem-text'},{label:'Version',value:agent.version||'—',color:'text-siem-text'},{label:'Events',value:agent.event_count?.toLocaleString()||'0',color:'text-siem-text'}].map(({label,value,color})=>(
+        {[{label:'Status',value:agent.online?'Online':'Offline',color:agent.online?'text-emerald-400':'text-siem-muted'},{label:'OS',value:agent.os||'-',color:'text-siem-text'},{label:'Version',value:agent.version||'-',color:'text-siem-text'},{label:'Events',value:agent.event_count?.toLocaleString()||'0',color:'text-siem-text'}].map(({label,value,color})=>(
           <div key={label} className="bg-siem-bg border border-siem-border rounded-xl p-4"><div className="text-[10px] text-siem-muted uppercase tracking-wider mb-1">{label}</div><div className={`text-base font-bold font-mono ${color}`}>{value}</div></div>
         ))}
       </div>
       <div className="grid grid-cols-2 gap-4">
         <div className="bg-siem-surface border border-siem-border rounded-xl p-4">
           <div className="text-[10px] uppercase tracking-wider text-siem-muted font-semibold mb-3">System info</div>
-          {[['Hostname',agent.hostname],['Agent ID',agent.id],['Last IP',agent.last_ip||'—'],['Last Seen',agent.last_seen?formatDistanceToNow(new Date(agent.last_seen),{addSuffix:true}):'—'],['Tamper',agent.tamper_locked?'Protected':'Unlocked']].map(([k,v])=>(
+          {[['Hostname',agent.hostname],['Agent ID',agent.id],['Last IP',agent.last_ip||'-'],['Last Seen',agent.last_seen?formatDistanceToNow(new Date(agent.last_seen),{addSuffix:true}):'-'],['Tamper',agent.tamper_locked?'Protected':'Unlocked']].map(([k,v])=>(
             <div key={k} className="flex justify-between text-xs py-1.5 border-b border-siem-border/40 last:border-0"><span className="text-siem-muted">{k}</span><span className="font-mono text-siem-text text-[11px]">{v}</span></div>
           ))}
         </div>
@@ -62,8 +62,8 @@ export function EventPanel({ event, onClose }) {
         </div>
         <div className="p-5 space-y-4 text-xs">
           <div className="grid grid-cols-2 gap-3">
-            {[['Host',ev.host],['Time',ev.time?format(new Date(ev.time),'yyyy-MM-dd HH:mm:ss'):'—'],['Type',ev.event_type],['Severity',SEV_LABEL[ev.severity]||ev.severity],['OS',ev.os||'—'],['Source',ev.source||'—'],['User',ev.user_name||'—'],['Process',ev.process_name||'—']].map(([k,v])=>(
-              <div key={k}><div className="text-siem-muted mb-0.5">{k}</div><div className="font-mono text-siem-text break-all">{v||'—'}</div></div>
+            {[['Host',ev.host],['Time',ev.time?format(new Date(ev.time),'yyyy-MM-dd HH:mm:ss'):'-'],['Type',ev.event_type],['Severity',SEV_LABEL[ev.severity]||ev.severity],['OS',ev.os||'-'],['Source',ev.source||'-'],['User',ev.user_name||'-'],['Process',ev.process_name||'-']].map(([k,v])=>(
+              <div key={k}><div className="text-siem-muted mb-0.5">{k}</div><div className="font-mono text-siem-text break-all">{v||'-'}</div></div>
             ))}
           </div>
           {ev.command_line&&<div><div className="text-siem-muted mb-1">Command line</div><div className="bg-siem-bg border border-siem-border rounded p-2 font-mono text-[10px] text-emerald-300 break-all">{ev.command_line}</div></div>}
@@ -71,7 +71,7 @@ export function EventPanel({ event, onClose }) {
           {ev.file_path&&<div><div className="text-siem-muted mb-0.5">File path</div><div className="font-mono text-yellow-400 break-all">{ev.file_path}</div></div>}
           {ev.reg_key&&<div><div className="text-siem-muted mb-0.5">Registry key</div><div className="font-mono text-purple-400 break-all">{ev.reg_key}</div></div>}
           {raw&&Object.keys(raw).length>0&&<div><div className="text-siem-muted mb-1">Raw data</div><pre className="bg-siem-bg border border-siem-border rounded p-2 text-[9px] text-siem-muted overflow-x-auto whitespace-pre-wrap">{JSON.stringify(raw,null,2)}</pre></div>}
-          {detail?.related?.length>0&&<div><div className="text-siem-muted mb-2 font-semibold uppercase tracking-wider text-[9px]">Related events (±5 min)</div><div className="space-y-1">{detail.related.map((r,i)=><div key={i} className="flex items-center gap-2 text-[10px] bg-siem-bg rounded px-2 py-1.5"><span className="text-siem-muted font-mono">{format(new Date(r.time),'HH:mm:ss')}</span><span className={EVENT_TYPE_META[r.event_type]?.color||'text-siem-muted'}>{r.event_type}</span><span className="text-siem-muted truncate flex-1">{r.process_name||r.dst_ip||r.user_name||'—'}</span></div>)}</div></div>}
+          {detail?.related?.length>0&&<div><div className="text-siem-muted mb-2 font-semibold uppercase tracking-wider text-[9px]">Related events (±5 min)</div><div className="space-y-1">{detail.related.map((r,i)=><div key={i} className="flex items-center gap-2 text-[10px] bg-siem-bg rounded px-2 py-1.5"><span className="text-siem-muted font-mono">{format(new Date(r.time),'HH:mm:ss')}</span><span className={EVENT_TYPE_META[r.event_type]?.color||'text-siem-muted'}>{r.event_type}</span><span className="text-siem-muted truncate flex-1">{r.process_name||r.dst_ip||r.user_name||'-'}</span></div>)}</div></div>}
         </div>
       </div>
     </div>
@@ -167,7 +167,7 @@ export function TabEvents({ agent }) {
         {showSaved && (
           <AgentSavedSearchPanel
             onSelect={selectedTags => {
-              // Strip the host tag — we always filter by this host already
+              // Strip the host tag - we always filter by this host already
               const filtered = selectedTags.filter(t => t.field !== 'host')
               setTags(filtered.map(t => ({ ...t, id: Date.now() + Math.random() })))
               setShowSaved(false)
@@ -177,7 +177,7 @@ export function TabEvents({ agent }) {
         )}
       </div>
 
-      {/* Event rows — same format as main Events page */}
+      {/* Event rows - same format as main Events page */}
       <div className="flex-1 overflow-y-auto divide-y divide-siem-border/40">
         {loading ? (
           <div className="text-center py-12 text-siem-muted text-sm">Searching…</div>
@@ -533,12 +533,12 @@ export function TabLogons({ agent }) {
     return ev.raw || {}
   }
 
-  // Determine the action label to display — differs by platform
+  // Determine the action label to display - differs by platform
   const getAction = ev => {
     const raw  = parseRaw(ev)
     const eid  = ev.event_id || raw.event_id
 
-    // Windows — use EventID to determine action
+    // Windows - use EventID to determine action
     if (eid) {
       const id = parseInt(eid)
       if (id === 4624) return { label: 'Logon success',        fail: false }
@@ -554,7 +554,7 @@ export function TabLogons({ agent }) {
       return { label: `EventID ${id}`, fail: false }
     }
 
-    // Linux — raw.action is the classified action string
+    // Linux - raw.action is the classified action string
     const action = raw.action || ''
     const FAIL_ACTIONS = new Set([
       'ssh_login_failure','ssh_invalid_user','ssh_brute_force',
@@ -576,7 +576,7 @@ export function TabLogons({ agent }) {
       pam_auth_failure:   'Auth failure',
     }
     return {
-      label: LABELS[action] || action || ev.source || '—',
+      label: LABELS[action] || action || ev.source || '-',
       fail:  FAIL_ACTIONS.has(action),
     }
   }
@@ -657,8 +657,8 @@ export function TabLogons({ agent }) {
                           {format(new Date(ev.time), 'MM/dd HH:mm:ss')}
                         </td>
                         <td className="px-4 py-2.5"><SeverityBadge severity={ev.severity}/></td>
-                        <td className="px-4 py-2.5 text-siem-text max-w-[160px] truncate">{ev.user_name || '—'}</td>
-                        <td className="px-4 py-2.5 font-mono text-[10px] text-siem-muted">{ev.src_ip || '—'}</td>
+                        <td className="px-4 py-2.5 text-siem-text max-w-[160px] truncate">{ev.user_name || '-'}</td>
+                        <td className="px-4 py-2.5 font-mono text-[10px] text-siem-muted">{ev.src_ip || '-'}</td>
                         <td className="px-4 py-2.5">
                           <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${
                             fail
@@ -669,12 +669,12 @@ export function TabLogons({ agent }) {
                           }`}>{label}</span>
                         </td>
                         {isWindows && (
-                          <td className="px-4 py-2.5 font-mono text-[10px] text-siem-muted">{eid || '—'}</td>
+                          <td className="px-4 py-2.5 font-mono text-[10px] text-siem-muted">{eid || '-'}</td>
                         )}
                         <td className="px-4 py-2.5 text-[10px] text-siem-muted">
                           {isWindows
-                            ? (logonTypeLabel || '—')
-                            : (ev.process_name || raw.syslog_identifier || '—')
+                            ? (logonTypeLabel || '-')
+                            : (ev.process_name || raw.syslog_identifier || '-')
                           }
                         </td>
                       </tr>
@@ -759,7 +759,7 @@ export function TabNetwork({ agent }) {
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
         {loading ? <div className="text-center py-12 text-siem-muted">Loading…</div> : (<>
 
-          {/* Flagged / malicious IPs — always shown first if any */}
+          {/* Flagged / malicious IPs - always shown first if any */}
           {flaggedIPs.length > 0 && (
             <div>
               <div className="text-[10px] uppercase tracking-wider text-red-400 font-semibold mb-2">
@@ -781,11 +781,11 @@ export function TabNetwork({ agent }) {
                     {flaggedIPs.map((f, i) => (
                       <tr key={i} className="border-b border-red-800/10 hover:bg-red-900/10">
                         <td className="px-4 py-2 font-mono text-[10px] text-red-300">{f.dst_ip}</td>
-                        <td className="px-4 py-2 font-mono text-[10px] text-red-400/70">{f.dst_port||'—'}</td>
-                        <td className="px-4 py-2 text-[10px] text-red-300">{f.malware||'—'}</td>
-                        <td className="px-4 py-2 text-[10px] text-red-400/80">{f.threat_type||'—'}</td>
+                        <td className="px-4 py-2 font-mono text-[10px] text-red-400/70">{f.dst_port||'-'}</td>
+                        <td className="px-4 py-2 text-[10px] text-red-300">{f.malware||'-'}</td>
+                        <td className="px-4 py-2 text-[10px] text-red-400/80">{f.threat_type||'-'}</td>
                         <td className="px-4 py-2 text-[10px] font-bold text-red-400">{Number(f.connection_count||0).toLocaleString()}</td>
-                        <td className="px-4 py-2 text-[10px] text-siem-muted">{f.ioc_source||'—'}</td>
+                        <td className="px-4 py-2 text-[10px] text-siem-muted">{f.ioc_source||'-'}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -827,20 +827,20 @@ export function TabNetwork({ agent }) {
                         <tr key={i} className={`border-b border-siem-border/40 hover:bg-white/[0.02] transition-colors ${isMalicious ? 'bg-red-900/5' : ''}`}>
                           <td className="px-4 py-2.5 font-mono text-[10px]">
                             {isMalicious && <span className="inline-block w-1.5 h-1.5 rounded-full bg-red-400 mr-1.5 mb-0.5"/>}
-                            <span className={isMalicious ? 'text-red-300' : priv ? 'text-siem-muted' : 'text-siem-text'}>{r.dst_ip||'—'}</span>
+                            <span className={isMalicious ? 'text-red-300' : priv ? 'text-siem-muted' : 'text-siem-text'}>{r.dst_ip||'-'}</span>
                             {!priv && !isMalicious && <span className="ml-2 text-[9px] text-orange-400/60">ext</span>}
                           </td>
                           <td className="px-4 py-2.5 text-[10px]">
                             {ispData[r.dst_ip] ? (
                               <div>
-                                <div className="text-siem-text font-medium">{ispData[r.dst_ip].isp || ispData[r.dst_ip].org || '—'}</div>
+                                <div className="text-siem-text font-medium">{ispData[r.dst_ip].isp || ispData[r.dst_ip].org || '-'}</div>
                                 <div className="text-siem-muted/60 text-[9px] font-mono">{ispData[r.dst_ip].country} {ispData[r.dst_ip].asn?.split(' ')[0]}</div>
                               </div>
                             ) : priv ? <span className="text-siem-muted/40">private</span>
                               : <span className="text-siem-muted/30 text-[9px]">looking up…</span>}
                           </td>
-                          <td className="px-4 py-2.5 font-mono text-[10px] text-siem-text">{r.dst_port||'—'}</td>
-                          <td className="px-4 py-2.5 text-[10px] text-siem-muted">{r.proto||'—'}</td>
+                          <td className="px-4 py-2.5 font-mono text-[10px] text-siem-text">{r.dst_port||'-'}</td>
+                          <td className="px-4 py-2.5 text-[10px] text-siem-muted">{r.proto||'-'}</td>
                           <td className="px-4 py-2.5 font-bold text-siem-text">{Number(r.count).toLocaleString()}</td>
                           <td className="px-4 py-2.5">
                             <div className="h-1.5 bg-siem-border/20 rounded-full overflow-hidden w-24">
@@ -853,7 +853,7 @@ export function TabNetwork({ agent }) {
                   </tbody>
                 </table>
                 <div className="px-4 py-2 border-t border-siem-border/30 text-[9px] text-siem-muted/50">
-                  Process attribution not available in aggregated view — use Events tab with <span className="font-mono">network</span> filter to see per-connection process names
+                  Process attribution not available in aggregated view - use Events tab with <span className="font-mono">network</span> filter to see per-connection process names
                 </div>
               </div>
             )}
@@ -941,11 +941,11 @@ export function TabDNS({ agent }) {
 
       <div className="flex-1 overflow-y-auto p-4 pt-3 space-y-4">
         {loading ? <div className="text-center py-12 text-siem-muted">Loading…</div> : (<>
-          {/* New domains — first seen in this window */}
+          {/* New domains - first seen in this window */}
           {newDomains.length > 0 && (
             <div>
               <div className="text-[10px] uppercase tracking-wider text-yellow-400 font-semibold mb-2 px-1 flex items-center gap-2">
-                <span>⚡</span> New Domains — First seen in selected window ({newDomains.length})
+                <span>⚡</span> New Domains - First seen in selected window ({newDomains.length})
               </div>
               <div className="bg-yellow-900/10 border border-yellow-800/30 rounded-xl overflow-hidden">
                 <table className="w-full text-xs">
@@ -961,7 +961,7 @@ export function TabDNS({ agent }) {
                       <tr key={i} className="border-b border-yellow-800/10">
                         <td className="px-4 py-2 font-mono text-[10px] text-yellow-200">{d.domain}</td>
                         <td className="px-4 py-2 text-[10px] text-yellow-400/70 font-mono">
-                          {d.first_seen ? new Date(d.first_seen).toLocaleString() : '—'}
+                          {d.first_seen ? new Date(d.first_seen).toLocaleString() : '-'}
                         </td>
                         <td className="px-4 py-2 text-[10px] text-yellow-400 font-mono font-bold">{Number(d.count).toLocaleString()}</td>
                       </tr>
@@ -992,19 +992,19 @@ export function TabDNS({ agent }) {
                       <tr key={i} className={`border-b border-siem-border/40 ${isFlagged?'bg-red-900/5':''} hover:bg-white/[0.02] transition-colors`}>
                         <td className="px-4 py-2.5 font-mono text-[10px]">
                           {isFlagged && <span className="inline-block w-1.5 h-1.5 rounded-full bg-red-400 mr-2 mb-0.5"/>}
-                          <span className={isFlagged?'text-red-300':'text-siem-text'}>{r.domain||'—'}</span>
+                          <span className={isFlagged?'text-red-300':'text-siem-text'}>{r.domain||'-'}</span>
                           {r.persistent && <span className="ml-2 text-[9px] px-1.5 py-0.5 rounded bg-orange-900/30 text-orange-400 border border-orange-800/30">persistent</span>}
                         </td>
                         <td className="px-4 py-2.5 font-bold text-siem-text font-mono text-[10px]">{Number(r.count).toLocaleString()}</td>
                         <td className="px-4 py-2.5 text-[10px] text-siem-muted font-mono">
-                          {r.first_seen ? new Date(r.first_seen).toLocaleDateString() : '—'}
+                          {r.first_seen ? new Date(r.first_seen).toLocaleDateString() : '-'}
                         </td>
                         <td className="px-4 py-2.5 text-[10px]">
                           {r.days_seen != null ? (
                             <span className={Number(r.days_seen) > 7 ? 'text-orange-400' : 'text-siem-muted'}>
                               {r.days_seen}d
                             </span>
-                          ) : '—'}
+                          ) : '-'}
                         </td>
                         <td className="px-4 py-2.5">
                           <div className="h-1.5 bg-siem-border/20 rounded-full overflow-hidden w-24">
@@ -1058,16 +1058,16 @@ export function TabFiles({ agent }) {
   // action field name is consistent across all platforms: raw.action
   const getAction = ev => {
     const raw = parseRaw(ev)
-    return raw.action || '—'
+    return raw.action || '-'
   }
 
-  // File hash — Linux sets file_hash directly, macOS sets raw.hash, Windows Sysmon sets file_hash
+  // File hash - Linux sets file_hash directly, macOS sets raw.hash, Windows Sysmon sets file_hash
   const getHash = ev => {
     const raw = parseRaw(ev)
     return ev.file_hash || raw.hash || raw.file_hash || null
   }
 
-  // Process — Linux fanotify sets process_name, Windows FIM and macOS kqueue do not
+  // Process - Linux fanotify sets process_name, Windows FIM and macOS kqueue do not
   const getProcess = ev => {
     const raw = parseRaw(ev)
     return ev.process_name || raw.process_name || null
@@ -1099,7 +1099,7 @@ export function TabFiles({ agent }) {
 
   // Source tells analyst which collector fired
   const sourceLabel = src => {
-    if (!src) return '—'
+    if (!src) return '-'
     if (src === 'fanotify') return 'FIM (fanotify)'
     if (src === 'inotify')  return 'FIM (inotify)'
     if (src === 'FIM')      return 'FIM'
@@ -1178,7 +1178,7 @@ export function TabFiles({ agent }) {
                 {filtered.length === 0
                   ? <tr><td colSpan={7} className="text-center py-10 text-siem-muted">No events match filter</td></tr>
                   : filtered.map((ev, i) => {
-                    const path   = ev.file_path || parseRaw(ev).path || '—'
+                    const path   = ev.file_path || parseRaw(ev).path || '-'
                     const action = getAction(ev)
                     const hash   = getHash(ev)
                     const proc   = getProcess(ev)
@@ -1207,7 +1207,7 @@ export function TabFiles({ agent }) {
                         <td className="px-4 py-2.5 font-mono text-[10px] text-siem-muted" title={hash||''}>
                           {hash ? (
                             <VTHashBadge hash={hash}/>
-                          ) : '—'}
+                          ) : '-'}
                         </td>
                         <td className="px-4 py-2.5 text-[10px] text-siem-muted/60">
                           {sourceLabel(ev.source)}
@@ -1252,7 +1252,7 @@ export function TabAlerts({ agent }) {
 
   return (
     <div className="p-5 space-y-2 overflow-y-auto h-full">
-      {/* Full AlertPanel — same as main Alerts page */}
+      {/* Full AlertPanel - same as main Alerts page */}
       {selectedId && (
         <AlertPanelPortal
           alertId={selectedId}
@@ -1275,7 +1275,7 @@ export function TabAlerts({ agent }) {
                 <div className="text-sm font-semibold text-siem-text group-hover:text-siem-accent transition-colors">{a.title}</div>
                 <div className="text-xs text-siem-muted mt-0.5 line-clamp-2">{a.description}</div>
                 <div className="flex items-center gap-2 mt-2 text-[10px]">
-                  <span className="text-siem-muted">{a.event_type || '—'}</span>
+                  <span className="text-siem-muted">{a.event_type || '-'}</span>
                   <span className="text-siem-muted">·</span>
                   <span className={`font-medium ${STATUS_CLS[a.status] || 'text-siem-muted'}`}>{a.status}</span>
                   {a.assigned_to && <><span className="text-siem-muted">·</span><span className="text-siem-muted">→ {a.assigned_to}</span></>}
@@ -1283,7 +1283,7 @@ export function TabAlerts({ agent }) {
               </div>
               <div className="flex flex-col items-end gap-1 shrink-0">
                 <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${SEV_CLS[a.severity] || SEV_CLS[1]}`}>{SEV_LABEL[a.severity] || 'Info'}</span>
-                <span className="text-[10px] text-siem-muted">{a.created_at ? formatDistanceToNow(new Date(a.created_at), { addSuffix: true }) : '—'}</span>
+                <span className="text-[10px] text-siem-muted">{a.created_at ? formatDistanceToNow(new Date(a.created_at), { addSuffix: true }) : '-'}</span>
                 <ChevronRight size={11} className="text-siem-muted/40 group-hover:text-siem-muted transition-colors"/>
               </div>
             </div>

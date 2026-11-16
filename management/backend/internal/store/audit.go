@@ -16,7 +16,7 @@ type AuditEntry struct {
 }
 
 func (db *DB) WriteAudit(ctx context.Context, username, action, target, detail, ip string) {
-	// Fire-and-forget — audit failures should never break the main request
+	// Fire-and-forget - audit failures should never break the main request
 	db.ExecContext(ctx, `
 		INSERT INTO audit_log (username, action, target, detail, ip_address)
 		VALUES ($1, $2, $3, $4, $5)

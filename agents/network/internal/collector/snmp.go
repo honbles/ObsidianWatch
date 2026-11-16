@@ -1,6 +1,6 @@
 package collector
 
-// snmp.go — SNMP v2c/v3 poller
+// snmp.go - SNMP v2c/v3 poller
 // Polls network devices every 60s for:
 //   - Interface stats (bytes in/out per physical port)
 //   - Device health (CPU, memory, uptime)

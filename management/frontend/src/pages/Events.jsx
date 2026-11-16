@@ -19,13 +19,13 @@ const EVENT_TYPE_META = {
   file:             { label: 'File',        color: 'text-yellow-400',  icon: FileText,  group: 'Endpoint' },
   registry:         { label: 'Registry',   color: 'text-purple-400',  icon: Key,       group: 'Endpoint' },
   sysmon:           { label: 'Sysmon',     color: 'text-pink-400',    icon: Activity,  group: 'Endpoint' },
-  // Cloud — AWS
+  // Cloud - AWS
   'cloud.cloudtrail':   { label: 'CloudTrail',   color: 'text-orange-400', icon: Cloud, group: 'AWS' },
   'cloud.guardduty':    { label: 'GuardDuty',    color: 'text-red-400',    icon: Shield,group: 'AWS' },
-  // Cloud — Azure
+  // Cloud - Azure
   'cloud.azure_activity': { label: 'Azure Activity', color: 'text-blue-400',  icon: Cloud, group: 'Azure' },
   'cloud.entra_signin':   { label: 'Entra Sign-in',  color: 'text-blue-300',  icon: Shield,group: 'Azure' },
-  // Cloud — GCP
+  // Cloud - GCP
   'cloud.gcp_audit': { label: 'GCP Audit', color: 'text-green-400', icon: Cloud, group: 'GCP' },
 
   // Network Probe
@@ -62,7 +62,7 @@ function EventTypeBadge({ type }) {
     file:'et et-file', logon:'et et-logon', registry:'et et-registry',
     sysmon:'et et-sysmon', health:'et et-health'
   }[type] || 'et et-default'
-  return <span className={etClass}>{type || '—'}</span>
+  return <span className={etClass}>{type || '-'}</span>
 }
 
 // ── Preconfigured saved searches ─────────────────────────────────────────────
@@ -75,35 +75,35 @@ export const SAVED_SEARCHES = [
       // Execution
       {
         label: 'PowerShell Encoded Command',
-        desc: 'T1059.001 — -EncodedCommand or -enc flag, used to hide malicious scripts',
+        desc: 'T1059.001 - -EncodedCommand or -enc flag, used to hide malicious scripts',
         tags: [{ field: 'os', label: 'OS: windows', value: 'windows' },
                { field: 'event_type', label: 'Type: process', value: 'process' },
                { field: 'search', label: 'encodedcommand', value: 'encodedcommand' }],
       },
       {
         label: 'PowerShell Download Cradle',
-        desc: 'T1059.001 — DownloadString / IEX / WebClient used to pull remote payloads',
+        desc: 'T1059.001 - DownloadString / IEX / WebClient used to pull remote payloads',
         tags: [{ field: 'os', label: 'OS: windows', value: 'windows' },
                { field: 'event_type', label: 'Type: process', value: 'process' },
                { field: 'search', label: 'downloadstring', value: 'downloadstring' }],
       },
       {
         label: 'MSHTA / WScript Execution',
-        desc: 'T1218.005 / T1059.005 — LOLBin script execution via mshta or wscript',
+        desc: 'T1218.005 / T1059.005 - LOLBin script execution via mshta or wscript',
         tags: [{ field: 'os', label: 'OS: windows', value: 'windows' },
                { field: 'event_type', label: 'Type: process', value: 'process' },
                { field: 'search', label: 'mshta', value: 'mshta' }],
       },
       {
         label: 'Regsvr32 / Rundll32 Abuse',
-        desc: 'T1218.010 / T1218.011 — LOLBins used to execute unsigned code',
+        desc: 'T1218.010 / T1218.011 - LOLBins used to execute unsigned code',
         tags: [{ field: 'os', label: 'OS: windows', value: 'windows' },
                { field: 'event_type', label: 'Type: process', value: 'process' },
                { field: 'search', label: 'regsvr32', value: 'regsvr32' }],
       },
       {
         label: 'WMI Process Creation',
-        desc: 'T1047 — wmic process call create, used for lateral movement and persistence',
+        desc: 'T1047 - wmic process call create, used for lateral movement and persistence',
         tags: [{ field: 'os', label: 'OS: windows', value: 'windows' },
                { field: 'event_type', label: 'Type: process', value: 'process' },
                { field: 'search', label: 'wmic', value: 'wmic' }],
@@ -111,21 +111,21 @@ export const SAVED_SEARCHES = [
       // Persistence
       {
         label: 'Registry Run Key Persistence',
-        desc: 'T1547.001 — HKCU/HKLM CurrentVersion\\Run key modification',
+        desc: 'T1547.001 - HKCU/HKLM CurrentVersion\\Run key modification',
         tags: [{ field: 'os', label: 'OS: windows', value: 'windows' },
                { field: 'event_type', label: 'Type: registry', value: 'registry' },
                { field: 'search', label: 'currentversion\\run', value: 'currentversion\\run' }],
       },
       {
         label: 'Scheduled Task Created',
-        desc: 'T1053.005 — schtasks /create or New-ScheduledTask',
+        desc: 'T1053.005 - schtasks /create or New-ScheduledTask',
         tags: [{ field: 'os', label: 'OS: windows', value: 'windows' },
                { field: 'event_type', label: 'Type: process', value: 'process' },
                { field: 'search', label: 'schtasks /create', value: 'schtasks /create' }],
       },
       {
         label: 'New Service Installed',
-        desc: 'T1543.003 — sc.exe create or New-Service — persistence or lateral movement',
+        desc: 'T1543.003 - sc.exe create or New-Service - persistence or lateral movement',
         tags: [{ field: 'os', label: 'OS: windows', value: 'windows' },
                { field: 'event_type', label: 'Type: process', value: 'process' },
                { field: 'search', label: 'sc create', value: 'sc create' }],
@@ -133,7 +133,7 @@ export const SAVED_SEARCHES = [
       // Privilege Escalation
       {
         label: 'UAC Bypass Attempt',
-        desc: 'T1548.002 — fodhelper, eventvwr, sdclt, computerdefaults UAC bypass',
+        desc: 'T1548.002 - fodhelper, eventvwr, sdclt, computerdefaults UAC bypass',
         tags: [{ field: 'os', label: 'OS: windows', value: 'windows' },
                { field: 'event_type', label: 'Type: process', value: 'process' },
                { field: 'search', label: 'fodhelper', value: 'fodhelper' }],
@@ -141,20 +141,20 @@ export const SAVED_SEARCHES = [
       // Defence Evasion
       {
         label: 'AMSI Bypass',
-        desc: 'T1562.001 — amsiutils, [Ref].Assembly or AmsiContext patching',
+        desc: 'T1562.001 - amsiutils, [Ref].Assembly or AmsiContext patching',
         tags: [{ field: 'os', label: 'OS: windows', value: 'windows' },
                { field: 'event_type', label: 'Type: process', value: 'process' },
                { field: 'search', label: 'amsiutils', value: 'amsiutils' }],
       },
       {
         label: 'Event Log Cleared',
-        desc: 'T1070.001 — wevtutil cl or Clear-EventLog — attacker hiding tracks',
+        desc: 'T1070.001 - wevtutil cl or Clear-EventLog - attacker hiding tracks',
         tags: [{ field: 'os', label: 'OS: windows', value: 'windows' },
                { field: 'search', label: 'wevtutil cl', value: 'wevtutil cl' }],
       },
       {
         label: 'Defender / AV Disabled',
-        desc: 'T1562.001 — Set-MpPreference or sc stop windefend',
+        desc: 'T1562.001 - Set-MpPreference or sc stop windefend',
         tags: [{ field: 'os', label: 'OS: windows', value: 'windows' },
                { field: 'event_type', label: 'Type: process', value: 'process' },
                { field: 'search', label: 'disablerealtimemonitoring', value: 'disablerealtimemonitoring' }],
@@ -162,19 +162,19 @@ export const SAVED_SEARCHES = [
       // Credential Access
       {
         label: 'LSASS / Mimikatz',
-        desc: 'T1003.001 — lsass dump via procdump, comsvcs.dll, or mimikatz',
+        desc: 'T1003.001 - lsass dump via procdump, comsvcs.dll, or mimikatz',
         tags: [{ field: 'os', label: 'OS: windows', value: 'windows' },
                { field: 'search', label: 'lsass', value: 'lsass' }],
       },
       {
         label: 'SAM / NTDS Dump',
-        desc: 'T1003.002 — reg save HKLM\\SAM or ntdsutil — AD credential dump',
+        desc: 'T1003.002 - reg save HKLM\\SAM or ntdsutil - AD credential dump',
         tags: [{ field: 'os', label: 'OS: windows', value: 'windows' },
                { field: 'search', label: 'ntds', value: 'ntds' }],
       },
       {
         label: 'Failed Logons (4625)',
-        desc: 'T1110 — repeated Event ID 4625 — brute force indicator',
+        desc: 'T1110 - repeated Event ID 4625 - brute force indicator',
         tags: [{ field: 'os', label: 'OS: windows', value: 'windows' },
                { field: 'event_type', label: 'Type: logon', value: 'logon' },
                { field: 'search', label: '4625', value: '4625' }],
@@ -182,21 +182,21 @@ export const SAVED_SEARCHES = [
       // Lateral Movement
       {
         label: 'SMB Lateral Movement',
-        desc: 'T1021.002 — outbound port 445 connections',
+        desc: 'T1021.002 - outbound port 445 connections',
         tags: [{ field: 'os', label: 'OS: windows', value: 'windows' },
                { field: 'event_type', label: 'Type: network', value: 'network' },
                { field: 'dst_port', label: 'Port: 445', value: '445' }],
       },
       {
         label: 'RDP Lateral Movement',
-        desc: 'T1021.001 — outbound port 3389 — Remote Desktop',
+        desc: 'T1021.001 - outbound port 3389 - Remote Desktop',
         tags: [{ field: 'os', label: 'OS: windows', value: 'windows' },
                { field: 'event_type', label: 'Type: network', value: 'network' },
                { field: 'dst_port', label: 'Port: 3389', value: '3389' }],
       },
       {
         label: 'PsExec / Remote Exec',
-        desc: 'T1570 — psexec, paexec, wmiexec remote execution tools',
+        desc: 'T1570 - psexec, paexec, wmiexec remote execution tools',
         tags: [{ field: 'os', label: 'OS: windows', value: 'windows' },
                { field: 'event_type', label: 'Type: process', value: 'process' },
                { field: 'search', label: 'psexec', value: 'psexec' }],
@@ -204,7 +204,7 @@ export const SAVED_SEARCHES = [
       // Impact
       {
         label: 'Shadow Copy Deletion',
-        desc: 'T1490 — vssadmin delete shadows — ransomware pre-encryption step',
+        desc: 'T1490 - vssadmin delete shadows - ransomware pre-encryption step',
         tags: [{ field: 'os', label: 'OS: windows', value: 'windows' },
                { field: 'event_type', label: 'Type: process', value: 'process' },
                { field: 'search', label: 'vssadmin delete', value: 'vssadmin delete' }],
@@ -212,7 +212,7 @@ export const SAVED_SEARCHES = [
       // Discovery
       {
         label: 'Process / Account Discovery',
-        desc: 'T1057 / T1087 — tasklist, net user, whoami /all, Get-ADUser',
+        desc: 'T1057 / T1087 - tasklist, net user, whoami /all, Get-ADUser',
         tags: [{ field: 'os', label: 'OS: windows', value: 'windows' },
                { field: 'event_type', label: 'Type: process', value: 'process' },
                { field: 'search', label: 'tasklist', value: 'tasklist' }],
@@ -232,21 +232,21 @@ export const SAVED_SEARCHES = [
       // Execution
       {
         label: 'Reverse Shell (bash -i)',
-        desc: 'T1059.004 — bash -i >& /dev/tcp/... interactive shell to attacker',
+        desc: 'T1059.004 - bash -i >& /dev/tcp/... interactive shell to attacker',
         tags: [{ field: 'os', label: 'OS: linux', value: 'linux' },
                { field: 'event_type', label: 'Type: process', value: 'process' },
                { field: 'search', label: 'bash -i', value: 'bash -i' }],
       },
       {
         label: 'Python / Perl Shell',
-        desc: 'T1059.006 — python/perl one-liner reverse shell or exec',
+        desc: 'T1059.006 - python/perl one-liner reverse shell or exec',
         tags: [{ field: 'os', label: 'OS: linux', value: 'linux' },
                { field: 'event_type', label: 'Type: process', value: 'process' },
                { field: 'search', label: 'python -c', value: 'python -c' }],
       },
       {
         label: 'curl / wget Download',
-        desc: 'T1105 — file download to /tmp — staging malware',
+        desc: 'T1105 - file download to /tmp - staging malware',
         tags: [{ field: 'os', label: 'OS: linux', value: 'linux' },
                { field: 'event_type', label: 'Type: process', value: 'process' },
                { field: 'search', label: 'curl -o /tmp', value: 'curl -o /tmp' }],
@@ -254,19 +254,19 @@ export const SAVED_SEARCHES = [
       // Persistence
       {
         label: 'Cron Persistence',
-        desc: 'T1053.003 — crontab -e or /etc/cron* modifications',
+        desc: 'T1053.003 - crontab -e or /etc/cron* modifications',
         tags: [{ field: 'os', label: 'OS: linux', value: 'linux' },
                { field: 'search', label: 'crontab', value: 'crontab' }],
       },
       {
         label: 'New Systemd Service',
-        desc: 'T1543.002 — new .service file linked — persistence',
+        desc: 'T1543.002 - new .service file linked - persistence',
         tags: [{ field: 'os', label: 'OS: linux', value: 'linux' },
                { field: 'search', label: 'Created symlink', value: 'Created symlink' }],
       },
       {
         label: 'SSH Authorized Keys Modified',
-        desc: 'T1098.004 — ~/.ssh/authorized_keys written — backdoor access',
+        desc: 'T1098.004 - ~/.ssh/authorized_keys written - backdoor access',
         tags: [{ field: 'os', label: 'OS: linux', value: 'linux' },
                { field: 'event_type', label: 'Type: file', value: 'file' },
                { field: 'search', label: 'authorized_keys', value: 'authorized_keys' }],
@@ -274,34 +274,34 @@ export const SAVED_SEARCHES = [
       // Privilege Escalation
       {
         label: 'SUID Binary Set',
-        desc: 'T1548.001 — chmod +s or u+s — creates setuid binary for privesc',
+        desc: 'T1548.001 - chmod +s or u+s - creates setuid binary for privesc',
         tags: [{ field: 'os', label: 'OS: linux', value: 'linux' },
                { field: 'search', label: 'chmod +s', value: 'chmod +s' }],
       },
       {
         label: 'Sudo Root Shell',
-        desc: 'T1548.003 — sudo used to spawn /bin/bash or /bin/sh as root',
+        desc: 'T1548.003 - sudo used to spawn /bin/bash or /bin/sh as root',
         tags: [{ field: 'os', label: 'OS: linux', value: 'linux' },
                { field: 'event_type', label: 'Type: logon', value: 'logon' },
                { field: 'search', label: 'COMMAND=/bin/bash', value: 'COMMAND=/bin/bash' }],
       },
       {
         label: 'Kernel Module Loaded',
-        desc: 'T1547.006 — insmod / modprobe — rootkit installation',
+        desc: 'T1547.006 - insmod / modprobe - rootkit installation',
         tags: [{ field: 'os', label: 'OS: linux', value: 'linux' },
                { field: 'search', label: 'insmod', value: 'insmod' }],
       },
       // Credential Access
       {
         label: 'SSH Brute Force',
-        desc: 'T1110.001 — repeated sshd Failed password from single source',
+        desc: 'T1110.001 - repeated sshd Failed password from single source',
         tags: [{ field: 'os', label: 'OS: linux', value: 'linux' },
                { field: 'event_type', label: 'Type: logon', value: 'logon' },
                { field: 'search', label: 'Failed password', value: 'Failed password' }],
       },
       {
         label: 'Shadow File Access',
-        desc: 'T1003.008 — /etc/shadow read — credential dumping attempt',
+        desc: 'T1003.008 - /etc/shadow read - credential dumping attempt',
         tags: [{ field: 'os', label: 'OS: linux', value: 'linux' },
                { field: 'event_type', label: 'Type: file', value: 'file' },
                { field: 'search', label: '/etc/shadow', value: '/etc/shadow' }],
@@ -309,21 +309,21 @@ export const SAVED_SEARCHES = [
       // Defence Evasion
       {
         label: '/etc Changes',
-        desc: 'T1565.001 — config file tampering under /etc',
+        desc: 'T1565.001 - config file tampering under /etc',
         tags: [{ field: 'os', label: 'OS: linux', value: 'linux' },
                { field: 'event_type', label: 'Type: file', value: 'file' },
                { field: 'search', label: '/etc/', value: '/etc/' }],
       },
       {
         label: 'History File Cleared',
-        desc: 'T1070.003 — unset HISTFILE or > ~/.bash_history — anti-forensics',
+        desc: 'T1070.003 - unset HISTFILE or > ~/.bash_history - anti-forensics',
         tags: [{ field: 'os', label: 'OS: linux', value: 'linux' },
                { field: 'search', label: 'bash_history', value: 'bash_history' }],
       },
       // Discovery
       {
         label: 'Network Port Scanning',
-        desc: 'T1046 — nmap, masscan, or rustscan process',
+        desc: 'T1046 - nmap, masscan, or rustscan process',
         tags: [{ field: 'os', label: 'OS: linux', value: 'linux' },
                { field: 'event_type', label: 'Type: process', value: 'process' },
                { field: 'search', label: 'nmap', value: 'nmap' }],
@@ -331,13 +331,13 @@ export const SAVED_SEARCHES = [
       // C2 / Exfiltration
       {
         label: 'Cloud Metadata SSRF',
-        desc: 'T1552.005 — 169.254.169.254 access — EC2/GCP/Azure credential theft',
+        desc: 'T1552.005 - 169.254.169.254 access - EC2/GCP/Azure credential theft',
         tags: [{ field: 'os', label: 'OS: linux', value: 'linux' },
                { field: 'search', label: '169.254.169.254', value: '169.254.169.254' }],
       },
       {
         label: 'DNS Reconnaissance',
-        desc: 'T1590 — dig/nslookup used for zone transfers or internal recon',
+        desc: 'T1590 - dig/nslookup used for zone transfers or internal recon',
         tags: [{ field: 'os', label: 'OS: linux', value: 'linux' },
                { field: 'event_type', label: 'Type: process', value: 'process' },
                { field: 'search', label: 'dig axfr', value: 'dig axfr' }],
@@ -357,38 +357,38 @@ export const SAVED_SEARCHES = [
       // Persistence
       {
         label: 'LaunchDaemon Installed',
-        desc: 'T1543.004 — /Library/LaunchDaemons/ write — system-wide persistence',
+        desc: 'T1543.004 - /Library/LaunchDaemons/ write - system-wide persistence',
         tags: [{ field: 'os', label: 'OS: darwin', value: 'darwin' },
                { field: 'search', label: 'LaunchDaemon', value: 'LaunchDaemon' }],
       },
       {
         label: 'LaunchAgent Installed',
-        desc: 'T1543.001 — ~/Library/LaunchAgents/ write — user-level persistence',
+        desc: 'T1543.001 - ~/Library/LaunchAgents/ write - user-level persistence',
         tags: [{ field: 'os', label: 'OS: darwin', value: 'darwin' },
                { field: 'search', label: 'LaunchAgents', value: 'LaunchAgents' }],
       },
       {
         label: 'Login Item Added',
-        desc: 'T1547.015 — SMLoginItem or login item plist — persistence at login',
+        desc: 'T1547.015 - SMLoginItem or login item plist - persistence at login',
         tags: [{ field: 'os', label: 'OS: darwin', value: 'darwin' },
                { field: 'search', label: 'loginitems', value: 'loginitems' }],
       },
       // Privilege Escalation / Defence Evasion
       {
         label: 'Gatekeeper Bypass',
-        desc: 'T1553.001 — spctl --master-disable or xattr -d com.apple.quarantine',
+        desc: 'T1553.001 - spctl --master-disable or xattr -d com.apple.quarantine',
         tags: [{ field: 'os', label: 'OS: darwin', value: 'darwin' },
                { field: 'search', label: 'spctl', value: 'spctl' }],
       },
       {
         label: 'SIP Bypass (csrutil)',
-        desc: 'T1562.001 — csrutil disable — System Integrity Protection removed',
+        desc: 'T1562.001 - csrutil disable - System Integrity Protection removed',
         tags: [{ field: 'os', label: 'OS: darwin', value: 'darwin' },
                { field: 'search', label: 'csrutil', value: 'csrutil' }],
       },
       {
         label: 'TCC Database Access',
-        desc: 'T1562.001 — TCC.db read/write — privacy permission bypass',
+        desc: 'T1562.001 - TCC.db read/write - privacy permission bypass',
         tags: [{ field: 'os', label: 'OS: darwin', value: 'darwin' },
                { field: 'event_type', label: 'Type: file', value: 'file' },
                { field: 'search', label: 'TCC.db', value: 'TCC.db' }],
@@ -396,28 +396,28 @@ export const SAVED_SEARCHES = [
       // Credential Access
       {
         label: 'Keychain Access',
-        desc: 'T1555.001 — security command or keychain database accessed',
+        desc: 'T1555.001 - security command or keychain database accessed',
         tags: [{ field: 'os', label: 'OS: darwin', value: 'darwin' },
                { field: 'search', label: 'keychain', value: 'keychain' }],
       },
       // Execution
       {
         label: 'osascript (AppleScript)',
-        desc: 'T1059.002 — osascript execution — phishing dialogs, UAC bypass',
+        desc: 'T1059.002 - osascript execution - phishing dialogs, UAC bypass',
         tags: [{ field: 'os', label: 'OS: darwin', value: 'darwin' },
                { field: 'event_type', label: 'Type: process', value: 'process' },
                { field: 'search', label: 'osascript', value: 'osascript' }],
       },
       {
         label: 'curl Download',
-        desc: 'T1105 — curl used to pull remote files — staging malware',
+        desc: 'T1105 - curl used to pull remote files - staging malware',
         tags: [{ field: 'os', label: 'OS: darwin', value: 'darwin' },
                { field: 'event_type', label: 'Type: process', value: 'process' },
                { field: 'search', label: 'curl', value: 'curl' }],
       },
       {
         label: 'Python / Perl Exec',
-        desc: 'T1059.006 — scripting language one-liner or reverse shell',
+        desc: 'T1059.006 - scripting language one-liner or reverse shell',
         tags: [{ field: 'os', label: 'OS: darwin', value: 'darwin' },
                { field: 'event_type', label: 'Type: process', value: 'process' },
                { field: 'search', label: 'python -c', value: 'python -c' }],
@@ -537,7 +537,7 @@ export function EventPanel({ event, onClose }) {
                     <div key={r.id} className="flex items-center gap-3 bg-siem-bg border border-siem-border rounded-lg px-3 py-2 text-xs">
                       <SeverityBadge severity={r.severity} />
                       <EventTypeBadge type={r.event_type} />
-                      <span className="text-siem-muted">{r.process_name || r.src_ip || r.user_name || '—'}</span>
+                      <span className="text-siem-muted">{r.process_name || r.src_ip || r.user_name || '-'}</span>
                       <span className="text-siem-muted ml-auto">{formatDistanceToNow(new Date(r.time), { addSuffix: true })}</span>
                     </div>
                   ))}
@@ -852,7 +852,7 @@ export default function Events() {
     if (/^\d{1,5}$/.test(v) && parseInt(v) <= 65535)
       return { field: 'dst_port', label: 'Port: ' + v, value: v }
 
-    // Cloud event types — exact and wildcard
+    // Cloud event types - exact and wildcard
     if (lower.startsWith('cloud.') || lower === 'cloud.*' || lower === 'cloud')
       return { field: 'event_type', label: 'Type: ' + (lower === 'cloud' ? 'cloud.*' : v), value: lower === 'cloud' ? 'cloud.*' : lower }
 
@@ -962,7 +962,7 @@ export default function Events() {
   }, [buildParams, tags])
 
   useEffect(() => {
-    // Debounce search — fire 300ms after last change
+    // Debounce search - fire 300ms after last change
     if (debounceRef.current) clearTimeout(debounceRef.current)
     debounceRef.current = setTimeout(() => {
       fetchEvents(0, inputVal); setPage(0)
@@ -1017,7 +1017,7 @@ export default function Events() {
   const clearAll = () => { setTags([]); setSince(''); setUntil(''); setInputVal('') }
   const displayed = live ? liveEvents : events
 
-  // Quick hints — includes cloud types
+  // Quick hints - includes cloud types
   const HINTS = ['process','network','dns','logon','file','cloud','cloud.cloudtrail',
                  'cloud.guardduty','cloud.azure_activity','cloud.entra_signin','cloud.gcp_audit',
                  'windows','linux','darwin','critical','high','aws','azure','gcp']
@@ -1031,7 +1031,7 @@ export default function Events() {
         <div>
           <h1 className="text-xl font-bold text-siem-text">Events</h1>
           <p className="text-[10px] text-siem-muted mt-0.5">
-            Search endpoint and cloud events — type to filter, or use saved searches
+            Search endpoint and cloud events - type to filter, or use saved searches
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -1075,7 +1075,7 @@ export default function Events() {
             ))}
             <input ref={inputRef}
               className="flex-1 min-w-[140px] bg-transparent text-sm text-siem-text outline-none placeholder:text-siem-muted/50"
-              placeholder={tags.length === 0 ? 'Type anything — hostname, IP, process, username, error message…' : 'Add more terms to narrow down…'}
+              placeholder={tags.length === 0 ? 'Type anything - hostname, IP, process, username, error message…' : 'Add more terms to narrow down…'}
               value={inputVal}
               onChange={e => setInputVal(e.target.value)}
               onKeyDown={handleKeyDown}
@@ -1120,7 +1120,7 @@ export default function Events() {
 
           {showHelp && (
             <div className="rounded-lg border border-siem-border bg-siem-bg p-3 space-y-1.5">
-              <div className="text-[10px] uppercase tracking-wider text-siem-muted">Query language — press Enter to add it as a filter</div>
+              <div className="text-[10px] uppercase tracking-wider text-siem-muted">Query language - press Enter to add it as a filter</div>
               {KQL_HELP.map(([q, d]) => (
                 <div key={q} className="flex items-baseline gap-3 text-[11px]">
                   <button onClick={() => addTag(q)} className="font-mono text-violet-300 hover:underline text-left shrink-0">{q}</button>
@@ -1257,7 +1257,7 @@ export default function Events() {
         </div>
       )}
 
-      {/* Event List — simple clickable rows */}
+      {/* Event List - simple clickable rows */}
       <div className="bg-siem-surface border border-siem-border rounded-xl overflow-hidden">
         {loading ? (
           <div className="flex items-center justify-center py-16 text-siem-muted text-sm gap-2">
@@ -1266,7 +1266,7 @@ export default function Events() {
         ) : displayed.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 text-siem-muted gap-2">
             <Search size={24} className="opacity-30"/>
-            <span className="text-sm">{tags.length > 0 || since || until ? 'No events match your filters' : 'No events — try a different time range'}</span>
+            <span className="text-sm">{tags.length > 0 || since || until ? 'No events match your filters' : 'No events - try a different time range'}</span>
           </div>
         ) : (
           <div className="divide-y divide-siem-border/30">
@@ -1305,11 +1305,11 @@ export default function Events() {
                   <SeverityBadge severity={ev.severity}/>
                   {/* Host */}
                   <span className="text-xs font-medium text-siem-text w-[100px] shrink-0 truncate">
-                    {ev.host || '—'}
+                    {ev.host || '-'}
                   </span>
                   {/* Type badge */}
                   <EventTypeBadge type={ev.event_type}/>
-                  {/* Summary — everything else */}
+                  {/* Summary - everything else */}
                   <span className="text-[11px] text-siem-muted/80 truncate flex-1 font-mono">
                     {summary || ev.source || ev.event_type}
                   </span>

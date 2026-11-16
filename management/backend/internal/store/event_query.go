@@ -1,6 +1,6 @@
 package store
 
-// event_query.go — a small KQL-style query language for the Events search box.
+// event_query.go - a small KQL-style query language for the Events search box.
 //
 //	severity>=high and (host:web* or host:db*) and not user:SYSTEM
 //	proc:powershell cmd:"-enc" dst:203.0.113.7

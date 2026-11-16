@@ -1,4 +1,4 @@
-# ObsidianWatch Management Platform — Runtime Config
+# ObsidianWatch Management Platform - Runtime Config
 # Edit this file then restart: sudo docker compose restart mgmt-api
 
 server:
@@ -8,12 +8,12 @@ server:
   cors_origins:
     - "*"   # tighten to https://192.168.1.140 in production
   agent_api_key: "changeme-generate-a-real-key-with-openssl-rand-hex-32"
-  # TLS — auto-enabled when /app/certs/server.crt + server.key exist
+  # TLS - auto-enabled when /app/certs/server.crt + server.key exist
   tls_cert_file: "/app/certs/server.crt"
   tls_key_file:  "/app/certs/server.key"
 
 database:
-  host:     "timescaledb"      # Docker service name — do not change
+  host:     "timescaledb"      # Docker service name - do not change
   port:     5432
   name:     "obsidianwatch"
   user:     "obsidianwatch"
@@ -23,8 +23,8 @@ database:
   max_idle_conns:    5
   conn_max_lifetime: "5m"
 
-# Backend DB — reads agent location data reported by agents to the backend
-# Same host, same credentials — the backend stores location in its own DB
+# Backend DB - reads agent location data reported by agents to the backend
+# Same host, same credentials - the backend stores location in its own DB
 backend_db:
   host:     "timescaledb"
   port:     5432
@@ -42,11 +42,11 @@ auth:
   token_duration: "24h"
 
 # ── AI Alert Analysis ─────────────────────────────────────────────────────────
-# Groq is free — get a key at console.groq.com
-# Anthropic requires credits — get a key at console.anthropic.com
+# Groq is free - get a key at console.groq.com
+# Anthropic requires credits - get a key at console.anthropic.com
 # If neither is set, the built-in rule-based analyser is used automatically.
 nvd:
-  api_key: ""          # optional — get free key at https://nvd.nist.gov/developers/request-an-api-key
+  api_key: ""          # optional - get free key at https://nvd.nist.gov/developers/request-an-api-key
                        # raises rate limit from 5/30s to 50/30s (enough for 3000+ packages)
 
 groq:

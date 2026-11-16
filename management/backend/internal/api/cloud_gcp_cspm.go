@@ -1,19 +1,19 @@
 package api
 
-// cloud_gcp_cspm.go — GCP Cloud Security Posture Management — build v2
+// cloud_gcp_cspm.go - GCP Cloud Security Posture Management - build v2
 //
 // Checks implemented:
-//  1.  Firewall rules — 0.0.0.0/0 on risky ports (SSH, RDP, DB ports)
-//  2.  IAM bindings — public bindings, primitive roles, external admin grants
-//  3.  Storage buckets — public ACLs, uniform access, versioning, logging
-//  4.  Compute VMs — OS Login, serial port, full-access scopes, public IPs
-//  5.  Cloud SQL — public IP, 0.0.0.0/0, SSL, backups
-//  6.  Audit logging — DATA_READ/WRITE for all critical GCP services
-//  7.  Service accounts — key age >90 days, admin roles on external identities
-//  8.  KMS key rotation — keys without rotation policy or rotation >90 days
-//  9.  VPC flow logs — subnets without flow logging enabled
-// 10.  Cloud DNS logging — DNS policies without logging enabled
-// 11.  MFA/2SV enforcement — check org policy constraints
+//  1.  Firewall rules - 0.0.0.0/0 on risky ports (SSH, RDP, DB ports)
+//  2.  IAM bindings - public bindings, primitive roles, external admin grants
+//  3.  Storage buckets - public ACLs, uniform access, versioning, logging
+//  4.  Compute VMs - OS Login, serial port, full-access scopes, public IPs
+//  5.  Cloud SQL - public IP, 0.0.0.0/0, SSL, backups
+//  6.  Audit logging - DATA_READ/WRITE for all critical GCP services
+//  7.  Service accounts - key age >90 days, admin roles on external identities
+//  8.  KMS key rotation - keys without rotation policy or rotation >90 days
+//  9.  VPC flow logs - subnets without flow logging enabled
+// 10.  Cloud DNS logging - DNS policies without logging enabled
+// 11.  MFA/2SV enforcement - check org policy constraints
 
 import (
 	"log/slog"
@@ -77,7 +77,7 @@ type NotAssessedCheck struct {
 // aggregatedList) across pages so callers see the complete list.
 func gcpCSPMGet(ctx context.Context, token, url string, out interface{}) error {
 	if token == "" {
-		return fmt.Errorf("no access token provided — authentication failed")
+		return fmt.Errorf("no access token provided - authentication failed")
 	}
 	const maxPages = 20
 	if strings.Contains(url, "iam.googleapis.com") &&
@@ -233,18 +233,18 @@ func RunGCPCSPM(ctx context.Context, saJSON, projectID string) (*CSPMResult, err
 	run("sql",              func() ([]CSPMFinding, int, error) { return checkCloudSQL(ctx, token, projectID) })
 	run("audit_logging",    func() ([]CSPMFinding, int, error) { return checkAuditLogging(ctx, token, projectID) })
 	run("service_accounts", func() ([]CSPMFinding, int, error) { return checkServiceAccounts(ctx, token, projectID) })
-	// Optional checks — skip silently if API not enabled in this project
+	// Optional checks - skip silently if API not enabled in this project
 	runOptional := func(name string, fn func() ([]CSPMFinding, int, error)) {
 		f, p, e := fn()
 		if e != nil {
-			// 403 usually means API not enabled or missing role — skip silently
-			// 404 means resource doesn't exist in this project — skip silently
+			// 403 usually means API not enabled or missing role - skip silently
+			// 404 means resource doesn't exist in this project - skip silently
 			if strings.Contains(e.Error(), "403") || strings.Contains(e.Error(), "404") ||
 				strings.Contains(e.Error(), "API not enabled") || strings.Contains(e.Error(), "disabled") {
 				// G-36: never let a skipped check look like a clean result.
 				reason := "API not enabled or not applicable in this project"
 				if strings.Contains(e.Error(), "403") {
-					reason = "permission denied or API disabled — grant the viewer role / enable the API"
+					reason = "permission denied or API disabled - grant the viewer role / enable the API"
 				}
 				result.NotAssessed = append(result.NotAssessed, NotAssessedCheck{Check: name, Reason: reason})
 				return
@@ -271,7 +271,7 @@ func RunGCPCSPM(ctx context.Context, saJSON, projectID string) (*CSPMResult, err
 	runOptional("artifact_registry",  func() ([]CSPMFinding, int, error) { return checkArtifactRegistry(ctx, token, projectID) })
 	runOptional("cloud_functions",    func() ([]CSPMFinding, int, error) { return checkCloudFunctions(ctx, token, projectID) })
 	runOptional("pubsub",             func() ([]CSPMFinding, int, error) { return checkPubSub(ctx, token, projectID) })
-	// Org-level IAM — works when SCC is enabled (SA has org visibility) or SA has resourcemanager.organizations.getIamPolicy
+	// Org-level IAM - works when SCC is enabled (SA has org visibility) or SA has resourcemanager.organizations.getIamPolicy
 	runOptional("org_iam",            func() ([]CSPMFinding, int, error) { return checkOrgLevelIAM(ctx, token, projectID) })
 
 	for i := range findings {
@@ -348,7 +348,7 @@ func getGCPTokenWithScope(ctx context.Context, sa gcpServiceAccount, scope strin
 		return "", fmt.Errorf("failed to parse token response: %w", err)
 	}
 	if result.Error != "" {
-		return "", fmt.Errorf("token error: %s — %s", result.Error, result.ErrorDesc)
+		return "", fmt.Errorf("token error: %s - %s", result.Error, result.ErrorDesc)
 	}
 	if result.AccessToken == "" {
 		return "", fmt.Errorf("token response did not contain an access_token (response: %s)", string(respBody)[:minInt(300, len(respBody))])
@@ -489,11 +489,11 @@ func checkIAMBindings(ctx context.Context, token, projectID string) ([]CSPMFindi
 
 	for _, binding := range policy.Bindings {
 		for _, member := range binding.Members {
-			// Public bindings — anyone on internet
+			// Public bindings - anyone on internet
 			if member == "allUsers" || member == "allAuthenticatedUsers" {
 				findings = append(findings, CSPMFinding{
 					Title:        fmt.Sprintf("IAM role '%s' granted to %s (public)", binding.Role, member),
-					Description:  fmt.Sprintf("The role %s is granted to %s — anyone on the internet has this access.", binding.Role, member),
+					Description:  fmt.Sprintf("The role %s is granted to %s - anyone on the internet has this access.", binding.Role, member),
 					Severity:     "critical",
 					Category:     "iam",
 					Resource:     binding.Role,
@@ -576,7 +576,7 @@ func checkIAMBindings(ctx context.Context, token, projectID string) ([]CSPMFindi
 					if highPrivRoles[r] {
 						findings = append(findings, CSPMFinding{
 							Title:        fmt.Sprintf("Privilege escalation path: %s can impersonate high-privilege SA", member),
-							Description:  fmt.Sprintf("%s has %s, allowing it to act as a service account that holds '%s'. This creates a privilege escalation path — the identity can gain elevated access without being directly granted high-privilege roles.", member, binding.Role, r),
+							Description:  fmt.Sprintf("%s has %s, allowing it to act as a service account that holds '%s'. This creates a privilege escalation path - the identity can gain elevated access without being directly granted high-privilege roles.", member, binding.Role, r),
 							Severity:     "critical",
 							Category:     "iam",
 							Resource:     member,
@@ -603,7 +603,7 @@ func checkIAMBindings(ctx context.Context, token, projectID string) ([]CSPMFindi
 			if saProject != "" && saProject != projectID {
 				findings = append(findings, CSPMFinding{
 					Title:        fmt.Sprintf("Cross-project SA '%s' has role '%s' in this project", email, binding.Role),
-					Description:  fmt.Sprintf("Service account from project '%s' has '%s' in project '%s'. Cross-project SA grants create implicit trust — compromise of the source project yields access here.", saProject, binding.Role, projectID),
+					Description:  fmt.Sprintf("Service account from project '%s' has '%s' in project '%s'. Cross-project SA grants create implicit trust - compromise of the source project yields access here.", saProject, binding.Role, projectID),
 					Severity:     "medium",
 					Category:     "iam",
 					Resource:     email,
@@ -706,7 +706,7 @@ func checkStorageBuckets(ctx context.Context, token, projectID string) ([]CSPMFi
 		if !bucket.IamConfiguration.UniformBucketLevelAccess.Enabled {
 			findings = append(findings, CSPMFinding{
 				Title:        fmt.Sprintf("Bucket '%s' does not use uniform bucket-level access", bucket.Name),
-				Description:  "Object-level ACLs are enabled. This allows inconsistent access control — individual objects can be more permissive than the bucket.",
+				Description:  "Object-level ACLs are enabled. This allows inconsistent access control - individual objects can be more permissive than the bucket.",
 				Severity:     "low",
 				Category:     "storage",
 				Resource:     bucket.Name,
@@ -1102,7 +1102,7 @@ func checkAuditLogging(ctx context.Context, token, projectID string) ([]CSPMFind
 		}
 	}
 
-	// ── Log sink export check — ensure at least one sink exports outside project ──
+	// ── Log sink export check - ensure at least one sink exports outside project ──
 	sinksURL := fmt.Sprintf("https://logging.googleapis.com/v2/projects/%s/sinks", projectID)
 	var sinksResp struct {
 		Sinks []struct {
@@ -1140,7 +1140,7 @@ func checkAuditLogging(ctx context.Context, token, projectID string) ([]CSPMFind
 			})
 		} else if !hasUnfilteredSink {
 			findings = append(findings, CSPMFinding{
-				Title:        "Log sinks use filters — some audit events may not be exported",
+				Title:        "Log sinks use filters - some audit events may not be exported",
 				Description:  "All configured log sinks have filter expressions. Filtered sinks may miss audit events that fall outside the filter criteria. An unfiltered sink ensures complete log retention.",
 				Severity:     "medium",
 				Category:     "logging",
@@ -1632,7 +1632,7 @@ func checkGKEClusters(ctx context.Context, token, projectID string) ([]CSPMFindi
 		if cluster.BinaryAuthorization.EvaluationMode != "PROJECT_SINGLETON_POLICY_ENFORCE" {
 			findings = append(findings, CSPMFinding{
 				Title:        fmt.Sprintf("GKE cluster '%s': Binary Authorization not enforced", name),
-				Description:  "Binary Authorization is not set to enforcement mode. Without it, any container image — including unscanned, unsigned, or malicious images — can be deployed to this cluster. This is the primary supply chain control for GKE.",
+				Description:  "Binary Authorization is not set to enforcement mode. Without it, any container image - including unscanned, unsigned, or malicious images - can be deployed to this cluster. This is the primary supply chain control for GKE.",
 				Severity:     "high",
 				Category:     "compute",
 				Resource:     name,
@@ -1642,7 +1642,7 @@ func checkGKEClusters(ctx context.Context, token, projectID string) ([]CSPMFindi
 			})
 		} else { passed++ }
 
-		// Release channel — RAPID in production is risky
+		// Release channel - RAPID in production is risky
 		if cluster.ReleaseChannel.Channel == "UNSPECIFIED" || cluster.ReleaseChannel.Channel == "" {
 			findings = append(findings, CSPMFinding{
 				Title:        fmt.Sprintf("GKE cluster '%s': Not enrolled in a release channel", name),
@@ -1667,7 +1667,7 @@ func checkGKEClusters(ctx context.Context, token, projectID string) ([]CSPMFindi
 			})
 		} else { passed++ }
 
-		// Intranode visibility — needed for VPC flow logs to capture pod traffic
+		// Intranode visibility - needed for VPC flow logs to capture pod traffic
 		if !cluster.NetworkConfig.EnableIntraNodeVisibility {
 			findings = append(findings, CSPMFinding{
 				Title:        fmt.Sprintf("GKE cluster '%s': Intranode visibility disabled", name),
@@ -1752,7 +1752,7 @@ func checkBigQuery(ctx context.Context, token, projectID string) ([]CSPMFinding,
 			})
 		} else { passed++ }
 
-		// Check for no row-level access policies (informational — indicates no fine-grained data control)
+		// Check for no row-level access policies (informational - indicates no fine-grained data control)
 		rlsURL := fmt.Sprintf("https://bigquery.googleapis.com/bigquery/v2/projects/%s/datasets/%s/tables", projectID, dsID)
 		var tablesResp struct {
 			Tables []struct {
@@ -1761,7 +1761,7 @@ func checkBigQuery(ctx context.Context, token, projectID string) ([]CSPMFinding,
 		}
 		_ = gcpCSPMGet(ctx, token, rlsURL, &tablesResp)
 		if len(tablesResp.Tables) > 5 {
-			// Large dataset with no row-level security check — note it
+			// Large dataset with no row-level security check - note it
 			findings = append(findings, CSPMFinding{
 				Title:        fmt.Sprintf("BigQuery dataset '%s': Row-level security not verified (%d tables)", dsID, len(tablesResp.Tables)),
 				Description:  fmt.Sprintf("Dataset '%s' has %d tables. Row-level security policies were not found. Without row-level access controls, all users with dataset access can read all rows.", dsID, len(tablesResp.Tables)),
@@ -1891,7 +1891,7 @@ func checkSecretManager(ctx context.Context, token, projectID string) ([]CSPMFin
 			if len(versResp.Versions) > 3 {
 				findings = append(findings, CSPMFinding{
 					Title:        fmt.Sprintf("Secret '%s': %d enabled versions (excessive)", shortName, len(versResp.Versions)),
-					Description:  fmt.Sprintf("Secret '%s' has %d active versions. Excessive enabled versions increase exposure — old secret values remain accessible to anyone with secretAccessor permission.", shortName, len(versResp.Versions)),
+					Description:  fmt.Sprintf("Secret '%s' has %d active versions. Excessive enabled versions increase exposure - old secret values remain accessible to anyone with secretAccessor permission.", shortName, len(versResp.Versions)),
 					Severity:     "low",
 					Category:     "storage",
 					Resource:     secret.Name,
@@ -1982,7 +1982,7 @@ func checkOrgPolicies(ctx context.Context, token, projectID string) ([]CSPMFindi
 		resp.Body.Close()
 
 		if resp.StatusCode == 403 || resp.StatusCode == 404 {
-			// Not accessible — skip silently
+			// Not accessible - skip silently
 			continue
 		}
 
@@ -2070,7 +2070,7 @@ func checkCloudRun(ctx context.Context, token, projectID string) ([]CSPMFinding,
 							if m == "allAuthenticatedUsers" { sev = "high" }
 							findings = append(findings, CSPMFinding{
 								Title:        fmt.Sprintf("Cloud Run service '%s' allows unauthenticated invocations (%s)", shortName, m),
-								Description:  fmt.Sprintf("The Cloud Run service grants roles/run.invoker to %s — anyone on the internet can invoke this service without authentication. This is the highest-severity serverless misconfiguration.", m),
+								Description:  fmt.Sprintf("The Cloud Run service grants roles/run.invoker to %s - anyone on the internet can invoke this service without authentication. This is the highest-severity serverless misconfiguration.", m),
 								Severity:     sev,
 								Category:     "compute",
 								Resource:     shortName,
@@ -2085,7 +2085,7 @@ func checkCloudRun(ctx context.Context, token, projectID string) ([]CSPMFinding,
 			}
 		}
 
-		// Ingress check — INGRESS_TRAFFIC_ALL means public internet can reach it
+		// Ingress check - INGRESS_TRAFFIC_ALL means public internet can reach it
 		if svc.Ingress == "INGRESS_TRAFFIC_ALL" || svc.Ingress == "" {
 			findings = append(findings, CSPMFinding{
 				Title:        fmt.Sprintf("Cloud Run service '%s' ingress allows all traffic (internet-facing)", shortName),
@@ -2235,7 +2235,7 @@ func checkCloudFunctions(ctx context.Context, token, projectID string) ([]CSPMFi
 						if m == "allUsers" || m == "allAuthenticatedUsers" {
 							findings = append(findings, CSPMFinding{
 								Title:        fmt.Sprintf("Cloud Function '%s' allows unauthenticated invocations", shortName),
-								Description:  fmt.Sprintf("Function grants invoker role to %s — publicly callable without any authentication. Functions with sensitive logic or data access are a critical attack surface when unauthenticated.", m),
+								Description:  fmt.Sprintf("Function grants invoker role to %s - publicly callable without any authentication. Functions with sensitive logic or data access are a critical attack surface when unauthenticated.", m),
 								Severity:     "critical",
 								Category:     "compute",
 								Resource:     shortName,
@@ -2250,11 +2250,11 @@ func checkCloudFunctions(ctx context.Context, token, projectID string) ([]CSPMFi
 			}
 		}
 
-		// Ingress — ALLOW_ALL means callable from internet
+		// Ingress - ALLOW_ALL means callable from internet
 		if fn.ServiceConfig.IngressSettings == "ALLOW_ALL" || fn.ServiceConfig.IngressSettings == "" {
 			findings = append(findings, CSPMFinding{
 				Title:        fmt.Sprintf("Cloud Function '%s' ingress allows all traffic", shortName),
-				Description:  "Ingress is set to ALLOW_ALL — the function endpoint is reachable from the public internet. Restrict to internal or load-balancer traffic where possible.",
+				Description:  "Ingress is set to ALLOW_ALL - the function endpoint is reachable from the public internet. Restrict to internal or load-balancer traffic where possible.",
 				Severity:     "medium",
 				Category:     "compute",
 				Resource:     shortName,
@@ -2270,7 +2270,7 @@ func checkCloudFunctions(ctx context.Context, token, projectID string) ([]CSPMFi
 			fn.ServiceConfig.ServiceAccountEmail == "" {
 			findings = append(findings, CSPMFinding{
 				Title:        fmt.Sprintf("Cloud Function '%s' uses default Compute service account", shortName),
-				Description:  "Using the default Compute Engine service account gives the function Editor-level permissions across the entire project — far more than any function should need.",
+				Description:  "Using the default Compute Engine service account gives the function Editor-level permissions across the entire project - far more than any function should need.",
 				Severity:     "high",
 				Category:     "iam",
 				Resource:     shortName,
@@ -2439,7 +2439,7 @@ func checkOrgLevelIAM(ctx context.Context, token, projectID string) ([]CSPMFindi
 		}
 	}
 	if orgID == "" {
-		// Project is not part of an org (personal/standalone project) — not an error
+		// Project is not part of an org (personal/standalone project) - not an error
 		return nil, 0, fmt.Errorf("404: project has no parent organization")
 	}
 
@@ -2479,12 +2479,12 @@ func checkOrgLevelIAM(ctx context.Context, token, projectID string) ([]CSPMFindi
 
 	for _, b := range orgPolicy.Bindings {
 		for _, member := range b.Members {
-			// Primitive roles at org scope — catastrophic
+			// Primitive roles at org scope - catastrophic
 			if label, isPrim := primitiveRoles[b.Role]; isPrim {
 				sev := "critical"
 				findings = append(findings, CSPMFinding{
 					Title:        fmt.Sprintf("Org-level: primitive role '%s' granted to %s (org: %s)", label, member, orgID),
-					Description:  fmt.Sprintf("The %s role is granted to %s at the organization level. This grants unrestricted access to ALL projects, ALL resources, and ALL data in the entire organization — the highest possible blast radius.", label, member),
+					Description:  fmt.Sprintf("The %s role is granted to %s at the organization level. This grants unrestricted access to ALL projects, ALL resources, and ALL data in the entire organization - the highest possible blast radius.", label, member),
 					Severity:     sev,
 					Category:     "iam",
 					Resource:     fmt.Sprintf("organizations/%s", orgID),
@@ -2516,7 +2516,7 @@ func checkOrgLevelIAM(ctx context.Context, token, projectID string) ([]CSPMFindi
 			// allUsers / allAuthenticatedUsers at org scope
 			if member == "allUsers" || member == "allAuthenticatedUsers" {
 				findings = append(findings, CSPMFinding{
-					Title:        fmt.Sprintf("Org-level: role '%s' granted to %s — ENTIRE ORG IS PUBLIC", b.Role, member),
+					Title:        fmt.Sprintf("Org-level: role '%s' granted to %s - ENTIRE ORG IS PUBLIC", b.Role, member),
 					Description:  fmt.Sprintf("The role %s is granted to %s at the organization level. This exposes all resources in all projects in this organization to the public internet.", b.Role, member),
 					Severity:     "critical",
 					Category:     "iam",

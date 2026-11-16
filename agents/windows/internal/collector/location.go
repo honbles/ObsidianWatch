@@ -2,15 +2,15 @@
 
 package collector
 
-// location.go — Windows location collector.
+// location.go - Windows location collector.
 //
 // Uses the Windows Location API (Windows.Devices.Geolocation) via WinRT/COM.
 // This is the same API that Windows Maps, Weather, and other apps use.
 //
 // Location sources (in order of accuracy):
-//   1. GPS chip (if present) — metre-level accuracy
-//   2. WiFi positioning — triangulates from nearby APs — ~50-300m accuracy
-//   3. IP geolocation fallback — city-level, ~5-50km accuracy
+//   1. GPS chip (if present) - metre-level accuracy
+//   2. WiFi positioning - triangulates from nearby APs - ~50-300m accuracy
+//   3. IP geolocation fallback - city-level, ~5-50km accuracy
 //
 // The Windows Location API requires the user/service to have location
 // permission enabled. When running as SYSTEM (service), it uses the
@@ -51,7 +51,7 @@ type LocationCollector struct {
 	allowInsecureTLS bool
 	// precisePositioning (F-16): GPS/WiFi positioning is far more invasive
 	// than IP geolocation (room-level vs city-level), so it must be an
-	// explicit opt-in. Defaults to false — IP geolocation only.
+	// explicit opt-in. Defaults to false - IP geolocation only.
 	precisePositioning bool
 	out                chan<- schema.Event
 	logger             *slog.Logger
@@ -243,7 +243,7 @@ var (
 	}
 )
 
-// ILocation vtable layout (simplified — only methods we need)
+// ILocation vtable layout (simplified - only methods we need)
 type iLocationVtbl struct {
 	QueryInterface      uintptr
 	AddRef              uintptr
@@ -291,11 +291,11 @@ func (c *LocationCollector) getWindowsLocation(ctx context.Context) (locationRes
 	}
 	defer syscall.SyscallN(pLoc.vtbl.Release, uintptr(unsafe.Pointer(pLoc)))
 
-	// Request permission (non-blocking — uses cached permission)
+	// Request permission (non-blocking - uses cached permission)
 	syscall.SyscallN(pLoc.vtbl.RequestPermissions, uintptr(unsafe.Pointer(pLoc)), 0,
 		uintptr(unsafe.Pointer(&IID_ILatLongReport)), 0)
 
-	// GetReport — synchronous, returns last cached fix
+	// GetReport - synchronous, returns last cached fix
 	var pReport uintptr
 	ret, _, _ = syscall.SyscallN(pLoc.vtbl.GetReport,
 		uintptr(unsafe.Pointer(pLoc)),
@@ -323,7 +323,7 @@ func (c *LocationCollector) getWindowsLocation(ctx context.Context) (locationRes
 	syscall.SyscallN(vtbl[8], pReport, uintptr(unsafe.Pointer(&errRadius)))
 
 	if lat == 0 && lng == 0 {
-		return locationResult{}, fmt.Errorf("location returned (0,0) — no fix")
+		return locationResult{}, fmt.Errorf("location returned (0,0) - no fix")
 	}
 
 	source := "wifi"
@@ -348,7 +348,7 @@ func (c *LocationCollector) getWindowsLocation(ctx context.Context) (locationRes
 }
 
 // ── IP Geolocation fallback ───────────────────────────────────────────────────
-// Uses ipinfo.io — more reliable than ip-api.com, includes ISP/org data
+// Uses ipinfo.io - more reliable than ip-api.com, includes ISP/org data
 
 // getIPGeolocation resolves an approximate location via ipinfo.io (HTTPS).
 //

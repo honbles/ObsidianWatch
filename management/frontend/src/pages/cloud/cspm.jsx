@@ -5,7 +5,7 @@ import { format } from 'date-fns'
 import api from '../../api/client'
 import { CAT_META, CIS_MAPPING, SEV_BG, SEV_BORDER, SEV_COLOR, riskLabel, riskScore } from './shared.jsx'
 
-// ── FindingCard — expandable, AI-explain, resource link ───────────────────────
+// ── FindingCard - expandable, AI-explain, resource link ───────────────────────
 export function FindingCard({ f, provider, projectId, subscriptionId }) {
   const [open, setOpen]         = useState(false)
   const [aiText, setAiText]     = useState(null)
@@ -46,7 +46,7 @@ Respond with a JSON object:
       const clean = text.replace(/\x60{3}json\n?|\x60{3}/g, '').trim()
       try { setAiText(JSON.parse(clean)) } catch { setAiText({ plain_english: clean }) }
     } catch (err) {
-      setAiText({ plain_english: 'AI explanation unavailable — check your API key in Settings → AI.' })
+      setAiText({ plain_english: 'AI explanation unavailable - check your API key in Settings → AI.' })
     } finally { setAiLoading(false) }
   }
 
@@ -120,7 +120,7 @@ Respond with a JSON object:
       transition: 'all 0.15s',
       overflow: 'hidden',
     }}>
-      {/* Row — always visible */}
+      {/* Row - always visible */}
       <div onClick={() => setOpen(o => !o)}
         style={{ display:'flex', alignItems:'center', gap:10, padding:'12px 14px', cursor:'pointer' }}>
         <CatIcon size={14} color={catMeta.color} style={{ flexShrink:0 }}/>
@@ -176,7 +176,7 @@ Respond with a JSON object:
               </a>
             )}
             <span style={{ fontSize:10, color:'var(--text3)', marginLeft:'auto' }}>
-              Found: {f.scanned_at ? format(new Date(f.scanned_at), 'MMM d, yyyy HH:mm') : '—'}
+              Found: {f.scanned_at ? format(new Date(f.scanned_at), 'MMM d, yyyy HH:mm') : '-'}
             </span>
           </div>
 
@@ -343,7 +343,7 @@ export function AssetInventory({ findings }) {
       })}
       {Object.keys(inventory).length === 0 && (
         <div style={{ gridColumn:'1/-1', textAlign:'center', color:'var(--text3)', fontSize:12, padding:20 }}>
-          No assets found — run a scan first
+          No assets found - run a scan first
         </div>
       )}
     </div>
@@ -487,7 +487,7 @@ export function CSPMDashboard({ conn, cspm, loading, onRunScan, scanning }) {
 
 Return ONLY this JSON (no markdown):
 {
-  "executive_summary": "2-3 sentences for a CISO — overall posture and top concerns",
+  "executive_summary": "2-3 sentences for a CISO - overall posture and top concerns",
   "top_risks": ["risk 1", "risk 2", "risk 3"],
   "immediate_actions": ["action 1 with specific GCP console path", "action 2", "action 3"],
   "compliance_notes": "brief note on CIS GCP benchmark compliance status",
@@ -500,7 +500,7 @@ ${JSON.stringify(compact)}`
       const text = data.content?.find(b => b.type === 'text')?.text || data.text || ''
       const clean = text.replace(/\x60{3}json\n?|\x60{3}/g, '').trim()
       try { setAiSummary(JSON.parse(clean)) } catch { setAiSummary({ executive_summary: clean }) }
-    } catch { setAiSummary({ executive_summary: 'AI summary unavailable — configure an AI key in Settings.' }) }
+    } catch { setAiSummary({ executive_summary: 'AI summary unavailable - configure an AI key in Settings.' }) }
     finally { setAiLoading(false) }
   }
 
@@ -511,15 +511,15 @@ ${JSON.stringify(compact)}`
       <div style={{ flexShrink:0, padding:'14px 20px', borderBottom:'1px solid var(--border)',
         background:'var(--surface)', display:'flex', alignItems:'center', justifyContent:'space-between', gap:12 }}>
         <div>
-          <div style={{ fontSize:13, fontWeight:700, color:'var(--text)' }}>Cloud Security Posture — {cspm?.project_id || conn.account_id}</div>
+          <div style={{ fontSize:13, fontWeight:700, color:'var(--text)' }}>Cloud Security Posture - {cspm?.project_id || conn.account_id}</div>
           {cspm && <div style={{ fontSize:10.5, color:'var(--text3)', marginTop:2 }}>
-            Last scan: {cspm.scanned_at ? format(new Date(cspm.scanned_at), 'MMM d, yyyy HH:mm') : '—'} · {cspm.scan_duration}
+            Last scan: {cspm.scanned_at ? format(new Date(cspm.scanned_at), 'MMM d, yyyy HH:mm') : '-'} · {cspm.scan_duration}
             {cspm.scc_enabled && <span style={{ color:'#34d399', marginLeft:8 }}>✓ SCC connected ({cspm.scc_findings||0} findings)</span>}
             {cspm.errors?.length > 0 && (
               <button onClick={() => setShowErrors(e => !e)}
                 style={{ marginLeft:8, background:'rgba(251,146,60,0.1)', border:'1px solid rgba(251,146,60,0.25)',
                   color:'#fb923c', borderRadius:4, padding:'1px 7px', fontSize:10.5, cursor:'pointer', fontFamily:'inherit' }}>
-                ⚠ {cspm.errors.length} check failed — click to see
+                ⚠ {cspm.errors.length} check failed - click to see
               </button>
             )}
           </div>}
@@ -552,7 +552,7 @@ ${JSON.stringify(compact)}`
             <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'10px 14px', borderBottom:'1px solid rgba(251,146,60,0.2)' }}>
               <div style={{ display:'flex', alignItems:'center', gap:7 }}>
                 <span style={{ fontSize:12, fontWeight:700, color:'#fb923c' }}>⚠ Scan Check Failures</span>
-                <span style={{ fontSize:10.5, color:'var(--text3)' }}>These checks could not run — usually missing IAM role or API not enabled</span>
+                <span style={{ fontSize:10.5, color:'var(--text3)' }}>These checks could not run - usually missing IAM role or API not enabled</span>
               </div>
               <button onClick={() => setShowErrors(false)}
                 style={{ background:'none', border:'none', color:'var(--text3)', cursor:'pointer', fontSize:16, padding:'0 4px', fontFamily:'inherit' }}>×</button>
@@ -606,7 +606,7 @@ ${JSON.stringify(compact)}`
             })}
             <div style={{ padding:'10px 14px', background:'rgba(0,0,0,0.2)', fontSize:11, color:'var(--text3)' }}>
               The service account needs <strong style={{ color:'var(--text2)' }}>roles/viewer</strong> or <strong style={{ color:'var(--text2)' }}>roles/security-reviewer</strong> at minimum.
-              Checks that fail are skipped — other findings are still shown.
+              Checks that fail are skipped - other findings are still shown.
             </div>
           </div>
         )}
@@ -798,7 +798,7 @@ ${JSON.stringify(compact)}`
                     <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:8 }}>
                       <span style={{ width:7, height:7, borderRadius:'50%', background:SEV_COLOR[sev], display:'inline-block', flexShrink:0 }}/>
                       <span style={{ fontSize:11.5, fontWeight:700, color:SEV_COLOR[sev], textTransform:'uppercase', letterSpacing:'0.07em' }}>
-                        {sev} — {group.length} finding{group.length!==1?'s':''}
+                        {sev} - {group.length} finding{group.length!==1?'s':''}
                       </span>
                     </div>
                     <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
@@ -812,7 +812,7 @@ ${JSON.stringify(compact)}`
 
               {filteredFindings.length === 0 && (
                 <div style={{ textAlign:'center', padding:40, color:search||sevFilter!=='all' ? 'var(--text3)' : '#34d399', fontSize:13 }}>
-                  {search||sevFilter!=='all' ? 'No findings match your filter' : '✓ No findings — your cloud posture looks clean!'}
+                  {search||sevFilter!=='all' ? 'No findings match your filter' : '✓ No findings - your cloud posture looks clean!'}
                 </div>
               )}
             </div>
@@ -832,7 +832,7 @@ ${JSON.stringify(compact)}`
           {section === 'network' && (
             <div>
               <div style={{ fontSize:12, color:'var(--text3)', marginBottom:12 }}>
-                Resources with network-level exposure — open firewall rules, public IPs, publicly accessible services.
+                Resources with network-level exposure - open firewall rules, public IPs, publicly accessible services.
               </div>
               <NetworkExposure findings={allFindings}/>
               <div style={{ marginTop:16 }}>

@@ -2,7 +2,7 @@
 
 package collector
 
-// sysmon.go — reads Sysmon events from the Microsoft-Windows-Sysmon/Operational
+// sysmon.go - reads Sysmon events from the Microsoft-Windows-Sysmon/Operational
 // event log channel and maps well-known Event IDs to enriched schema.Events.
 //
 // Sysmon must already be installed and running on the host.

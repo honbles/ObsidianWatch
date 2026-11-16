@@ -1,6 +1,6 @@
 package api
 
-// cloud_aws_cspm_trust.go — IAM role trust-policy checks.
+// cloud_aws_cspm_trust.go - IAM role trust-policy checks.
 //   - trust open to any AWS principal ("*") without a condition  → critical
 //   - trust granted to another account with no condition at all  → medium
 //     (no sts:ExternalId / source constraint: confused-deputy risk)

@@ -1,5 +1,5 @@
 -- 012_cloud_connectors.sql
--- Cloud provider integrations — AWS, Azure, GCP
+-- Cloud provider integrations - AWS, Azure, GCP
 
 CREATE TABLE IF NOT EXISTS cloud_connectors (
     id           BIGSERIAL    PRIMARY KEY,

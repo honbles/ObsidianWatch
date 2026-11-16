@@ -244,7 +244,7 @@ const exportEventsLimit = 10000
 
 // csvSafe (F-08): neutralizes CSV/spreadsheet formula injection. Fields
 // here come from raw endpoint telemetry (process name, command line, etc)
-// which an attacker fully controls — a command line starting with "=", "+",
+// which an attacker fully controls - a command line starting with "=", "+",
 // "-", or "@" is interpreted as a formula by Excel/Sheets/LibreOffice on
 // open, which can exfiltrate data or run further commands on the analyst's
 // machine. Prefixing with a tab neutralizes the formula while keeping the
@@ -433,7 +433,7 @@ func handleStats(db *store.DB) http.HandlerFunc {
 		agentStats, _ := db.AgentStats(r.Context())
 		dashData, _ := db.DashboardStats(r.Context())
 
-		// Endpoint dashboard data — use ListAgents which has correct columns
+		// Endpoint dashboard data - use ListAgents which has correct columns
 		var agents []map[string]interface{}
 		if agentList, err := db.ListAgents(r.Context()); err == nil {
 			for _, a := range agentList {

@@ -11,7 +11,7 @@ import (
 // M-11: every state-changing authenticated API call is written to the audit
 // log (who, what, target, outcome, source IP). Handlers that already write a
 // richer entry are skipped to avoid duplicates. Request bodies are never
-// logged — only method, path and status — so secrets can't leak via audit.
+// logged - only method, path and status - so secrets can't leak via audit.
 
 type auditRecorder struct {
 	http.ResponseWriter

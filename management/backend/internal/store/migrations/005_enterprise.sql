@@ -1,11 +1,11 @@
--- 005_enterprise.sql — enterprise features
+-- 005_enterprise.sql - enterprise features
 
 -- Force password change on first login
 ALTER TABLE users ADD COLUMN IF NOT EXISTS password_changed BOOLEAN NOT NULL DEFAULT FALSE;
 -- Existing users (non-default) are considered already changed
 UPDATE users SET password_changed = TRUE WHERE username != 'admin';
 
--- Alert rules — configurable trigger conditions
+-- Alert rules - configurable trigger conditions
 CREATE TABLE IF NOT EXISTS alert_rules (
     id          BIGSERIAL   PRIMARY KEY,
     name        TEXT        NOT NULL,
@@ -29,7 +29,7 @@ INSERT INTO alert_rules (name, description, severity, event_type, created_by) VA
   ('Process Execution Alert',  'Alert on high-severity process execution',          4, 'process', 'system')
 ON CONFLICT DO NOTHING;
 
--- Audit log — who did what and when
+-- Audit log - who did what and when
 CREATE TABLE IF NOT EXISTS audit_log (
     id          BIGSERIAL   PRIMARY KEY,
     created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),

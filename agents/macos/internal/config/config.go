@@ -69,7 +69,7 @@ type FIMDirConfig struct {
 	Exclude   []string `yaml:"exclude"`
 }
 
-// ConfigMonConfig monitors macOS sensitive config files — equivalent to Windows registry monitoring.
+// ConfigMonConfig monitors macOS sensitive config files - equivalent to Windows registry monitoring.
 type ConfigMonConfig struct {
 	Enabled bool     `yaml:"enabled"`
 	Paths   []string `yaml:"paths"`
@@ -281,7 +281,7 @@ func BuildTLSConfig(caPEM []byte, allowInsecure bool) (*tls.Config, error) {
 	if allowInsecure {
 		return &tls.Config{InsecureSkipVerify: true}, nil
 	}
-	return nil, fmt.Errorf("tls: no CA certificate configured and allow_insecure_tls is false — refusing to connect without verifying the server certificate")
+	return nil, fmt.Errorf("tls: no CA certificate configured and allow_insecure_tls is false - refusing to connect without verifying the server certificate")
 }
 
 // LiveResponseConfig gates the analyst remote-shell tunnel. Off unless the

@@ -2,7 +2,7 @@ package api
 
 import "strings"
 
-// GR-03: the blast-radius graph names a service account twice — "sa:<email>"
+// GR-03: the blast-radius graph names a service account twice - "sa:<email>"
 // when a VM runs as it, and "principal:serviceAccount:<email>" when an IAM
 // binding grants it a role. Without a link between the two, a path such as
 //

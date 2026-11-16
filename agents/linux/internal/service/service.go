@@ -2,7 +2,7 @@
 
 package service
 
-// service.go — Linux systemd service management for ObsidianWatch agent.
+// service.go - Linux systemd service management for ObsidianWatch agent.
 
 import (
 	"crypto/rand"
@@ -34,24 +34,24 @@ type InstallConfig struct {
 	BinarySrc           string
 	ManagementURL       string
 	CAFile              string
-	CACertPEM           string // backend CA — inline PEM
-	ManagementCACertPEM string // management CA — inline PEM; falls back to CACertPEM if empty
+	CACertPEM           string // backend CA - inline PEM
+	ManagementCACertPEM string // management CA - inline PEM; falls back to CACertPEM if empty
 	APIKey              string // fleet API key (X-API-Key) required by register-key / verify-install-key
 	AgentID             string
 	Hostname            string
 }
 
 func Install(cfg InstallConfig) error {
-	// If already installed — stop service, remove tamper protection, then reinstall cleanly.
+	// If already installed - stop service, remove tamper protection, then reinstall cleanly.
 	// This makes re-running install after a new agent build fully automatic.
 	if _, err := os.Stat(BinaryDst); err == nil {
-		fmt.Println("Existing installation detected — upgrading...")
+		fmt.Println("Existing installation detected - upgrading...")
 		removeTamper()
 		run("systemctl", "stop", ServiceName)
 		run("systemctl", "disable", ServiceName)
 	}
 
-	// Generate a cryptographically random install key — no manual entry needed.
+	// Generate a cryptographically random install key - no manual entry needed.
 	installKey, err := generateInstallKey()
 	if err != nil {
 		return fmt.Errorf("generate install key: %w", err)
@@ -81,7 +81,7 @@ func Install(cfg InstallConfig) error {
 		}
 	}
 
-	// Install the binary — config is embedded inside it, no yaml file needed.
+	// Install the binary - config is embedded inside it, no yaml file needed.
 	fmt.Printf("Installing binary to %s...\n", BinaryDst)
 	if err := copyFile(cfg.BinarySrc, BinaryDst, 0700); err != nil {
 		return fmt.Errorf("copy binary: %w", err)
@@ -117,7 +117,7 @@ func Uninstall(managementURL, caFile, caCertPEM, apiKey, agentID string) error {
 	// Read the persisted install key from the state file.
 	installKey, err := config.ReadInstallKey()
 	if err != nil || installKey == "" {
-		return fmt.Errorf("could not read install key — was this agent installed with this tool?\n(expected at %s)", config.InstallKeyFile())
+		return fmt.Errorf("could not read install key - was this agent installed with this tool?\n(expected at %s)", config.InstallKeyFile())
 	}
 
 	// ── Tamper protection: require admin to enter the key ────────────────────
@@ -135,7 +135,7 @@ func Uninstall(managementURL, caFile, caCertPEM, apiKey, agentID string) error {
 	fmt.Scanln(&inputKey)
 	inputKey = strings.TrimSpace(inputKey)
 
-	// F-02: the management server is the authority — it verifies the key and
+	// F-02: the management server is the authority - it verifies the key and
 	// rotates it (single-use), so "Regenerate key" on the dashboard actually
 	// works. The local copy is consulted only when the server cannot be
 	// reached at all; a server rejection is final.

@@ -184,7 +184,7 @@ func (e *CloudConnectorEngine) runCSPMAll(ctx context.Context) {
 				"critical", result.Critical, "high", result.High)
 		}
 		alertNewCriticalFindings(ctx, e.db, "gcp", c.ID, projectID, prevGCP, result.Findings, e.logger)
-		// G-40: scheduled asset inventory (drives asset-deletion alerts) —
+		// G-40: scheduled asset inventory (drives asset-deletion alerts) -
 		// previously only ran when someone clicked the button.
 		invCtx, invCancel := context.WithTimeout(ctx, 5*time.Minute)
 		if _, invErr := RunGCPAssetInventory(invCtx, saJSON, projectID, c.ID, e.db, e.logger); invErr != nil {
@@ -261,7 +261,7 @@ func (e *CloudConnectorEngine) syncConnector(ctx context.Context, conn *store.Cl
 		if syncErr == nil {
 			break
 		}
-		// Don't retry auth errors — they won't fix themselves
+		// Don't retry auth errors - they won't fix themselves
 		if isAuthError(syncErr) {
 			break
 		}
@@ -294,7 +294,7 @@ func (e *CloudConnectorEngine) doSync(ctx context.Context, conn *store.CloudConn
 		return n, cursor, err
 	case "gcp":
 		n, cursor, err := syncGCP(ctx, conn, e.db, e.eventDB, e.logger)
-		// Also pull VPC Flow, DNS, and IDS logs (optional — silently skip if not enabled)
+		// Also pull VPC Flow, DNS, and IDS logs (optional - silently skip if not enabled)
 		n += syncGCPExtendedLogs(ctx, conn, e.db, e.eventDB, e.logger)
 		return n, cursor, err
 	default:
@@ -308,7 +308,7 @@ func isAuthError(err error) bool {
 	}
 	msg := strings.ToLower(err.Error())
 	// G-22: a 403 caused by quota/rate limiting is transient, not a bad
-	// credential — retrying (or at least not marking the connector as
+	// credential - retrying (or at least not marking the connector as
 	// auth-failed) is the right call.
 	for _, transient := range []string{"quota", "ratelimit", "rate limit", "rate_limit", "toomanyrequests", "too many requests", "throttl"} {
 		if strings.Contains(msg, transient) {

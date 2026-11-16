@@ -1,6 +1,6 @@
 package api
 
-// app_routes.go — OWNED BY THE APPLICATION BUILD. All /api/v1/app/* routes are
+// app_routes.go - OWNED BY THE APPLICATION BUILD. All /api/v1/app/* routes are
 // registered here. Foundation stub.
 
 import (

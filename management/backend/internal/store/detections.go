@@ -14,7 +14,7 @@ type DetectionSignatureState struct {
 }
 
 // GetSignatureStates returns enable/disable states for all signatures.
-// Only rows that exist in the DB are returned — missing = use default (enabled).
+// Only rows that exist in the DB are returned - missing = use default (enabled).
 func (db *DB) GetSignatureStates(ctx context.Context) (map[string]DetectionSignatureState, error) {
 	rows, err := db.QueryContext(ctx,
 		`SELECT id, enabled, severity, updated_at FROM detection_signatures`)

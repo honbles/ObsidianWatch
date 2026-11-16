@@ -1,6 +1,6 @@
 package api
 
-// AW-10: AWS asset inventory — EC2 instances, security groups, VPCs, S3
+// AW-10: AWS asset inventory - EC2 instances, security groups, VPCs, S3
 // buckets, RDS instances, Lambda functions, IAM users and roles. Uses the same
 // stored shape as the GCP inventory so the existing UI renders it.
 
@@ -356,7 +356,7 @@ func handleGetAWSAssets(db *store.DB) http.HandlerFunc {
 		inv, err := loadAWSInventory(r.Context(), db, id)
 		w.Header().Set("Content-Type", "application/json")
 		if err != nil || inv == nil {
-			json.NewEncoder(w).Encode(map[string]interface{}{"message": "No inventory yet — run a scan first", "assets": []struct{}{}})
+			json.NewEncoder(w).Encode(map[string]interface{}{"message": "No inventory yet - run a scan first", "assets": []struct{}{}})
 			return
 		}
 		json.NewEncoder(w).Encode(inv)

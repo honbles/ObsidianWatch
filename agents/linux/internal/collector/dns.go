@@ -2,24 +2,24 @@
 
 package collector
 
-// dns.go — Linux DNS query monitoring.
+// dns.go - Linux DNS query monitoring.
 //
 // Linux DNS collection strategy (in priority order):
 //
-//  1. resolvectl query / resolvectl statistics — reads systemd-resolved's
+//  1. resolvectl query / resolvectl statistics - reads systemd-resolved's
 //     query cache directly. Gives real domain names with zero overhead.
 //     Works on Ubuntu 18+, Debian 10+, any systemd >= 239.
 //
-//  2. systemd-resolved journal log parsing — parses journalctl output for
+//  2. systemd-resolved journal log parsing - parses journalctl output for
 //     DNS lookup messages. Requires logging level >= debug on resolved.
 //     Good fallback when resolvectl cache is not available.
 //
-//  3. /proc/net/udp poll — detects active connections to port 53.
+//  3. /proc/net/udp poll - detects active connections to port 53.
 //     Only captures domain names if we can correlate inode→pid→/proc/pid/net.
 //     Falls back to recording the DNS server IP only when no domain is available.
 //     Useful for non-systemd systems.
 //
-//  4. dnsmasq / bind log parsing — /var/log/syslog patterns.
+//  4. dnsmasq / bind log parsing - /var/log/syslog patterns.
 //
 // Events emitted: event_type="dns", source="proc-dns"
 
@@ -86,7 +86,7 @@ func (d *DNSCollector) Run(ctx context.Context) error {
 }
 
 func (d *DNSCollector) poll() {
-	// Strategy 1: resolvectl query cache — best source, real domain names
+	// Strategy 1: resolvectl query cache - best source, real domain names
 	if d.pollResolvectl() {
 		return
 	}
@@ -96,7 +96,7 @@ func (d *DNSCollector) poll() {
 		return
 	}
 
-	// Strategy 3: /proc/net/udp — fallback, records DNS server IPs
+	// Strategy 3: /proc/net/udp - fallback, records DNS server IPs
 	d.pollProcNet()
 
 	// Strategy 4: dnsmasq/syslog
@@ -279,7 +279,7 @@ func (d *DNSCollector) pollSyslog() {
 			continue
 		}
 
-		// Read last 100 lines only — avoid processing the entire file
+		// Read last 100 lines only - avoid processing the entire file
 		lines := tailFile(f, 100)
 		f.Close()
 
@@ -407,7 +407,7 @@ func (d *DNSCollector) emit(pid int, procName, dnsServer, srcIP, domain, source 
 	}
 	rawJSON, _ := json.Marshal(rawData)
 
-	// dst_ip stores the queried domain name — matches how the backend queries DNS events
+	// dst_ip stores the queried domain name - matches how the backend queries DNS events
 	dstIP := domain
 	if dstIP == "" {
 		dstIP = dnsServer

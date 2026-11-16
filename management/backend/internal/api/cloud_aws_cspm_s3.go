@@ -185,6 +185,6 @@ func runAWSS3Hardening(ctx context.Context, creds awsCreds, buckets []string, ad
 		add(r.f)
 	}
 	if denied > 0 {
-		skip("s3_hardening", fmt.Sprintf("%d bucket(s) could not be read — grant s3:GetBucketVersioning/Logging/Policy/Acl (SecurityAudit)", denied))
+		skip("s3_hardening", fmt.Sprintf("%d bucket(s) could not be read - grant s3:GetBucketVersioning/Logging/Policy/Acl (SecurityAudit)", denied))
 	}
 }

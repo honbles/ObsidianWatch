@@ -46,7 +46,7 @@ function SSHTerminal({ session, onClose }) {
     let dead = false
     let ro   = null
 
-    // ── 1. Open WebSocket IMMEDIATELY — do not wait for xterm ──────────────
+    // ── 1. Open WebSocket IMMEDIATELY - do not wait for xterm ──────────────
     // The terminal WS must open as fast as possible so the server sends
     // open_session to the agent before the agent-side tunnel times out.
     // Buffer for data arriving before xterm is ready
@@ -82,14 +82,14 @@ function SSHTerminal({ session, onClose }) {
         if (term) {
           term.write(data)
         } else {
-          buffer.push(data) // xterm not ready yet — buffer it
+          buffer.push(data) // xterm not ready yet - buffer it
         }
       }
 
       ws.onerror = (e) => {
         if (dead) return
         setStatus('error')
-        setErrorMsg('WebSocket connection failed — check server logs')
+        setErrorMsg('WebSocket connection failed - check server logs')
         if (term) term.writeln('\r\n\x1b[31m✗ Connection failed\x1b[0m')
       }
 
@@ -151,7 +151,7 @@ function SSHTerminal({ session, onClose }) {
       }
 
       // Terminal input → WebSocket
-      // xterm gives us strings — encode to UTF-8 bytes then send as binary
+      // xterm gives us strings - encode to UTF-8 bytes then send as binary
       // The backend expects raw bytes (it json.Marshal's them before forwarding)
       // Keep the remote PTY the same size as the browser terminal. Sent as a
       // TEXT frame (keystrokes are binary), clamped server-side.
@@ -174,7 +174,7 @@ function SSHTerminal({ session, onClose }) {
 
     mountTerminal().catch(err => {
       console.error('xterm load failed:', err)
-      setErrorMsg('Terminal failed to load — check internet connectivity')
+      setErrorMsg('Terminal failed to load - check internet connectivity')
       setStatus('error')
     })
 
@@ -360,7 +360,7 @@ export default function LiveResponse() {
                   {!agent.lr_ready ? (
                     <div className="flex items-center gap-1.5 text-[10px] text-yellow-400 bg-yellow-950/20 px-2 py-1 rounded border border-yellow-800">
                       <AlertTriangle size={9} />
-                      {!agent.lr_username ? 'No credentials — rebuild agent' : 'Tunnel offline'}
+                      {!agent.lr_username ? 'No credentials - rebuild agent' : 'Tunnel offline'}
                     </div>
                   ) : isActive ? (
                     <div className="flex items-center gap-1.5 text-[10px] text-emerald-400">

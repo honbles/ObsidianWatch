@@ -229,7 +229,7 @@ func handleGetCSPM(db *store.DB) http.HandlerFunc {
 	}
 }
 
-// handleCSPMAIExplain — AI explanation for a CSPM finding or AI summary of full scan
+// handleCSPMAIExplain - AI explanation for a CSPM finding or AI summary of full scan
 // cspmExplainLimiter: 20 AI explain calls per IP per 10 minutes (G-24).
 var cspmExplainLimiter = NewRateLimiter(10*time.Minute, 20)
 
@@ -240,7 +240,7 @@ func handleCSPMAIExplain(cfg *config.Config, db *store.DB) http.HandlerFunc {
 			Finding interface{} `json:"finding,omitempty"`
 		}
 		// G-24 (interim): this endpoint forwards a client-built prompt to a paid
-		// LLM, so bound it — request body cap, prompt length cap, per-IP rate
+		// LLM, so bound it - request body cap, prompt length cap, per-IP rate
 		// limit. (Full fix: accept a finding ID and build the prompt server-side.)
 		if !cspmExplainLimiter.Allow(clientIP(r)) {
 			writeJSON(w, 429, map[string]string{"error": "too many AI requests, try again later"})
@@ -401,7 +401,7 @@ func handleGetCompliance(db *store.DB) http.HandlerFunc {
 		}
 		if err != nil || val == "" {
 			writeJSON(w, 200, map[string]interface{}{
-				"message":  "No compliance report yet — run a CSPM scan first",
+				"message":  "No compliance report yet - run a CSPM scan first",
 				"controls": []interface{}{},
 				"scores":   []interface{}{},
 			})
@@ -430,7 +430,7 @@ func handleRunCompliance(db *store.DB) http.HandlerFunc {
 			// AWS maps from the benchmark result so unrun checks stay NOT_ASSESSED.
 			val, verr := db.GetSetting(r.Context(), fmt.Sprintf("cis:aws:%d", id))
 			if verr != nil || val == "" {
-				writeJSON(w, 404, map[string]string{"error": "no AWS benchmark result found — run the CIS benchmark scan first"})
+				writeJSON(w, 404, map[string]string{"error": "no AWS benchmark result found - run the CIS benchmark scan first"})
 				return
 			}
 			var cis CISAzureResult
@@ -453,7 +453,7 @@ func handleRunCompliance(db *store.DB) http.HandlerFunc {
 		cspmKey := fmt.Sprintf("cspm:%s:%d", cspmProvider, id)
 		cspmVal, cspmErr := db.GetSetting(r.Context(), cspmKey)
 		if cspmErr != nil || cspmVal == "" {
-			writeJSON(w, 404, map[string]string{"error": "no CSPM result found — run a scan first"})
+			writeJSON(w, 404, map[string]string{"error": "no CSPM result found - run a scan first"})
 			return
 		}
 

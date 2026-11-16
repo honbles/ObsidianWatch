@@ -4,7 +4,7 @@
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
 -- Live response credentials per agent
--- The password is stored bcrypt-hashed — plaintext never touches the DB.
+-- The password is stored bcrypt-hashed - plaintext never touches the DB.
 CREATE TABLE IF NOT EXISTS lr_credentials (
     agent_id      TEXT        PRIMARY KEY REFERENCES agents(id) ON DELETE CASCADE,
     username      TEXT        NOT NULL,

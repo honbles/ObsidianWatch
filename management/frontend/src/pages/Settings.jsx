@@ -106,12 +106,12 @@ const API_KEY_GROUPS = [
     color: 'text-red-400',
     border: 'border-red-800/30',
     bg: 'bg-red-950/10',
-    desc: 'Real CVE data from authoritative databases — no AI guessing.',
+    desc: 'Real CVE data from authoritative databases - no AI guessing.',
     keys: [
       {
         key: 'nvd_api_key',
         label: 'NVD API Key',
-        placeholder: 'Optional — improves rate limit 5x',
+        placeholder: 'Optional - improves rate limit 5x',
         desc: 'National Vulnerability Database. Used for package CVE lookups. Works without a key but rate-limited.',
         link: 'https://nvd.nist.gov/developers/request-an-api-key',
         linkLabel: 'Get free key →',
@@ -148,16 +148,16 @@ const API_KEY_GROUPS = [
         badgeColor: 'text-purple-400 bg-purple-950/30 border-purple-800/40',
         isSelect: true,
         options: [
-          { value: 'free',       label: 'Free — 4 req/min' },
-          { value: 'standard',   label: 'Standard — 500 req/min' },
-          { value: 'premium',    label: 'Premium/Enterprise — 1000 req/min' },
+          { value: 'free',       label: 'Free - 4 req/min' },
+          { value: 'standard',   label: 'Standard - 500 req/min' },
+          { value: 'premium',    label: 'Premium/Enterprise - 1000 req/min' },
         ],
       },
       {
         key: 'abuseipdb_api_key',
         label: 'AbuseIPDB API Key',
         placeholder: 'Your AbuseIPDB API key',
-        desc: 'IP reputation lookups (abuse score, reports, ISP, Tor). This is a key from abuseipdb.com — it is NOT the abuse.ch ThreatFox key (a different service). Results are cached 24h; capped at 900 lookups/day to stay inside the free tier.',
+        desc: 'IP reputation lookups (abuse score, reports, ISP, Tor). This is a key from abuseipdb.com - it is NOT the abuse.ch ThreatFox key (a different service). Results are cached 24h; capped at 900 lookups/day to stay inside the free tier.',
         link: 'https://www.abuseipdb.com/account/api',
         linkLabel: 'Get free key →',
         badge: 'IP intel',
@@ -197,7 +197,7 @@ const API_KEY_GROUPS = [
         key: 'otx_api_key',
         label: 'OTX API Key (AlienVault)',
         placeholder: 'Your OTX API key',
-        desc: 'Open Threat Exchange — community threat intelligence.',
+        desc: 'Open Threat Exchange - community threat intelligence.',
         link: 'https://otx.alienvault.com/api',
         linkLabel: 'Get free key →',
         badge: 'Threat feed',
@@ -332,7 +332,7 @@ function APIKeysSettings() {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    // Just trigger a load to show the page — each row loads itself
+    // Just trigger a load to show the page - each row loads itself
     setLoading(false)
   }, [])
 
@@ -376,7 +376,7 @@ function APIKeysSettings() {
         <p className="font-medium text-siem-muted mb-1">Security note</p>
         <p>API keys are only transmitted directly to the respective service.
         ObsidianWatch never proxies your API calls through any third-party infrastructure.
-        Use the minimum permission scopes required — read-only where possible.</p>
+        Use the minimum permission scopes required - read-only where possible.</p>
       </div>
     </div>
   )
@@ -524,11 +524,11 @@ function SMTPSettings() {
         <div>
           <label className="block text-[10px] uppercase tracking-wider text-siem-muted mb-1">Minimum Severity to Email</label>
           <select className={inputCls} value={form.min_severity} onChange={e => set('min_severity', parseInt(e.target.value))}>
-            <option value={1}>1 — Info (all alerts)</option>
-            <option value={2}>2 — Low+</option>
-            <option value={3}>3 — Medium+</option>
-            <option value={4}>4 — High+ (recommended)</option>
-            <option value={5}>5 — Critical only</option>
+            <option value={1}>1 - Info (all alerts)</option>
+            <option value={2}>2 - Low+</option>
+            <option value={3}>3 - Medium+</option>
+            <option value={4}>4 - High+ (recommended)</option>
+            <option value={5}>5 - Critical only</option>
           </select>
         </div>
         <Result result={saveResult}/>

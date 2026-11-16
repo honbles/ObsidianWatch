@@ -1,6 +1,6 @@
 package api
 
-// cloud_gcp_baseline.go — Behavioural baseline and anomaly detection for GCP.
+// cloud_gcp_baseline.go - Behavioural baseline and anomaly detection for GCP.
 //
 // Maintains per-principal baselines persisted in the settings table:
 //   - Known source IPs (with first/last seen and count)
@@ -42,7 +42,7 @@ type principalBaseline struct {
 	UpdatedAt    time.Time           `json:"updated_at"`
 	EventCount   int                 `json:"event_count"`
 	// G-30: learning watermark (latest event time already folded in) makes the
-	// rebuild idempotent — restarts and overlapping windows no longer double count.
+	// rebuild idempotent - restarts and overlapping windows no longer double count.
 	Watermark time.Time `json:"watermark,omitempty"`
 }
 
@@ -356,7 +356,7 @@ func (e *GCPBaselineEngine) detectAnomalies(ctx context.Context, events []store.
 							sanitiseKey(principal), hour, day)
 						e.fireAlert(ctx, dedupKey,
 							"[ANOM] GCP High-Severity Action Outside Normal Working Hours",
-							fmt.Sprintf("Principal %s performed sensitive operation '%s' at %02d:00 UTC — this hour accounts for only %d/%d (%.1f%%) of their historical activity. After-hours admin actions are a common indicator of compromise or insider threat.",
+							fmt.Sprintf("Principal %s performed sensitive operation '%s' at %02d:00 UTC - this hour accounts for only %d/%d (%.1f%%) of their historical activity. After-hours admin actions are a common indicator of compromise or insider threat.",
 								principal, extractMethod(ev), hour,
 								normalActivity, totalEvents,
 								float64(normalActivity)/float64(totalEvents)*100),
@@ -392,7 +392,7 @@ func (e *GCPBaselineEngine) detectAnomalies(ctx context.Context, events []store.
 			}
 		}
 
-		// ── ANOM-GCP-005: Impossible travel — two events from distant IPs ────
+		// ── ANOM-GCP-005: Impossible travel - two events from distant IPs ────
 		// G-31 interim: without a GeoIP source a /16 mismatch is only "different
 		// network", not "distant" (phone hotspot, VPN). Service accounts are
 		// covered by ANOM-004; severity drops to Medium and the title no
@@ -419,7 +419,7 @@ func (e *GCPBaselineEngine) detectAnomalies(ctx context.Context, events []store.
 						sanitiseKey(principal), sanitiseKey(srcIP), sanitiseKey(otherIP), hour)
 					e.fireAlert(ctx, dedupKey,
 						"[ANOM] Concurrent Use from Two Different Networks",
-						fmt.Sprintf("Principal %s made API calls from IP %s and IP %s within 30 minutes. These IPs are on different /16 subnets, which may indicate shared credentials — or a VPN / mobile hotspot. Verify with the user.",
+						fmt.Sprintf("Principal %s made API calls from IP %s and IP %s within 30 minutes. These IPs are on different /16 subnets, which may indicate shared credentials - or a VPN / mobile hotspot. Verify with the user.",
 							principal, srcIP, otherIP),
 						3, "T1078.004", "Initial Access", ev)
 				}
@@ -458,7 +458,7 @@ func (e *GCPBaselineEngine) detectAnomalies(ctx context.Context, events []store.
 					hour := ev.Time.UTC().Format("2006010215")
 					dedupKey := fmt.Sprintf("anom:006:p:%s:h:%s", sanitiseKey(principal), hour)
 					e.fireAlert(ctx, dedupKey,
-						"[ANOM] Large Data Read — Possible Exfiltration",
+						"[ANOM] Large Data Read - Possible Exfiltration",
 						fmt.Sprintf("Principal %s read %.1f GB of data in a single API call. Large single-read events from BigQuery or Cloud Storage are a strong indicator of bulk data exfiltration.",
 							principal, float64(bytesThisEvent)/1e9),
 						4, "T1530", "Exfiltration", ev)
@@ -596,7 +596,7 @@ func sanitiseKey(s string) string {
 func ipPrefix16(ip string) string {
 	if strings.Contains(ip, ":") {
 		return ""
-	} // IPv6 — skip
+	} // IPv6 - skip
 	parts := strings.Split(ip, ".")
 	if len(parts) < 2 {
 		return ""

@@ -2,7 +2,7 @@
 
 package collector
 
-// vuln.go — Enterprise vulnerability scanner (Linux)
+// vuln.go - Enterprise vulnerability scanner (Linux)
 //
 // What it collects:
 //   1. Full TCP port scan 1-65535 (200 concurrent, 500ms timeout)
@@ -133,7 +133,7 @@ func NewVulnScanner(cfg VulnScannerConfig, agentID, host, osStr string,
 
 func (v *VulnScanner) Run(ctx context.Context) {
 	if !v.cfg.Enabled { return }
-	v.logger.Info("vuln: scanner ready — first scan in 30s")
+	v.logger.Info("vuln: scanner ready - first scan in 30s")
 	select { case <-ctx.Done(): return; case <-time.After(30 * time.Second): }
 	v.scan(ctx)
 	ticker := time.NewTicker(v.cfg.ScanInterval)
@@ -228,7 +228,7 @@ func (v *VulnScanner) scan(ctx context.Context) {
 		Source:    "vuln-scanner",
 		Raw:       raw,
 	}
-	// Blocking send — a vuln scan is a critical once-every-5-days event.
+	// Blocking send - a vuln scan is a critical once-every-5-days event.
 	// We must not silently drop it. Wait up to 30s for the channel to drain.
 	select {
 	case v.out <- ev:
@@ -298,7 +298,7 @@ func (v *VulnScanner) probeTCP(port int) *PortResult {
 	return r
 }
 
-// ── UDP scan (common ports only — UDP is stateless, harder to scan) ───────────
+// ── UDP scan (common ports only - UDP is stateless, harder to scan) ───────────
 
 var udpPorts = []int{53, 67, 68, 69, 123, 137, 138, 161, 162, 500, 514, 1194, 1900, 4500, 5353}
 
@@ -417,7 +417,7 @@ func collectServices() []RunningService {
 		return services
 	}
 
-	// /proc fallback — read /proc/*/comm
+	// /proc fallback - read /proc/*/comm
 	entries, err := os.ReadDir("/proc")
 	if err != nil { return services }
 	seen := map[string]bool{}
@@ -453,7 +453,7 @@ func collectSecurityFindings() []SecurityFinding {
 						Category: "SUID Binary",
 						Severity: 4,
 						Title:    fmt.Sprintf("Suspicious SUID binary: %s", b),
-						Detail:   fmt.Sprintf("SUID bit set on %s — can be used for privilege escalation", b),
+						Detail:   fmt.Sprintf("SUID bit set on %s - can be used for privilege escalation", b),
 						Fix:      fmt.Sprintf("Remove SUID bit: chmod u-s %s", b),
 					})
 				}
@@ -464,7 +464,7 @@ func collectSecurityFindings() []SecurityFinding {
 				Category: "SUID Binaries",
 				Severity: 2,
 				Title:    fmt.Sprintf("%d SUID binaries found", len(binaries)),
-				Detail:   "Large number of SUID binaries — review for privilege escalation risk",
+				Detail:   "Large number of SUID binaries - review for privilege escalation risk",
 				Fix:      "Audit SUID binaries with: find / -perm -4000 -type f 2>/dev/null",
 			})
 		}
@@ -487,7 +487,7 @@ func collectSecurityFindings() []SecurityFinding {
 				Category: "SSH Configuration",
 				Severity: 3,
 				Title:    "SSH password authentication enabled",
-				Detail:   "Password authentication is enabled — prefer key-based auth to prevent brute force",
+				Detail:   "Password authentication is enabled - prefer key-based auth to prevent brute force",
 				Fix:      "Set 'PasswordAuthentication no' and use SSH keys instead",
 			})
 		}
@@ -520,7 +520,7 @@ func collectSecurityFindings() []SecurityFinding {
 					Category: "User Accounts",
 					Severity: 5,
 					Title:    fmt.Sprintf("Non-root user with UID 0: %s", parts[0]),
-					Detail:   "User has root-level UID — this is a critical security issue",
+					Detail:   "User has root-level UID - this is a critical security issue",
 					Fix:      fmt.Sprintf("Investigate and remove: userdel %s", parts[0]),
 				})
 			}
@@ -597,7 +597,7 @@ func sanitizeBanner(b []byte) string {
 	for _, c := range b {
 		// Keep printable ASCII and common whitespace
 		if c == 0x00 {
-			continue // null byte — kills JSON
+			continue // null byte - kills JSON
 		}
 		if c < 0x20 && c != 0x09 && c != 0x0a && c != 0x0d {
 			continue // control characters except tab/LF/CR
@@ -638,47 +638,47 @@ type portRisk struct {
 var portRisks = map[int]portRisk{
 	21:    {label: "FTP", detail: "FTP transmits credentials and data in plaintext. Use SFTP or FTPS instead.", severity: 4},
 	23:    {label: "Telnet", detail: "Telnet transmits all traffic including credentials in plaintext. Replace with SSH immediately.", severity: 5},
-	25:    {label: "SMTP open relay", detail: "SMTP port exposed — verify relay restrictions to prevent spam abuse.", severity: 3},
-	53:    {label: "DNS", detail: "DNS service exposed — ensure recursion is restricted to authorised clients.", severity: 2},
+	25:    {label: "SMTP open relay", detail: "SMTP port exposed - verify relay restrictions to prevent spam abuse.", severity: 3},
+	53:    {label: "DNS", detail: "DNS service exposed - ensure recursion is restricted to authorised clients.", severity: 2},
 	69:    {label: "TFTP", detail: "TFTP has no authentication. Remove if not required.", severity: 4},
 	79:    {label: "Finger", detail: "Finger protocol exposes user information. Disable immediately.", severity: 4},
 	111:   {label: "RPC portmapper", detail: "RPC portmapper enables discovery of RPC services. Restrict to internal networks.", severity: 3},
-	135:   {label: "MSRPC", detail: "Microsoft RPC endpoint mapper — common attack surface.", severity: 3},
+	135:   {label: "MSRPC", detail: "Microsoft RPC endpoint mapper - common attack surface.", severity: 3},
 	137:   {label: "NetBIOS", detail: "NetBIOS exposes hostname and domain information. Block at perimeter.", severity: 3},
-	139:   {label: "NetBIOS Session", detail: "NetBIOS session service — legacy, often exploited. Disable if not needed.", severity: 3},
+	139:   {label: "NetBIOS Session", detail: "NetBIOS session service - legacy, often exploited. Disable if not needed.", severity: 3},
 	445:   {label: "SMB", detail: "SMB is the primary vector for ransomware (EternalBlue/WannaCry). Ensure patched and not internet-facing.", severity: 4},
 	512:   {label: "rexec", detail: "Remote execution service with no encryption. Disable immediately.", severity: 5},
 	513:   {label: "rlogin", detail: "Remote login with no encryption. Disable immediately.", severity: 5},
 	514:   {label: "rsh/syslog", detail: "Remote shell (rsh) has no authentication. Disable if not syslog-only.", severity: 4},
-	873:   {label: "rsync", detail: "rsync exposed — verify authentication is configured to prevent data exfiltration.", severity: 3},
-	1080:  {label: "SOCKS proxy", detail: "SOCKS proxy exposed — could be used for traffic proxying by attackers.", severity: 4},
+	873:   {label: "rsync", detail: "rsync exposed - verify authentication is configured to prevent data exfiltration.", severity: 3},
+	1080:  {label: "SOCKS proxy", detail: "SOCKS proxy exposed - could be used for traffic proxying by attackers.", severity: 4},
 	1433:  {label: "MSSQL", detail: "Microsoft SQL Server exposed on network. Restrict to application servers only.", severity: 4},
 	1521:  {label: "Oracle DB", detail: "Oracle database exposed on network. Restrict to application servers only.", severity: 4},
-	2049:  {label: "NFS", detail: "NFS share exposed — check export permissions to prevent unauthorised access.", severity: 3},
+	2049:  {label: "NFS", detail: "NFS share exposed - check export permissions to prevent unauthorised access.", severity: 3},
 	2375:  {label: "Docker API (unauthenticated)", detail: "Docker daemon API exposed WITHOUT TLS. Full root container escape possible. Close immediately.", severity: 5},
 	2376:  {label: "Docker API (TLS)", detail: "Docker daemon API exposed with TLS. Verify certificate authentication is required.", severity: 3},
 	3306:  {label: "MySQL", detail: "MySQL database exposed on network. Bind to localhost or restrict via firewall.", severity: 4},
-	3389:  {label: "RDP", detail: "Remote Desktop exposed — common brute-force and BlueKeep exploitation target. Use VPN instead.", severity: 4},
+	3389:  {label: "RDP", detail: "Remote Desktop exposed - common brute-force and BlueKeep exploitation target. Use VPN instead.", severity: 4},
 	4444:  {label: "Metasploit default", detail: "Port 4444 is the default Metasploit listener. Investigate for C2 activity immediately.", severity: 5},
 	4848:  {label: "GlassFish admin", detail: "GlassFish administration console exposed. Restrict to localhost.", severity: 4},
 	5432:  {label: "PostgreSQL", detail: "PostgreSQL database exposed on network. Bind to localhost or restrict via firewall.", severity: 4},
 	5900:  {label: "VNC", detail: "VNC remote desktop often has weak or no authentication. Use SSH tunnel instead.", severity: 4},
-	5984:  {label: "CouchDB", detail: "CouchDB admin interface — often unauthenticated in default installs.", severity: 4},
+	5984:  {label: "CouchDB", detail: "CouchDB admin interface - often unauthenticated in default installs.", severity: 4},
 	6379:  {label: "Redis", detail: "Redis has no authentication by default. Any client can read/write/delete all data.", severity: 4},
 	6443:  {label: "Kubernetes API", detail: "Kubernetes API server exposed. Verify RBAC and authentication are configured.", severity: 4},
-	7001:  {label: "WebLogic", detail: "Oracle WebLogic server — frequently targeted by deserialization exploits.", severity: 4},
-	8080:  {label: "HTTP (alt)", detail: "Unencrypted HTTP service — credentials and data transmitted in plaintext.", severity: 3},
-	8443:  {label: "HTTPS (alt)", detail: "Alternate HTTPS port — verify valid certificate and modern TLS version.", severity: 2},
-	8888:  {label: "Jupyter Notebook", detail: "Jupyter Notebook may be exposed without authentication — provides code execution.", severity: 5},
-	9000:  {label: "SonarQube / PHP-FPM", detail: "Could be SonarQube admin console or PHP-FPM — restrict to localhost.", severity: 3},
-	9090:  {label: "Prometheus", detail: "Prometheus metrics endpoint — exposes internal service metrics. Restrict access.", severity: 3},
+	7001:  {label: "WebLogic", detail: "Oracle WebLogic server - frequently targeted by deserialization exploits.", severity: 4},
+	8080:  {label: "HTTP (alt)", detail: "Unencrypted HTTP service - credentials and data transmitted in plaintext.", severity: 3},
+	8443:  {label: "HTTPS (alt)", detail: "Alternate HTTPS port - verify valid certificate and modern TLS version.", severity: 2},
+	8888:  {label: "Jupyter Notebook", detail: "Jupyter Notebook may be exposed without authentication - provides code execution.", severity: 5},
+	9000:  {label: "SonarQube / PHP-FPM", detail: "Could be SonarQube admin console or PHP-FPM - restrict to localhost.", severity: 3},
+	9090:  {label: "Prometheus", detail: "Prometheus metrics endpoint - exposes internal service metrics. Restrict access.", severity: 3},
 	9200:  {label: "Elasticsearch", detail: "Elasticsearch often has no authentication by default. All data readable by anyone.", severity: 4},
-	9300:  {label: "Elasticsearch cluster", detail: "Elasticsearch cluster communication port — should never be internet-facing.", severity: 4},
-	10250: {label: "Kubernetes kubelet", detail: "Kubernetes kubelet API — can be used to execute commands in pods.", severity: 5},
+	9300:  {label: "Elasticsearch cluster", detail: "Elasticsearch cluster communication port - should never be internet-facing.", severity: 4},
+	10250: {label: "Kubernetes kubelet", detail: "Kubernetes kubelet API - can be used to execute commands in pods.", severity: 5},
 	11211: {label: "Memcached", detail: "Memcached has no authentication. Data readable by anyone and used in DDoS amplification.", severity: 4},
-	15672: {label: "RabbitMQ management", detail: "RabbitMQ management UI — restrict to internal networks.", severity: 3},
+	15672: {label: "RabbitMQ management", detail: "RabbitMQ management UI - restrict to internal networks.", severity: 3},
 	27017: {label: "MongoDB", detail: "MongoDB has no authentication in default installs. All data readable by anyone.", severity: 4},
-	50000: {label: "Jenkins", detail: "Jenkins CI/CD — often contains credentials and code. Verify authentication.", severity: 4},
+	50000: {label: "Jenkins", detail: "Jenkins CI/CD - often contains credentials and code. Verify authentication.", severity: 4},
 }
 
 func assessPortRisk(r *PortResult) {
@@ -705,17 +705,17 @@ func checkVersionRisk(r *PortResult) {
 		{"OpenSSH", "1.", "OpenSSH 1.x is extremely outdated with many critical CVEs", 5},
 		{"OpenSSH", "2.", "OpenSSH 2.x is extremely outdated with many critical CVEs", 5},
 		{"OpenSSH", "3.", "OpenSSH 3.x is end-of-life with known critical vulnerabilities", 5},
-		{"OpenSSH", "4.", "OpenSSH 4.x is end-of-life — upgrade to 8.x+", 4},
-		{"OpenSSH", "5.", "OpenSSH 5.x is end-of-life — upgrade to 8.x+", 4},
-		{"OpenSSH", "6.", "OpenSSH 6.x is end-of-life — upgrade to 8.x+", 3},
+		{"OpenSSH", "4.", "OpenSSH 4.x is end-of-life - upgrade to 8.x+", 4},
+		{"OpenSSH", "5.", "OpenSSH 5.x is end-of-life - upgrade to 8.x+", 4},
+		{"OpenSSH", "6.", "OpenSSH 6.x is end-of-life - upgrade to 8.x+", 3},
 		{"OpenSSH", "7.", "OpenSSH 7.x may be vulnerable to CVE-2023-38408 and others", 3},
 		{"Apache httpd", "1.", "Apache 1.x is end-of-life", 5},
-		{"Apache httpd", "2.2", "Apache 2.2 is end-of-life — upgrade to 2.4+", 4},
+		{"Apache httpd", "2.2", "Apache 2.2 is end-of-life - upgrade to 2.4+", 4},
 		{"Apache httpd", "2.4.4", "Apache 2.4.49/50 are vulnerable to path traversal (CVE-2021-41773)", 4},
-		{"nginx", "1.1", "nginx 1.1x branch may be outdated — check for CVEs", 3},
+		{"nginx", "1.1", "nginx 1.1x branch may be outdated - check for CVEs", 3},
 		{"MySQL", "5.5", "MySQL 5.5 is end-of-life", 4},
 		{"MySQL", "5.6", "MySQL 5.6 is end-of-life", 4},
-		{"MySQL", "5.7", "MySQL 5.7 reaches EOL — plan upgrade to 8.0+", 3},
+		{"MySQL", "5.7", "MySQL 5.7 reaches EOL - plan upgrade to 8.0+", 3},
 		{"Redis", "2.", "Redis 2.x is end-of-life", 4},
 		{"Redis", "3.", "Redis 3.x is end-of-life", 4},
 		{"Redis", "4.", "Redis 4.x is end-of-life", 3},

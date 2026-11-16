@@ -1,6 +1,6 @@
 package api
 
-// nvd.go — NVD (National Vulnerability Database) CVE lookup
+// nvd.go - NVD (National Vulnerability Database) CVE lookup
 //
 // Uses NVD API v2: https://nvd.nist.gov/developers/vulnerabilities
 //
@@ -118,7 +118,7 @@ type NVDClient struct {
 
 func NewNVDClient(apiKey string, logger *slog.Logger) *NVDClient {
 	// Conservative rate: 1 request per second regardless of key
-	// This means 3000 packages takes ~50min — too slow for live requests
+	// This means 3000 packages takes ~50min - too slow for live requests
 	// So we batch: query by package name only (not version), cache 24h
 	limiter := make(chan struct{}, 1)
 	go func() {
@@ -156,7 +156,7 @@ func (c *NVDClient) query(ctx context.Context, keyword string, maxResults int) (
 	defer resp.Body.Close()
 
 	if resp.StatusCode == 429 {
-		return nil, fmt.Errorf("NVD rate limit hit — add an API key in Settings")
+		return nil, fmt.Errorf("NVD rate limit hit - add an API key in Settings")
 	}
 	if resp.StatusCode != 200 {
 		return nil, fmt.Errorf("NVD API error: %s", resp.Status)
@@ -175,7 +175,7 @@ func (c *NVDClient) query(ctx context.Context, keyword string, maxResults int) (
 // LookupPackage finds CVEs for a specific package name + version.
 // Returns only CVEs with CVSS >= minScore.
 func (c *NVDClient) LookupPackage(ctx context.Context, name, version string, minScore float64) ([]CVEFinding, error) {
-	// Normalise name — strip debian epoch, build metadata
+	// Normalise name - strip debian epoch, build metadata
 	cleanName    := normalisePackageName(name)
 	cleanVersion := normaliseVersion(version)
 
@@ -185,7 +185,7 @@ func (c *NVDClient) LookupPackage(ctx context.Context, name, version string, min
 		return cached, nil
 	}
 
-	// Query NVD — keyword = "name version"
+	// Query NVD - keyword = "name version"
 	// NVD full-text search is good enough for most cases
 	keyword := cleanName
 	if cleanVersion != "" {
@@ -235,7 +235,7 @@ func (c *NVDClient) LookupPackage(ctx context.Context, name, version string, min
 // Uses a worker pool to respect rate limits.
 // Only queries packages that are commonly vulnerable (not system libs).
 func (c *NVDClient) LookupPackages(ctx context.Context, packages []map[string]interface{}, minScore float64) ([]CVEFinding, error) {
-	// Filter to packages worth querying — saves significant API calls
+	// Filter to packages worth querying - saves significant API calls
 	interesting := filterNVDPackages(packages)
 
 	if len(interesting) == 0 {
@@ -244,7 +244,7 @@ func (c *NVDClient) LookupPackages(ctx context.Context, packages []map[string]in
 
 	c.logger.Info("nvd: looking up CVEs", "packages", len(interesting), "total", len(packages))
 
-	// Worker pool — 3 concurrent workers to stay within rate limits
+	// Worker pool - 3 concurrent workers to stay within rate limits
 	type workItem struct {
 		name, version string
 	}
@@ -301,7 +301,7 @@ func (c *NVDClient) LookupPackages(ctx context.Context, packages []map[string]in
 // Skips pure system libraries, fonts, locales etc.
 // This reduces API calls from 3000 to ~200-400 for a typical Linux system.
 func filterNVDPackages(packages []map[string]interface{}) []map[string]interface{} {
-	// Packages worth checking — user-facing software, servers, runtimes, tools
+	// Packages worth checking - user-facing software, servers, runtimes, tools
 	worthChecking := []string{
 		"openssl", "openssh", "nginx", "apache", "apache2", "httpd",
 		"mysql", "mariadb", "postgresql", "mongodb", "redis", "memcached",
@@ -366,7 +366,7 @@ func filterNVDPackages(packages []map[string]interface{}) []map[string]interface
 					if strings.Contains(lname, il) { interesting = true; break }
 				}
 			} else {
-				// Non-lib package — include it (developer tool, server, runtime, etc)
+				// Non-lib package - include it (developer tool, server, runtime, etc)
 				interesting = true
 			}
 		}

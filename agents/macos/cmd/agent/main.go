@@ -225,7 +225,7 @@ func main() {
 		go func() { h.Run(ctx) }()
 	}
 
-	// Vulnerability scanner — full TCP port scan of localhost every 5 days
+	// Vulnerability scanner - full TCP port scan of localhost every 5 days
 	{
 		vs := collector.NewVulnScanner(collector.VulnScannerConfig{
 			Enabled:      true,
@@ -242,7 +242,7 @@ func main() {
 		}()
 	}
 
-	// Location collector — always runs, posts to backend every 30 minutes
+	// Location collector - always runs, posts to backend every 30 minutes
 	{
 		loc := collector.NewLocationCollector(
 			30*time.Minute,
@@ -256,7 +256,7 @@ func main() {
 		activeCollectors = append(activeCollectors, "location")
 	}
 
-	// Live Response — analyst terminal access. H-2: opt-in only.
+	// Live Response - analyst terminal access. H-2: opt-in only.
 	if cfg.LiveResponse.Enabled {
 		lr := collector.NewLiveResponseCollector(
 			agentID, hostname,

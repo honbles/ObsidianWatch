@@ -105,7 +105,7 @@ func (db *DB) DeleteUser(ctx context.Context, id int64) error {
 
 // SeedAdmin creates the default admin user if no users exist. M-06: the
 // seeded password is a random, one-time-use value rather than a predictable
-// "changeme" — a fixed default password is effectively no authentication at
+// "changeme" - a fixed default password is effectively no authentication at
 // all for any instance the operator hasn't logged into yet. The generated
 // password is returned so the caller can print it once; it is never stored
 // or logged anywhere, only its bcrypt hash is persisted.

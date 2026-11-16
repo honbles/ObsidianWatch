@@ -1,6 +1,6 @@
 package api
 
-// graph_anchor.go — Alert Graph phase 2. Every alert resolves to one or more
+// graph_anchor.go - Alert Graph phase 2. Every alert resolves to one or more
 // anchors (spec §3.1). deriveAnchors is pure: event in, anchors out. The
 // anchor linker persists them in alert_entities for every engine via
 // store.AlertCreatedHook, so no engine call site needs to change.

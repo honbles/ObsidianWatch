@@ -1,6 +1,6 @@
 package api
 
-// cloud_gcp_assets.go — GCP Asset Inventory (CMDB).
+// cloud_gcp_assets.go - GCP Asset Inventory (CMDB).
 //
 // Enumerates all GCP resources regardless of whether they have findings.
 // Uses the Cloud Asset Inventory API (cloudasset.googleapis.com).
@@ -15,8 +15,8 @@ package api
 // Required API: cloudasset.googleapis.com
 //
 // API endpoints:
-//   GET /api/v1/cloud-connectors/{id}/assets   — list all inventoried assets
-//   POST /api/v1/cloud-connectors/{id}/assets  — trigger re-inventory
+//   GET /api/v1/cloud-connectors/{id}/assets   - list all inventoried assets
+//   POST /api/v1/cloud-connectors/{id}/assets  - trigger re-inventory
 
 import (
 	"context"
@@ -155,7 +155,7 @@ func RunGCPAssetInventory(ctx context.Context, saJSON, projectID string, connID 
 		}
 		prev = &GCPAssetInventory{Assets: kept, ConnectorID: prev.ConnectorID}
 		// prev now excludes skipped types; allAssets includes carried ones, so
-		// they'd show as "new" — filter them back out below.
+		// they'd show as "new" - filter them back out below.
 	}
 	if prev != nil {
 		newAssets, deleted := computeDeltas(prev.Assets, allAssets)
@@ -369,7 +369,7 @@ func handleGetGCPAssets(db *store.DB) http.HandlerFunc {
 		if inv == nil {
 			w.Header().Set("Content-Type", "application/json")
 			json.NewEncoder(w).Encode(map[string]interface{}{
-				"message": "No inventory yet — run a scan first",
+				"message": "No inventory yet - run a scan first",
 				"assets":  []struct{}{},
 			})
 			return

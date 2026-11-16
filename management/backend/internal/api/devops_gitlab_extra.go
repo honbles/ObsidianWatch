@@ -1,6 +1,6 @@
 package api
 
-// devops_gitlab_extra.go — DO-11: GitLab pipeline runs and project events that
+// devops_gitlab_extra.go - DO-11: GitLab pipeline runs and project events that
 // work on every tier. Group audit events need Premium; project events do not,
 // so membership changes and project create/destroy are still seen without it.
 

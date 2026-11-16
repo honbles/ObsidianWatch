@@ -1,6 +1,6 @@
 package api
 
-// rule_meta.go — rule contract metadata shared by both builds. Owned by the
+// rule_meta.go - rule contract metadata shared by both builds. Owned by the
 // integration owner. A side registers metadata for its own rule IDs from its
 // own files (see RegisterRuleMeta); it never edits ThreatSig.
 

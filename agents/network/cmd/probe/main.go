@@ -1,15 +1,15 @@
 package main
 
-// main.go — ObsidianWatch Network Probe entry point
+// main.go - ObsidianWatch Network Probe entry point
 //
 // Commands:
-//   (no args)                       — run the probe
+//   (no args)                       - run the probe
 //   install [--subnet 192.168.1.0/24] [--community public] [--site "HQ"]
-//                                   — install as systemd service + write config
-//   uninstall                       — remove service + binary
+//                                   - install as systemd service + write config
+//   uninstall                       - remove service + binary
 //   discover --subnet 192.168.1.0/24 [--community public]
-//                                   — scan subnet, print discovered devices
-//   version                         — print version
+//                                   - scan subnet, print discovered devices
+//   version                         - print version
 
 import (
 	"context"
@@ -62,7 +62,7 @@ func main() {
 // ── Run ───────────────────────────────────────────────────────────────────────
 
 func runProbe() {
-	// Load config — embedded (baked by agent builder) takes priority
+	// Load config - embedded (baked by agent builder) takes priority
 	var cfg *cfg_pkg.Config
 	var err error
 	if cfg_pkg.EmbeddedConfig != "" {
@@ -85,7 +85,7 @@ func runProbe() {
 	// Ensure data directory exists
 	mustMkdir(dataDir)
 
-	// Probe ID — stable across restarts
+	// Probe ID - stable across restarts
 	probeID := loadOrCreateID(filepath.Join(dataDir, "probe.id"))
 	hostname, _ := os.Hostname()
 	if cfg.Probe.SiteName != "" {
@@ -167,7 +167,7 @@ func runProbe() {
 	// ── Forwarder ──────────────────────────────────────────────────────────
 	go fwd.Run(ctx, eventCh)
 
-	// ── Analysis engine — runs queries on SQLite, sends summaries ──────────
+	// ── Analysis engine - runs queries on SQLite, sends summaries ──────────
 	ae := collector.NewAnalysisEngine(db, fwd, probeID, hostname, logger)
 	go ae.Run(ctx)
 
@@ -240,7 +240,7 @@ func cmdInstall(args []string) {
 	location  := fs.String("location",  "",       "Physical location, e.g. Server Room")
 	fs.Parse(args)
 
-	fmt.Println("ObsidianWatch Network Probe — Installer")
+	fmt.Println("ObsidianWatch Network Probe - Installer")
 	fmt.Println("========================================")
 
 	// 1. Create directories

@@ -3,7 +3,7 @@
 -- a wall-clock window on `time` (the timestamp the AGENT recorded locally),
 -- e.g. "WHERE time > now() - 2 minutes". An event whose agent was offline,
 -- queued it, and flushed it minutes or hours later arrives with an old
--- `time` value — by the time it lands in the DB it has already fallen
+-- `time` value - by the time it lands in the DB it has already fallen
 -- outside every future window's lookback, so it is silently never
 -- evaluated by any detection engine. `ingested_at` records when the row
 -- actually landed in this table, which is monotonic with respect to when

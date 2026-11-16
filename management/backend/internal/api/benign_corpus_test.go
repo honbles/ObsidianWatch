@@ -140,8 +140,8 @@ var corpusSets = []string{"linux", "windows", "windowsTamper", "macos", "endpoin
 // (activity that is benign here but legitimately worth a low-severity alert).
 // The value is the reason. Keep this list short.
 var knownBenignHits = map[string]string{
-	"L-T1048|curl post to api reading tmp": "uploading a file with curl is recorded (Medium) — worth a look when unexpected",
-	"M-T1048|curl post to api reading tmp": "uploading a file with curl is recorded (Medium) — worth a look when unexpected",
+	"L-T1048|curl post to api reading tmp": "uploading a file with curl is recorded (Medium) - worth a look when unexpected",
+	"M-T1048|curl post to api reading tmp": "uploading a file with curl is recorded (Medium) - worth a look when unexpected",
 	"L-ACCT-001|usermod shell":             "account-change audit rule (Low): changing a login shell is worth a record",
 	"M-T1560|7zip":                         "corpus replays every OS rule on every event; the macOS rule is not applied to Windows hosts",
 	"W-T1547.001b|teams run key":           "Low-severity audit: Run key outside Program Files is recorded, not escalated",

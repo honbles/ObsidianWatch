@@ -2,7 +2,7 @@
 
 package collector
 
-// registry.go — watches configured Windows registry keys for changes
+// registry.go - watches configured Windows registry keys for changes
 // using RegNotifyChangeKeyValue and emits schema.Events on mutation.
 
 

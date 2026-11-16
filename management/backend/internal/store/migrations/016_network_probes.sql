@@ -26,7 +26,7 @@ CREATE INDEX IF NOT EXISTS idx_probe_devices_probe  ON network_probe_devices (pr
 CREATE INDEX IF NOT EXISTS idx_probe_devices_ip     ON network_probe_devices (ip);
 CREATE INDEX IF NOT EXISTS idx_probe_devices_vendor ON network_probe_devices (vendor);
 
--- Bandwidth history — sent by probe analysis engine every 5 minutes
+-- Bandwidth history - sent by probe analysis engine every 5 minutes
 CREATE TABLE IF NOT EXISTS network_bandwidth (
     probe_id    TEXT NOT NULL,
     src_ip      TEXT NOT NULL,
@@ -39,7 +39,7 @@ CREATE TABLE IF NOT EXISTS network_bandwidth (
 
 CREATE INDEX IF NOT EXISTS idx_network_bw_probe ON network_bandwidth (probe_id, hour DESC);
 
--- Network topology — CDP/LLDP neighbors
+-- Network topology - CDP/LLDP neighbors
 CREATE TABLE IF NOT EXISTS network_topology (
     probe_id    TEXT NOT NULL,
     local_host  TEXT NOT NULL,

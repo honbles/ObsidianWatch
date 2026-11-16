@@ -29,13 +29,13 @@ export function IPLookupModal({ ip, onClose }) {
 
   const st = data ? scoreStyle(data.abuse_score) : null
   const rows = data ? [
-    ['Abuse confidence', <span className={st.cls}>{data.abuse_score}% — {st.label}</span>],
+    ['Abuse confidence', <span className={st.cls}>{data.abuse_score}% - {st.label}</span>],
     ['Reports', data.total_reports],
-    ['Last reported', data.last_reported ? new Date(data.last_reported).toLocaleString() : '—'],
-    ['Country', data.country_code || '—'],
-    ['ISP', data.isp || '—'],
-    ['Domain', data.domain || '—'],
-    ['Usage type', data.usage_type || '—'],
+    ['Last reported', data.last_reported ? new Date(data.last_reported).toLocaleString() : '-'],
+    ['Country', data.country_code || '-'],
+    ['ISP', data.isp || '-'],
+    ['Domain', data.domain || '-'],
+    ['Usage type', data.usage_type || '-'],
     ['Tor exit node', data.is_tor ? 'Yes' : 'No'],
   ] : []
 

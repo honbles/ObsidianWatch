@@ -16,7 +16,7 @@ import (
 )
 
 // P-09: forward new alerts to an external SIEM/syslog collector as CEF over
-// UDP, TCP or TLS. Unlike webhooks, private addresses are allowed here —
+// UDP, TCP or TLS. Unlike webhooks, private addresses are allowed here -
 // collectors normally live inside the network and the target is set by an
 // authenticated admin. Settings key: "notify.syslog".
 

@@ -1,6 +1,6 @@
 package api
 
-// cloud_azure_assets.go — Azure Asset Inventory (CMDB)
+// cloud_azure_assets.go - Azure Asset Inventory (CMDB)
 //
 // Uses Azure Resource Graph API to enumerate all resources across a subscription
 // in a single efficient query. Far more efficient than per-type REST calls.
@@ -191,7 +191,7 @@ func queryResourceGraph(ctx context.Context, token string, subs []string, skipTo
 	respBody, _ := io.ReadAll(resp.Body)
 
 	if resp.StatusCode == 403 {
-		return nil, "", fmt.Errorf("permission denied — Reader role required on subscription")
+		return nil, "", fmt.Errorf("permission denied - Reader role required on subscription")
 	}
 	if resp.StatusCode != 200 {
 		return nil, "", fmt.Errorf("resource graph API %d: %s", resp.StatusCode,
@@ -332,7 +332,7 @@ func handleGetAzureAssets(db *store.DB) http.HandlerFunc {
 		if inv == nil {
 			w.Header().Set("Content-Type", "application/json")
 			json.NewEncoder(w).Encode(map[string]interface{}{
-				"message": "No inventory yet — run a scan first",
+				"message": "No inventory yet - run a scan first",
 				"assets":  []struct{}{},
 			})
 			return

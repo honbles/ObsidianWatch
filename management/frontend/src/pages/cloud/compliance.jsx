@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { RefreshCw, Database, Key, ChevronDown, Sparkles } from 'lucide-react'
 import api, { runScan } from '../../api/client'
 
-// ── CISControlCard — expandable with AI explain ───────────────────────────────
+// ── CISControlCard - expandable with AI explain ───────────────────────────────
 export function CISControlCard({ control }) {
   const [open, setOpen]       = useState(false)
   const [aiText, setAiText]   = useState(null)
@@ -19,7 +19,7 @@ export function CISControlCard({ control }) {
     try {
       const prompt = `You are a GCP cloud security engineer. A CIS benchmark control is ${control.status}.
 
-CIS Control: ${control.id} — ${control.title}
+CIS Control: ${control.id} - ${control.title}
 Section: ${control.section} | Level: ${control.level} | MITRE: ${control.mitre || 'N/A'}
 Description: ${control.description}
 Evidence found: ${control.evidence}
@@ -36,7 +36,7 @@ Return ONLY this JSON (no markdown):
       const text = data.content?.find(b => b.type === 'text')?.text || data.text || ''
       const clean = text.replace(/```json\n?|```/g, '').trim()
       try { setAiText(JSON.parse(clean)) } catch { setAiText({ plain_english: clean }) }
-    } catch { setAiText({ plain_english: 'AI explanation unavailable — check AI key in Settings.' }) }
+    } catch { setAiText({ plain_english: 'AI explanation unavailable - check AI key in Settings.' }) }
     finally { setAiLoading(false) }
   }
 
@@ -47,7 +47,7 @@ Return ONLY this JSON (no markdown):
       borderLeft: `3px solid ${col}`,
       borderRadius: 8, overflow: 'hidden', transition: 'all 0.15s',
     }}>
-      {/* Header row — always visible, clickable */}
+      {/* Header row - always visible, clickable */}
       <div onClick={() => setOpen(o => !o)}
         style={{ display:'flex', alignItems:'flex-start', gap:12, padding:'12px 14px', cursor:'pointer' }}>
         <div style={{ flexShrink:0, marginTop:1, fontSize:14, color:col }}>
@@ -138,7 +138,7 @@ Return ONLY this JSON (no markdown):
   )
 }
 
-// ── ComplianceControlCard — expandable with AI explain ────────────────────────
+// ── ComplianceControlCard - expandable with AI explain ────────────────────────
 export function ComplianceControlCard({ ctrl, frameworkColors }) {
   const [open, setOpen]       = useState(false)
   const [aiText, setAiText]   = useState(null)
@@ -162,7 +162,7 @@ export function ComplianceControlCard({ ctrl, frameworkColors }) {
       const prompt = `You are a cloud security compliance expert. A compliance control is ${ctrl.status}.
 
 Framework: ${ctrl.framework}
-Control: ${ctrl.control_id} — ${ctrl.title}
+Control: ${ctrl.control_id} - ${ctrl.title}
 Description: ${ctrl.description}
 ${ctrl.finding_ids?.length ? `Contributing CSPM findings: ${ctrl.finding_ids.length} finding(s) in this category` : ''}
 
@@ -467,7 +467,7 @@ export function PanelCISBenchmark({ cis, loading, scanning, onRunScan, conn }) {
             <h3 style={{ fontSize:15, fontWeight:700, color:'var(--text)', marginBottom:4 }}>
               CIS {conn?.provider === 'azure' ? 'Microsoft Azure Foundations' : conn?.provider === 'aws' ? 'AWS-style Foundations' : 'Google Cloud Platform Foundation'} Benchmark{conn?.provider === 'aws' ? '' : ' v2.0'}
               <span style={{ fontSize:11, fontWeight:500, color:'var(--text3)', marginLeft:8 }}>
-                (subset{cis?.controls?.length ? ` — ${cis.controls.length} controls assessed` : ''}, not the full benchmark)
+                (subset{cis?.controls?.length ? ` - ${cis.controls.length} controls assessed` : ''}, not the full benchmark)
               </span>
             </h3>
             <p style={{ fontSize:11.5, color:'var(--text3)' }}>
@@ -547,7 +547,7 @@ export function PanelCISBenchmark({ cis, loading, scanning, onRunScan, conn }) {
                 )
               })}
               <span style={{ marginLeft:'auto', fontSize:11, color:'var(--text3)', alignSelf:'center' }}>
-                Scanned: {cis.scanned_at ? new Date(cis.scanned_at).toLocaleString() : '—'}
+                Scanned: {cis.scanned_at ? new Date(cis.scanned_at).toLocaleString() : '-'}
                 {' · '}L1: {Math.round(cis.level1_score||0)}% · L2: {Math.round(cis.level2_score||0)}%
               </span>
             </div>

@@ -1,6 +1,6 @@
 package api
 
-// devops_engine.go — DevOps connector polling engine + HTTP handlers
+// devops_engine.go - DevOps connector polling engine + HTTP handlers
 
 import (
 	"context"
@@ -276,7 +276,7 @@ func handleGetDevOpsCommit(db *store.DB) http.HandlerFunc {
 
 // generateToken generates a hex random token
 func generateToken(n int) string {
-	// DO-02: webhook secrets must be unpredictable — crypto/rand, not clock bits.
+	// DO-02: webhook secrets must be unpredictable - crypto/rand, not clock bits.
 	b := make([]byte, n)
 	if _, err := rand.Read(b); err != nil {
 		panic("crypto/rand unavailable: " + err.Error())
@@ -350,8 +350,8 @@ func takeCoverageNote(id int64) string {
 }
 
 // commitEventTime returns the time to stamp on a commit-derived event
-// (DS-01/DO-08). Events now carry the real commit time — the detection
-// engine pages by ingest time (D-01), so old timestamps are still evaluated —
+// (DS-01/DO-08). Events now carry the real commit time - the detection
+// engine pages by ingest time (D-01), so old timestamps are still evaluated -
 // which also makes the (id, time) primary key stable, so a commit fetched
 // twice (overlap window, manual sync, retry) is deduplicated instead of
 // being inserted again. Zero or future-dated values (attacker- or

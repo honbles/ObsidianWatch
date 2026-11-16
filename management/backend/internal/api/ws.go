@@ -46,7 +46,7 @@ func NewHub(db *store.DB, logger *slog.Logger) *Hub {
 // Run starts the background poller that pushes new events to all clients.
 //
 // F-26: this used to page by event time ("time > lastCheck ORDER BY time
-// DESC LIMIT 50") — a burst of more than 50 events in one 2s tick silently
+// DESC LIMIT 50") - a burst of more than 50 events in one 2s tick silently
 // dropped everything past the 50 newest, and an event that arrived late
 // (agent reconnect, retried flush) with a `time` older than lastCheck
 // never matched the filter at all, since lastCheck only ever moves
@@ -103,7 +103,7 @@ func (h *Hub) broadcast(msg []byte) {
 		select {
 		case c.send <- msg:
 		default:
-			// Client's send buffer is full — drop.
+			// Client's send buffer is full - drop.
 		}
 	}
 }
@@ -166,7 +166,7 @@ func (h *Hub) ServeWS(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 
-	// Read pump — just handles pings/pongs and close.
+	// Read pump - just handles pings/pongs and close.
 	go func() {
 		defer func() {
 			h.unregister(c)

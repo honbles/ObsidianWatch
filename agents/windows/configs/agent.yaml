@@ -122,7 +122,7 @@ collector:
           - "*.log"
           - "*.tmp"
           - "*.etl"
-      # User profile sensitive paths — catches credential files, startup scripts, DLL hijacking
+      # User profile sensitive paths - catches credential files, startup scripts, DLL hijacking
       - path: "C:\\Users"
         recursive: true
         exclude:
@@ -135,7 +135,7 @@ collector:
           - "*.lnk"
           - "Thumbs.db"
           - "desktop.ini"
-      # ProgramData — malware staging, service configs
+      # ProgramData - malware staging, service configs
       - path: "C:\\ProgramData"
         recursive: true
         exclude:

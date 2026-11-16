@@ -1,6 +1,6 @@
 package api
 
-// graph_join.go — Alert Graph: file -> process joins and the campaign
+// graph_join.go - Alert Graph: file -> process joins and the campaign
 // (multi-alert) layer. A file written by one process and later executed by
 // another is joined only on exact path (evidence "path") or matching hash
 // (evidence "hash"), never on time proximity. This is what connects a browser

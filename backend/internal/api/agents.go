@@ -14,7 +14,7 @@ type agentStore interface {
 	GetAgent(ctx context.Context, id string) (*store.Agent, error)
 }
 
-// GET /api/v1/agents  — list all known agents
+// GET /api/v1/agents  - list all known agents
 func handleListAgents(db agentStore) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
@@ -35,7 +35,7 @@ func handleListAgents(db agentStore) http.HandlerFunc {
 	}
 }
 
-// GET /api/v1/agents/{id}  — get a single agent
+// GET /api/v1/agents/{id}  - get a single agent
 func handleGetAgent(db agentStore) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
@@ -84,7 +84,7 @@ func handleUpdateAgentLocation(db *store.DB, logger *slog.Logger) http.HandlerFu
 			http.Error(w, `{"error":"invalid coordinates"}`, 400)
 			return
 		}
-		// I-04: range/length validation — agent-supplied, never trusted as-is.
+		// I-04: range/length validation - agent-supplied, never trusted as-is.
 		if body.Lat < -90 || body.Lat > 90 || body.Lng < -180 || body.Lng > 180 ||
 			body.Accuracy < 0 || body.Accuracy > 1e7 ||
 			len(body.AgentID) > 128 || len(body.Source) > 32 || len(body.City) > 128 || len(body.Country) > 64 {

@@ -1,10 +1,10 @@
 package api
 
-// setup.go — first-run setup wizard API.
+// setup.go - first-run setup wizard API.
 //
 // Routes:
-//   GET  /api/v1/setup/status   — returns whether setup is complete + current values
-//   POST /api/v1/setup/complete — saves settings, optionally adds domain to cert, clears agent cache
+//   GET  /api/v1/setup/status   - returns whether setup is complete + current values
+//   POST /api/v1/setup/complete - saves settings, optionally adds domain to cert, clears agent cache
 
 import (
 	"encoding/json"
@@ -21,7 +21,7 @@ import (
 )
 
 // M-01: once setup has been completed once (setup.seeded=true), the setup
-// wizard endpoints must require a valid admin session — otherwise anyone who
+// wizard endpoints must require a valid admin session - otherwise anyone who
 // can reach the management API can silently rewrite the agent API key, SMTP
 // credentials, AI provider keys, and even re-sign the server's TLS cert for
 // a new domain, with no authentication at all.
@@ -48,7 +48,7 @@ func isValidAPIKeyFormat(k string) bool {
 func requireSetupAuth(db *store.DB, jwt *auth.JWTService, w http.ResponseWriter, r *http.Request) (string, bool) {
 	settings, _ := db.GetSettingsPrefix(r.Context(), "setup")
 	if settings["seeded"] != "true" {
-		// First run — no admin account exists yet to authenticate with.
+		// First run - no admin account exists yet to authenticate with.
 		return "", true
 	}
 	header := r.Header.Get("Authorization")
@@ -123,7 +123,7 @@ func handleSetupStatus(db *store.DB, jwtSvc *auth.JWTService) http.HandlerFunc {
 
 		// M-01: network topology (private/public IP, backend domain/URL) is
 		// only useful to the first-run wizard before an admin exists. Once
-		// setup is complete, only an authenticated admin should see it —
+		// setup is complete, only an authenticated admin should see it -
 		// otherwise an unauthenticated caller can map internal network
 		// layout for free.
 		authed := false
@@ -261,7 +261,7 @@ func handleSetupComplete(db *store.DB, jwtSvc *auth.JWTService) http.HandlerFunc
 			db.UpdateThreatIntelSource(r.Context(), "otx", true, &key)
 		}
 
-		// Clear agent cache — compiled binaries may have old CA cert embedded
+		// Clear agent cache - compiled binaries may have old CA cert embedded
 		clearAgentCache()
 
 		if actor == "" {
@@ -276,7 +276,7 @@ func handleSetupComplete(db *store.DB, jwtSvc *auth.JWTService) http.HandlerFunc
 // restartBackendContainer restarts the obsidianwatch-backend Docker container
 // so it reloads server.yaml and picks up the newly written API key.
 func restartBackendContainer() {
-	// M-08: no docker.sock access anymore — signal via shared volume file mtime instead.
+	// M-08: no docker.sock access anymore - signal via shared volume file mtime instead.
 	_ = os.MkdirAll("/var/run/obsidianwatch", 0755)
 	_ = os.WriteFile("/var/run/obsidianwatch/restart-signal", []byte(time.Now().Format(time.RFC3339Nano)), 0644)
 }

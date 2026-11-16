@@ -154,7 +154,7 @@ function GraphCanvas({ graph, onNodeClick, onEdgeClick, selectedNode, selectedEd
 
     simRef.current = sim
 
-    // Edges — thin visible line + thick invisible hit area for easier clicking
+    // Edges - thin visible line + thick invisible hit area for easier clicking
     const edgeG = g.append('g').attr('class', 'edges')
 
     // Invisible wide hit area
@@ -267,7 +267,7 @@ function GraphCanvas({ graph, onNodeClick, onEdgeClick, selectedNode, selectedEd
       })
   }, [selectedNode, selectedEdge])
 
-  // Filter text — highlight matching nodes without re-running simulation
+  // Filter text - highlight matching nodes without re-running simulation
   useEffect(() => {
     if (!svgRef.current) return
     const svg = d3.select(svgRef.current)
@@ -380,7 +380,7 @@ function EdgeDetail({ edge, graph, onClose }) {
         <div className="flex items-start justify-between gap-2">
           <div className="flex-1 min-w-0">
             <div className="text-[9px] uppercase tracking-wider font-semibold mb-1" style={{ color }}>
-              Edge — {edge.type}
+              Edge - {edge.type}
             </div>
             <div className="text-xs text-siem-text font-mono truncate">{srcLabel}</div>
             <div className="flex items-center gap-1 my-0.5">
@@ -412,7 +412,7 @@ function EdgeDetail({ edge, graph, onClose }) {
           </div>
           <div className="bg-siem-bg border border-siem-border rounded-lg px-3 py-2 text-center">
             <div className="text-lg font-bold font-mono" style={{ color: SEV_COLORS[edge.severity] || '#475569' }}>
-              {['','Info','Low','Med','High','Crit'][edge.severity] || '—'}
+              {['','Info','Low','Med','High','Crit'][edge.severity] || '-'}
             </div>
             <div className="text-[9px] text-siem-muted">max severity</div>
           </div>
@@ -431,7 +431,7 @@ function EdgeDetail({ edge, graph, onClose }) {
               </div>
               <div className="flex justify-between text-[10px]">
                 <span className="text-siem-muted">Last seen</span>
-                <span className="font-mono text-siem-text">{edge.last_seen ? format(new Date(edge.last_seen), 'MM/dd HH:mm:ss') : '—'}</span>
+                <span className="font-mono text-siem-text">{edge.last_seen ? format(new Date(edge.last_seen), 'MM/dd HH:mm:ss') : '-'}</span>
               </div>
               {edge.first_seen && edge.last_seen && (
                 <div className="flex justify-between text-[10px]">
@@ -443,7 +443,7 @@ function EdgeDetail({ edge, graph, onClose }) {
               )}
               {edge.count > 1 && edge.first_seen && edge.last_seen && (() => {
                 const ms = new Date(edge.last_seen) - new Date(edge.first_seen)
-                const rate = ms > 0 ? (edge.count / (ms / 60000)).toFixed(1) : '—'
+                const rate = ms > 0 ? (edge.count / (ms / 60000)).toFixed(1) : '-'
                 return (
                   <div className="flex justify-between text-[10px]">
                     <span className="text-siem-muted">Rate</span>
@@ -661,7 +661,7 @@ function NodeDetail({ node, onClose, host }) {
           </>
         )}
 
-        {/* Alert correlation — shown for any node type */}
+        {/* Alert correlation - shown for any node type */}
         {meta.alert_title && (
           <div className="border-t border-siem-border pt-3">
             <div className="text-[9px] uppercase tracking-wider text-red-400 font-semibold mb-1.5 flex items-center gap-1">
@@ -822,7 +822,7 @@ function HostSelector({ agents, selected, onSelect, search, onSearch }) {
               <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${a.online ? 'bg-emerald-400' : 'bg-red-500'}`}/>
               <div className="flex-1 min-w-0">
                 <div className="text-xs font-medium truncate">{a.hostname}</div>
-                <div className="text-[8px] opacity-60">{a.last_ip || '—'} · {a.os}</div>
+                <div className="text-[8px] opacity-60">{a.last_ip || '-'} · {a.os}</div>
               </div>
             </div>
           </button>

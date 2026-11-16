@@ -2,7 +2,7 @@
 
 package collector
 
-// dns_names.go — A-02: real DNS query names on macOS.
+// dns_names.go - A-02: real DNS query names on macOS.
 //
 // The lsof poller only sees "process X talks to resolver Y", so domain
 // categories, IOCs and DNS rules could never fire. mDNSResponder redacts

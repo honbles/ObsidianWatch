@@ -26,7 +26,7 @@ func NewAlertEngine(db *store.DB, mailer *notify.Mailer, logger *slog.Logger) *A
 }
 
 func (e *AlertEngine) Run(ctx context.Context) {
-	// D-01/D-02: cursor-based paging over events.ingested_at — see
+	// D-01/D-02: cursor-based paging over events.ingested_at - see
 	// pageEventCursor. First run falls back to a 2h lookback; every run
 	// after that resumes exactly where the last one left off, so a burst
 	// or a backlogged agent can't fall outside a fixed wall-clock window.
@@ -105,14 +105,14 @@ func (e *AlertEngine) runCursor(ctx context.Context) {
 				SourceEventID: ev.ID,
 			}
 
-			// Atomic insert — ON CONFLICT DO NOTHING prevents race-condition dupes.
+			// Atomic insert - ON CONFLICT DO NOTHING prevents race-condition dupes.
 			id, inserted, err := e.db.CreateAlertDeduped(ctx, alert)
 			if err != nil {
 				e.logger.Warn("alert engine: create alert failed", "err", err)
 				continue
 			}
 			if !inserted {
-				continue // duplicate — already alerted
+				continue // duplicate - already alerted
 			}
 
 			alert.CreatedAt = time.Now()

@@ -41,7 +41,7 @@ type CollectorConfig struct {
 	RateLimit RateLimitConfig `yaml:"rate_limit"`
 	// LocationPrecisePositioning (F-16): gates GPS/WiFi positioning (via the
 	// Windows Location API), which is far more precise/invasive than IP
-	// geolocation. Defaults to false — IP-only — unless explicitly enabled.
+	// geolocation. Defaults to false - IP-only - unless explicitly enabled.
 	LocationPrecisePositioning bool `yaml:"location_precise_positioning"`
 }
 
@@ -241,7 +241,7 @@ func validate(cfg *Config) error {
 	return nil
 }
 
-// We never rewrite the whole config — that would mangle duration fields
+// We never rewrite the whole config - that would mangle duration fields
 // (5s → 5000000000) and lose comments/formatting.
 
 // LoadEmbedded loads config from the string baked in at compile time.
@@ -298,7 +298,7 @@ func BuildTLSConfig(caPEM []byte, allowInsecure bool) (*tls.Config, error) {
 	if allowInsecure {
 		return &tls.Config{InsecureSkipVerify: true}, nil
 	}
-	return nil, fmt.Errorf("tls: no CA certificate configured and allow_insecure_tls is false — refusing to connect without verifying the server certificate")
+	return nil, fmt.Errorf("tls: no CA certificate configured and allow_insecure_tls is false - refusing to connect without verifying the server certificate")
 }
 
 // LiveResponseConfig gates the analyst remote-shell tunnel. Off unless the

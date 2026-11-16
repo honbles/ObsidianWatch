@@ -35,7 +35,7 @@ func New(cfg *config.Config, db *store.DB, logger *slog.Logger) (*Server, error)
 	if cfg.Auth.MTLSEnabled {
 		authMiddleware = auth.MTLSMiddleware
 	} else {
-		// DB key takes priority — if setup has run, the DB key is the real one.
+		// DB key takes priority - if setup has run, the DB key is the real one.
 		// Only fall back to the YAML key if the DB has nothing yet (fresh install
 		// before setup wizard has been completed).
 		validKeys := cfg.Auth.APIKeys
@@ -43,7 +43,7 @@ func New(cfg *config.Config, db *store.DB, logger *slog.Logger) (*Server, error)
 			validKeys = []string{dbKey}
 			logger.Info("auth: using agent API key from database")
 		} else {
-			logger.Info("auth: no DB key yet — using key(s) from server.yaml")
+			logger.Info("auth: no DB key yet - using key(s) from server.yaml")
 		}
 		authMiddleware = auth.APIKeyMiddleware(validKeys)
 	}
@@ -108,7 +108,7 @@ func (s *Server) Start() error {
 	)
 
 	if s.http.TLSConfig != nil {
-		// TLS config already loaded — use empty strings so ListenAndServeTLS
+		// TLS config already loaded - use empty strings so ListenAndServeTLS
 		// uses the pre-loaded config.
 		return s.http.ListenAndServeTLS("", "")
 	}

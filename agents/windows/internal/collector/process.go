@@ -2,7 +2,7 @@
 
 package collector
 
-// process.go — captures process creation/termination via ETW
+// process.go - captures process creation/termination via ETW
 // using the Microsoft-Windows-Kernel-Process provider.
 // Uses the golang.org/x/sys/windows/etw package pattern via direct
 // NT API calls. Falls back to polling WMI Win32_Process if ETW fails.
@@ -222,7 +222,7 @@ func (p *ProcessCollector) Run(ctx context.Context) error {
 
 	p.logger.Info("process: ETW session started")
 
-	// ProcessTrace blocks until the trace is stopped — run it in a goroutine.
+	// ProcessTrace blocks until the trace is stopped - run it in a goroutine.
 	done := make(chan error, 1)
 	go func() {
 		traceHandles := [1]uintptr{p.traceHandle}
@@ -273,7 +273,7 @@ func (p *ProcessCollector) startETW() error {
 		uintptr(unsafe.Pointer(sessionNamePtr)),
 		uintptr(unsafe.Pointer(props)),
 	)
-	// ERROR_ALREADY_EXISTS (183) is fine — reuse the session
+	// ERROR_ALREADY_EXISTS (183) is fine - reuse the session
 	if ret != 0 && ret != 183 {
 		return fmt.Errorf("StartTrace: %d %w", ret, err)
 	}
@@ -562,7 +562,7 @@ func readProcessCommandLine(pid uint32) string {
 		Buffer    uintptr
 	}
 	type RTL_USER_PROCESS_PARAMETERS struct {
-		_              [112]byte // offset to CommandLine varies — skip via known offset
+		_              [112]byte // offset to CommandLine varies - skip via known offset
 		CommandLine    UNICODE_STRING
 	}
 

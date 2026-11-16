@@ -2,8 +2,8 @@ package api
 
 // P-11 (first slice): CIS-inspired host hygiene checks derived from the data
 // the agent already reports in vulnerability.scan (packages, services, ports).
-// This is a SUBSET of what a CIS benchmark covers — it cannot see file
-// permissions, sysctl or auditd rules — and is labelled as such in the output.
+// This is a SUBSET of what a CIS benchmark covers - it cannot see file
+// permissions, sysctl or auditd rules - and is labelled as such in the output.
 
 import (
 	"encoding/json"

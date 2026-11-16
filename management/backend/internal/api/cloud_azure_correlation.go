@@ -1,6 +1,6 @@
 package api
 
-// cloud_azure_correlation.go — Stateful multi-event correlation for Azure.
+// cloud_azure_correlation.go - Stateful multi-event correlation for Azure.
 //
 // Patterns:
 //   CORR-AZ-001  SP credentials added then used from new IP within 10 min
@@ -513,7 +513,7 @@ func (e *AzureBaselineEngine) detectAnomalies(ctx context.Context, since time.Ti
 								sanitiseKey(principal), hour, day)
 							e.fireAnomAlert(ctx, dedupKey,
 								"[ANOM] Azure Admin Action Outside Normal Hours",
-								fmt.Sprintf("Principal %s performed high-severity Azure operation at %02d:00 UTC — only %.1f%% of their historical activity occurs at this hour.",
+								fmt.Sprintf("Principal %s performed high-severity Azure operation at %02d:00 UTC - only %.1f%% of their historical activity occurs at this hour.",
 									principal, hour,
 									float64(b.HourCounts[hour])/float64(total)*100),
 								3, "T1078.004", "Defense Evasion", ev)
@@ -554,8 +554,8 @@ func (e *AzureBaselineEngine) detectAnomalies(ctx context.Context, since time.Ti
 						hour := ev.Time.UTC().Format("2006010215")
 						dedupKey := fmt.Sprintf("anom:az:004:p:%s:h:%s", sanitiseKey(principal), hour)
 						e.fireAnomAlert(ctx, dedupKey,
-							"[ANOM] Azure: Impossible Travel — Two Distant IPs",
-							fmt.Sprintf("Principal %s called Azure APIs from IP %s and %s within 30 minutes — different /16 subnets suggests simultaneous use from two locations.",
+							"[ANOM] Azure: Impossible Travel - Two Distant IPs",
+							fmt.Sprintf("Principal %s called Azure APIs from IP %s and %s within 30 minutes - different /16 subnets suggests simultaneous use from two locations.",
 								principal, srcIP, otherIP),
 							4, "T1078.004", "Initial Access", ev)
 					}
@@ -580,7 +580,7 @@ func (e *AzureBaselineEngine) detectAnomalies(ctx context.Context, since time.Ti
 					hour := ev.Time.UTC().Format("2006010215")
 					dedupKey := fmt.Sprintf("anom:az:005:p:%s:h:%s", sanitiseKey(principal), hour)
 					e.fireAnomAlert(ctx, dedupKey,
-						"[ANOM] Azure: Large Data Transfer — Possible Exfiltration",
+						"[ANOM] Azure: Large Data Transfer - Possible Exfiltration",
 						fmt.Sprintf("Principal %s transferred %.1f GB in a single Azure operation. Bulk reads from Storage or SQL are a strong exfiltration indicator.",
 							principal, float64(bytes)/1e9),
 						4, "T1530", "Exfiltration", ev)

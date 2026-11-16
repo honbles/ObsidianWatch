@@ -1,6 +1,6 @@
 package api
 
-// manual_ioc.go — analyst-supplied indicators (source "manual"). They live in
+// manual_ioc.go - analyst-supplied indicators (source "manual"). They live in
 // the same table the feeds use, so the live engine, the DNS/IP/hash matching
 // and the retro-hunt all treat them like any feed indicator. Feed syncs only
 // replace their own source, so manual entries survive.

@@ -2,7 +2,7 @@
 
 package collector
 
-// network.go — macOS network connection monitoring.
+// network.go - macOS network connection monitoring.
 //
 // Uses `netstat -anp tcp` and `netstat -anp udp` to enumerate active
 // connections. Diffs against previous snapshot to detect new connections.

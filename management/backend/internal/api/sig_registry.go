@@ -1,6 +1,6 @@
 package api
 
-// sig_registry.go — every built-in signature set in one place (used by the
+// sig_registry.go - every built-in signature set in one place (used by the
 // sanity tests and the ATT&CK coverage view). Add new sets here.
 
 func allSignatureSets() map[string][]ThreatSig {

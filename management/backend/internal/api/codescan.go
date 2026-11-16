@@ -1,6 +1,6 @@
 package api
 
-// codescan.go — Code scanning for DevOps connectors
+// codescan.go - Code scanning for DevOps connectors
 //
 // Scans commit diffs and file trees for:
 //   1. Secrets / credentials (API keys, passwords, tokens)
@@ -88,7 +88,7 @@ var dangerousPatternsDef = []struct {
 	{
 		"eval() with user input", regexp.MustCompile(`eval\s*\([^)]*(?:req|request|params|query|body|input|user)[^)]*\)`),
 		[]string{".js", ".ts", ".py", ".php", ".rb"}, "high",
-		"Never pass user input to eval() — use safe alternatives",
+		"Never pass user input to eval() - use safe alternatives",
 	},
 	{
 		"exec() with user input", regexp.MustCompile(`exec\s*\([^)]*(?:req|request|params|query|body|input|user)[^)]*\)`),
@@ -118,7 +118,7 @@ var dangerousPatternsDef = []struct {
 	{
 		"Disabled SSL verification", regexp.MustCompile(`(?i)(verify\s*=\s*False|InsecureSkipVerify|ssl_verify\s*=\s*false|rejectUnauthorized\s*:\s*false)`),
 		[]string{".py", ".go", ".js", ".ts", ".yaml", ".yml"}, "high",
-		"Enable SSL verification in production — disable only for local testing",
+		"Enable SSL verification in production - disable only for local testing",
 	},
 	{
 		"Hardcoded debug mode", regexp.MustCompile(`(?i)(DEBUG\s*=\s*True|debug\s*:\s*true)`),
@@ -268,11 +268,11 @@ func scanDependencyFile(file, content string, commit store.DevOpsCommit, finding
 
 	case "requirements.txt", "pipfile", "pipfile.lock":
 		knownVulnPy := map[string]string{
-			"django":      "Many versions have known CVEs — ensure latest patch version",
+			"django":      "Many versions have known CVEs - ensure latest patch version",
 			"flask":       "< 2.2.5 has vulnerabilities",
 			"requests":    "< 2.28.2 has vulnerabilities",
 			"pillow":      "Many versions have image parsing CVEs",
-			"cryptography": "Older versions have known CVEs — keep updated",
+			"cryptography": "Older versions have known CVEs - keep updated",
 			"pyyaml":      "< 6.0 has arbitrary code execution (CVE-2020-14343)",
 			"urllib3":     "< 1.26.5 has CRLF injection vulnerability",
 			"jinja2":      "< 3.1.2 has SSTI vulnerability",
@@ -296,8 +296,8 @@ func scanDependencyFile(file, content string, commit store.DevOpsCommit, finding
 	case "go.mod":
 		// Check for known vulnerable Go modules
 		knownVulnGo := map[string]string{
-			"github.com/dgrijalva/jwt-go": "Deprecated, has critical CVE-2020-26160 — use github.com/golang-jwt/jwt",
-			"github.com/form3tech-oss/jwt-go": "Has CVE-2020-26160 — use github.com/golang-jwt/jwt",
+			"github.com/dgrijalva/jwt-go": "Deprecated, has critical CVE-2020-26160 - use github.com/golang-jwt/jwt",
+			"github.com/form3tech-oss/jwt-go": "Has CVE-2020-26160 - use github.com/golang-jwt/jwt",
 			"gopkg.in/yaml.v2": "< v2.4.0 has DOS vulnerability",
 		}
 		for pkg, vuln := range knownVulnGo {
@@ -474,7 +474,7 @@ func handleCodeScanAI(cfg *config.Config, db *store.DB) http.HandlerFunc {
 			WHERE connector_id = $1 ORDER BY scanned_at DESC LIMIT 1`, connID,
 		).Scan(&scanID, &findingsJSON)
 		if err != nil {
-			writeJSON(w, 404, map[string]string{"error": "no scan results found — run a scan first"})
+			writeJSON(w, 404, map[string]string{"error": "no scan results found - run a scan first"})
 			return
 		}
 
@@ -508,11 +508,11 @@ func handleCodeScanAI(cfg *config.Config, db *store.DB) http.HandlerFunc {
 You have been given code scan findings from a DevOps repository connector.
 The findings include: secrets exposed in commits, sensitive files committed, dangerous code patterns, and vulnerable dependencies.
 
-Analyse the findings and return ONLY this exact JSON — no markdown, no code blocks:
+Analyse the findings and return ONLY this exact JSON - no markdown, no code blocks:
 {
   "risk_score": <0-100>,
   "risk_label": "Critical|High|Medium|Low|Clean",
-  "executive_summary": "2-3 sentences for engineering leadership — overall security posture and top risks",
+  "executive_summary": "2-3 sentences for engineering leadership - overall security posture and top risks",
   "top_issues": [
     {"title": "...", "detail": "...", "impact": "...", "fix": "..."}
   ],

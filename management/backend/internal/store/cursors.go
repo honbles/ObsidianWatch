@@ -9,7 +9,7 @@ import (
 // EngineCursor (D-01/D-02) is a named engine's persisted position in the
 // events.ingested_at timeline. Replacing wall-clock polling windows with
 // this means an engine that falls behind (slow processing, a restart, a
-// burst of backlogged events) simply resumes exactly where it left off —
+// burst of backlogged events) simply resumes exactly where it left off -
 // it can never silently skip a range of events the way a fixed "now minus
 // N minutes" window can when N is smaller than however long the gap was.
 type EngineCursor struct {
@@ -46,7 +46,7 @@ func (db *DB) AdvanceEngineCursor(ctx context.Context, engineName string, cursor
 	return err
 }
 
-// ListEngineCursors returns all known engine cursors, newest-updated first —
+// ListEngineCursors returns all known engine cursors, newest-updated first -
 // used by the D-11 agent/engine health check to spot a stalled engine.
 func (db *DB) ListEngineCursors(ctx context.Context) ([]EngineCursor, error) {
 	rows, err := db.QueryContext(ctx,

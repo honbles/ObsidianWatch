@@ -1,10 +1,10 @@
 package parser
 
-// syslog.go — Generic syslog parser + device-specific pattern extraction
+// syslog.go - Generic syslog parser + device-specific pattern extraction
 //
 // Handles:
-//   - RFC 3164 (BSD syslog) — <priority>timestamp hostname message
-//   - RFC 5424 (structured syslog) — version, structured data
+//   - RFC 3164 (BSD syslog) - <priority>timestamp hostname message
+//   - RFC 5424 (structured syslog) - version, structured data
 //   - Non-standard formats (Cisco, Fortinet, Palo Alto raw output)
 //
 // From the parsed syslog we extract structured events:

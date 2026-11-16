@@ -1,6 +1,6 @@
 package store
 
-// secrets.go — encryption at rest for stored credentials (M-12, G-17,
+// secrets.go - encryption at rest for stored credentials (M-12, G-17,
 // CC-07, AW-03, AZ-10). Cloud/DevOps connector secrets and sensitive
 // settings (API keys, SMTP password) used to be stored as plaintext JSON.
 //
@@ -48,7 +48,7 @@ func loadSecretKey() {
 		}
 	}
 	if raw == "" {
-		slog.Warn("secrets: OW_SECRET_KEY not set — connector credentials and API keys are stored UNENCRYPTED")
+		slog.Warn("secrets: OW_SECRET_KEY not set - connector credentials and API keys are stored UNENCRYPTED")
 		return
 	}
 	var key []byte

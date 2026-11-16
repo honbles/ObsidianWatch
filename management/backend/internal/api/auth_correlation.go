@@ -224,7 +224,7 @@ func (c *authCorrelator) Observe(ev store.Event) []authHit {
 		if len(fails) >= authSuccessFails {
 			hits = append(hits, authHit{
 				Rule: "CORR-AUTH-003", Title: fmt.Sprintf("Successful logon after %d failures: %s", len(fails), o.user),
-				Desc: fmt.Sprintf("Account %q authenticated successfully from %s on %s after %d failures in the previous %s — possible successful brute force or spray.",
+				Desc: fmt.Sprintf("Account %q authenticated successfully from %s on %s after %d failures in the previous %s - possible successful brute force or spray.",
 					o.user, o.ip, ev.Host, len(fails), authSuccessWindow),
 				Severity: 5, MITRE: "T1110", Entity: "success|" + fk, Bucket: t.Unix() / int64(authSuccessWindow.Seconds()),
 			})

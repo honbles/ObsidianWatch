@@ -19,7 +19,7 @@ function SOCBackground() {
     resize()
     window.addEventListener('resize', resize)
 
-    // Nodes — represent endpoints, servers, threats
+    // Nodes - represent endpoints, servers, threats
     const NODE_COUNT = 28
     const nodes = Array.from({ length: NODE_COUNT }, (_, i) => ({
       x: Math.random() * canvas.width,
@@ -222,7 +222,7 @@ export default function Login({ onLogin }) {
         background: 'radial-gradient(ellipse 80% 60% at 50% 50%, rgba(13,27,62,0.6) 0%, rgba(14,17,23,0.85) 70%)'
       }}/>
 
-      {/* Left panel — branding */}
+      {/* Left panel - branding */}
       <div style={{
         position:'fixed', left:0, top:0, bottom:0, width:'42%',
         display:'flex', flexDirection:'column', justifyContent:'center',
@@ -253,7 +253,7 @@ export default function Login({ onLogin }) {
         <p style={{ fontSize:13, color:'var(--text2)', lineHeight:1.7, maxWidth:340 }}>
           Real-time detection, endpoint telemetry, cloud monitoring,
           network visibility, application security and DevOps intelligence
-          — unified in one platform.
+          - unified in one platform.
         </p>
 
         {/* Stats row */}
@@ -280,7 +280,7 @@ export default function Login({ onLogin }) {
         </div>
       </div>
 
-      {/* Center — fading rotating eye */}
+      {/* Center - fading rotating eye */}
       <div style={{
         position: 'fixed',
         left: '50%', top: '50%',
@@ -323,7 +323,7 @@ export default function Login({ onLogin }) {
           })}
         </svg>
 
-        {/* Mid ring — counter-rotates */}
+        {/* Mid ring - counter-rotates */}
         <svg className="eye-mid" width="260" height="260" viewBox="0 0 260 260"
           style={{ position:'absolute', top:'50%', left:'50%', transform:'translate(-50%,-50%)' }}>
           <circle cx="130" cy="130" r="118"
@@ -333,7 +333,7 @@ export default function Login({ onLogin }) {
             fill="none" stroke="rgba(56,189,248,0.06)" strokeWidth="0.5"/>
         </svg>
 
-        {/* The eye itself — center, static */}
+        {/* The eye itself - center, static */}
         <svg width="160" height="160" viewBox="0 0 220 220"
           style={{ position:'absolute', top:'50%', left:'50%',
                    transform:'translate(-50%,-50%)', opacity:0.12 }}>
@@ -378,7 +378,7 @@ export default function Login({ onLogin }) {
         }}/>
       </div>
 
-      {/* Right panel — login form */}
+      {/* Right panel - login form */}
       <div style={{
         position:'relative', zIndex:2,
         marginLeft:'auto', marginRight:'8%',

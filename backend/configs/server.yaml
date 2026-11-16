@@ -2,7 +2,7 @@ server:
   # Address and port to listen on.
   listen_addr: ":8443"
 
-  # TLS — required. Certificates are generated automatically by cert-init (see README.md)
+  # TLS - required. Certificates are generated automatically by cert-init (see README.md)
   tls_cert_file: "certs/server.crt"
   tls_key_file:  "certs/server.key"
 
@@ -20,7 +20,7 @@ database:
   port:     5432
   name:     "obsidianwatch"
   user:     "obsidianwatch"
-  password: "changeme"      # CHANGE THIS — also update docker-compose.yml
+  password: "changeme"      # CHANGE THIS - also update docker-compose.yml
   ssl_mode: "disable"       # Use "require" in production with a real DB cert
 
   max_open_conns:     25

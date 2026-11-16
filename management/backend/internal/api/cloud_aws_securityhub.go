@@ -1,9 +1,9 @@
 package api
 
-// cloud_aws_securityhub.go — Security Hub findings → events (CR-01).
+// cloud_aws_securityhub.go - Security Hub findings → events (CR-01).
 // Pulls active HIGH/CRITICAL findings updated since the last sync from the
 // connector's home region (the aggregation region when cross-region
-// aggregation is on). GuardDuty findings are excluded — they are pulled
+// aggregation is on). GuardDuty findings are excluded - they are pulled
 // directly and would otherwise be ingested twice.
 
 import (

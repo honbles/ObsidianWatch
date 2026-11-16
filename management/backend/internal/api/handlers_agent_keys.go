@@ -43,7 +43,7 @@ func handleAgentRegisterKey(db *store.DB, agentAPIKey string) http.HandlerFunc {
 			writeJSON(w, 400, map[string]string{"error": "field too long"})
 			return
 		}
-		// agentID optional — if not provided we try to find by API key header
+		// agentID optional - if not provided we try to find by API key header
 		agentID := body.AgentID
 		if agentID == "" {
 			writeJSON(w, 400, map[string]string{"error": "agent_id required"})
@@ -60,13 +60,13 @@ func handleAgentRegisterKey(db *store.DB, agentAPIKey string) http.HandlerFunc {
 // handleVerifyInstallKey allows agents to verify their install key on service install
 // installKeyLimiter (M-04): the install/uninstall key is the ONLY thing that
 // should be able to authorize uninstalling an agent (tamper protection is
-// meant to make the toggle alone insufficient — see F-01), so this endpoint
+// meant to make the toggle alone insufficient - see F-01), so this endpoint
 // is a prime brute-force target and needs its own limiter independent of
 // login.
 var installKeyLimiter = NewRateLimiter(1*time.Minute, 10)
 
 // handleVerifyInstallKey (M-04): previously GET with the key as a query
-// param — query params land in server/proxy access logs and browser
+// param - query params land in server/proxy access logs and browser
 // history, so the uninstall key could leak long after use. Moved to POST
 // with the key in the body, requires the shared agent X-API-Key on top of
 // the install key itself, rate-limited, and rotates the key on success so

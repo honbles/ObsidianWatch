@@ -1,6 +1,6 @@
 package parser
 
-// normalizer.go — maps raw collector events to a clean, canonical schema.Event.
+// normalizer.go - maps raw collector events to a clean, canonical schema.Event.
 // The normalizer is the single place where field names, severity mappings,
 // and event type classifications are standardised across all sources.
 

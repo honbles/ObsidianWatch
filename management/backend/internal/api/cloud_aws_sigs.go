@@ -63,7 +63,7 @@ var awsExtraSignatures = []ThreatSig{
 	},
 	{
 		ID: "C-AWS-044", Name: "AWS Login Profile Created or Changed",
-		Description: "Console password set or changed for an IAM user (CreateLoginProfile/UpdateLoginProfile) — common persistence step.",
+		Description: "Console password set or changed for an IAM user (CreateLoginProfile/UpdateLoginProfile) - common persistence step.",
 		Severity:    4, MITRE: "T1098", Category: "Persistence",
 		Match: func(ev store.Event) bool {
 			_, ok := awsEvent(ev, "CreateLoginProfile", "UpdateLoginProfile")
@@ -81,7 +81,7 @@ var awsExtraSignatures = []ThreatSig{
 	},
 	{
 		ID: "C-AWS-046", Name: "AWS SSM SendCommand Executed",
-		Description: "Remote command executed on instances via SSM — lateral movement / execution path.",
+		Description: "Remote command executed on instances via SSM - lateral movement / execution path.",
 		Severity:    3, MITRE: "T1651", Category: "Execution",
 		Match: func(ev store.Event) bool {
 			_, ok := awsEvent(ev, "SendCommand", "StartSession")

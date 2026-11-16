@@ -2,7 +2,7 @@
 
 package collector
 
-// location.go — Linux location collector.
+// location.go - Linux location collector.
 //
 // Linux has no kernel location API, so we use IP geolocation exclusively,
 // via ipinfo.io over HTTPS.
@@ -17,7 +17,7 @@ package collector
 // a third-party geolocation service at all.
 //
 // Posts location directly to the backend /api/v1/agents/location endpoint.
-// Runs every 30 minutes — location data changes rarely.
+// Runs every 30 minutes - location data changes rarely.
 
 import (
 	"context"

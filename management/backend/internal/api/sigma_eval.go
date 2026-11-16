@@ -3,7 +3,7 @@ package api
 // A real Sigma evaluator. The previous matcher ignored value modifiers
 // (|all, |endswith, |re ...), fell back to searching the whole event text for
 // any field it did not know, ignored the rule's logsource and had no boolean
-// conditions — so rules fired on almost every process event. This one:
+// conditions - so rules fired on almost every process event. This one:
 //
 //   - parses the detection block as YAML;
 //   - implements contains/startswith/endswith/all/re/cased/windash/cidr/exists

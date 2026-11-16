@@ -42,7 +42,7 @@ func handleThreatGraphHost(db *store.DB) http.HandlerFunc {
 			}
 		}
 
-		// Fetch ALL events for this host — enrichFromRaw populates process_name even on
+		// Fetch ALL events for this host - enrichFromRaw populates process_name even on
 		// raw/file/network events, so we use all_events for both tree and enrichment.
 		fAll := store.EventFilter{HostExact: host, Since: since, Limit: 5000} // F-10: exact match
 		allEvents, _, err := db.QueryEvents(r.Context(), fAll)
@@ -143,7 +143,7 @@ func handleGetAgentLocations(db *store.DB, backendDB *store.DB) http.HandlerFunc
 	}
 
 	return func(w http.ResponseWriter, r *http.Request) {
-		// Use backend DB if available — it has live location data from agents
+		// Use backend DB if available - it has live location data from agents
 		// Query only the columns that exist in both management and backend agents tables
 		queryDB := db
 		if backendDB != nil {
@@ -204,7 +204,7 @@ func handleUpdateAgentLocation(db *store.DB) http.HandlerFunc {
 			http.Error(w, `{"error":"invalid coordinates"}`, 400)
 			return
 		}
-		// I-04: range/length validation — agent-supplied, never trusted as-is.
+		// I-04: range/length validation - agent-supplied, never trusted as-is.
 		if body.Lat < -90 || body.Lat > 90 || body.Lng < -180 || body.Lng > 180 ||
 			body.Accuracy < 0 || body.Accuracy > 1e7 ||
 			len(body.AgentID) > 128 || len(body.Source) > 32 || len(body.City) > 128 || len(body.Country) > 64 {

@@ -21,7 +21,7 @@ const TABS = [
 const card = 'bg-siem-surface border border-siem-border rounded-xl'
 const inputCls = 'bg-siem-bg border border-siem-border rounded-lg px-3 py-1.5 text-sm text-siem-text'
 const btnCls = 'text-xs border border-siem-border rounded-lg px-3 py-1.5 text-siem-muted hover:text-siem-text'
-const fmt = (t) => { try { return format(new Date(t), 'MMM d HH:mm:ss') } catch { return '—' } }
+const fmt = (t) => { try { return format(new Date(t), 'MMM d HH:mm:ss') } catch { return '-' } }
 
 function Incidents() {
   const [data, setData] = useState(null)
@@ -165,7 +165,7 @@ function Inventory() {
       {err && <div className="text-red-400 text-sm">{err}</div>}
       {res && (
         <div className={`${card} overflow-x-auto`}>
-          <div className="px-4 py-2 text-xs text-siem-muted">{(res.hits || []).length} matches on {res.host_count} hosts (latest scan per host){res.truncated ? ' — truncated' : ''}</div>
+          <div className="px-4 py-2 text-xs text-siem-muted">{(res.hits || []).length} matches on {res.host_count} hosts (latest scan per host){res.truncated ? ' - truncated' : ''}</div>
           <table className="w-full text-sm">
             <thead><tr className="border-b border-siem-border text-siem-muted text-xs">
               {['Host', 'OS', 'Type', 'Name', 'Version / state', 'Scanned'].map(h => <th key={h} className="text-left px-4 py-2">{h}</th>)}

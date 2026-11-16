@@ -307,13 +307,13 @@ export default function Locations() {
               </div>
               <div className="space-y-1 text-siem-muted">
                 <div className="flex justify-between"><span>OS</span><span className="text-siem-text">{selected.os}</span></div>
-                <div className="flex justify-between"><span>City</span><span className="text-siem-text">{selected.location_city || '—'}</span></div>
-                <div className="flex justify-between"><span>Country</span><span className="text-siem-text">{selected.location_country || '—'}</span></div>
+                <div className="flex justify-between"><span>City</span><span className="text-siem-text">{selected.location_city || '-'}</span></div>
+                <div className="flex justify-between"><span>Country</span><span className="text-siem-text">{selected.location_country || '-'}</span></div>
                 <div className="flex justify-between"><span>Source</span><SourceBadge source={selected.location_source} /></div>
                 {selected.location_accuracy && (
                   <div className="flex justify-between"><span>Accuracy</span><span className="text-siem-text">±{Math.round(selected.location_accuracy)}m</span></div>
                 )}
-                <div className="flex justify-between"><span>IP</span><span className="text-siem-text font-mono">{selected.last_ip || '—'}</span></div>
+                <div className="flex justify-between"><span>IP</span><span className="text-siem-text font-mono">{selected.last_ip || '-'}</span></div>
                 {selected.location_updated && (
                   <div className="flex justify-between"><span>Updated</span><span className="text-siem-text">{formatDistanceToNow(new Date(selected.location_updated), { addSuffix: true })}</span></div>
                 )}

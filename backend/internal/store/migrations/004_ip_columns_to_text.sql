@@ -5,7 +5,7 @@
 -- in dst_ip for searchability. INET rejects non-IP strings causing HTTP 500
 -- on every batch that contains a DNS event.
 --
--- TEXT is strictly more flexible — valid IPs still store and compare correctly.
+-- TEXT is strictly more flexible - valid IPs still store and compare correctly.
 -- The existing INET indexes are dropped and recreated as plain btree TEXT indexes.
 
 -- Drop the old INET indexes first (required before altering column type)

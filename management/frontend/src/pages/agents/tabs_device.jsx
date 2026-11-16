@@ -94,11 +94,11 @@ export function TabDevice({ agent }) {
         <div className="text-[10px] uppercase tracking-wider text-siem-muted font-semibold mb-3">System</div>
         {[
           ['Hostname',    agent.hostname],
-          ['OS',          agent.os || '—'],
-          ['Agent version', agent.version || '—'],
-          ['Last IP',     agent.last_ip || '—'],
+          ['OS',          agent.os || '-'],
+          ['Agent version', agent.version || '-'],
+          ['Last IP',     agent.last_ip || '-'],
           ['Agent ID',    agent.id],
-          ['Last seen',   agent.last_seen ? formatDistanceToNow(new Date(agent.last_seen), { addSuffix: true }) : '—'],
+          ['Last seen',   agent.last_seen ? formatDistanceToNow(new Date(agent.last_seen), { addSuffix: true }) : '-'],
         ].map(([k, v]) => (
           <div key={k} className="flex justify-between text-xs py-1.5 border-b border-siem-border/40 last:border-0">
             <span className="text-siem-muted">{k}</span>
@@ -217,7 +217,7 @@ export function TabDevice({ agent }) {
           <div className="grid grid-cols-2 gap-x-6">
             {[
               ['Status',           raw.status],
-              ['Uptime',           raw.uptime_seconds != null ? `${Math.floor(raw.uptime_seconds/3600)}h ${Math.floor((raw.uptime_seconds%3600)/60)}m` : '—'],
+              ['Uptime',           raw.uptime_seconds != null ? `${Math.floor(raw.uptime_seconds/3600)}h ${Math.floor((raw.uptime_seconds%3600)/60)}m` : '-'],
               ['Events collected', Number(raw.events_collected||0).toLocaleString()],
               ['Events forwarded', Number(raw.events_forwarded||0).toLocaleString()],
               ['Events dropped',   Number(raw.events_dropped||0).toLocaleString()],
@@ -298,11 +298,11 @@ export function TabLocation({ agent }) {
       <div className="p-4 space-y-0 bg-siem-surface border-t border-siem-border shrink-0">
         <div className="grid grid-cols-3 gap-4">
           {[
-            ['Location',    [loc.location_city, loc.location_country].filter(Boolean).join(', ') || '—'],
-            ['Coordinates', hasCoords ? `${Number(lat).toFixed(4)}°, ${Number(lng).toFixed(4)}°` : '—'],
-            ['Source',      loc.location_source || '—'],
-            ['Accuracy',    loc.location_accuracy ? `~${Math.round(loc.location_accuracy)}m` : '—'],
-            ['Updated',     loc.location_updated ? formatDistanceToNow(new Date(loc.location_updated), { addSuffix: true }) : '—'],
+            ['Location',    [loc.location_city, loc.location_country].filter(Boolean).join(', ') || '-'],
+            ['Coordinates', hasCoords ? `${Number(lat).toFixed(4)}°, ${Number(lng).toFixed(4)}°` : '-'],
+            ['Source',      loc.location_source || '-'],
+            ['Accuracy',    loc.location_accuracy ? `~${Math.round(loc.location_accuracy)}m` : '-'],
+            ['Updated',     loc.location_updated ? formatDistanceToNow(new Date(loc.location_updated), { addSuffix: true }) : '-'],
           ].map(([k, v]) => (
             <div key={k}>
               <div className="text-[9px] uppercase tracking-wider text-siem-muted mb-0.5">{k}</div>
@@ -361,7 +361,7 @@ export function TabTerminal({ agent }) {
     setError(null)
   }
 
-  // Open WebSocket IMMEDIATELY when session is set — before xterm loads
+  // Open WebSocket IMMEDIATELY when session is set - before xterm loads
   // This ensures open_session reaches the agent without delay
   useEffect(() => {
     if (!session) return
@@ -384,7 +384,7 @@ export function TabTerminal({ agent }) {
         if (dead) return
         setConnected(true)
         if (xtermRef.current) {
-          xtermRef.current.writeln('\x1b[32m✓ Tunnel established — opening shell…\x1b[0m\r\n')
+          xtermRef.current.writeln('\x1b[32m✓ Tunnel established - opening shell…\x1b[0m\r\n')
         }
       }
       ws.onmessage = (evt) => {
@@ -438,7 +438,7 @@ export function TabTerminal({ agent }) {
       term.writeln('\r\n\x1b[32m ObsidianWatch Live Response\x1b[0m')
       term.writeln(` Connecting to \x1b[36m${session.hostname}\x1b[0m as \x1b[33m${session.username}\x1b[0m…`)
       if (ws.readyState === WebSocket.OPEN) {
-        term.writeln('\x1b[32m✓ Tunnel established — opening shell…\x1b[0m\r\n')
+        term.writeln('\x1b[32m✓ Tunnel established - opening shell…\x1b[0m\r\n')
       }
       xtermRef.current = term
       buffer.forEach(d => term.write(d))
@@ -461,7 +461,7 @@ export function TabTerminal({ agent }) {
   }, [session])
 
 
-  // ── No session yet — show connect prompt ──────────────────────────────────
+  // ── No session yet - show connect prompt ──────────────────────────────────
   if (!session) {
     const os = (agent.os || '').toLowerCase()
     const isWindows = os.includes('win')
@@ -501,7 +501,7 @@ export function TabTerminal({ agent }) {
     )
   }
 
-  // ── Session active — show terminal ────────────────────────────────────────
+  // ── Session active - show terminal ────────────────────────────────────────
   return (
     <div className="flex flex-col h-full bg-[#0a0f1a]">
       {/* Terminal toolbar */}

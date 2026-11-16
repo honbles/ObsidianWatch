@@ -28,13 +28,24 @@ export function TabVuln({ agent }) {
     return ev.raw
   }
 
+  const [cve, setCve] = useState(null) // CVEs from NVD (hosts without a distro feed, e.g. Windows)
+
+  const loadScan = (silent) => {
+    if (!silent) setLoading(true)
+    return api.get("/api/v1/agents/" + encodeURIComponent(agent.hostname) + "/vuln")
+      .then(r => { setData(r.data?.scan || null); setCve(r.data?.cve || null) })
+      .catch(() => { if (!silent) { setData(null); setCve(null) } })
+      .finally(() => { if (!silent) setLoading(false) })
+  }
+  useEffect(() => { loadScan(false) }, [agent.hostname])
+
+  // The backend checks NVD in the background (NVD is rate limited); keep
+  // refreshing until it reports done.
   useEffect(() => {
-    setLoading(true)
-    api.get("/api/v1/agents/" + encodeURIComponent(agent.hostname) + "/vuln")
-      .then(r => setData(r.data?.scan || null))
-      .catch(() => setData(null))
-      .finally(() => setLoading(false))
-  }, [agent.hostname])
+    if (cve?.status !== "running") return
+    const t = setTimeout(() => loadScan(true), 8000)
+    return () => clearTimeout(t)
+  }, [cve?.status, cve?.progress])
 
   // Load cached vuln AI analysis on mount
   useEffect(() => {
@@ -87,7 +98,7 @@ export function TabVuln({ agent }) {
       }
       setActiveSection("ai")
     } catch (e) {
-      setAIError(e.response?.data?.error || "AI analysis failed — check your API key in Settings → AI")
+      setAIError(e.response?.data?.error || "AI analysis failed - check your API key in Settings → AI")
     } finally { setAILoading(false) }
   }
 
@@ -130,13 +141,14 @@ export function TabVuln({ agent }) {
     { id:"ports",    label:`Ports (${ports.length})` },
     { id:"findings", label:`Findings (${findings.length})` },
     { id:"packages", label:`Packages (${packages.length})` },
+    ...(cve && cve.status !== "no_packages" ? [{ id:"cves", label: cve.status === "running" && !(cve.findings||[]).length ? "CVEs (checking…)" : `CVEs (${(cve.findings||[]).length})` }] : []),
     { id:"ai",       label:"AI Analysis", highlight: true },
   ]
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
 
-      {/* Top bar — risk summary + AI button */}
+      {/* Top bar - risk summary + AI button */}
       <div className="shrink-0 px-5 py-3 border-b border-siem-border bg-siem-surface">
         <div className="flex items-center gap-4">
           {/* Posture */}
@@ -151,6 +163,7 @@ export function TabVuln({ agent }) {
               [scan.critical_count, "Critical", "text-red-400"],
               [scan.high_count,     "High",     "text-orange-400"],
               [scan.medium_count,   "Medium",   "text-yellow-400"],
+              [(cve?.findings||[]).length, "CVEs", "text-red-400"],
               [ports.length,        "Open Ports","text-siem-muted"],
             ].map(([n, label, color]) => n > 0 && (
               <div key={label} className="text-center">
@@ -205,9 +218,9 @@ export function TabVuln({ agent }) {
                 {[
                   ["Hostname",    scan.system?.hostname || agent.hostname],
                   ["OS",          scan.system?.os_release || scan.os || agent.os],
-                  ["Kernel",      scan.system?.kernel_version || "—"],
-                  ["Arch",        scan.system?.arch || "—"],
-                  ["Scan time",   scan.scan_duration_secs ? scan.scan_duration_secs.toFixed(1) + "s" : "—"],
+                  ["Kernel",      scan.system?.kernel_version || "-"],
+                  ["Arch",        scan.system?.arch || "-"],
+                  ["Scan time",   scan.scan_duration_secs ? scan.scan_duration_secs.toFixed(1) + "s" : "-"],
                   ["Ports scanned", "1 – 65,535 TCP"],
                   ["Packages",    (scan.packages?.length || 0) + " installed"],
                   ["Services",    (scan.services?.length || 0) + " running"],
@@ -304,6 +317,71 @@ export function TabVuln({ agent }) {
           </div>
         )}
 
+        {/* ── CVEs (NVD) ── */}
+        {activeSection === "cves" && cve && (
+          <div className="p-5 space-y-3">
+            <div className="bg-siem-surface border border-siem-border rounded-xl p-4 text-[11px] space-y-1.5">
+              <div className="flex items-center gap-2 text-siem-text">
+                {cve.status === "running" && <RefreshCw size={12} className="animate-spin text-siem-accent"/>}
+                <span className="font-semibold">
+                  {cve.status === "running"
+                    ? `Checking NVD… ${cve.progress || 0} of ${cve.to_check || "?"} products`
+                    : cve.status === "partial"
+                      ? "Partial result - some lookups failed or did not finish"
+                      : `Checked ${(cve.checked||[]).length} products against NVD`}
+                </span>
+              </div>
+              <div className="text-siem-muted">
+                {cve.method}. {cve.unmapped > 0 && <>{cve.unmapped} of {cve.packages_total} installed packages are not assessed (no known product mapping). </>}
+                {cve.failed > 0 && <span className="text-amber-400">{cve.failed} lookups failed - they retry on the next load. </span>}
+                {cve.note}
+              </div>
+              {cve.status === "running" && !cve.has_api_key && (
+                <div className="text-amber-400/90">NVD allows 5 requests per 30 s without an API key, so this can take a few minutes. A free key (Settings) is about 10× faster. Results are cached for 24 h.</div>
+              )}
+            </div>
+
+            {(cve.findings||[]).length === 0 && cve.status !== "running" ? (
+              <div className="text-center text-sm text-siem-muted py-10">No CVEs (CVSS 4.0+) found for the products that could be checked.</div>
+            ) : (
+              <div className="bg-siem-surface border border-siem-border rounded-xl overflow-hidden">
+                {(cve.findings||[]).map((f, i) => {
+                  const k = ({CRITICAL:5, HIGH:4, MEDIUM:3, LOW:2}[String(f.severity).toUpperCase()]) || 3
+                  const st = SEV[k]
+                  return (
+                    <div key={f.cve_id + i} className="px-4 py-2.5 border-b border-siem-border/15 last:border-0 text-[11px]">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className={"px-1.5 py-0.5 rounded border text-[9px] font-semibold uppercase " + st.bg + " " + st.border + " " + st.text}>{st.label}</span>
+                        <a href={cveHref(f.cve_id)} target="_blank" rel="noopener noreferrer" className="font-mono text-siem-accent hover:underline">{f.cve_id}</a>
+                        <span className="font-mono text-siem-muted">CVSS {Number(f.cvss).toFixed(1)}</span>
+                        <span className="text-siem-text">{f.package}</span>
+                        <span className="font-mono text-siem-muted">{f.version}</span>
+                        <span className="ml-auto text-siem-muted/60">{f.published}</span>
+                      </div>
+                      <div className="text-siem-muted mt-1">{f.description}</div>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+
+            {(cve.checked||[]).length > 0 && (
+              <details className="text-[11px] text-siem-muted">
+                <summary className="cursor-pointer hover:text-siem-text">Products checked ({cve.checked.length})</summary>
+                <div className="mt-2 bg-siem-surface border border-siem-border rounded-xl divide-y divide-siem-border/15">
+                  {cve.checked.map((c, i) => (
+                    <div key={i} className="px-4 py-1.5 flex gap-3">
+                      <span className="text-siem-text">{c.name}</span>
+                      <span className="font-mono">{c.version}</span>
+                      <span className="ml-auto">{c.failed ? <span className="text-amber-400">lookup failed</span> : `${c.cves} CVE${c.cves === 1 ? "" : "s"} (CVSS 4+) of ${c.total_in_nvd} in NVD`}</span>
+                    </div>
+                  ))}
+                </div>
+              </details>
+            )}
+          </div>
+        )}
+
         {/* ── Packages ── */}
         {activeSection === "packages" && (
           <div className="p-5">
@@ -314,10 +392,17 @@ export function TabVuln({ agent }) {
               </div>
             ) : (<>
               <div className="mb-3 flex items-center gap-3">
-                <button onClick={runOSV} disabled={osvBusy}
-                  className="text-xs px-3 py-1.5 rounded-lg border border-siem-border bg-siem-surface hover:bg-siem-bg disabled:opacity-50">
-                  {osvBusy ? "Checking OSV…" : "Check packages against OSV"}
-                </button>
+                {cve ? (
+                  <button onClick={() => setActiveSection("cves")}
+                    className="text-xs px-3 py-1.5 rounded-lg border border-siem-border bg-siem-surface hover:bg-siem-bg">
+                    CVEs from NVD → ({(cve.findings||[]).length})
+                  </button>
+                ) : (
+                  <button onClick={runOSV} disabled={osvBusy}
+                    className="text-xs px-3 py-1.5 rounded-lg border border-siem-border bg-siem-surface hover:bg-siem-bg disabled:opacity-50">
+                    {osvBusy ? "Checking OSV…" : "Check packages against OSV"}
+                  </button>
+                )}
                 <button onClick={runHC}
                   className="text-xs px-3 py-1.5 rounded-lg border border-siem-border bg-siem-surface hover:bg-siem-bg">Run endpoint compliance checks</button>
                 {osvErr && <span className="text-xs text-red-400">{osvErr}</span>}
@@ -329,7 +414,7 @@ export function TabVuln({ agent }) {
                     <span className="text-emerald-400">{hc.passed} passed</span>
                     {" · "}<span className="text-red-400">{hc.failed ?? (hc.total - hc.passed)} failed</span>
                     {hc.unknown > 0 && <>{" · "}<span className="text-amber-400">{hc.unknown} could not be checked</span></>}
-                    {" — "}{hc.scope}
+                    {" - "}{hc.scope}
                   </div>
                   {[...hc.checks]
                     .sort((a, b) => ({fail:0, unknown:1, pass:2}[a.status] ?? 3) - ({fail:0, unknown:1, pass:2}[b.status] ?? 3)
@@ -340,7 +425,7 @@ export function TabVuln({ agent }) {
                       <span className="ml-2 text-siem-text">{c.id} {c.title}</span>
                       {c.category && <span className="ml-2 text-siem-muted/60">{c.category}</span>}
                       {c.status !== "pass" && c.severity && <span className="ml-2 text-siem-muted uppercase">{c.severity}</span>}
-                      {c.status !== "pass" && <div className="text-siem-muted mt-0.5">{c.detail ? c.detail + " — " : ""}{c.fix}</div>}
+                      {c.status !== "pass" && <div className="text-siem-muted mt-0.5">{c.detail ? c.detail + " - " : ""}{c.fix}</div>}
                     </div>
                   ))}
                 </div>
@@ -382,7 +467,7 @@ export function TabVuln({ agent }) {
           <div className="p-5 space-y-4">
             {aiError && (
               <div className="bg-red-950/20 border border-red-800/30 rounded-xl p-4 text-xs text-red-400">
-                {aiError} — ensure Groq or Anthropic API key is configured in Settings.
+                {aiError} - ensure Groq or Anthropic API key is configured in Settings.
               </div>
             )}
 
@@ -780,7 +865,7 @@ export function TabRCA({ agent }) {
             <div className="bg-siem-bg border border-siem-border/50 rounded-xl p-3">
               <div className="text-[9px] text-siem-muted/60 leading-relaxed">
                 <span className="text-siem-muted/80 font-medium">What's sent to AI:</span> Alert titles, event types, process names, command lines, IPs, file paths from the ±48h window.
-                No file contents, no passwords, no customer data — only security metadata your SIEM already captures.
+                No file contents, no passwords, no customer data - only security metadata your SIEM already captures.
                 Results are cached locally in your database and never leave your infrastructure except for the AI API call.
               </div>
             </div>
@@ -828,7 +913,7 @@ export function TabRCA({ agent }) {
               </div>
             )}
 
-            {/* Attack chain — visual flow */}
+            {/* Attack chain - visual flow */}
             {rca.attack_chain?.length > 0 && (
               <div>
                 <div className="text-[10px] uppercase tracking-wider text-siem-muted/60 font-semibold mb-3">Attack Chain</div>
@@ -954,7 +1039,7 @@ export function TabRCA({ agent }) {
                         'bg-yellow-900/20 border-yellow-700 text-yellow-300'
                       }`}>{rca.impact_assessment.severity}</span>
                       {rca.impact_assessment.severity_rationale && (
-                        <span className="text-[10px] text-siem-muted/60">— {rca.impact_assessment.severity_rationale}</span>
+                        <span className="text-[10px] text-siem-muted/60">- {rca.impact_assessment.severity_rationale}</span>
                       )}
                     </div>
                   )}
@@ -1055,7 +1140,7 @@ export function TabRCA({ agent }) {
               <div className="px-4 py-3 border-b border-siem-border/40 flex items-center gap-2">
                 <MessageSquare size={13} className="text-siem-accent"/>
                 <span className="text-sm font-semibold text-siem-text">Continue Investigation</span>
-                <span className="text-[10px] text-siem-muted ml-1">— ask follow-up questions about this incident</span>
+                <span className="text-[10px] text-siem-muted ml-1">- ask follow-up questions about this incident</span>
               </div>
 
               {/* Suggested questions */}
@@ -1074,7 +1159,7 @@ export function TabRCA({ agent }) {
               <div className="p-4 space-y-4 max-h-[500px] overflow-y-auto">
                 {chatHistory.length === 0 ? (
                   <div className="text-sm text-siem-muted/40 italic text-center py-4">
-                    Ask anything about this incident — what happened, why, how to respond…
+                    Ask anything about this incident - what happened, why, how to respond…
                   </div>
                 ) : chatHistory.map((msg, i) => (
                   <div key={i} className={`flex gap-3 ${msg.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}>

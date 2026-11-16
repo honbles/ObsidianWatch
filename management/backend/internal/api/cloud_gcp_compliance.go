@@ -1,12 +1,12 @@
 package api
 
-// cloud_gcp_compliance.go — Compliance framework mapping for GCP CSPM findings.
+// cloud_gcp_compliance.go - Compliance framework mapping for GCP CSPM findings.
 //
 // Maps existing CSPMFinding results to formal compliance framework controls:
-//   SOC 2 Type II  — Trust Service Criteria (CC6, CC7, CC8, A1)
-//   PCI-DSS v4.0   — Requirements 1, 2, 6, 7, 8, 10
-//   ISO 27001:2022 — Annex A controls (A.5–A.8)
-//   NIST 800-53 R5 — AC, AU, CA, CM, IA, SC, SI families
+//   SOC 2 Type II  - Trust Service Criteria (CC6, CC7, CC8, A1)
+//   PCI-DSS v4.0   - Requirements 1, 2, 6, 7, 8, 10
+//   ISO 27001:2022 - Annex A controls (A.5–A.8)
+//   NIST 800-53 R5 - AC, AU, CA, CM, IA, SC, SI families
 //
 // Usage: call MapToCompliance(cspmResult) after RunGCPCSPM to get a
 // ComplianceReport with per-framework pass/fail scores.
@@ -50,7 +50,7 @@ type ComplianceReport struct {
 	TotalFailed  int                 `json:"total_failed"`
 	TotalNotAssessed int             `json:"total_not_assessed"`
 	// G-37: this is an indicative posture mapping of automated checks to
-	// control themes — it is not an attestation of compliance.
+	// control themes - it is not an attestation of compliance.
 	Disclaimer string `json:"disclaimer"`
 }
 
@@ -109,14 +109,14 @@ var complianceCatalogue = []complianceRule{
 	// ── SOC 2 ─────────────────────────────────────────────────────────────────
 	{
 		ControlID: "CC6.1", Framework: "SOC2",
-		Title:       "Logical and physical access controls — access restriction",
+		Title:       "Logical and physical access controls - access restriction",
 		Description: "The entity implements logical access security measures to protect against threats from sources outside its system boundaries.",
 		Categories:    []string{"iam"},
 		Severities:    []string{"critical", "high"},
 	},
 	{
 		ControlID: "CC6.2", Framework: "SOC2",
-		Title:       "Logical and physical access controls — prior to issuance of credentials",
+		Title:       "Logical and physical access controls - prior to issuance of credentials",
 		Description: "Prior to issuing system credentials, the entity registers and authorizes new users.",
 		Categories:    []string{"iam"},
 		ResourceTypes: []string{"service_account_key", "iam_binding"},
@@ -124,14 +124,14 @@ var complianceCatalogue = []complianceRule{
 	},
 	{
 		ControlID: "CC6.3", Framework: "SOC2",
-		Title:       "Logical and physical access controls — removes access when appropriate",
+		Title:       "Logical and physical access controls - removes access when appropriate",
 		Description: "The entity authorizes, modifies, or removes access based on changes in job roles.",
 		ResourceTypes: []string{"iam_binding", "org_iam_binding", "role_assignment"},
 		Severities:    []string{"critical", "high"},
 	},
 	{
 		ControlID: "CC6.6", Framework: "SOC2",
-		Title:       "Logical and physical access controls — boundary protection",
+		Title:       "Logical and physical access controls - boundary protection",
 		Description: "The entity implements controls to prevent or detect and act upon the introduction of unauthorized or malicious software.",
 		Categories:    []string{"network"},
 		ResourceTypes: []string{"firewall_rule", "nsg"},
@@ -139,35 +139,35 @@ var complianceCatalogue = []complianceRule{
 	},
 	{
 		ControlID: "CC6.7", Framework: "SOC2",
-		Title:       "Logical and physical access controls — transmission and movement of information",
+		Title:       "Logical and physical access controls - transmission and movement of information",
 		Description: "The entity restricts the transmission, movement, and removal of information to authorized parties.",
 		Categories:    []string{"storage", "sql"},
 		Severities:    []string{"critical", "high"},
 	},
 	{
 		ControlID: "CC6.8", Framework: "SOC2",
-		Title:       "Logical and physical access controls — prevents unauthorized software",
+		Title:       "Logical and physical access controls - prevents unauthorized software",
 		Description: "The entity implements controls to prevent or detect and act upon the introduction of unauthorized software.",
 		ResourceTypes: []string{"artifact_registry", "gke_cluster", "cloud_run_service"},
 		Severities:    []string{"critical", "high"},
 	},
 	{
 		ControlID: "CC7.1", Framework: "SOC2",
-		Title:       "System operations — detection of configuration changes",
+		Title:       "System operations - detection of configuration changes",
 		Description: "The entity uses detection and monitoring procedures to identify changes to configurations.",
 		Categories:    []string{"logging"},
 		Severities:    []string{"critical", "high", "medium"},
 	},
 	{
 		ControlID: "CC7.2", Framework: "SOC2",
-		Title:       "System operations — monitors system components for anomalies",
+		Title:       "System operations - monitors system components for anomalies",
 		Description: "The entity monitors system components and the operation of controls to detect anomalies.",
 		Categories:    []string{"logging", "compute"},
 		Severities:    []string{"critical", "high"},
 	},
 	{
 		ControlID: "CC8.1", Framework: "SOC2",
-		Title:       "Change management — authorizes, designs, develops/acquires changes",
+		Title:       "Change management - authorizes, designs, develops/acquires changes",
 		Description: "The entity authorizes, designs, develops or acquires, configures, documents, tests, approves, and implements changes.",
 		Categories:    []string{"iam"},
 		ResourceTypes: []string{"org_policy"},
@@ -175,7 +175,7 @@ var complianceCatalogue = []complianceRule{
 	},
 	{
 		ControlID: "A1.1", Framework: "SOC2",
-		Title:       "Availability — current processing capacity",
+		Title:       "Availability - current processing capacity",
 		Description: "The entity maintains, monitors, and evaluates current processing capacity and use of system components.",
 		ResourceTypes: []string{"cloud_sql", "compute_instance"},
 		Severities:    []string{"critical"},
@@ -184,14 +184,14 @@ var complianceCatalogue = []complianceRule{
 	// ── PCI-DSS v4.0 ──────────────────────────────────────────────────────────
 	{
 		ControlID: "PCI-1.3", Framework: "PCI-DSS",
-		Title:       "Requirement 1.3 — Network access controls restrict inbound/outbound traffic",
+		Title:       "Requirement 1.3 - Network access controls restrict inbound/outbound traffic",
 		Description: "Restrict inbound and outbound traffic to only that which is necessary for the cardholder data environment.",
 		Categories:    []string{"network"},
 		Severities:    []string{"critical", "high"},
 	},
 	{
 		ControlID: "PCI-2.2", Framework: "PCI-DSS",
-		Title:       "Requirement 2.2 — System components configured securely",
+		Title:       "Requirement 2.2 - System components configured securely",
 		Description: "Develop configuration standards for all system components that address known security vulnerabilities.",
 		Categories:    []string{"compute", "sql"},
 		ResourceTypes: []string{"compute_instance", "cloud_sql", "gke_cluster"},
@@ -199,42 +199,42 @@ var complianceCatalogue = []complianceRule{
 	},
 	{
 		ControlID: "PCI-6.3", Framework: "PCI-DSS",
-		Title:       "Requirement 6.3 — Security vulnerabilities identified and addressed",
+		Title:       "Requirement 6.3 - Security vulnerabilities identified and addressed",
 		Description: "Security vulnerabilities are identified and protected against.",
 		ResourceTypes: []string{"gke_cluster", "artifact_registry", "cloud_run_service"},
 		Severities:    []string{"critical", "high"},
 	},
 	{
 		ControlID: "PCI-7.2", Framework: "PCI-DSS",
-		Title:       "Requirement 7.2 — Access control system implemented",
+		Title:       "Requirement 7.2 - Access control system implemented",
 		Description: "Access to system components and cardholder data is managed via an access control system.",
 		Categories:    []string{"iam"},
 		Severities:    []string{"critical", "high", "medium"},
 	},
 	{
 		ControlID: "PCI-8.2", Framework: "PCI-DSS",
-		Title:       "Requirement 8.2 — User identification and authentication managed",
+		Title:       "Requirement 8.2 - User identification and authentication managed",
 		Description: "All users are assigned a unique ID. Authentication policies prevent use of group/shared accounts.",
 		ResourceTypes: []string{"service_account_key", "iam_binding"},
 		Severities:    []string{"critical", "high"},
 	},
 	{
 		ControlID: "PCI-8.3", Framework: "PCI-DSS",
-		Title:       "Requirement 8.3 — User authentication mechanisms including MFA",
+		Title:       "Requirement 8.3 - User authentication mechanisms including MFA",
 		Description: "All individual non-consumer user access to in-scope system components is authenticated with at least one authentication factor.",
 		Categories:    []string{"iam"},
 		Severities:    []string{"critical", "high"},
 	},
 	{
 		ControlID: "PCI-10.2", Framework: "PCI-DSS",
-		Title:       "Requirement 10.2 — Audit logs capture all individual user activity",
+		Title:       "Requirement 10.2 - Audit logs capture all individual user activity",
 		Description: "Audit logs capture all individual user access to cardholder data, actions by root/admin, access to audit trails, and invalid access attempts.",
 		Categories:    []string{"logging"},
 		Severities:    []string{"critical", "high", "medium"},
 	},
 	{
 		ControlID: "PCI-10.5", Framework: "PCI-DSS",
-		Title:       "Requirement 10.5 — Retain audit logs for at least 12 months",
+		Title:       "Requirement 10.5 - Retain audit logs for at least 12 months",
 		Description: "Retain audit log history for at least 12 months with at least the most recent three months available for immediate analysis.",
 		ResourceTypes: []string{"log_sink", "audit_config"},
 		Severities:    []string{"critical", "high", "medium"},

@@ -2,7 +2,7 @@
 
 package collector
 
-// es_exec.go — near-real-time process exec events via `eslogger` (A-01 interim).
+// es_exec.go - near-real-time process exec events via `eslogger` (A-01 interim).
 //
 // The sysctl poller (process.go) misses processes that start and exit between
 // polls. On macOS 13+ Apple ships /usr/bin/eslogger, a CLI front end to the

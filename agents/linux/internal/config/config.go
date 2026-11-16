@@ -69,7 +69,7 @@ type FIMDirConfig struct {
 	Exclude   []string `yaml:"exclude"`
 }
 
-// ConfigMonConfig monitors Linux config files — equivalent to Windows registry monitoring.
+// ConfigMonConfig monitors Linux config files - equivalent to Windows registry monitoring.
 type ConfigMonConfig struct {
 	Enabled bool     `yaml:"enabled"`
 	Paths   []string `yaml:"paths"`
@@ -151,7 +151,7 @@ func defaults() *Config {
 			FIM: FIMConfig{
 				Enabled: true,
 				Dirs: []FIMDirConfig{
-					// Use /usr/bin directly — /bin is a symlink on Ubuntu 22+
+					// Use /usr/bin directly - /bin is a symlink on Ubuntu 22+
 					{Path: "/usr/bin", Recursive: false},
 					{Path: "/usr/sbin", Recursive: false},
 					{Path: "/usr/local/bin", Recursive: false},
@@ -257,7 +257,7 @@ func InstallKeyFile() string { return installKeyFile }
 
 // BuildTLSConfig (L-05) builds a *tls.Config trusting caPEM if provided.
 // If caPEM is empty and allowInsecure is false, it HARD-FAILS instead of
-// the old behavior of silently setting InsecureSkipVerify: true — that
+// the old behavior of silently setting InsecureSkipVerify: true - that
 // previous fallback meant any MITM could present any certificate and the
 // agent would accept it without complaint whenever the CA wasn't wired up
 // correctly, which is exactly the situation (misconfiguration) where you
@@ -273,7 +273,7 @@ func BuildTLSConfig(caPEM []byte, allowInsecure bool) (*tls.Config, error) {
 	if allowInsecure {
 		return &tls.Config{InsecureSkipVerify: true}, nil
 	}
-	return nil, fmt.Errorf("tls: no CA certificate configured and allow_insecure_tls is false — refusing to connect without verifying the server certificate")
+	return nil, fmt.Errorf("tls: no CA certificate configured and allow_insecure_tls is false - refusing to connect without verifying the server certificate")
 }
 
 // LiveResponseConfig gates the analyst remote-shell tunnel. Off unless the

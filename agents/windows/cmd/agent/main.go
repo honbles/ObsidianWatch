@@ -1,4 +1,4 @@
-// obsidianwatch-agent — Windows security event collection agent.
+// obsidianwatch-agent - Windows security event collection agent.
 //
 // Usage:
 //   agent.exe install    # install as Windows service (config embedded in binary)
@@ -67,7 +67,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Handle install / uninstall verbs — always in interactive context.
+	// Handle install / uninstall verbs - always in interactive context.
 	if flag.NArg() > 0 {
 		if err := handleCommand(flag.Arg(0)); err != nil {
 			fmt.Fprintf(os.Stderr, "error: %v\n", err)
@@ -130,7 +130,7 @@ func (s *agentService) Execute(args []string, r <-chan svc.ChangeRequest, status
 
 	status <- svc.Status{State: svc.StartPending}
 
-	// Write startup marker directly to log file — before anything else
+	// Write startup marker directly to log file - before anything else
 	// so we know Execute() was reached even if run() panics.
 	os.MkdirAll(`C:\ProgramData\ObsidianWatch`, 0700)
 	hardenDataDir()
@@ -205,7 +205,7 @@ func (s *agentService) Execute(args []string, r <-chan svc.ChangeRequest, status
 // ---------------------------------------------------------------------------
 
 func run(ctx context.Context, cfg *config.Config, logger *slog.Logger) error {
-	// Write directly to log file first — before anything else in run()
+	// Write directly to log file first - before anything else in run()
 	logStep := func(msg string) {
 		if f, err := os.OpenFile(`C:\ProgramData\ObsidianWatch\agent.log`,
 			os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err == nil {
@@ -361,7 +361,7 @@ func run(ctx context.Context, cfg *config.Config, logger *slog.Logger) error {
 	}
 
 	// ── Rate limiter ─────────────────────────────────────────────────────
-	// Sits between collectors and the dispatcher — wraps eventCh.
+	// Sits between collectors and the dispatcher - wraps eventCh.
 	var dispatchCh chan schema.Event
 	if cfg.Collector.RateLimit.Enabled {
 		rawCh := make(chan schema.Event, 4096)
@@ -467,13 +467,13 @@ func run(ctx context.Context, cfg *config.Config, logger *slog.Logger) error {
 			cfg.Collector.Health.Interval,
 			agentID, hostInfo.Hostname, cfg.Agent.Version,
 			activeCollectors,
-			eventCh, // health bypasses rate limiter — always send
+			eventCh, // health bypasses rate limiter - always send
 			logger,
 		)
 		startCollector("health", c.Run)
 	}
 
-	// Vulnerability scanner — full TCP port scan every 5 days
+	// Vulnerability scanner - full TCP port scan every 5 days
 	{
 		vs := collector.NewVulnScanner(collector.VulnScannerConfig{
 			Enabled:      true,
@@ -495,14 +495,14 @@ func run(ctx context.Context, cfg *config.Config, logger *slog.Logger) error {
 			cfg.Forwarder.BackendURL, cfg.Forwarder.APIKey,
 			resolveRelative(cfg.Forwarder.CAFile), cfg.Forwarder.CACertPEM,
 			cfg.Forwarder.AllowInsecureTLS, cfg.Collector.LocationPrecisePositioning,
-			eventCh, // bypasses rate limiter — location is low frequency
+			eventCh, // bypasses rate limiter - location is low frequency
 			logger,
 		)
 		startCollector("location", c.Run)
 		activeCollectors = append(activeCollectors, "location")
 	}
 
-	// Live Response — analyst terminal access. H-2: opt-in only.
+	// Live Response - analyst terminal access. H-2: opt-in only.
 	if cfg.LiveResponse.Enabled {
 		lr := collector.NewLiveResponseCollector(
 			agentID, hostInfo.Hostname,
@@ -530,7 +530,7 @@ func run(ctx context.Context, cfg *config.Config, logger *slog.Logger) error {
 	// Start the HTTP forwarder (reads from queue, not eventCh).
 	go func() { errCh <- fwd.Run(ctx) }()
 
-	logStep("all collectors launched — waiting for shutdown")
+	logStep("all collectors launched - waiting for shutdown")
 	<-ctx.Done()
 	logger.Info("agent shutting down")
 	// D-12: report the stop to the server before exiting (service stop,
@@ -583,7 +583,7 @@ func installService() error {
 		fmt.Printf("  Warning: could not restrict binary ACL: %v %s\n", aerr, strings.TrimSpace(string(out)))
 	}
 
-	// Load the embedded config — no yaml file needed.
+	// Load the embedded config - no yaml file needed.
 	cfg, err := config.LoadEmbedded("agent.yaml")
 	if err != nil {
 		return fmt.Errorf("load config: %w", err)
@@ -629,7 +629,7 @@ func installService() error {
 	if err != nil {
 		return fmt.Errorf("connect to SCM: %w", err)
 	}
-	// Disconnect before removing the existing service — Windows will not fully
+	// Disconnect before removing the existing service - Windows will not fully
 	// purge a deleted service entry while any SCM handle is open in this process.
 	m.Disconnect()
 
@@ -642,7 +642,7 @@ func installService() error {
 	}
 	defer m.Disconnect()
 
-	// Copy binary to Program Files — no config file or certs to copy,
+	// Copy binary to Program Files - no config file or certs to copy,
 	// everything is embedded in the binary.
 	installDir := `C:\Program Files\ObsidianWatch\Agent`
 	if err := os.MkdirAll(installDir, 0755); err != nil {
@@ -655,7 +655,7 @@ func installService() error {
 	}
 	fmt.Printf("  Installed to %s\n", installDir)
 
-	// Register service — no -config flag needed.
+	// Register service - no -config flag needed.
 	s, err := m.CreateService(serviceName, installedExe, mgr.Config{
 		StartType:   mgr.StartAutomatic,
 		DisplayName: serviceDisplayName,
@@ -708,7 +708,7 @@ func enablePrivilege(name string) {
 // and deletes the target service. This is more reliable than a scheduled task
 // because it avoids temp file path issues and task scheduler timing problems.
 func deleteServiceViaSYSTEM(svcName string) error {
-	fmt.Println("  Direct DACL unlock blocked — using LocalSystem service to remove...")
+	fmt.Println("  Direct DACL unlock blocked - using LocalSystem service to remove...")
 
 	cleanerName := "OW_Cleaner_" + svcName
 	script := fmt.Sprintf(
@@ -738,7 +738,7 @@ func deleteServiceViaSYSTEM(svcName string) error {
 // waitForServiceGone polls sc.exe query every 500ms until the service entry
 // is fully removed from the SCM (sc.exe returns error 1060 or "does not exist").
 // Waits up to 30 seconds. This is necessary because both DeleteService and
-// sc.exe delete are asynchronous — the SCM only removes the entry once all
+// sc.exe delete are asynchronous - the SCM only removes the entry once all
 // open handles are closed and the service process has fully exited.
 func waitForServiceGone(svcName string) {
 	deadline := time.Now().Add(30 * time.Second)
@@ -790,7 +790,7 @@ func removeExistingService(name string) {
 	// First open with WRITE_DAC to reset DACL
 	hDac, _, _ := openSvcR.Call(scm, uintptr(unsafe.Pointer(svcName)), SERVICE_WRITE_DAC)
 	if hDac == 0 {
-		// WRITE_DAC denied — service exists but tamper DACL is still active.
+		// WRITE_DAC denied - service exists but tamper DACL is still active.
 		// Fall back to SYSTEM task which can bypass it.
 		deleteServiceViaSYSTEM(name) //nolint
 		return
@@ -814,7 +814,7 @@ func removeExistingService(name string) {
 	deleteR.Call(hFull)
 	closeHndR.Call(hFull)
 
-	// DeleteService is asynchronous — poll sc.exe query until the service
+	// DeleteService is asynchronous - poll sc.exe query until the service
 	// entry is fully gone from the SCM database.
 	waitForServiceGone(name)
 	fmt.Println("  Removed existing service installation.")
@@ -860,7 +860,7 @@ func registerInstallKey(mgmtURL, apiKey, mgmtCACertPEM, agentID, password string
 	mgmtURL = strings.TrimRight(mgmtURL, "/")
 	body := fmt.Sprintf(`{"agent_id":%q,"install_key":%q,"os":"windows"}`, agentID, password)
 
-	// W-05: fail closed — no silent InsecureSkipVerify fallback.
+	// W-05: fail closed - no silent InsecureSkipVerify fallback.
 	tlsCfg, err := config.BuildTLSConfig([]byte(mgmtCACertPEM), false)
 	if err != nil {
 		return err
@@ -939,7 +939,7 @@ func uninstallService() error {
 	// Read install key from state file
 	installKey, err := config.ReadInstallKey()
 	if err != nil || installKey == "" {
-		return fmt.Errorf("could not read install key — was this agent installed with this tool?\n(expected at %s)", config.InstallKeyFile())
+		return fmt.Errorf("could not read install key - was this agent installed with this tool?\n(expected at %s)", config.InstallKeyFile())
 	}
 
 	// ── Tamper protection: require the admin to enter the key ────────────────
@@ -957,7 +957,7 @@ func uninstallService() error {
 	fmt.Scanln(&inputKey)
 	inputKey = strings.TrimSpace(inputKey)
 
-	// F-02: the management server is the authority — it verifies the key and
+	// F-02: the management server is the authority - it verifies the key and
 	// rotates it, so a key is single-use and "Regenerate key" on the dashboard
 	// actually works. The local copy is consulted only when the server cannot
 	// be reached at all; a server rejection is final.
@@ -991,7 +991,7 @@ func uninstallService() error {
 
 	const (
 		SC_MANAGER_CONNECT = 0x0001     // always granted to any user
-		SERVICE_WRITE_DAC  = 0x00040000 // not in our deny list — should be allowed
+		SERVICE_WRITE_DAC  = 0x00040000 // not in our deny list - should be allowed
 		SERVICE_ALL_ACCESS = 0x000F01FF
 	)
 
@@ -1006,7 +1006,7 @@ func uninstallService() error {
 	closeHnd := advapi32u.NewProc("CloseServiceHandle")
 	setSec2 := advapi32u.NewProc("SetServiceObjectSecurity")
 
-	// Open SCM with CONNECT only — always succeeds for any local user
+	// Open SCM with CONNECT only - always succeeds for any local user
 	scmName, _ := windows.UTF16PtrFromString("")
 	scmDB, _ := windows.UTF16PtrFromString("ServicesActive")
 	scmHandle, _, _ := openSCM.Call(
@@ -1021,7 +1021,7 @@ func uninstallService() error {
 
 	svcName, _ := windows.UTF16PtrFromString(serviceName)
 
-	// Step 1: Open with WRITE_DAC|WRITE_OWNER — our deny ACE only blocks
+	// Step 1: Open with WRITE_DAC|WRITE_OWNER - our deny ACE only blocks
 	// SERVICE_STOP (0x20) and DELETE (0x10000), not DAC/owner writes.
 	hDac, _, _ := openSvc.Call(scmHandle, uintptr(unsafe.Pointer(svcName)), SERVICE_WRITE_DAC)
 	if hDac == 0 {
@@ -1039,7 +1039,7 @@ func uninstallService() error {
 	ret, _, _ := setSec2.Call(hDac, 4, uintptr(unsafe.Pointer(sd))) // DACL_SECURITY_INFORMATION = 4
 	closeHnd.Call(hDac)
 	if ret == 0 {
-		fmt.Printf("Warning: could not unlock DACL (err=%v) — trying anyway\n", windows.GetLastError())
+		fmt.Printf("Warning: could not unlock DACL (err=%v) - trying anyway\n", windows.GetLastError())
 	} else {
 		fmt.Println("  DACL unlocked. Service can now be stopped and removed.")
 	}
@@ -1112,7 +1112,7 @@ func ensureWindowsServices(logger *slog.Logger) {
 			continue
 		}
 
-		// Check if the service is disabled — if so, re-enable it first.
+		// Check if the service is disabled - if so, re-enable it first.
 		cfgSvc, err := s.Config()
 		if err == nil && cfgSvc.StartType == mgr.StartDisabled {
 			logger.Info("preflight: service is disabled, re-enabling", "service", name)
@@ -1152,7 +1152,7 @@ func ensureWindowsServices(logger *slog.Logger) {
 		s.Close()
 	}
 
-	// Sysmon — auto-install if not present.
+	// Sysmon - auto-install if not present.
 	// If not already admin, attempt to self-elevate via ShellExecute runas.
 	switch sysmonpkg.Check() {
 	case sysmonpkg.StatusRunning:
@@ -1161,17 +1161,17 @@ func ensureWindowsServices(logger *slog.Logger) {
 		if sysmonpkg.IsAdmin() {
 			sysmonpkg.EnsureInstalled(logger)
 		} else {
-			logger.Warn("preflight: Sysmon installed but not running — attempting to start via elevation")
+			logger.Warn("preflight: Sysmon installed but not running - attempting to start via elevation")
 			if err := elevatedSysmonSetup(logger); err != nil {
-				logger.Warn("preflight: elevation failed — start agent as Administrator", "err", err)
+				logger.Warn("preflight: elevation failed - start agent as Administrator", "err", err)
 			}
 		}
 	case sysmonpkg.StatusNotInstalled:
 		if sysmonpkg.IsAdmin() {
-			logger.Info("preflight: Sysmon not installed — auto-installing now")
+			logger.Info("preflight: Sysmon not installed - auto-installing now")
 			sysmonpkg.EnsureInstalled(logger)
 		} else {
-			logger.Warn("preflight: Sysmon not installed — requesting elevation to install")
+			logger.Warn("preflight: Sysmon not installed - requesting elevation to install")
 			if err := elevatedSysmonSetup(logger); err != nil {
 				logger.Warn("preflight: could not auto-install Sysmon (run agent as Administrator for auto-install)", "err", err)
 			}
@@ -1180,7 +1180,7 @@ func ensureWindowsServices(logger *slog.Logger) {
 
 	// W-01: record the *final* outcome (after any install/elevation
 	// attempt above) so it reaches the management backend via the health
-	// reporter — previously this whole preflight only logged locally, so
+	// reporter - previously this whole preflight only logged locally, so
 	// an admin had no way to know a host's process detections were
 	// running blind (ETW alone gives PID/TID/opcode only, no image path,
 	// command line, parent, or user) without reading that host's local
@@ -1227,7 +1227,7 @@ func elevatedSysmonSetup(logger *slog.Logger) error {
 		return fmt.Errorf("ShellExecuteW runas: %d %w", ret, err)
 	}
 
-	logger.Info("preflight: UAC elevation launched for Sysmon setup — accept the prompt to install Sysmon")
+	logger.Info("preflight: UAC elevation launched for Sysmon setup - accept the prompt to install Sysmon")
 	// Give the elevated process time to complete install before we continue
 	time.Sleep(15 * time.Second)
 
@@ -1244,13 +1244,13 @@ func elevatedSysmonSetup(logger *slog.Logger) error {
 // ---------------------------------------------------------------------------
 
 // enableAuditPolicies ensures Windows is configured to emit the event IDs
-// that ObsidianWatch relies on — specifically:
+// that ObsidianWatch relies on - specifically:
 //   - Event 4688 with command line (process creation with full cmdline)
 //   - PowerShell Script Block Logging (4104)
 //   - PowerShell Module Logging (4103)
 //
 // These settings are written to the registry and take effect immediately.
-// Requires administrator privileges — silently skips on failure.
+// Requires administrator privileges - silently skips on failure.
 func enableAuditPolicies(logger *slog.Logger) {
 	modAdvapi32Reg := windows.NewLazySystemDLL("advapi32.dll")
 	regSetValueEx := modAdvapi32Reg.NewProc("RegSetValueExW")
@@ -1301,7 +1301,7 @@ func enableAuditPolicies(logger *slog.Logger) {
 		logger.Info("preflight: enabled Event 4688 command line inclusion")
 	}
 
-	// 2. Enable PowerShell Script Block Logging (Event 4104 — captures ACTUAL script text)
+	// 2. Enable PowerShell Script Block Logging (Event 4104 - captures ACTUAL script text)
 	//    HKLM\SOFTWARE\Policies\Microsoft\Windows\PowerShell\ScriptBlockLogging
 	//    EnableScriptBlockLogging = 1
 	if err := setDWORD(windows.HKEY_LOCAL_MACHINE,
@@ -1312,7 +1312,7 @@ func enableAuditPolicies(logger *slog.Logger) {
 		logger.Info("preflight: enabled PowerShell Script Block Logging (Event 4104)")
 	}
 
-	// 3. Enable PowerShell Module Logging (Event 4103 — pipeline execution details)
+	// 3. Enable PowerShell Module Logging (Event 4103 - pipeline execution details)
 	//    HKLM\SOFTWARE\Policies\Microsoft\Windows\PowerShell\ModuleLogging
 	//    EnableModuleLogging = 1
 	if err := setDWORD(windows.HKEY_LOCAL_MACHINE,

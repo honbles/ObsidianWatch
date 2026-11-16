@@ -2,7 +2,7 @@
 
 package collector
 
-// usb.go — P-12: USB / removable media attach events.
+// usb.go - P-12: USB / removable media attach events.
 //
 // Polls /sys/bus/usb/devices (no root, no udev dependency) and emits one
 // event per newly attached device. The first scan is a silent baseline so an

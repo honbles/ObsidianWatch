@@ -1,12 +1,12 @@
 package api
 
-// cloud_azure_suppress.go — Alert suppression engine for Azure CSPM findings.
+// cloud_azure_suppress.go - Alert suppression engine for Azure CSPM findings.
 // Mirrors cloud_gcp_suppress.go in structure.
 //
 // Routes (registered in server.go):
-//   GET    /api/v1/cloud-connectors/suppress/azure     — list Azure rules
-//   POST   /api/v1/cloud-connectors/suppress/azure     — create Azure rule
-//   DELETE /api/v1/cloud-connectors/suppress/azure/{id} — delete Azure rule
+//   GET    /api/v1/cloud-connectors/suppress/azure     - list Azure rules
+//   POST   /api/v1/cloud-connectors/suppress/azure     - create Azure rule
+//   DELETE /api/v1/cloud-connectors/suppress/azure/{id} - delete Azure rule
 
 import (
 	"context"

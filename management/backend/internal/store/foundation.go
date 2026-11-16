@@ -1,6 +1,6 @@
 package store
 
-// foundation.go — shared by the Network and Application builds. Owned by the
+// foundation.go - shared by the Network and Application builds. Owned by the
 // integration owner. Do not edit from a side branch.
 
 import (

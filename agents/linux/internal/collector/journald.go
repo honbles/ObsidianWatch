@@ -2,7 +2,7 @@
 
 package collector
 
-// journald.go — Linux systemd journal reader.
+// journald.go - Linux systemd journal reader.
 //
 // Equivalent to Windows EventLog (Security/System/Application channels).
 // Reads from the systemd journal using the Journal Export Format

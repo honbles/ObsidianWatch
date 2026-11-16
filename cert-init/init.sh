@@ -17,18 +17,18 @@ echo "cert-init: BACKEND_DOMAIN=${BACKEND_DOMAIN:-<not set>}"
 
 # ── Let's Encrypt mode (domain provided) ──────────────────────────────────────
 if [ -n "$BACKEND_DOMAIN" ]; then
-  echo "cert-init: Domain provided — using Let's Encrypt for $BACKEND_DOMAIN"
+  echo "cert-init: Domain provided - using Let's Encrypt for $BACKEND_DOMAIN"
 
   # Check if valid LE cert already exists
   if [ -f "$SRV_CRT" ] && [ -f "$SRV_KEY" ]; then
-    # Check expiry — renew if less than 30 days remaining
+    # Check expiry - renew if less than 30 days remaining
     EXPIRY=$(openssl x509 -enddate -noout -in "$SRV_CRT" 2>/dev/null | cut -d= -f2)
     EXPIRY_EPOCH=$(date -d "$EXPIRY" +%s 2>/dev/null || date -j -f "%b %d %H:%M:%S %Y %Z" "$EXPIRY" +%s 2>/dev/null || echo 0)
     NOW_EPOCH=$(date +%s)
     DAYS_LEFT=$(( (EXPIRY_EPOCH - NOW_EPOCH) / 86400 ))
     MODE=$(cat "$MODE_FILE" 2>/dev/null || echo "")
     if [ "$MODE" = "letsencrypt" ] && [ "$DAYS_LEFT" -gt 30 ]; then
-      echo "cert-init: Let's Encrypt cert valid for $DAYS_LEFT more days — skipping"
+      echo "cert-init: Let's Encrypt cert valid for $DAYS_LEFT more days - skipping"
       exit 0
     fi
   fi

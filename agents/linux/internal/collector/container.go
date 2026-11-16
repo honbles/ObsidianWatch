@@ -2,7 +2,7 @@
 
 package collector
 
-// container.go — P-12: container start events via the Docker Engine socket.
+// container.go - P-12: container start events via the Docker Engine socket.
 //
 // Polls GET /containers/json over /var/run/docker.sock (no docker CLI needed).
 // The first poll is a silent baseline. New containers are reported with risky

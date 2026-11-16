@@ -1,6 +1,6 @@
 package api
 
-// vuln_osv.go — F-21: match a host's installed packages against OSV using the
+// vuln_osv.go - F-21: match a host's installed packages against OSV using the
 // distro's own ecosystem (Debian, Ubuntu, Alpine) and the exact installed
 // version, instead of NVD keyword search. OSV's distro feeds carry the
 // distro's fixed versions, so back-ported fixes are respected.

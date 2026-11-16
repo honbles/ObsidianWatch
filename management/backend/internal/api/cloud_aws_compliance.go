@@ -1,6 +1,6 @@
 package api
 
-// cloud_aws_compliance.go — framework mapping for AWS, derived from the AWS
+// cloud_aws_compliance.go - framework mapping for AWS, derived from the AWS
 // CIS-style benchmark result (not from raw findings, so a check that did not
 // run shows NOT_ASSESSED rather than a false pass). The mapping is indicative:
 // each framework control lists the benchmark checks that provide evidence for

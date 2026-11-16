@@ -1,6 +1,6 @@
 package store
 
-// secrets.go — read side of the at-rest encryption used by the management
+// secrets.go - read side of the at-rest encryption used by the management
 // service. The management API seals sensitive settings (including
 // setup.agent_api_key) as "enc:v1:<base64(nonce|ciphertext)>" with AES-256-GCM
 // keyed from OW_SECRET_KEY. The ingest backend reads that setting to

@@ -47,7 +47,7 @@ var entraIdentitySignatures = []ThreatSig{
 	},
 	{
 		ID: "C-AZ-ID-002", Name: "Entra Legacy Authentication Succeeded",
-		Description: "A sign-in succeeded using a legacy protocol (IMAP/POP/SMTP/ActiveSync) that cannot do MFA or Conditional Access — a common password-spray target.",
+		Description: "A sign-in succeeded using a legacy protocol (IMAP/POP/SMTP/ActiveSync) that cannot do MFA or Conditional Access - a common password-spray target.",
 		Severity: 3, MITRE: "T1078.004", Category: "Initial Access",
 		Match: func(ev store.Event) bool {
 			r, ok := parseEntraSignIn(ev)

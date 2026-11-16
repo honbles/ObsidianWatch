@@ -1,6 +1,6 @@
 package parser
 
-// enricher.go — adds context that the raw collector cannot provide:
+// enricher.go - adds context that the raw collector cannot provide:
 //   - resolved hostname and OS version
 //   - agent ID stamped from config
 //   - a deterministic UUID for the event
@@ -53,7 +53,7 @@ func NewEnricher(host HostInfo, logger *slog.Logger) *Enricher {
 
 // Enrich stamps a single event with agent/host context and a deterministic ID.
 func (e *Enricher) Enrich(ev *schema.Event) {
-	// Always override agent identity — collectors should not forge these.
+	// Always override agent identity - collectors should not forge these.
 	ev.AgentID = e.host.AgentID
 	ev.Host    = e.host.Hostname
 	ev.OS      = e.host.OS
@@ -80,7 +80,7 @@ func (e *Enricher) EnrichBatch(events []schema.Event) {
 // ---------------------------------------------------------------------------
 
 // deterministicID returns a hex-encoded 128-bit SHA-256 derived ID.
-// This is NOT cryptographically unique — it is a best-effort dedup key.
+// This is NOT cryptographically unique - it is a best-effort dedup key.
 func deterministicID(ev *schema.Event) string {
 	h := sha256.New()
 	ts := make([]byte, 8)
@@ -156,7 +156,7 @@ type GeoInfo struct {
 	Org     string
 }
 
-// GeoEnricher is a pluggable interface — swap in MaxMind, ip-api, etc.
+// GeoEnricher is a pluggable interface - swap in MaxMind, ip-api, etc.
 type GeoEnricher interface {
 	Lookup(ip string) (*GeoInfo, error)
 }

@@ -1,6 +1,6 @@
 package collector
 
-// health.go — Linux agent health reporter.
+// health.go - Linux agent health reporter.
 // Reports agent internals + system resource metrics + top processes every interval.
 
 import (
@@ -169,7 +169,7 @@ func readAllDisks() []DiskMetric {
 	}
 
 	seenMount := map[string]bool{}
-	seenDev := map[uint64]bool{} // deduplicate by device — bind mounts share same device
+	seenDev := map[uint64]bool{} // deduplicate by device - bind mounts share same device
 	var disks []DiskMetric
 	scanner := bufio.NewScanner(f)
 	for scanner.Scan() {

@@ -1,6 +1,6 @@
 package collector
 
-// health.go — Windows agent health reporter.
+// health.go - Windows agent health reporter.
 // Reports system metrics (CPU, memory, all drives, top processes) every interval.
 
 import (
@@ -28,8 +28,8 @@ type HealthStats struct {
 	// (sysmonpkg.Check(), see cmd/agent/main.go) and reported in every
 	// health event so the management backend can alert when it's
 	// anything other than "running". Without Sysmon, the ETW process
-	// collector only has PID/TID/opcode to work with — no image path,
-	// command line, parent process or user — so process detection is
+	// collector only has PID/TID/opcode to work with - no image path,
+	// command line, parent process or user - so process detection is
 	// effectively blind on that host even though the agent looks healthy
 	// by every other measure. Holds "running", "installed_not_running",
 	// "not_installed", or "" if preflight hasn't set it yet (e.g. non-

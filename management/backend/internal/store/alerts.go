@@ -135,13 +135,13 @@ func (db *DB) AlertExists(ctx context.Context, eventID string) (bool, error) {
 	return count > 0, err
 }
 
-// CreateAlertDeduped inserts an alert for event_id, or — D-06 — if one
+// CreateAlertDeduped inserts an alert for event_id, or - D-06 - if one
 // already exists for that exact key (same rule, same host, same hour, AND
 // same entity fingerprint, since callers now fold alertEntityKey() into
 // event_id) bumps its occurrence_count/last_seen instead of discarding the
 // new occurrence entirely. Genuinely distinct activity gets a distinct
 // event_id (different entity fingerprint) and therefore its own alert row
-// — it no longer silently vanishes into an unrelated earlier match.
+// - it no longer silently vanishes into an unrelated earlier match.
 // Returns (id, true, nil) if a NEW alert row was created, (id, false, nil)
 // if an existing one was bumped, (0, false, err) on error.
 // AlertCreatedHook (P-08) is invoked once for every newly inserted (not
@@ -298,7 +298,7 @@ func (db *DB) weighAlert(ctx context.Context, a Alert) Alert {
 	if crit := db.GetHostCriticality(ctx, a.Host); crit == "critical" {
 		if w := WeightedSeverity(a.Severity, crit); w != a.Severity {
 			a.Severity = w
-			a.Description += "\n\n[Host criticality: critical — severity raised by one]"
+			a.Description += "\n\n[Host criticality: critical - severity raised by one]"
 		}
 	}
 	return a

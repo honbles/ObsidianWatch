@@ -112,7 +112,7 @@ func NewVulnScanner(cfg VulnScannerConfig, agentID, host, osStr string,
 
 func (v *VulnScanner) Run(ctx context.Context) {
 	if !v.cfg.Enabled { return }
-	v.logger.Info("vuln: scanner ready — first scan in 30s")
+	v.logger.Info("vuln: scanner ready - first scan in 30s")
 	select { case <-ctx.Done(): return; case <-time.After(30 * time.Second): }
 	v.scan(ctx)
 	ticker := time.NewTicker(v.cfg.ScanInterval)
@@ -276,7 +276,7 @@ func collectPackages() []InstalledPackage {
 func collectServices() []RunningService {
 	var services []RunningService
 
-	// launchctl list — running launch agents/daemons
+	// launchctl list - running launch agents/daemons
 	out, err := exec.Command("launchctl", "list").Output()
 	if err != nil { return services }
 	for _, line := range strings.Split(string(out), "\n")[1:] { // skip header
@@ -297,7 +297,7 @@ func collectSecurityFindings() []SecurityFinding {
 			findings = append(findings, SecurityFinding{
 				Category: "System Integrity Protection", Severity: 4,
 				Title:  "SIP (System Integrity Protection) is disabled",
-				Detail: "SIP protects critical system files from modification — disabling it significantly increases attack surface",
+				Detail: "SIP protects critical system files from modification - disabling it significantly increases attack surface",
 				Fix:    "Boot to Recovery Mode and run: csrutil enable",
 			})
 		}
@@ -347,7 +347,7 @@ func collectSecurityFindings() []SecurityFinding {
 			findings = append(findings, SecurityFinding{
 				Category: "Remote Access", Severity: 3,
 				Title:  "Remote Login (SSH server) is enabled",
-				Detail: "SSH server is accepting inbound connections — ensure strong keys and no password auth",
+				Detail: "SSH server is accepting inbound connections - ensure strong keys and no password auth",
 				Fix:    "Disable if not needed: systemsetup -setremotelogin off",
 			})
 		}
@@ -375,7 +375,7 @@ func collectSecurityFindings() []SecurityFinding {
 					findings = append(findings, SecurityFinding{
 						Category: "SUID Binary", Severity: 4,
 						Title:  fmt.Sprintf("Suspicious SUID binary: %s", b),
-						Detail: fmt.Sprintf("SUID bit set on %s — can be used for privilege escalation", b),
+						Detail: fmt.Sprintf("SUID bit set on %s - can be used for privilege escalation", b),
 						Fix:    fmt.Sprintf("chmod u-s %s", b),
 					})
 				}
@@ -425,12 +425,12 @@ var portRisks = map[int]portRisk{
 	21:    {"FTP",           "FTP transmits credentials in plaintext. Use SFTP.", 4},
 	23:    {"Telnet",        "Telnet transmits everything in plaintext. Replace with SSH.", 5},
 	445:   {"SMB",           "SMB is the primary ransomware vector.", 4},
-	1433:  {"MSSQL",         "SQL Server exposed — restrict access.", 4},
-	2375:  {"Docker API",    "Docker API unauthenticated — full root escape possible.", 5},
-	3306:  {"MySQL",         "MySQL exposed — bind to localhost.", 4},
+	1433:  {"MSSQL",         "SQL Server exposed - restrict access.", 4},
+	2375:  {"Docker API",    "Docker API unauthenticated - full root escape possible.", 5},
+	3306:  {"MySQL",         "MySQL exposed - bind to localhost.", 4},
 	3389:  {"RDP",           "RDP is a common brute-force target.", 4},
-	4444:  {"Metasploit",    "Metasploit default port — investigate for C2.", 5},
-	5432:  {"PostgreSQL",    "PostgreSQL exposed — bind to localhost.", 4},
+	4444:  {"Metasploit",    "Metasploit default port - investigate for C2.", 5},
+	5432:  {"PostgreSQL",    "PostgreSQL exposed - bind to localhost.", 4},
 	5900:  {"VNC",           "VNC often has weak authentication.", 4},
 	6379:  {"Redis",         "Redis has no auth by default.", 4},
 	8080:  {"HTTP-alt",      "Unencrypted HTTP service.", 3},

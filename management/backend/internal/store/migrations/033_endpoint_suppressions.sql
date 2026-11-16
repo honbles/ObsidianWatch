@@ -1,4 +1,4 @@
--- 033_endpoint_suppressions.sql (D-10) — endpoint rule suppressions / allowlist
+-- 033_endpoint_suppressions.sql (D-10) - endpoint rule suppressions / allowlist
 CREATE TABLE IF NOT EXISTS endpoint_suppressions (
     id           BIGSERIAL PRIMARY KEY,
     rule_id      TEXT NOT NULL DEFAULT '',   -- exact sig ID or prefix; '' = any rule

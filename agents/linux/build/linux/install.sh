@@ -1,9 +1,9 @@
 #!/bin/bash
-# ObsidianWatch Linux Agent — Build & Install Script
+# ObsidianWatch Linux Agent - Build & Install Script
 # Usage:
-#   ./install.sh build              — compile binary only
-#   ./install.sh install            — build + install as systemd service
-#   sudo ./install.sh uninstall     — remove service and files
+#   ./install.sh build              - compile binary only
+#   ./install.sh install            - build + install as systemd service
+#   sudo ./install.sh uninstall     - remove service and files
 
 set -e
 
@@ -63,7 +63,7 @@ case "${1:-build}" in
 
   run)
     echo "[*] Running ObsidianWatch agent interactively (no install)..."
-    echo "[*] Queue will use /tmp/obsidianwatch — edit config to change."
+    echo "[*] Queue will use /tmp/obsidianwatch - edit config to change."
     mkdir -p /tmp/obsidianwatch/queue
 
     GOOS=linux GOARCH=amd64 go build \

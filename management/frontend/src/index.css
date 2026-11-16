@@ -5,7 +5,7 @@
 @tailwind utilities;
 
 :root {
-  /* Background — deep charcoal, not pure black */
+  /* Background - deep charcoal, not pure black */
   --bg:        #0e1117;
   --surface:   #141921;
   --surface2:  #1a2130;
@@ -13,18 +13,18 @@
   --border:    #2a3650;
   --border2:   #344468;
 
-  /* Text — clean white */
+  /* Text - clean white */
   --text:      #f0f4ff;
   --text2:     #8fa8cc;
   --text3:     #4d6490;
 
-  /* Nav — deep navy blue */
+  /* Nav - deep navy blue */
   --nav-bg:    #0d1b3e;
   --nav-border:#1a3060;
   --nav-text:  #8fb8e8;
   --nav-active:#ffffff;
 
-  /* Accent — electric cyan */
+  /* Accent - electric cyan */
   --accent:    #38bdf8;
   --accent2:   #0ea5e9;
   --accent-bg: rgba(56,189,248,0.08);
@@ -83,7 +83,7 @@ body {
 ::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 4px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--text3); }
 
-/* ── Top Navigation — navy blue ────────────────────────────────── */
+/* ── Top Navigation - navy blue ────────────────────────────────── */
 #top-nav {
   position: fixed; top: 0; left: 0; right: 0;
   height: var(--nav-h);

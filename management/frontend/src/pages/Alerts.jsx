@@ -65,7 +65,7 @@ function AssignModal({ alert, users, onClose, onDone }) {
             {users.length > 0 ? (
               <select value={assignTo} onChange={e => setAssignTo(e.target.value)}
                 className="w-full bg-siem-bg border border-siem-border rounded-lg px-3 py-2 text-sm text-siem-text focus:outline-none focus:border-siem-accent">
-                <option value="">— Select analyst —</option>
+                <option value="">- Select analyst -</option>
                 {users.map(u => <option key={u.id} value={u.username}>{u.username} ({u.role})</option>)}
               </select>
             ) : (
@@ -341,7 +341,7 @@ export default function Alerts() {
       {/* Modals */}
       {showCreate && <CreateModal onClose={() => setShowCreate(false)} onCreated={load}/>}
 
-      {/* Left panel — alert list */}
+      {/* Left panel - alert list */}
       <div className={`flex flex-col border-r border-siem-border transition-all duration-300 ${selectedId ? 'w-[420px]' : 'flex-1'}`}>
 
         {/* Header */}
@@ -473,7 +473,7 @@ export default function Alerts() {
         </div>
       </div>
 
-      {/* Right panel — alert detail (slide-in drawer) */}
+      {/* Right panel - alert detail (slide-in drawer) */}
       {selectedId && (
         <div className="flex-1 min-w-0 overflow-hidden bg-siem-bg">
           <AlertPanel

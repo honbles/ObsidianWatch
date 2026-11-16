@@ -2,7 +2,7 @@
 
 package collector
 
-// dns.go — macOS DNS query monitoring.
+// dns.go - macOS DNS query monitoring.
 //
 // Uses lsof to detect processes connecting to port 53 (DNS).
 // Polls periodically and deduplicates by pid+destination.

@@ -1,6 +1,6 @@
 package api
 
-// devops_gitlab.go — GitLab polling and webhook ingestion
+// devops_gitlab.go - GitLab polling and webhook ingestion
 
 import (
 	"context"

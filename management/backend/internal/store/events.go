@@ -50,7 +50,7 @@ type Event struct {
 // EventFilter is the full set of supported search parameters.
 type EventFilter struct {
 	AgentID string
-	// Host does a substring match (ILIKE %host%) — intended for the
+	// Host does a substring match (ILIKE %host%) - intended for the
 	// free-text event search UI, where "web" is meant to also surface
 	// "web-prod" and "webdev". F-10: several host-*scoped* endpoints
 	// (threat graph, per-host vuln lookup, per-host RCA/alerts) used to
@@ -81,7 +81,7 @@ type EventFilter struct {
 	EventID     uint32
 	Source      string   // filter by source (e.g. "cloudtrail", "guardduty")
 	Search      string   // free-text across key fields
-	Tokens      []string // multi-token search — all tokens must match (AND logic)
+	Tokens      []string // multi-token search - all tokens must match (AND logic)
 	NotTokens   []string // F-07: events matching any of these tokens are excluded
 	// Expr is a parsed KQL-style query (AND/OR/NOT, fields, comparisons).
 	// It is ANDed with every other filter on this struct.
@@ -97,7 +97,7 @@ type EventFilter struct {
 	// any future wall-clock window again.
 	IngestedAfter time.Time
 	// SkipCount (D-08): COUNT(*) over the whole table is wasted work for
-	// an engine that only wants the rows, not a total — skip it.
+	// an engine that only wants the rows, not a total - skip it.
 	SkipCount bool
 	// SkipEnrich (D-08): enrichFromRaw does a full JSON unmarshal of the
 	// raw event blob on every single row, to backfill structured columns
@@ -137,7 +137,7 @@ func (db *DB) QueryEvents(ctx context.Context, f EventFilter) ([]Event, int64, e
 	}
 	if f.EventType != "" {
 		if strings.HasSuffix(f.EventType, "*") {
-			// Prefix match — e.g. "cloud.*" matches all cloud events
+			// Prefix match - e.g. "cloud.*" matches all cloud events
 			prefix := strings.TrimSuffix(f.EventType, "*")
 			where = append(where, fmt.Sprintf("event_type LIKE $%d", n))
 			args = append(args, prefix+"%")
@@ -240,7 +240,7 @@ func (db *DB) QueryEvents(ctx context.Context, f EventFilter) ([]Event, int64, e
 		n += 11
 	}
 	if len(f.Tokens) > 0 {
-		// Multi-token AND search — each token must match at least one field or raw JSON
+		// Multi-token AND search - each token must match at least one field or raw JSON
 		for _, tok := range f.Tokens {
 			v := "%" + tok + "%"
 			clause := fmt.Sprintf(`(

@@ -1,6 +1,6 @@
 package api
 
-// cloud_azure_blast_radius.go — Azure resource relationship mapping and blast radius analysis.
+// cloud_azure_blast_radius.go - Azure resource relationship mapping and blast radius analysis.
 //
 // Builds a directed graph of Azure resource relationships:
 //   ServicePrincipal → (has role) → Subscription/ResourceGroup
@@ -77,7 +77,7 @@ func RunAzureBlastRadius(ctx context.Context, tenantID, clientID, clientSecret, 
 	internet := addNode("internet:public", "Internet", "Public Internet", "internet", nil)
 	_ = internet
 
-	// ── 1. Role Assignments — build SP/User → Role → Scope edges ─────────────
+	// ── 1. Role Assignments - build SP/User → Role → Scope edges ─────────────
 	roleURL := fmt.Sprintf("https://management.azure.com/subscriptions/%s/providers/Microsoft.Authorization/roleAssignments?api-version=2022-04-01", subID)
 	var roleResp struct {
 		Value []struct {
@@ -150,7 +150,7 @@ func RunAzureBlastRadius(ctx context.Context, tenantID, clientID, clientSecret, 
 		result.Errors = append(result.Errors, "role_assignments: "+err.Error())
 	}
 
-	// ── 2. VMs — identify public IPs and managed identities ──────────────────
+	// ── 2. VMs - identify public IPs and managed identities ──────────────────
 	vmURL := fmt.Sprintf("https://management.azure.com/subscriptions/%s/providers/Microsoft.Compute/virtualMachines?api-version=2023-07-01", subID)
 	var vmResp struct {
 		Value []struct {
@@ -194,7 +194,7 @@ func RunAzureBlastRadius(ctx context.Context, tenantID, clientID, clientSecret, 
 		result.Errors = append(result.Errors, "vms: "+err.Error())
 	}
 
-	// ── 3. NSGs — find open rules and connect to internet ────────────────────
+	// ── 3. NSGs - find open rules and connect to internet ────────────────────
 	nsgURL := fmt.Sprintf("https://management.azure.com/subscriptions/%s/providers/Microsoft.Network/networkSecurityGroups?api-version=2023-05-01", subID)
 	var nsgResp struct {
 		Value []struct {
@@ -247,7 +247,7 @@ func RunAzureBlastRadius(ctx context.Context, tenantID, clientID, clientSecret, 
 	}
 	result.Summary.PublicExposures = publicExposures
 
-	// ── 4. Storage Accounts — public access ───────────────────────────────────
+	// ── 4. Storage Accounts - public access ───────────────────────────────────
 	storageURL := fmt.Sprintf("https://management.azure.com/subscriptions/%s/providers/Microsoft.Storage/storageAccounts?api-version=2023-01-01", subID)
 	var storageResp struct {
 		Value []struct {
@@ -273,7 +273,7 @@ func RunAzureBlastRadius(ctx context.Context, tenantID, clientID, clientSecret, 
 		result.Errors = append(result.Errors, "storage: "+err.Error())
 	}
 
-	// ── 5. Key Vaults — public access ─────────────────────────────────────────
+	// ── 5. Key Vaults - public access ─────────────────────────────────────────
 	kvURL := fmt.Sprintf("https://management.azure.com/subscriptions/%s/providers/Microsoft.KeyVault/vaults?api-version=2023-02-01", subID)
 	var kvResp struct {
 		Value []struct {
@@ -299,7 +299,7 @@ func RunAzureBlastRadius(ctx context.Context, tenantID, clientID, clientSecret, 
 				kvNode.Risk = "medium"
 				addEdge("internet:public", kvID, "public_network_access", false)
 			}
-			// Connect to subscription — KV compromise = credential theft = subscription access
+			// Connect to subscription - KV compromise = credential theft = subscription access
 			addEdge(kvID, "subscription:"+subID, "contains_secrets_for", true)
 		}
 	} else {
@@ -340,7 +340,7 @@ func RunAzureBlastRadius(ctx context.Context, tenantID, clientID, clientSecret, 
 				Path:         []string{n.ID, "roles/Owner", "subscription:" + subID},
 				EndPrivilege: "project_owner",
 				Severity:     "critical",
-				Description:  fmt.Sprintf("Principal '%s' has Owner role at subscription scope — full control over all Azure resources, ability to create/delete resources, modify IAM, access all secrets.", n.Name),
+				Description:  fmt.Sprintf("Principal '%s' has Owner role at subscription scope - full control over all Azure resources, ability to create/delete resources, modify IAM, access all secrets.", n.Name),
 			})
 			criticalPaths++
 		}
@@ -354,7 +354,7 @@ func RunAzureBlastRadius(ctx context.Context, tenantID, clientID, clientSecret, 
 				Path:         []string{"internet:public", n.ID},
 				EndPrivilege: "all_data",
 				Severity:     "high",
-				Description:  fmt.Sprintf("Storage account '%s' allows public blob access — any unauthenticated user can read all blob data in any public container.", strings.TrimPrefix(n.ID, "storage:")),
+				Description:  fmt.Sprintf("Storage account '%s' allows public blob access - any unauthenticated user can read all blob data in any public container.", strings.TrimPrefix(n.ID, "storage:")),
 			})
 		}
 	}

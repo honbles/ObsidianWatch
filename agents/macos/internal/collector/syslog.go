@@ -2,18 +2,18 @@
 
 package collector
 
-// syslog.go — macOS system log monitoring via `log stream`.
+// syslog.go - macOS system log monitoring via `log stream`.
 //
 // Replaces Linux journald collector.
 // Uses the macOS `log` command to stream Unified Logging System (ULS) events.
 // Captures: authentication, SSH, sudo, kernel security, launchd, and app crashes.
 //
 // Key predicates monitored:
-//   - subsystem:com.apple.securityd       — auth, keychain, SecureToken
-//   - subsystem:com.apple.OpenSSH         — SSH login/logout
-//   - category:authorization              — sudo, privilege escalation
-//   - process:sudo                        — sudo commands
-//   - subsystem:com.apple.launchd         — service start/stop
+//   - subsystem:com.apple.securityd       - auth, keychain, SecureToken
+//   - subsystem:com.apple.OpenSSH         - SSH login/logout
+//   - category:authorization              - sudo, privilege escalation
+//   - process:sudo                        - sudo commands
+//   - subsystem:com.apple.launchd         - service start/stop
 //   - eventMessage contains "authentication" OR "failed" OR "denied"
 //
 // Events emitted: event_type="syslog", source="log-stream"

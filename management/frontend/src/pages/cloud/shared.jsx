@@ -34,8 +34,8 @@ export const PROVIDERS = {
     fields: [
       { key: 'service_account', label: 'Service Account JSON or Workload Identity config', placeholder: '{ "type": "service_account", ... } or { "type": "external_account", ... } (keyless; token file under /var/run/secrets/)', secret: true, multiline: true },
       { key: 'project_id', label: 'Project ID(s) (optional)', placeholder: 'defaults to the service account project; a comma-separated list, or * to discover under the org/folder below', secret: false },
-      { key: 'org_id',     label: 'Organization ID (optional)', placeholder: '123456789012 — with project_id = * syncs every active project in the org', secret: false },
-      { key: 'folder_id',  label: 'Folder ID (optional)', placeholder: '987654321 — limits discovery to this folder tree', secret: false },
+      { key: 'org_id',     label: 'Organization ID (optional)', placeholder: '123456789012 - with project_id = * syncs every active project in the org', secret: false },
+      { key: 'folder_id',  label: 'Folder ID (optional)', placeholder: '987654321 - limits discovery to this folder tree', secret: false },
     ],
     pulls: ['Cloud Audit Logs', 'Admin Activity', 'Data Access logs', 'System Events'],
   },
@@ -66,37 +66,37 @@ export const CAT_META = {
 
 export const CIS_MAPPING = {
   // GCP sections
-  network:             'CIS 3.x — Networking',
-  iam:                 'CIS 1.x — Identity & Access Management',
-  storage:             'CIS 5.x — Cloud Storage',
-  compute:             'CIS 4.x — Virtual Machines',
-  sql:                 'CIS 6.x — Cloud SQL',
-  logging:             'CIS 2.x — Logging & Monitoring',
-  kms:                 'CIS 1.x — IAM / KMS',
-  cloud_run_service:   'CIS 4.x — Serverless Compute',
-  artifact_registry:   'CIS 4.x — Container Registry',
-  cloud_function:      'CIS 4.x — Serverless Compute',
-  pubsub_topic:        'CIS 5.x — Messaging',
-  pubsub_subscription: 'CIS 5.x — Messaging',
-  org_iam_binding:     'CIS 1.x — Organization IAM',
-  gke_cluster:         'CIS 4.x — Kubernetes / GKE',
-  gke_node_pool:       'CIS 4.x — Kubernetes / GKE',
+  network:             'CIS 3.x - Networking',
+  iam:                 'CIS 1.x - Identity & Access Management',
+  storage:             'CIS 5.x - Cloud Storage',
+  compute:             'CIS 4.x - Virtual Machines',
+  sql:                 'CIS 6.x - Cloud SQL',
+  logging:             'CIS 2.x - Logging & Monitoring',
+  kms:                 'CIS 1.x - IAM / KMS',
+  cloud_run_service:   'CIS 4.x - Serverless Compute',
+  artifact_registry:   'CIS 4.x - Container Registry',
+  cloud_function:      'CIS 4.x - Serverless Compute',
+  pubsub_topic:        'CIS 5.x - Messaging',
+  pubsub_subscription: 'CIS 5.x - Messaging',
+  org_iam_binding:     'CIS 1.x - Organization IAM',
+  gke_cluster:         'CIS 4.x - Kubernetes / GKE',
+  gke_node_pool:       'CIS 4.x - Kubernetes / GKE',
   // Azure sections
-  nsg:                 'CIS 6.x — Networking',
-  storage_account:     'CIS 3.x — Storage Accounts',
-  virtual_machine:     'CIS 7.x — Virtual Machines',
-  sql_server:          'CIS 4.x — Database Services',
-  sql_database:        'CIS 4.x — Database Services',
-  key_vault:           'CIS 8.x — Key Vault',
-  aks_cluster:         'CIS 5.x — Containers',
-  role_assignment:     'CIS 1.x — Identity & Access',
-  classic_admin:       'CIS 1.x — Identity & Access',
-  entra_tenant:        'CIS 1.x — Conditional Access',
-  diagnostic_setting:  'CIS 5.x — Logging & Monitoring',
-  defender_plan:       'CIS 2.x — Microsoft Defender',
-  app_service:         'CIS 9.x — App Service',
-  function_app:        'CIS 9.x — App Service',
-  container_registry:  'CIS 5.x — Containers',
+  nsg:                 'CIS 6.x - Networking',
+  storage_account:     'CIS 3.x - Storage Accounts',
+  virtual_machine:     'CIS 7.x - Virtual Machines',
+  sql_server:          'CIS 4.x - Database Services',
+  sql_database:        'CIS 4.x - Database Services',
+  key_vault:           'CIS 8.x - Key Vault',
+  aks_cluster:         'CIS 5.x - Containers',
+  role_assignment:     'CIS 1.x - Identity & Access',
+  classic_admin:       'CIS 1.x - Identity & Access',
+  entra_tenant:        'CIS 1.x - Conditional Access',
+  diagnostic_setting:  'CIS 5.x - Logging & Monitoring',
+  defender_plan:       'CIS 2.x - Microsoft Defender',
+  app_service:         'CIS 9.x - App Service',
+  function_app:        'CIS 9.x - App Service',
+  container_registry:  'CIS 5.x - Containers',
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -117,7 +117,7 @@ export function riskLabel(score) {
   return               { label: 'Minimal Risk',      color: '#34d399' }
 }
 
-// ── CloudEventsAlerts — clickable event + alert rows with slide-out panels ────
+// ── CloudEventsAlerts - clickable event + alert rows with slide-out panels ────
 export const SEV_LABELS = ['', 'Info', 'Low', 'Medium', 'High', 'Critical']
 
 export const SEV_COLORS_CLS = ['', 'text-siem-muted', 'text-blue-400', 'text-yellow-400', 'text-orange-400', 'text-red-400']

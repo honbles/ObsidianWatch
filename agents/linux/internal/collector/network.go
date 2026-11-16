@@ -2,7 +2,7 @@
 
 package collector
 
-// network.go — Linux network connection monitoring via /proc/net/tcp|tcp6|udp|udp6.
+// network.go - Linux network connection monitoring via /proc/net/tcp|tcp6|udp|udp6.
 //
 // Equivalent to Windows iphlpapi TCP/UDP table poll.
 // Diffs the connection table each PollInterval and emits events for

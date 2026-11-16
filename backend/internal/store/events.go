@@ -86,13 +86,13 @@ func (db *DB) InsertEvents(ctx context.Context, events []schema.Event) error {
 
 	_, err := db.ExecContext(ctx, query, args...)
 	if err != nil {
-		// Batch failed — log the error and try inserting events one-by-one
+		// Batch failed - log the error and try inserting events one-by-one
 		// This prevents one corrupted event from blocking the entire batch
 		fmt.Printf("store: batch insert failed (len=%d events), falling back to one-by-one: %v\n", len(events), err)
 		var lastErr error
 		for _, ev := range events {
 			rawB, _ := json.Marshal(ev.Raw)
-			// Aggressively trim oversized payloads — vuln scans can be large
+			// Aggressively trim oversized payloads - vuln scans can be large
 			const singleMaxBytes = 128 * 1024 // 128KB per event
 			if len(rawB) > singleMaxBytes {
 				rawB = trimJSONPackages(rawB, singleMaxBytes)
@@ -129,11 +129,11 @@ func (db *DB) InsertEvents(ctx context.Context, events []schema.Event) error {
 			}
 		}
 		if lastErr != nil {
-			// At least one event failed individual insert — return error so caller knows
+			// At least one event failed individual insert - return error so caller knows
 			// but don't block: partial success is acceptable for mixed batches
 			fmt.Printf("store: %d events had insert errors\n", len(events))
 		}
-		return nil // partial success — don't re-queue the whole batch
+		return nil // partial success - don't re-queue the whole batch
 	}
 	return nil
 }
@@ -356,7 +356,7 @@ func sanitiseJSON(b []byte) []byte {
 	out := make([]byte, 0, len(b))
 	for i := 0; i < len(b); i++ {
 		c := b[i]
-		// Drop null bytes — PostgreSQL cannot store them in text/jsonb
+		// Drop null bytes - PostgreSQL cannot store them in text/jsonb
 		if c == 0x00 {
 			continue
 		}
@@ -377,7 +377,7 @@ func trimJSONPackages(raw []byte, maxBytes int) []byte {
 	// Parse as generic map, trim packages, re-marshal
 	var m map[string]interface{}
 	if err := json.Unmarshal(raw, &m); err != nil {
-		// Can't parse — return a minimal placeholder
+		// Can't parse - return a minimal placeholder
 		return []byte(`{"truncated":true,"reason":"could not parse payload"}`)
 	}
 	// Trim packages array progressively until it fits
@@ -391,7 +391,7 @@ func trimJSONPackages(raw []byte, maxBytes int) []byte {
 				return sanitiseJSON(out)
 			}
 		}
-		// Still too big — remove packages entirely
+		// Still too big - remove packages entirely
 		delete(m, "packages")
 		m["packages_truncated"] = true
 	}

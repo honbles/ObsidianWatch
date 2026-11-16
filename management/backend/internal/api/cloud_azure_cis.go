@@ -1,6 +1,6 @@
 package api
 
-// cloud_azure_cis.go — CIS Microsoft Azure Foundations Benchmark v2.0
+// cloud_azure_cis.go - CIS Microsoft Azure Foundations Benchmark v2.0
 //
 // Sections:
 //   1. Identity and Access Management (1.1 – 1.23)
@@ -34,7 +34,7 @@ type CISAzureResult struct {
 	Level1Score    float64          `json:"level1_score"`
 	Level2Score    float64          `json:"level2_score"`
 	Errors         []string         `json:"errors,omitempty"`
-	// AZ-09: be explicit about what this is — a partial subset, not the full benchmark.
+	// AZ-09: be explicit about what this is - a partial subset, not the full benchmark.
 	Benchmark      string           `json:"benchmark"`
 	CoverageNote   string           `json:"coverage_note"`
 	ControlsImplemented int         `json:"controls_implemented"`
@@ -96,7 +96,7 @@ func RunAzureCISBenchmark(ctx context.Context, tenantID, clientID, clientSecret,
 			IsEnabled bool `json:"isEnabled"`
 		}
 		if err := azureCSPMGet(ctx, gt, "https://graph.microsoft.com/v1.0/policies/identitySecurityDefaultsEnforcementPolicy", &secDefaults); err == nil && secDefaults.IsEnabled {
-			c.Status = "PASS"; c.Evidence = "Security Defaults enabled — MFA required for all users"
+			c.Status = "PASS"; c.Evidence = "Security Defaults enabled - MFA required for all users"
 			return c
 		}
 		var cp struct {
@@ -123,12 +123,12 @@ func RunAzureCISBenchmark(ctx context.Context, tenantID, clientID, clientSecret,
 		if err := azureCSPMGet(ctx, gt, "https://graph.microsoft.com/v1.0/users?$filter=userType eq 'Guest'&$count=true&$top=1", &resp); err != nil {
 			c.Status = "UNKNOWN"; c.Evidence = err.Error(); return c
 		}
-		// CIS just checks guest users exist — reviewable process; we flag if count > 0 as info
+		// CIS just checks guest users exist - reviewable process; we flag if count > 0 as info
 		if len(resp.Value) == 0 {
 			c.Status = "PASS"; c.Evidence = "No guest users found in the tenant"
 		} else {
 			c.Status = "FAIL"
-			c.Evidence = "Guest users exist in the tenant — ensure they are reviewed monthly and access is still required"
+			c.Evidence = "Guest users exist in the tenant - ensure they are reviewed monthly and access is still required"
 			c.Remediation = "Use Azure AD Access Reviews (Identity Governance) to automate monthly guest user reviews."
 		}
 		return c
@@ -210,7 +210,7 @@ func RunAzureCISBenchmark(ctx context.Context, tenantID, clientID, clientSecret,
 		}
 		if policy.DefaultUserRolePermissions.AllowedToCreateTenantWideApps {
 			c.Status = "FAIL"
-			c.Evidence = "Users can register tenant-wide applications — increases attack surface"
+			c.Evidence = "Users can register tenant-wide applications - increases attack surface"
 			c.Remediation = "Set 'Users can register applications' to No in Azure AD > User Settings."
 		} else {
 			c.Status = "PASS"; c.Evidence = "Users cannot register tenant-wide applications"
@@ -234,7 +234,7 @@ func RunAzureCISBenchmark(ctx context.Context, tenantID, clientID, clientSecret,
 			c.Status = "PASS"; c.Evidence = "Defender for Servers is enabled (Standard tier)"
 		} else {
 			c.Status = "FAIL"
-			c.Evidence = fmt.Sprintf("Defender for Servers is on '%s' tier — threat detection not active", resp.Properties.PricingTier)
+			c.Evidence = fmt.Sprintf("Defender for Servers is on '%s' tier - threat detection not active", resp.Properties.PricingTier)
 			c.Remediation = "Enable Defender for Servers (Standard/P2) in Microsoft Defender for Cloud > Environment settings."
 		}
 		return c
@@ -274,7 +274,7 @@ func RunAzureCISBenchmark(ctx context.Context, tenantID, clientID, clientSecret,
 			c.Status = "PASS"; c.Evidence = "Defender for SQL Servers enabled"
 		} else {
 			c.Status = "FAIL"
-			c.Evidence = "Defender for SQL on Free tier — SQL injection and anomaly detection inactive"
+			c.Evidence = "Defender for SQL on Free tier - SQL injection and anomaly detection inactive"
 			c.Remediation = "Enable Defender for SQL Servers for Advanced Threat Protection and vulnerability assessment."
 		}
 		return c
@@ -294,7 +294,7 @@ func RunAzureCISBenchmark(ctx context.Context, tenantID, clientID, clientSecret,
 			c.Status = "PASS"; c.Evidence = "Defender for Storage enabled"
 		} else {
 			c.Status = "FAIL"
-			c.Evidence = "Defender for Storage on Free tier — malware upload detection and anomalous access alerts inactive"
+			c.Evidence = "Defender for Storage on Free tier - malware upload detection and anomalous access alerts inactive"
 			c.Remediation = "Enable Defender for Storage to detect malware uploads, anonymous access anomalies, and data exfiltration."
 		}
 		return c
@@ -314,7 +314,7 @@ func RunAzureCISBenchmark(ctx context.Context, tenantID, clientID, clientSecret,
 			c.Status = "PASS"; c.Evidence = "Defender for Key Vault enabled"
 		} else {
 			c.Status = "FAIL"
-			c.Evidence = "Defender for Key Vault on Free tier — unusual access pattern detection inactive"
+			c.Evidence = "Defender for Key Vault on Free tier - unusual access pattern detection inactive"
 			c.Remediation = "Enable Defender for Key Vault to detect credential theft and unusual secret access patterns."
 		}
 		return c
@@ -586,7 +586,7 @@ func RunAzureCISBenchmark(ctx context.Context, tenantID, clientID, clientSecret,
 			} `json:"value"`
 		}
 		if err := azureCSPMGet(ctx, t, diagURL, &diagResp); err != nil || len(diagResp.Value) == 0 {
-			c.Status = "FAIL"; c.Evidence = "No diagnostic settings — cannot verify retention"
+			c.Status = "FAIL"; c.Evidence = "No diagnostic settings - cannot verify retention"
 			c.Remediation = "Configure diagnostic settings with Log Analytics workspace set to 365-day retention."
 			return c
 		}
@@ -597,7 +597,7 @@ func RunAzureCISBenchmark(ctx context.Context, tenantID, clientID, clientSecret,
 			}
 		}
 		if hasLAW {
-			c.Status = "PASS"; c.Evidence = "Diagnostic settings route to Log Analytics workspace or storage — verify retention ≥ 365 days in LAW settings"
+			c.Status = "PASS"; c.Evidence = "Diagnostic settings route to Log Analytics workspace or storage - verify retention ≥ 365 days in LAW settings"
 		} else {
 			c.Status = "FAIL"; c.Evidence = "Diagnostic settings found but no workspace/storage destination configured"
 			c.Remediation = "Set Log Analytics workspace retention to 365 days minimum in Log Analytics > Usage and estimated costs > Data Retention."
@@ -742,7 +742,7 @@ func RunAzureCISBenchmark(ctx context.Context, tenantID, clientID, clientSecret,
 			c.Status = "PASS"; c.Evidence = fmt.Sprintf("%d enabled activity log alerts found", enabledAlerts)
 		} else {
 			c.Status = "FAIL"
-			c.Evidence = fmt.Sprintf("Only %d enabled activity log alerts — security solution alerts may be missing", enabledAlerts)
+			c.Evidence = fmt.Sprintf("Only %d enabled activity log alerts - security solution alerts may be missing", enabledAlerts)
 			c.Remediation = "Create alerts for Microsoft.Security/securitySolutions/write and delete."
 		}
 		return c
@@ -777,7 +777,7 @@ func RunAzureCISBenchmark(ctx context.Context, tenantID, clientID, clientSecret,
 			}
 		}
 		if len(rdpOpen) == 0 {
-			c.Status = "PASS"; c.Evidence = fmt.Sprintf("Checked %d NSGs — no unrestricted RDP (3389) from internet", len(resp.Value))
+			c.Status = "PASS"; c.Evidence = fmt.Sprintf("Checked %d NSGs - no unrestricted RDP (3389) from internet", len(resp.Value))
 		} else {
 			c.Status = "FAIL"
 			c.Evidence = fmt.Sprintf("NSGs with RDP open to internet: %s", strings.Join(rdpOpen, ", "))
@@ -813,7 +813,7 @@ func RunAzureCISBenchmark(ctx context.Context, tenantID, clientID, clientSecret,
 			}
 		}
 		if len(sshOpen) == 0 {
-			c.Status = "PASS"; c.Evidence = fmt.Sprintf("Checked %d NSGs — no unrestricted SSH (22) from internet", len(resp.Value))
+			c.Status = "PASS"; c.Evidence = fmt.Sprintf("Checked %d NSGs - no unrestricted SSH (22) from internet", len(resp.Value))
 		} else {
 			c.Status = "FAIL"
 			c.Evidence = fmt.Sprintf("NSGs with SSH open to internet: %s", strings.Join(sshOpen, ", "))
@@ -938,10 +938,10 @@ func RunAzureCISBenchmark(ctx context.Context, tenantID, clientID, clientSecret,
 			c.Status = "UNKNOWN"; c.Evidence = err.Error(); return c
 		}
 		if resp.Properties.PricingTier == "Standard" {
-			c.Status = "PASS"; c.Evidence = "Defender for Servers enabled — includes MDE (endpoint protection)"
+			c.Status = "PASS"; c.Evidence = "Defender for Servers enabled - includes MDE (endpoint protection)"
 		} else {
 			c.Status = "FAIL"
-			c.Evidence = "Defender for Servers not enabled — no centrally managed endpoint protection"
+			c.Evidence = "Defender for Servers not enabled - no centrally managed endpoint protection"
 			c.Remediation = "Enable Defender for Servers P2 which includes Microsoft Defender for Endpoint (MDE) on VMs."
 		}
 		return c
@@ -992,7 +992,7 @@ func RunAzureCISBenchmark(ctx context.Context, tenantID, clientID, clientSecret,
 			}
 		}
 		if len(noExpiry) == 0 {
-			c.Status = "PASS"; c.Evidence = fmt.Sprintf("Checked %d RBAC Key Vault(s) — all keys have expiration dates", vaultsChecked)
+			c.Status = "PASS"; c.Evidence = fmt.Sprintf("Checked %d RBAC Key Vault(s) - all keys have expiration dates", vaultsChecked)
 		} else {
 			c.Status = "FAIL"
 			c.Evidence = fmt.Sprintf("Keys without expiration: %s", strings.Join(noExpiry[:min(5, len(noExpiry))], ", "))

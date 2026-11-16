@@ -22,8 +22,8 @@ RUN echo "https://mirror.csclub.uwaterloo.ca/alpine/v3.19/main" > /etc/apk/repos
     || (echo "https://dl-cdn.alpinelinux.org/alpine/v3.19/main" > /etc/apk/repositories \
     && echo "https://dl-cdn.alpinelinux.org/alpine/v3.19/community" >> /etc/apk/repositories \
     && apk add --no-cache ca-certificates tzdata wget git gcc musl-dev python3 py3-pip py3-wheel openjdk17-jre-headless nodejs gcompat)
-# Install semgrep — best-effort, falls back to built-in rules if unavailable
-RUN pip3 install --break-system-packages semgrep 2>/dev/null     || pip3 install semgrep 2>/dev/null     || echo "semgrep install failed — built-in SAST rules will be used instead"
+# Install semgrep - best-effort, falls back to built-in rules if unavailable
+RUN pip3 install --break-system-packages semgrep 2>/dev/null     || pip3 install semgrep 2>/dev/null     || echo "semgrep install failed - built-in SAST rules will be used instead"
 
 # Set JAVA_HOME so CodeQL uses system Java instead of its bundled glibc Java
 ENV JAVA_HOME=/usr/lib/jvm/java-17-openjdk
@@ -32,9 +32,9 @@ ENV PATH="${JAVA_HOME}/bin:${PATH}"
 # H-4: pinned release (bump deliberately); set CODEQL_SHA256 to also verify the download.
 ARG CODEQL_VERSION=v2.20.5
 ARG CODEQL_SHA256=
-# Install CodeQL CLI — best-effort, falls back to semgrep-only if unavailable
+# Install CodeQL CLI - best-effort, falls back to semgrep-only if unavailable
 # CodeQL adds deep dataflow analysis on top of Semgrep's pattern matching
-RUN ARCH=$(uname -m) &&     if [ "$ARCH" = "x86_64" ]; then CODEQL_ARCH="linux64"; else CODEQL_ARCH="linux-arm64"; fi &&     wget -q --timeout=120       "https://github.com/github/codeql-action/releases/download/codeql-bundle-${CODEQL_VERSION}/codeql-bundle-${CODEQL_ARCH}.tar.gz"       -O /tmp/codeql.tar.gz 2>/dev/null &&     { [ -z "$CODEQL_SHA256" ] || echo "$CODEQL_SHA256  /tmp/codeql.tar.gz" | sha256sum -c -; } &&     tar -xzf /tmp/codeql.tar.gz -C /usr/local/ 2>/dev/null &&     ln -sf /usr/local/codeql/codeql /usr/local/bin/codeql &&     rm -f /tmp/codeql.tar.gz &&     codeql version && echo "CodeQL installed successfully"     || echo "CodeQL install failed — SAST will use Semgrep only"
+RUN ARCH=$(uname -m) &&     if [ "$ARCH" = "x86_64" ]; then CODEQL_ARCH="linux64"; else CODEQL_ARCH="linux-arm64"; fi &&     wget -q --timeout=120       "https://github.com/github/codeql-action/releases/download/codeql-bundle-${CODEQL_VERSION}/codeql-bundle-${CODEQL_ARCH}.tar.gz"       -O /tmp/codeql.tar.gz 2>/dev/null &&     { [ -z "$CODEQL_SHA256" ] || echo "$CODEQL_SHA256  /tmp/codeql.tar.gz" | sha256sum -c -; } &&     tar -xzf /tmp/codeql.tar.gz -C /usr/local/ 2>/dev/null &&     ln -sf /usr/local/codeql/codeql /usr/local/bin/codeql &&     rm -f /tmp/codeql.tar.gz &&     codeql version && echo "CodeQL installed successfully"     || echo "CodeQL install failed - SAST will use Semgrep only"
 
 WORKDIR /app
 
@@ -46,16 +46,16 @@ RUN mkdir -p certs
 
 # ── Agent source trees for on-demand compilation ──────────────────────────────
 # Paths inside container:
-#   /agent-src/linux/    — obsidianwatch/linux-agent
-#   /agent-src/windows/  — obsidianwatch/agent  (windows)
-#   /agent-src/macos/    — obsidianwatch/macos-agent
-#   /agent-src/network/  — obsidianwatch/network-probe
+#   /agent-src/linux/    - obsidianwatch/linux-agent
+#   /agent-src/windows/  - obsidianwatch/agent  (windows)
+#   /agent-src/macos/    - obsidianwatch/macos-agent
+#   /agent-src/network/  - obsidianwatch/network-probe
 COPY agents/linux/   /agent-src/linux/
 COPY agents/windows/ /agent-src/windows/
 COPY agents/macos/   /agent-src/macos/
 COPY agents/network/ /agent-src/network/
 
-# Set GOPATH/GOMODCACHE so modules land in /root/go/pkg/mod — the same path
+# Set GOPATH/GOMODCACHE so modules land in /root/go/pkg/mod - the same path
 # the runtime compiler uses (GOPATH=/root/go in agent_builder.go)
 ENV GOPATH=/root/go
 ENV GOMODCACHE=/root/go/pkg/mod
@@ -66,7 +66,7 @@ ENV GOMODCACHE=/root/go/pkg/mod
 RUN cd /agent-src/linux   && go mod tidy && go mod download
 RUN cd /agent-src/windows && go mod tidy && go mod download
 RUN cd /agent-src/macos   && go mod tidy && go mod download
-# Network agent deps skipped — large sqlite package, built on-demand
+# Network agent deps skipped - large sqlite package, built on-demand
 # RUN cd /agent-src/network && go mod tidy && go mod download
 
 # Binary cache dir (mounted as a volume so compiled binaries survive restarts)

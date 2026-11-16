@@ -1,6 +1,6 @@
 package api
 
-// entity_kinds.go — closed registry of alert-entity kinds shared by both
+// entity_kinds.go - closed registry of alert-entity kinds shared by both
 // builds. Owned by the integration owner. A side adds its kinds only through
 // the marked block below (additive).
 

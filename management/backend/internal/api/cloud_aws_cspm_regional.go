@@ -1,6 +1,6 @@
 package api
 
-// AW-10: account/regional service state — GuardDuty, Config, Security Hub, VPC
+// AW-10: account/regional service state - GuardDuty, Config, Security Hub, VPC
 // flow logs, public EBS snapshots, default security groups, KMS key rotation.
 
 import (

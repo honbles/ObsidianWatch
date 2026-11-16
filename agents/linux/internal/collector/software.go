@@ -2,7 +2,7 @@
 
 package collector
 
-// software.go — P-12: package install / remove events.
+// software.go - P-12: package install / remove events.
 //
 // Tails /var/log/dpkg.log (Debian/Ubuntu) from the end of file; each "install"
 // or "remove"/"purge" status line becomes one event. Hosts without dpkg.log

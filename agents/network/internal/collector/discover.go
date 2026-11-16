@@ -1,6 +1,6 @@
 package collector
 
-// discover.go — SNMP subnet auto-discovery
+// discover.go - SNMP subnet auto-discovery
 // Scans a CIDR subnet, probes port 161, tries SNMP GET on sysName.
 // Returns a list of responding devices with their labels.
 

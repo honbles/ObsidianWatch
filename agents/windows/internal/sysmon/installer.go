@@ -2,7 +2,7 @@
 
 package sysmon
 
-// installer.go — automatically detects and installs Sysmon if not present.
+// installer.go - automatically detects and installs Sysmon if not present.
 //
 // Two modes:
 //   1. Embedded binary (build with -tags embed_sysmon):
@@ -45,7 +45,7 @@ const (
 	sysmonConfigName  = "sysmon-config.xml"
 )
 
-// Sysmon config (W-03) — a reviewed baseline. Version it by bumping
+// Sysmon config (W-03) - a reviewed baseline. Version it by bumping
 // sysmonConfigVersion; a running Sysmon is re-configured when the embedded
 // config's hash differs from the last one applied (see ensureConfigCurrent).
 //
@@ -62,7 +62,7 @@ const sysmonConfig = `<Sysmon schemaversion="4.90">
   <CheckRevocation>False</CheckRevocation>
   <EventFiltering>
 
-    <!-- 1 — Process Create: log everything except console-host / WER noise -->
+    <!-- 1 - Process Create: log everything except console-host / WER noise -->
     <RuleGroup name="" groupRelation="or">
       <ProcessCreate onmatch="exclude">
         <Image condition="is">C:\Windows\System32\conhost.exe</Image>
@@ -70,7 +70,7 @@ const sysmonConfig = `<Sysmon schemaversion="4.90">
       </ProcessCreate>
     </RuleGroup>
 
-    <!-- 3 — Network Connect: only drop NetBIOS chatter and loopback -->
+    <!-- 3 - Network Connect: only drop NetBIOS chatter and loopback -->
     <RuleGroup name="" groupRelation="or">
       <NetworkConnect onmatch="exclude">
         <DestinationPort condition="is">137</DestinationPort>
@@ -80,7 +80,7 @@ const sysmonConfig = `<Sysmon schemaversion="4.90">
       </NetworkConnect>
     </RuleGroup>
 
-    <!-- 6 — Driver Load: unsigned or revoked drivers -->
+    <!-- 6 - Driver Load: unsigned or revoked drivers -->
     <RuleGroup name="" groupRelation="or">
       <DriverLoad onmatch="include">
         <Signed condition="is">false</Signed>
@@ -88,7 +88,7 @@ const sysmonConfig = `<Sysmon schemaversion="4.90">
       </DriverLoad>
     </RuleGroup>
 
-    <!-- 7 — Image/DLL Load: scripting engines, .NET/AMSI in odd hosts, user-writable paths -->
+    <!-- 7 - Image/DLL Load: scripting engines, .NET/AMSI in odd hosts, user-writable paths -->
     <RuleGroup name="" groupRelation="or">
       <ImageLoad onmatch="include">
         <Image condition="contains">powershell</Image>
@@ -108,7 +108,7 @@ const sysmonConfig = `<Sysmon schemaversion="4.90">
       </ImageLoad>
     </RuleGroup>
 
-    <!-- 8 — CreateRemoteThread into sensitive processes or from user paths -->
+    <!-- 8 - CreateRemoteThread into sensitive processes or from user paths -->
     <RuleGroup name="" groupRelation="or">
       <CreateRemoteThread onmatch="include">
         <TargetImage condition="end with">lsass.exe</TargetImage>
@@ -123,12 +123,12 @@ const sysmonConfig = `<Sysmon schemaversion="4.90">
       </CreateRemoteThread>
     </RuleGroup>
 
-    <!-- 9 — Raw disk access (credential/NTDS/SAM theft, wipers): log all -->
+    <!-- 9 - Raw disk access (credential/NTDS/SAM theft, wipers): log all -->
     <RuleGroup name="" groupRelation="or">
       <RawAccessRead onmatch="exclude" />
     </RuleGroup>
 
-    <!-- 10 — Process Access: LSASS plus injection-grade access to other processes -->
+    <!-- 10 - Process Access: LSASS plus injection-grade access to other processes -->
     <RuleGroup name="" groupRelation="or">
       <ProcessAccess onmatch="include">
         <TargetImage condition="end with">lsass.exe</TargetImage>
@@ -138,7 +138,7 @@ const sysmonConfig = `<Sysmon schemaversion="4.90">
       </ProcessAccess>
     </RuleGroup>
 
-    <!-- 11 — File Create: user-writable paths, executables/scripts, persistence folders -->
+    <!-- 11 - File Create: user-writable paths, executables/scripts, persistence folders -->
     <RuleGroup name="" groupRelation="or">
       <FileCreate onmatch="include">
         <TargetFilename condition="contains">\Temp\</TargetFilename>
@@ -164,7 +164,7 @@ const sysmonConfig = `<Sysmon schemaversion="4.90">
       </FileCreate>
     </RuleGroup>
 
-    <!-- 12/13/14 — Registry: persistence and defence-evasion keys -->
+    <!-- 12/13/14 - Registry: persistence and defence-evasion keys -->
     <RuleGroup name="" groupRelation="or">
       <RegistryEvent onmatch="include">
         <TargetObject condition="contains">CurrentVersion\Run</TargetObject>
@@ -191,7 +191,7 @@ const sysmonConfig = `<Sysmon schemaversion="4.90">
       </RegistryEvent>
     </RuleGroup>
 
-    <!-- 15 — FileCreateStreamHash: downloads (Mark-of-the-Web) and ADS -->
+    <!-- 15 - FileCreateStreamHash: downloads (Mark-of-the-Web) and ADS -->
     <RuleGroup name="" groupRelation="or">
       <FileCreateStreamHash onmatch="include">
         <TargetFilename condition="contains">\Downloads\</TargetFilename>
@@ -200,7 +200,7 @@ const sysmonConfig = `<Sysmon schemaversion="4.90">
       </FileCreateStreamHash>
     </RuleGroup>
 
-    <!-- 17/18 — Named pipes used by common C2 / lateral-movement tooling -->
+    <!-- 17/18 - Named pipes used by common C2 / lateral-movement tooling -->
     <RuleGroup name="" groupRelation="or">
       <PipeEvent onmatch="include">
         <PipeName condition="contains">msagent_</PipeName>
@@ -219,12 +219,12 @@ const sysmonConfig = `<Sysmon schemaversion="4.90">
       </PipeEvent>
     </RuleGroup>
 
-    <!-- 19/20/21 — WMI event filters / consumers / bindings: log all (rare, high value) -->
+    <!-- 19/20/21 - WMI event filters / consumers / bindings: log all (rare, high value) -->
     <RuleGroup name="" groupRelation="or">
       <WmiEvent onmatch="exclude" />
     </RuleGroup>
 
-    <!-- 22 — DNS Query -->
+    <!-- 22 - DNS Query -->
     <RuleGroup name="" groupRelation="or">
       <DnsQuery onmatch="exclude">
         <QueryName condition="end with">.windowsupdate.com</QueryName>
@@ -233,7 +233,7 @@ const sysmonConfig = `<Sysmon schemaversion="4.90">
       </DnsQuery>
     </RuleGroup>
 
-    <!-- 26 — File Delete Detected (no archiving): attacker cleanup of tools/scripts -->
+    <!-- 26 - File Delete Detected (no archiving): attacker cleanup of tools/scripts -->
     <RuleGroup name="" groupRelation="or">
       <FileDeleteDetected onmatch="include">
         <TargetFilename condition="contains">\Temp\</TargetFilename>
@@ -298,7 +298,7 @@ func EnsureInstalled(logger *slog.Logger) bool {
 		return true
 
 	case StatusInstalled:
-		logger.Info("sysmon: installed but not running — starting")
+		logger.Info("sysmon: installed but not running - starting")
 		if err := startService(logger); err != nil {
 			logger.Warn("sysmon: failed to start service", "err", err)
 			return false
@@ -307,7 +307,7 @@ func EnsureInstalled(logger *slog.Logger) bool {
 		return true
 
 	case StatusNotInstalled:
-		logger.Info("sysmon: not installed — installing automatically")
+		logger.Info("sysmon: not installed - installing automatically")
 		if err := install(logger); err != nil {
 			logger.Warn("sysmon: auto-install failed", "err", err)
 			return false
@@ -531,7 +531,7 @@ func verifySysmonSignature(exePath string) error {
 }
 
 // ensureConfigCurrent re-applies the embedded Sysmon config when it changed
-// since the last one we applied (versioned, managed config — W-02/W-03).
+// since the last one we applied (versioned, managed config - W-02/W-03).
 func ensureConfigCurrent(logger *slog.Logger) {
 	sum := sha256.Sum256([]byte(sysmonConfigVersion + "\n" + sysmonConfig))
 	want := hex.EncodeToString(sum[:])

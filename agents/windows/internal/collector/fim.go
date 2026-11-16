@@ -2,7 +2,7 @@
 
 package collector
 
-// fim.go — File Integrity Monitoring using ReadDirectoryChangesW.
+// fim.go - File Integrity Monitoring using ReadDirectoryChangesW.
 // Watches configured directories recursively for file create, modify,
 // delete, and rename events. Emits schema.Events for each change.
 //
@@ -175,7 +175,7 @@ func (w *dirWatcher) watch(ctx context.Context) error {
 		idx, err := windows.WaitForMultipleObjects(waitHandles, false, 500)
 		_ = idx
 		if err != nil {
-			// timeout — loop and check ctx
+			// timeout - loop and check ctx
 			windows.ResetEvent(completionEvent)
 			continue
 		}

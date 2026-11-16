@@ -1,6 +1,6 @@
 package api
 
-// rule_gate.go — runtime gate for rules shared by both builds. Owned by the
+// rule_gate.go - runtime gate for rules shared by both builds. Owned by the
 // integration owner. Every NET-/APP- rule evaluator calls ruleGate before it
 // raises an alert, and passes the severity through GateSeverity.
 

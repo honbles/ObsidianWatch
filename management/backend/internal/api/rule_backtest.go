@@ -1,6 +1,6 @@
 package api
 
-// rule_backtest.go — P-06: replay a built-in signature against recent events
+// rule_backtest.go - P-06: replay a built-in signature against recent events
 // and report how many alerts it would have produced, before it is enabled.
 //
 //	POST /api/v1/detections/{id}/backtest?hours=24

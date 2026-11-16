@@ -59,7 +59,7 @@ const SAVED_QUERIES = [
   { cat: 'Network', label: 'All TCP connections',                 params: { event_type: 'network', proto: 'tcp' } },
   { cat: 'Network', label: 'High severity network events',        params: { event_type: 'network', severity: '4' } },
 
-  // DNS — searches BOTH old (network+DNS-Client source) and new (event_type=dns) 
+  // DNS - searches BOTH old (network+DNS-Client source) and new (event_type=dns) 
   { cat: 'DNS / Web', label: 'All websites visited (DNS)',        params: { event_type: 'dns' }, fallback: { search: 'DNS-Client' } },
   { cat: 'DNS / Web', label: 'RustDesk DNS queries',              params: { event_type: 'dns', search: 'rustdesk' }, fallback: { search: 'rustdesk' } },
   { cat: 'DNS / Web', label: 'WPAD proxy discovery',             params: { event_type: 'dns', search: 'wpad' },     fallback: { search: 'wpad' } },
@@ -84,7 +84,7 @@ const SAVED_QUERIES = [
   { cat: 'File', label: 'High severity file events',             params: { event_type: 'file', severity: '4' } },
 
 
-  // LINUX — Process
+  // LINUX - Process
   { cat: 'Linux', label: 'All Linux process events',              params: { event_type: 'process', os: 'linux' } },
   { cat: 'Linux', label: 'Shell executions (bash/sh/zsh)',        params: { event_type: 'process', search: 'bash' } },
   { cat: 'Linux', label: 'Python interpreter executions',         params: { event_type: 'process', search: 'python' } },
@@ -99,7 +99,7 @@ const SAVED_QUERIES = [
   { cat: 'Linux', label: 'nmap scanning',                         params: { event_type: 'process', search: 'nmap' } },
   { cat: 'Linux', label: 'High severity Linux processes',         params: { event_type: 'process', severity: '4' } },
 
-  // LINUX — Privilege / Auth
+  // LINUX - Privilege / Auth
   { cat: 'Linux', label: 'All sudo executions',                   params: { event_type: 'process', process_name: 'sudo' } },
   { cat: 'Linux', label: 'sudo auth failures',                    params: { event_type: 'logon', search: 'sudo_failed' } },
   { cat: 'Linux', label: 'SSH logins (accepted)',                 params: { event_type: 'logon', search: 'ssh_login' } },
@@ -111,7 +111,7 @@ const SAVED_QUERIES = [
   { cat: 'Linux', label: 'User account deleted',                  params: { event_type: 'logon', search: 'DEL_USER' } },
   { cat: 'Linux', label: 'Root account activity (uid=0)',         params: { event_type: 'process', user_name: 'root' } },
 
-  // LINUX — FIM (File Integrity)
+  // LINUX - FIM (File Integrity)
   { cat: 'Linux', label: 'All FIM events',                        params: { event_type: 'file', source: 'inotify' } },
   { cat: 'Linux', label: '/etc/passwd modifications',             params: { event_type: 'file', file_path: '/etc/passwd' } },
   { cat: 'Linux', label: '/etc/shadow modifications',             params: { event_type: 'file', file_path: '/etc/shadow' } },
@@ -126,7 +126,7 @@ const SAVED_QUERIES = [
   { cat: 'Linux', label: 'Profile/bashrc modifications',          params: { event_type: 'file', search: '.bashrc' } },
   { cat: 'Linux', label: 'High severity FIM events',              params: { event_type: 'file', severity: '4' } },
 
-  // LINUX — Audit / Journal
+  // LINUX - Audit / Journal
   { cat: 'Linux', label: 'All auditd events',                     params: { source: 'auditd' } },
   { cat: 'Linux', label: 'All journald events',                   params: { source: 'journald' } },
   { cat: 'Linux', label: 'Kernel OOM kills',                      params: { search: 'oom_kill' } },
@@ -239,7 +239,7 @@ function EventPanel({ eventId, onClose }) {
     ['Agent ID',      ev.agent_id],
     ['Event Type',    ev.event_type],
     ['Source',        ev.source],
-    ['Severity',      ev.severity ? `${ev.severity} — ${SEV_LABEL[ev.severity]}` : null],
+    ['Severity',      ev.severity ? `${ev.severity} - ${SEV_LABEL[ev.severity]}` : null],
     ['Event ID',      ev.event_id],
     ['Channel',       ev.channel],
     ['PID',           ev.pid],
@@ -324,7 +324,7 @@ function EventPanel({ eventId, onClose }) {
                         <span className="text-siem-muted font-mono w-32 shrink-0">{format(new Date(r.time), 'HH:mm:ss')}</span>
                         <span className={`w-16 shrink-0 ${TYPE_COLOR[r.event_type] || 'text-siem-muted'}`}>{r.event_type}</span>
                         <span className={`w-6 font-bold shrink-0 ${SEV_COLOR[r.severity]}`}>{r.severity}</span>
-                        <span className="text-siem-muted truncate">{r.process_name || r.dst_ip || r.reg_key || r.file_path || r.user_name || '—'}</span>
+                        <span className="text-siem-muted truncate">{r.process_name || r.dst_ip || r.reg_key || r.file_path || r.user_name || '-'}</span>
                       </div>
                     ))}
                   </div>
@@ -344,30 +344,30 @@ function ResultRow({ ev, onClick }) {
   let subject, detail
   const t = ev.event_type
   if (t === 'process' || t === 'sysmon') {
-    subject = ev.process_name || ev.image_path || '—'
-    detail  = ev.command_line || ev.image_path || '—'
+    subject = ev.process_name || ev.image_path || '-'
+    detail  = ev.command_line || ev.image_path || '-'
   } else if (t === 'network') {
-    subject = (ev.dst_ip ? `${ev.dst_ip}` : ev.src_ip) || '—'
-    detail  = ev.dst_port ? `→ port ${ev.dst_port}${ev.proto ? ' '+ev.proto.toUpperCase() : ''}` : (ev.src_ip || '—')
+    subject = (ev.dst_ip ? `${ev.dst_ip}` : ev.src_ip) || '-'
+    detail  = ev.dst_port ? `→ port ${ev.dst_port}${ev.proto ? ' '+ev.proto.toUpperCase() : ''}` : (ev.src_ip || '-')
   } else if (t === 'dns') {
     let domain = ev.dst_ip || ''
     if (!domain && ev.raw) {
       try { const r = typeof ev.raw === 'string' ? JSON.parse(ev.raw) : ev.raw; domain = r.query_name || r.QueryName || r.dst_ip || '' } catch {}
     }
-    subject = domain || '—'
-    detail  = ev.src_ip ? `from ${ev.src_ip}` : (ev.process_name || '—')
+    subject = domain || '-'
+    detail  = ev.src_ip ? `from ${ev.src_ip}` : (ev.process_name || '-')
   } else if (t === 'logon') {
-    subject = ev.user_name ? `${ev.domain ? ev.domain+'\\\\' : ''}${ev.user_name}` : '—'
-    detail  = ev.event_id ? `EventID ${ev.event_id}` : (ev.src_ip ? `from ${ev.src_ip}` : '—')
+    subject = ev.user_name ? `${ev.domain ? ev.domain+'\\\\' : ''}${ev.user_name}` : '-'
+    detail  = ev.event_id ? `EventID ${ev.event_id}` : (ev.src_ip ? `from ${ev.src_ip}` : '-')
   } else if (t === 'registry') {
-    subject = ev.reg_key || '—'
-    detail  = ev.reg_value || ev.reg_data || '—'
+    subject = ev.reg_key || '-'
+    detail  = ev.reg_value || ev.reg_data || '-'
   } else if (t === 'file') {
-    subject = ev.file_path || '—'
-    detail  = ev.file_hash ? `SHA256: ${ev.file_hash.slice(0,16)}…` : (ev.process_name || '—')
+    subject = ev.file_path || '-'
+    detail  = ev.file_hash ? `SHA256: ${ev.file_hash.slice(0,16)}…` : (ev.process_name || '-')
   } else {
-    subject = ev.process_name || ev.reg_key || ev.file_path || ev.dst_ip || ev.src_ip || '—'
-    detail  = ev.command_line || ev.reg_value || ev.dst_ip || ev.file_path || '—'
+    subject = ev.process_name || ev.reg_key || ev.file_path || ev.dst_ip || ev.src_ip || '-'
+    detail  = ev.command_line || ev.reg_value || ev.dst_ip || ev.file_path || '-'
   }
 
   return (
@@ -384,7 +384,7 @@ function ResultRow({ ev, onClick }) {
         <span className={`text-xs font-medium ${TYPE_COLOR[ev.event_type] || 'text-siem-muted'}`}>{ev.event_type}</span>
       </td>
       <td className="px-3 py-2.5 text-siem-muted text-xs truncate max-w-[120px]" title={ev.user_name}>
-        {ev.user_name ? (ev.domain ? `${ev.domain}\\${ev.user_name}` : ev.user_name) : '—'}
+        {ev.user_name ? (ev.domain ? `${ev.domain}\\${ev.user_name}` : ev.user_name) : '-'}
       </td>
       <td className="px-3 py-2.5 text-siem-muted text-xs max-w-[160px] truncate" title={subject}>{subject}</td>
       <td className="px-3 py-2.5 text-siem-muted text-xs max-w-[260px] truncate font-mono text-[11px]" title={detail}>{detail}</td>
@@ -579,7 +579,7 @@ export default function Search() {
             <>
               <div className="flex items-center gap-3 px-5 py-2 border-b border-siem-border/40 bg-siem-surface/60 sticky top-0 z-10 text-xs">
                 {results.length === 0 ? (
-                  <span className="text-yellow-400">No results found — try removing filters or clicking "Search all time"</span>
+                  <span className="text-yellow-400">No results found - try removing filters or clicking "Search all time"</span>
                 ) : (
                   <span className="text-siem-muted">
                     <span className="text-siem-text font-medium">{results.length.toLocaleString()}</span>

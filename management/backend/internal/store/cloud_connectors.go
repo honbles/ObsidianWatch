@@ -127,7 +127,7 @@ func (db *DB) UpsertCloudConnector(ctx context.Context, provider string, creds m
 		ON CONFLICT (provider, account_id) DO NOTHING
 		RETURNING id`, provider, accountID, credsJSON).Scan(&id)
 	if err == sql.ErrNoRows {
-		// Already exists — update credentials
+		// Already exists - update credentials
 		err = db.QueryRowContext(ctx, `
 			UPDATE cloud_connectors SET credentials=$1, updated_at=NOW()
 			WHERE provider=$2 AND account_id=$3 RETURNING id`, credsJSON, provider, accountID).Scan(&id)
@@ -138,12 +138,12 @@ func (db *DB) UpsertCloudConnector(ctx context.Context, provider string, creds m
 // UpdateCloudConnectorStatus records the outcome of a sync attempt.
 //
 // G-01: sync_cursor is the per-connector watermark (the max log-source
-// timestamp — e.g. GCP receiveTimestamp — successfully ingested). A failed
+// timestamp - e.g. GCP receiveTimestamp - successfully ingested). A failed
 // or partial sync must never erase progress already made, so an empty
 // cursor here leaves the existing one in place (COALESCE/NULLIF) instead
 // of always overwriting it with NULL. Callers pass whatever cursor value
 // reflects what was *actually* durably ingested, including on a partial
-// failure — not just on full success — so a crash mid-sync doesn't lose
+// failure - not just on full success - so a crash mid-sync doesn't lose
 // the ground already covered.
 func (db *DB) UpdateCloudConnectorStatus(ctx context.Context, id int64, status, lastError string, eventCount int64, cursor string) error {
 	_, err := db.ExecContext(ctx, `

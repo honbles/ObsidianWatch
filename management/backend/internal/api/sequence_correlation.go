@@ -43,14 +43,14 @@ var seqRules = []seqRule{
 	},
 	{
 		ID: "CORR-SEQ-003", Title: "Audit log cleared after account or privilege change",
-		Desc:  "The Windows Security log was cleared (1102) within an hour of an account or group change on the same host — a common attempt to hide persistence.",
+		Desc:  "The Windows Security log was cleared (1102) within an hour of an account or group change on the same host - a common attempt to hide persistence.",
 		MITRE: "T1070.001", Severity: 5, Window: time.Hour, Key: hostKey,
 		A: func(ev store.Event) bool { return winEventIs(ev, 4720, 4732, 4728, 4724) },
 		B: func(ev store.Event) bool { return winEventIs(ev, 1102) },
 	},
 	{
 		ID: "CORR-SEQ-AWS-001", Title: "AWS console login succeeded after a failed attempt from the same IP",
-		Desc:  "A failed AWS console login was followed by a successful one from the same source IP within 15 minutes — possible password guessing or credential stuffing that worked.",
+		Desc:  "A failed AWS console login was followed by a successful one from the same source IP within 15 minutes - possible password guessing or credential stuffing that worked.",
 		MITRE: "T1110", Severity: 4, Window: 15 * time.Minute, Key: awsSrcIPKey,
 		A: func(ev store.Event) bool {
 			return awsEventIs(ev, "consolelogin") && awsRawHas(ev, `"consolelogin":"failure"`) && awsSrcIPKey(ev) != ""
@@ -61,7 +61,7 @@ var seqRules = []seqRule{
 	},
 	{
 		ID: "CORR-SEQ-AWS-002", Title: "AWS identity created or given a key, then granted permissions",
-		Desc:  "The same AWS principal created a user or access key and then attached/put a policy or added a user to a group within 30 minutes — a common persistence and privilege-escalation sequence.",
+		Desc:  "The same AWS principal created a user or access key and then attached/put a policy or added a user to a group within 30 minutes - a common persistence and privilege-escalation sequence.",
 		MITRE: "T1136.003,T1098", Severity: 4, Window: 30 * time.Minute, Key: awsActorKey,
 		A: func(ev store.Event) bool {
 			return awsEventIs(ev, "createuser", "createaccesskey") && awsActorKey(ev) != ""
@@ -72,7 +72,7 @@ var seqRules = []seqRule{
 	},
 	{
 		ID: "CORR-SEQ-AWS-003", Title: "AWS logging tampered with, then new resources or identities created",
-		Desc:  "The same AWS principal stopped, deleted or changed CloudTrail and then created identities or compute within an hour — activity that may have been hidden from audit.",
+		Desc:  "The same AWS principal stopped, deleted or changed CloudTrail and then created identities or compute within an hour - activity that may have been hidden from audit.",
 		MITRE: "T1562.008", Severity: 5, Window: time.Hour, Key: awsActorKey,
 		A: func(ev store.Event) bool {
 			return awsEventIs(ev, "stoplogging", "deletetrail", "updatetrail", "puteventselectors") && awsActorKey(ev) != ""

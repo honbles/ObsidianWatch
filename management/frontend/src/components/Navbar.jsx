@@ -95,7 +95,7 @@ function NavDropdown({ label, icon: Icon, children, isActive }) {
   )
 }
 
-// ── Dropdown item — receives navigate/closeAll as props ───────────────────────
+// ── Dropdown item - receives navigate/closeAll as props ───────────────────────
 function DDItem({ to, icon: Icon, label, color, dot, dotColor, onClick, badge, close }) {
   const navigate = useNavigate()
   const location = useLocation()
@@ -347,7 +347,7 @@ export function Navbar({ user }) {
                         background: conn.status === 'connected' ? 'var(--green)' : 'var(--red)'
                       }}/>
                       <span style={{ flex: 1 }}>
-                        {conn.provider?.toUpperCase()} · {conn.account_label || conn.account_id || '—'}
+                        {conn.provider?.toUpperCase()} · {conn.account_label || conn.account_id || '-'}
                       </span>
                     </div>
                   ))}
@@ -373,7 +373,7 @@ export function Navbar({ user }) {
           Network
         </button>
 
-        {/* [APP-NAV-BEGIN] — Application build: one "Applications" nav group */}
+        {/* [APP-NAV-BEGIN] - Application build: one "Applications" nav group */}
         {/* [APP-NAV-END] */}
 
         {/* DevOps */}
@@ -390,7 +390,7 @@ export function Navbar({ user }) {
                         width: 6, height: 6, borderRadius: '50%', flexShrink: 0,
                         background: c.status === 'connected' ? 'var(--green)' : 'var(--text3)'
                       }}/>
-                      <span style={{ flex: 1 }}>{c.provider} · {c.org || '—'}</span>
+                      <span style={{ flex: 1 }}>{c.provider} · {c.org || '-'}</span>
                     </div>
                   ))}
                   <DDDivider/>

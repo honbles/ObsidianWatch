@@ -232,8 +232,8 @@ func (db *DB) ThreatIntel(ctx context.Context) (map[string]interface{}, error) {
 		result["top_users"] = users
 	}
 
-	// Flagged domains — domains globally that match IOC blocklist categories
-	// (Quad9/SURBL/Spamhaus — replaces old hardcoded keyword list)
+	// Flagged domains - domains globally that match IOC blocklist categories
+	// (Quad9/SURBL/Spamhaus - replaces old hardcoded keyword list)
 	flaggedRows, flaggedErr := db.QueryContext(ctx, `
 		SELECT e.dst_ip as domain,
 		       COUNT(*) as count,
@@ -308,7 +308,7 @@ func (db *DB) ThreatIntelHost(ctx context.Context, host string, hours int) (map[
 		GROUP BY dst_ip ORDER BY count DESC LIMIT 25
 	`, "%"+host+"%", interval); err == nil { result["top_domains"] = rows }
 
-	// NEW domains — first seen in this window (not seen before)
+	// NEW domains - first seen in this window (not seen before)
 	if rows, err := run(`
 		SELECT dst_ip as domain, COUNT(*) as count, MIN(time) as first_seen
 		FROM events
@@ -419,7 +419,7 @@ func (db *DB) ThreatIntelHost(ctx context.Context, host string, hours int) (map[
 		LIMIT 20
 	`, "%"+host+"%", interval); err == nil { result["active_alerts"] = rows }
 
-	// IOC matches — events from this host that matched ThreatFox/OTX indicators
+	// IOC matches - events from this host that matched ThreatFox/OTX indicators
 	if rows, err := run(`
 		SELECT DISTINCT
 		       a.title,
@@ -439,7 +439,7 @@ func (db *DB) ThreatIntelHost(ctx context.Context, host string, hours int) (map[
 		LIMIT 20
 	`, "%"+host+"%", interval); err == nil { result["ioc_matches"] = rows }
 
-	// DNS category flags — domains this host resolved that are in IOC category lists
+	// DNS category flags - domains this host resolved that are in IOC category lists
 	// (from Quad9/SURBL/Spamhaus via dns_categorization engine)
 	if rows, err := run(`
 		SELECT e.dst_ip as domain,
@@ -463,7 +463,7 @@ func (db *DB) ThreatIntelHost(ctx context.Context, host string, hours int) (map[
 	`, "%"+host+"%", interval); err == nil { result["dns_category_flags"] = rows }
 
 	// Also replace the old hardcoded suspicious domain query with IOC-backed one
-	// Flagged IPs — network connections to known malicious IPs
+	// Flagged IPs - network connections to known malicious IPs
 	if rows, err := run(`
 		SELECT DISTINCT
 		       e.dst_ip,
@@ -488,7 +488,7 @@ func (db *DB) ThreatIntelHost(ctx context.Context, host string, hours int) (map[
 		LIMIT 20
 	`, "%"+host+"%", interval); err == nil { result["flagged_ips"] = rows }
 
-	// Flagged domains — DNS queries to known malicious domains (OTX/ThreatFox)
+	// Flagged domains - DNS queries to known malicious domains (OTX/ThreatFox)
 	if rows, err := run(`
 		SELECT DISTINCT
 		       e.dst_ip as domain,
@@ -511,7 +511,7 @@ func (db *DB) ThreatIntelHost(ctx context.Context, host string, hours int) (map[
 		LIMIT 20
 	`, "%"+host+"%", interval); err == nil { result["flagged_domains"] = rows }
 
-	// Flagged hashes — file events with hashes matching OTX/ThreatFox IOCs
+	// Flagged hashes - file events with hashes matching OTX/ThreatFox IOCs
 	if rows, err := run(`
 		SELECT DISTINCT
 		       e.file_hash as hash,
@@ -643,7 +643,7 @@ func (db *DB) DashboardStats(ctx context.Context) (map[string]interface{}, error
 	`)
 
 
-	// Top countries by outbound connection IPs (last 24h) — excludes private ranges
+	// Top countries by outbound connection IPs (last 24h) - excludes private ranges
 	result["top_countries"] = run(`
 		SELECT dst_ip as country, COUNT(*) as count
 		FROM events
@@ -657,7 +657,7 @@ func (db *DB) DashboardStats(ctx context.Context) (map[string]interface{}, error
 		ORDER BY count DESC LIMIT 10
 	`)
 
-	// Malicious IPs — from alerts with IOC type
+	// Malicious IPs - from alerts with IOC type
 	result["malicious_ips"] = run(`
 		SELECT DISTINCT host, title, description, created_at
 		FROM alerts
@@ -666,7 +666,7 @@ func (db *DB) DashboardStats(ctx context.Context) (map[string]interface{}, error
 		ORDER BY created_at DESC LIMIT 10
 	`)
 
-	// Malicious domains — from alerts
+	// Malicious domains - from alerts
 	result["malicious_domains"] = run(`
 		SELECT DISTINCT host, title, description, created_at
 		FROM alerts
@@ -675,7 +675,7 @@ func (db *DB) DashboardStats(ctx context.Context) (map[string]interface{}, error
 		ORDER BY created_at DESC LIMIT 10
 	`)
 
-	// Malicious files — hash alerts
+	// Malicious files - hash alerts
 	result["malicious_files"] = run(`
 		SELECT DISTINCT host, title, description, created_at
 		FROM alerts

@@ -2,13 +2,13 @@
 
 package collector
 
-// process.go — Linux process monitoring.
+// process.go - Linux process monitoring.
 //
 // Strategy (two complementary sources):
-//  1. Netlink proc connector (CN_IDX_PROC) — real-time kernel notifications for
+//  1. Netlink proc connector (CN_IDX_PROC) - real-time kernel notifications for
 //     exec/fork/exit events. Requires CAP_NET_ADMIN (i.e. root). This is the
 //     Linux equivalent of Sysmon Event ID 1 (ProcessCreate).
-//  2. /proc poll — fallback + enrichment. Scans /proc/*/status + /proc/*/cmdline
+//  2. /proc poll - fallback + enrichment. Scans /proc/*/status + /proc/*/cmdline
 //     every PollInterval, detects new PIDs not yet seen via netlink, reads full
 //     command line, username (uid→/etc/passwd lookup), parent PID.
 //
@@ -260,7 +260,7 @@ func (p *ProcessCollector) emitExit(pid int) {
 }
 
 // ---------------------------------------------------------------------------
-// /proc poll — fallback + new process detection
+// /proc poll - fallback + new process detection
 // ---------------------------------------------------------------------------
 
 func (p *ProcessCollector) runPoll(ctx context.Context) error {
@@ -494,7 +494,7 @@ func (p *ProcessCollector) emit(pid int, entry procEntry, action string, sev sch
 // Shared health counter (mirrors Windows agent)
 // ---------------------------------------------------------------------------
 
-// Use unsafe to avoid circular import — identical to Windows agent HealthStats
+// Use unsafe to avoid circular import - identical to Windows agent HealthStats
 var _ = unsafe.Sizeof(0) // keep import
 
 // GlobalHealth is declared in health.go

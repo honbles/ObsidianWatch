@@ -84,7 +84,7 @@ const SOURCE_META = {
   },
   otx: {
     label: 'AlienVault OTX',
-    desc: 'Open Threat Exchange — community threat pulses with IPs, domains and hashes.',
+    desc: 'Open Threat Exchange - community threat pulses with IPs, domains and hashes.',
     color: 'text-blue-400',
     needsKey: true,
     keyPlaceholder: 'OTX API key (free at otx.alienvault.com)',
@@ -279,7 +279,7 @@ function Backtest({ sigId }) {
       {res && (
         <div className="mt-2 text-xs text-siem-muted">
           <div><span className="text-siem-text">{res.matches}</span> matches in {res.events_scanned.toLocaleString()} events
-            {res.truncated ? ' (scan capped)' : ''} — about <span className="text-siem-text">{Math.round(res.estimated_per_day)}</span> per day.</div>
+            {res.truncated ? ' (scan capped)' : ''} - about <span className="text-siem-text">{Math.round(res.estimated_per_day)}</span> per day.</div>
           {res.top_hosts?.length > 0 && <div>Top hosts: {res.top_hosts.slice(0, 5).map(h => `${h.host} (${h.count})`).join(', ')}</div>}
           <div className="opacity-70">{res.note}</div>
         </div>
@@ -569,7 +569,7 @@ export default function Detections() {
                 <span className="text-xs px-2 py-0.5 bg-purple-950/30 border border-purple-800/30 text-purple-400 rounded-full">{sigmaCount.toLocaleString()} rules</span>
               </div>
               <p className="text-sm text-siem-muted">Community detection rules from SigmaHQ mapped to MITRE ATT&CK. Covers Windows, Linux and macOS threats. Rules are matched against process, file, network and registry events.</p>
-              <p className="text-xs text-siem-muted/60 mt-2">Rules are deduplicated per host per hour — same rule will not alert more than once per hour per host.</p>
+              <p className="text-xs text-siem-muted/60 mt-2">Rules are deduplicated per host per hour - same rule will not alert more than once per hour per host.</p>
             </div>
             <div className="ml-8 flex flex-col items-center gap-2">
               <button
@@ -716,10 +716,10 @@ export default function Detections() {
         <>
           {/* OS description */}
           <div className="text-xs text-siem-muted bg-siem-surface border border-siem-border rounded-xl px-4 py-2.5">
-            {osTab === 'linux'   && <><span className="text-orange-400 font-medium">Linux</span> — rules fire on process, journald, network, dns, file, and configmon events. All conditions match against fields actually populated by Linux collectors.</>}
-            {osTab === 'windows' && <><span className="text-blue-400 font-medium">Windows</span> — rules fire on ETW process, Sysmon, EventLog, network (iphlpapi), registry, FIM, and DNS events.</>}
-            {osTab === 'macos'   && <><span className="text-gray-300 font-medium">macOS</span> — rules fire on process, syslog, network, dns, FSEvents (file), and configmon events.</>}
-            {osTab === 'all'     && <><span className="text-cyan-400 font-medium">All Platforms</span> — DNS blocklist rules fire on any dns event regardless of OS. Requires Intel Sources to be synced.</>}
+            {osTab === 'linux'   && <><span className="text-orange-400 font-medium">Linux</span> - rules fire on process, journald, network, dns, file, and configmon events. All conditions match against fields actually populated by Linux collectors.</>}
+            {osTab === 'windows' && <><span className="text-blue-400 font-medium">Windows</span> - rules fire on ETW process, Sysmon, EventLog, network (iphlpapi), registry, FIM, and DNS events.</>}
+            {osTab === 'macos'   && <><span className="text-gray-300 font-medium">macOS</span> - rules fire on process, syslog, network, dns, FSEvents (file), and configmon events.</>}
+            {osTab === 'all'     && <><span className="text-cyan-400 font-medium">All Platforms</span> - DNS blocklist rules fire on any dns event regardless of OS. Requires Intel Sources to be synced.</>}
           </div>
 
           {/* Stats bar */}
@@ -785,7 +785,7 @@ export default function Detections() {
               />
           }
 
-          {/* ── GCP Suppression Rules — shown only in Cloud tab ── */}
+          {/* ── GCP Suppression Rules - shown only in Cloud tab ── */}
           {osTab === 'cloud' && (
             <div className="mt-8 space-y-3">
               <div className="flex items-center justify-between">

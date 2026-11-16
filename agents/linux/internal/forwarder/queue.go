@@ -1,7 +1,7 @@
 package forwarder
 
-// queue.go — a durable FIFO backed by newline-delimited JSON segment files.
-// Uses ONLY the Go standard library — zero external dependencies.
+// queue.go - a durable FIFO backed by newline-delimited JSON segment files.
+// Uses ONLY the Go standard library - zero external dependencies.
 //
 // Layout on disk:
 //   <dir>/
@@ -253,7 +253,7 @@ func (q *Queue) evictIfNeeded() {
 	}
 	for i := 0; i < len(seqs)-maxSegments; i++ {
 		// L-08: never silently lose the high-severity events in an evicted
-		// segment — salvage up to 500 of them into the active segment and
+		// segment - salvage up to 500 of them into the active segment and
 		// count what is genuinely dropped.
 		salvaged, dropped := q.salvageHighSeverity(seqs[i])
 		os.Remove(q.segPath(seqs[i]))

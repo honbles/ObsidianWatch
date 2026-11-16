@@ -234,7 +234,7 @@ func (m *Mailer) MinSeverity() int {
 	return c.MinSeverity
 }
 
-// UpdateConfig replaces the mailer config at runtime — called when settings are saved via UI.
+// UpdateConfig replaces the mailer config at runtime - called when settings are saved via UI.
 func (m *Mailer) UpdateConfig(cfg config.SMTPConfig) {
 	m.mu.Lock()
 	m.cfg = cfg

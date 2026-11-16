@@ -1,13 +1,13 @@
 package api
 
-// cloud_azure.go — Microsoft Azure Activity Log puller.
+// cloud_azure.go - Microsoft Azure Activity Log puller.
 //
 // Uses Azure REST API with OAuth2 client credentials flow.
 // Pulls Azure Monitor Activity Log (equivalent of AWS CloudTrail).
 //
 // Required Azure app registration permissions:
 //   Microsoft.Insights/eventtypes/values/Read  (Activity Log)
-//   Directory.Read.All (optional — for Entra ID sign-in logs)
+//   Directory.Read.All (optional - for Entra ID sign-in logs)
 //
 // Setup:
 //   1. Azure Portal → App registrations → New registration
@@ -59,7 +59,7 @@ type azureToken struct {
 func getAzureToken(ctx context.Context, tenantID, clientID, clientSecret, resource string) (*azureToken, error) {
 	tenantID, clientID, clientSecret = strings.TrimSpace(tenantID), strings.TrimSpace(clientID), strings.TrimSpace(clientSecret)
 	if azureGUIDRe.MatchString(clientSecret) {
-		return nil, fmt.Errorf("the Client Secret you entered is a GUID — that is the secret's ID, not its Value. Copy the Value from Certificates & secrets (shown only when the secret is created); if it is gone, create a new secret")
+		return nil, fmt.Errorf("the Client Secret you entered is a GUID - that is the secret's ID, not its Value. Copy the Value from Certificates & secrets (shown only when the secret is created); if it is gone, create a new secret")
 	}
 	tokenURL := fmt.Sprintf("https://login.microsoftonline.com/%s/oauth2/token", tenantID)
 
@@ -306,7 +306,7 @@ func syncAzure(ctx context.Context, conn *store.CloudConnector, db *store.DB, ev
 	}
 
 	// AZ-01/G-01: watermark on eventTimestamp, not a persisted nextLink.
-	// nextLink is only valid for continuing *this* paginated request — a
+	// nextLink is only valid for continuing *this* paginated request - a
 	// sync that read more than one page used to persist the last nextLink
 	// as the cursor, so the following sync resumed mid-page instead of
 	// from the new `since`, re-reading older pages (or worse, skipping
@@ -700,13 +700,13 @@ var azureGUIDRe = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]
 func azureAuthHint(desc string) string {
 	switch {
 	case strings.Contains(desc, "AADSTS7000215"):
-		return " — HINT: you entered the secret's ID. In Azure portal → App registrations → Certificates & secrets, copy the secret VALUE (shown only once when created); if it is gone, create a new secret and copy its Value."
+		return " - HINT: you entered the secret's ID. In Azure portal → App registrations → Certificates & secrets, copy the secret VALUE (shown only once when created); if it is gone, create a new secret and copy its Value."
 	case strings.Contains(desc, "AADSTS7000222"):
-		return " — HINT: the client secret has expired. Create a new secret and use its Value."
+		return " - HINT: the client secret has expired. Create a new secret and use its Value."
 	case strings.Contains(desc, "AADSTS700016"):
-		return " — HINT: the Client ID was not found in this tenant. Check the Application (client) ID and Directory (tenant) ID on the app's Overview page."
+		return " - HINT: the Client ID was not found in this tenant. Check the Application (client) ID and Directory (tenant) ID on the app's Overview page."
 	case strings.Contains(desc, "AADSTS90002") || strings.Contains(desc, "AADSTS900023"):
-		return " — HINT: the Tenant ID is wrong. Use the Directory (tenant) ID from the app's Overview page."
+		return " - HINT: the Tenant ID is wrong. Use the Directory (tenant) ID from the app's Overview page."
 	}
 	return ""
 }

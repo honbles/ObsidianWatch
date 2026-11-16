@@ -93,7 +93,7 @@ export function NodeDetail({ node, onClose, host }) {
     } else if (node.type === 'ip' || node.type === 'external_ip') {
       params.src_or_dst_ip = node.label
     } else if (node.type === 'file') {
-      // collapsed file node — show all file events
+      // collapsed file node - show all file events
       params.event_type = 'file'
     } else if (node.type === 'registry') {
       params.search = node.label
@@ -173,7 +173,7 @@ export function NodeDetail({ node, onClose, host }) {
           </div>
         )}
 
-        {/* Timeline — actual events */}
+        {/* Timeline - actual events */}
         <div>
           <div className="text-[9px] uppercase tracking-wider text-siem-muted font-semibold mb-1.5 flex items-center gap-1">
             Timeline

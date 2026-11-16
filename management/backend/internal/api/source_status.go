@@ -57,7 +57,7 @@ func classifyAzureFailure(status int, body string) (string, string) {
 		strings.Contains(b, "azure ad premium") || strings.Contains(b, "requires a premium"):
 		return "license_missing", "Entra ID P1/P2 license required for this log"
 	case status == 401 || status == 403:
-		return "permission_missing", "HTTP " + strconv.Itoa(status) + " — grant the required API permission and admin consent"
+		return "permission_missing", "HTTP " + strconv.Itoa(status) + " - grant the required API permission and admin consent"
 	default:
 		return "error", "HTTP " + strconv.Itoa(status)
 	}

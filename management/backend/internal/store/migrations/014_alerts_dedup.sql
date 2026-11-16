@@ -1,6 +1,6 @@
 -- 014_alerts_dedup.sql
 -- Adds UNIQUE constraint on alerts.event_id so INSERT ON CONFLICT can be used
--- for atomic deduplication — prevents duplicate alerts from race conditions
+-- for atomic deduplication - prevents duplicate alerts from race conditions
 -- between the AlertEngine and DetectionEngine evaluation cycles.
 --
 -- event_id stores the dedup key:

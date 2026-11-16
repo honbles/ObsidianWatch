@@ -1,6 +1,6 @@
 package api
 
-// cloud_aws_blast.go — AWS blast radius (CR-01 / AW-10).
+// cloud_aws_blast.go - AWS blast radius (CR-01 / AW-10).
 //
 // Graph: internet → (open security group) → EC2 instance → (instance profile)
 // → IAM role → privilege. Buckets that CSPM flagged are added as nodes.
@@ -384,7 +384,7 @@ func buildAWSBlast(in awsBlastInput, connID int64, accountID string) *BlastRadiu
 				}
 				paths = append(paths, BlastPath{StartNode: "internet:public",
 					Path: []string{"internet:public", iid, rid}, EndPrivilege: "aws_" + r.Risk + "_role", Severity: sev,
-					Description: fmt.Sprintf("Instance %s is reachable from the internet (ports %s) and runs as role %s (%s) — compromise yields that role's AWS access", label, ports, r.Name, r.Why)})
+					Description: fmt.Sprintf("Instance %s is reachable from the internet (ports %s) and runs as role %s (%s) - compromise yields that role's AWS access", label, ports, r.Name, r.Why)})
 			}
 		}
 	}

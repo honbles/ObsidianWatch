@@ -26,7 +26,7 @@ const ispCacheMax = 5000
 // publicLookupIP validates that s is a literal, globally-routable IP and
 // returns its canonical form (F-18). Rejects private, loopback, link-local,
 // CGNAT (100.64/10), ULA, multicast, unspecified, and anything that isn't a
-// bare IP literal — so user input can never be spliced into the lookup URL.
+// bare IP literal - so user input can never be spliced into the lookup URL.
 func publicLookupIP(s string) (string, bool) {
 	a, err := netip.ParseAddr(strings.TrimSpace(s))
 	if err != nil {

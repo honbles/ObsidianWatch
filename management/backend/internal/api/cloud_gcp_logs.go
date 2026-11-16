@@ -1,6 +1,6 @@
 package api
 
-// cloud_gcp_logs.go — Extended GCP log source ingestion.
+// cloud_gcp_logs.go - Extended GCP log source ingestion.
 // VPC Flow Logs → cloud.gcp_vpc_flow
 // Cloud DNS Logs → cloud.gcp_dns
 // Cloud IDS Logs → cloud.gcp_ids
@@ -371,7 +371,7 @@ func cloudRunToCloudEvent(e gcpLogEntry, connectorID int64) CloudEvent {
 
 // ── GKE Kubernetes audit logs ─────────────────────────────────────────────────
 // Captures Kubernetes API server audit events from GKE clusters.
-// These are distinct from GCP Cloud Audit Logs — they record kubectl commands,
+// These are distinct from GCP Cloud Audit Logs - they record kubectl commands,
 // pod creation, RBAC changes, exec into pods, and other k8s-level operations.
 func pullGCPGKEAuditLogs(ctx context.Context, token, projectID string, since time.Time) ([]gcpLogEntry, error) {
 	// GKE audit logs appear in two log names depending on cluster config

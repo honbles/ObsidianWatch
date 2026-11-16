@@ -1,6 +1,6 @@
 package collector
 
-// tlsutil.go — helpers for building TLS clients that trust ObsidianWatch's
+// tlsutil.go - helpers for building TLS clients that trust ObsidianWatch's
 // self-signed CA certificates.
 //
 // The agent talks to two separate TLS endpoints:

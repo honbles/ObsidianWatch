@@ -1,6 +1,6 @@
 package collector
 
-// netflow.go — NetFlow v5/v9/IPFIX + sFlow collector
+// netflow.go - NetFlow v5/v9/IPFIX + sFlow collector
 // Receives flow exports from routers/switches, stores locally,
 // detects anomalies (port scan, bandwidth spike, lateral movement).
 
@@ -120,7 +120,7 @@ func (c *NetFlowCollector) listenNetFlow(ctx context.Context) {
 		case 5:
 			c.parseV5(ctx, buf[:n])
 		case 9:
-			// NetFlow v9 — simplified: extract src/dst/bytes from fixed offsets
+			// NetFlow v9 - simplified: extract src/dst/bytes from fixed offsets
 			c.parseV9Simple(ctx, buf[:n])
 		case 10:
 			// IPFIX has a 16-byte header and template-defined sets; the fixed-offset

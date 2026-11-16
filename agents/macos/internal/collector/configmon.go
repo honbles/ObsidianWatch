@@ -2,7 +2,7 @@
 
 package collector
 
-// configmon.go — macOS sensitive config file monitoring.
+// configmon.go - macOS sensitive config file monitoring.
 //
 // Watches macOS-specific sensitive paths using kqueue EVFILT_VNODE.
 // Equivalent to Windows registry monitoring / Linux configmon.

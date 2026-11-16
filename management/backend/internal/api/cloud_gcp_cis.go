@@ -1,15 +1,15 @@
 package api
 
-// cloud_gcp_cis.go — SUBSET of the CIS Google Cloud Platform Foundation Benchmark v2.0 (G-38: not full coverage; the UI states the assessed control count)
+// cloud_gcp_cis.go - SUBSET of the CIS Google Cloud Platform Foundation Benchmark v2.0 (G-38: not full coverage; the UI states the assessed control count)
 //
 // Maps CSPM checks to formal CIS controls across 4 sections:
-//   Section 1 — Identity and Access Management (IAM)
-//   Section 2 — Logging and Monitoring
-//   Section 3 — Networking
-//   Section 4 — Virtual Machines
-//   Section 5 — Storage
-//   Section 6 — Cloud SQL Database Services
-//   Section 7 — BigQuery (basic)
+//   Section 1 - Identity and Access Management (IAM)
+//   Section 2 - Logging and Monitoring
+//   Section 3 - Networking
+//   Section 4 - Virtual Machines
+//   Section 5 - Storage
+//   Section 6 - Cloud SQL Database Services
+//   Section 7 - BigQuery (basic)
 //
 // Each control has:
 //   - CIS ID (e.g. "1.1", "3.6")
@@ -168,7 +168,7 @@ func runCISIAM(ctx context.Context, token, projectID string) ([]CISControl, []st
 		return controls, errors
 	}
 
-	// CIS 1.1 — Ensure corporate login credentials are used
+	// CIS 1.1 - Ensure corporate login credentials are used
 	hasPersonalAccounts := false
 	personalAccounts := []string{}
 	for _, b := range policy.Bindings {
@@ -189,18 +189,18 @@ func runCISIAM(ctx context.Context, token, projectID string) ([]CISControl, []st
 		MITRE:       "T1078.004",
 	})
 
-	// CIS 1.2 — Ensure multi-factor authentication is enabled (check via API - limited)
+	// CIS 1.2 - Ensure multi-factor authentication is enabled (check via API - limited)
 	controls = append(controls, CISControl{
 		ID: "1.2", Section: "IAM", Level: 1,
 		Title:       "Ensure multi-factor authentication is enabled for all non-service accounts",
 		Description: "MFA adds a second layer of authentication protection for user accounts.",
 		Status:      "UNKNOWN",
-		Evidence:    "MFA status requires Google Workspace Admin API — not available via project-level credentials.",
+		Evidence:    "MFA status requires Google Workspace Admin API - not available via project-level credentials.",
 		Remediation: "Enable 2-Step Verification enforcement in Google Workspace Admin Console.",
 		MITRE:       "T1078",
 	})
 
-	// CIS 1.3 — Ensure that Security Key enforcement is enabled (Workspace Admin only)
+	// CIS 1.3 - Ensure that Security Key enforcement is enabled (Workspace Admin only)
 	controls = append(controls, CISControl{
 		ID: "1.3", Section: "IAM", Level: 2,
 		Title:       "Ensure that Security Key Enforcement is enabled for all admin accounts",
@@ -211,7 +211,7 @@ func runCISIAM(ctx context.Context, token, projectID string) ([]CISControl, []st
 		MITRE:       "T1078",
 	})
 
-	// CIS 1.4 — Ensure Service Account keys are rotated within 90 days
+	// CIS 1.4 - Ensure Service Account keys are rotated within 90 days
 	var saResp struct {
 		Accounts []struct {
 			Name  string `json:"name"`
@@ -252,7 +252,7 @@ func runCISIAM(ctx context.Context, token, projectID string) ([]CISControl, []st
 		MITRE:       "T1552.004",
 	})
 
-	// CIS 1.5 — Ensure that Service Account has no admin privileges
+	// CIS 1.5 - Ensure that Service Account has no admin privileges
 	saAdmins := []string{}
 	adminRoles := []string{"roles/owner", "roles/editor", "roles/iam.serviceAccountAdmin", "roles/resourcemanager.projectIamAdmin"}
 	for _, b := range policy.Bindings {
@@ -278,7 +278,7 @@ func runCISIAM(ctx context.Context, token, projectID string) ([]CISControl, []st
 		MITRE:       "T1078.004",
 	})
 
-	// CIS 1.6 — Ensure user-managed/external keys for service accounts are not created
+	// CIS 1.6 - Ensure user-managed/external keys for service accounts are not created
 	allUserKeys := []string{}
 	if err := doGCPRequest(saReq, &saResp); err == nil {
 		for _, sa := range saResp.Accounts {
@@ -300,7 +300,7 @@ func runCISIAM(ctx context.Context, token, projectID string) ([]CISControl, []st
 		MITRE:       "T1552.004",
 	})
 
-	// CIS 1.7 — Ensure Separation of Duties (no user has both Editor + Security Admin)
+	// CIS 1.7 - Ensure Separation of Duties (no user has both Editor + Security Admin)
 	userRoles := map[string][]string{}
 	for _, b := range policy.Bindings {
 		for _, m := range b.Members {
@@ -353,7 +353,7 @@ func runCISLogging(ctx context.Context, token, projectID string) ([]CISControl, 
 		hasSink = len(sinksResp.Sinks) > 0
 	}
 
-	// CIS 2.1 — Ensure Cloud Audit Logs are configured properly
+	// CIS 2.1 - Ensure Cloud Audit Logs are configured properly
 	controls = append(controls, CISControl{
 		ID: "2.1", Section: "Logging", Level: 1,
 		Title:       "Ensure that Cloud Audit Logging is configured properly across all services",
@@ -364,7 +364,7 @@ func runCISLogging(ctx context.Context, token, projectID string) ([]CISControl, 
 		MITRE:       "T1562.008",
 	})
 
-	// CIS 2.2 — Ensure log metric filter for project ownership changes exists
+	// CIS 2.2 - Ensure log metric filter for project ownership changes exists
 	controls = append(controls, CISControl{
 		ID: "2.2", Section: "Logging", Level: 1,
 		Title:       "Ensure log metric filter for project ownership assignments/changes",
@@ -375,7 +375,7 @@ func runCISLogging(ctx context.Context, token, projectID string) ([]CISControl, 
 		MITRE:       "T1078.004",
 	})
 
-	// CIS 2.3 — Ensure log metric filter for audit config changes
+	// CIS 2.3 - Ensure log metric filter for audit config changes
 	controls = append(controls, CISControl{
 		ID: "2.3", Section: "Logging", Level: 1,
 		Title:       "Ensure log metric filter for audit configuration changes",
@@ -386,7 +386,7 @@ func runCISLogging(ctx context.Context, token, projectID string) ([]CISControl, 
 		MITRE:       "T1562.008",
 	})
 
-	// CIS 2.4 — Ensure log metric filter for custom role changes
+	// CIS 2.4 - Ensure log metric filter for custom role changes
 	controls = append(controls, CISControl{
 		ID: "2.4", Section: "Logging", Level: 1,
 		Title:       "Ensure log metric filter for custom role creation/changes",
@@ -397,7 +397,7 @@ func runCISLogging(ctx context.Context, token, projectID string) ([]CISControl, 
 		MITRE:       "T1078.004",
 	})
 
-	// CIS 2.5 — Ensure log sink with no filter exists (export all logs)
+	// CIS 2.5 - Ensure log sink with no filter exists (export all logs)
 	hasUnfilteredSink := false
 	for _, s := range sinksResp.Sinks {
 		if s.Filter == "" || s.Filter == "true" { hasUnfilteredSink = true }
@@ -412,7 +412,7 @@ func runCISLogging(ctx context.Context, token, projectID string) ([]CISControl, 
 		MITRE:       "T1562.008",
 	})
 
-	// CIS 2.6 — Ensure log metric filter for network route changes
+	// CIS 2.6 - Ensure log metric filter for network route changes
 	controls = append(controls, CISControl{
 		ID: "2.6", Section: "Logging", Level: 2,
 		Title:       "Ensure log metric filter for VPC network route changes",
@@ -423,7 +423,7 @@ func runCISLogging(ctx context.Context, token, projectID string) ([]CISControl, 
 		MITRE:       "T1599",
 	})
 
-	// CIS 2.7 — Ensure log metric filter for network firewall rule changes
+	// CIS 2.7 - Ensure log metric filter for network firewall rule changes
 	controls = append(controls, CISControl{
 		ID: "2.7", Section: "Logging", Level: 2,
 		Title:       "Ensure log metric filter for VPC firewall rule changes",
@@ -462,7 +462,7 @@ func runCISNetworking(ctx context.Context, token, projectID string) ([]CISContro
 		errors = append(errors, "firewalls: "+err.Error())
 	}
 
-	// CIS 3.1 — Ensure default network does not exist
+	// CIS 3.1 - Ensure default network does not exist
 	networksURL := fmt.Sprintf("https://compute.googleapis.com/compute/v1/projects/%s/global/networks", projectID)
 	networksReq, _ := newGCPRequest(ctx, "GET", networksURL, "", token)
 	var networksResp struct {
@@ -486,7 +486,7 @@ func runCISNetworking(ctx context.Context, token, projectID string) ([]CISContro
 		MITRE:       "T1190",
 	})
 
-	// CIS 3.2 — Ensure legacy networks do not exist
+	// CIS 3.2 - Ensure legacy networks do not exist
 	controls = append(controls, CISControl{
 		ID: "3.2", Section: "Networking", Level: 1,
 		Title:       "Ensure legacy networks do not exist",
@@ -497,18 +497,18 @@ func runCISNetworking(ctx context.Context, token, projectID string) ([]CISContro
 		MITRE:       "T1190",
 	})
 
-	// CIS 3.3 — Ensure DNS logging is enabled for all VPC networks
+	// CIS 3.3 - Ensure DNS logging is enabled for all VPC networks
 	controls = append(controls, CISControl{
 		ID: "3.3", Section: "Networking", Level: 1,
 		Title:       "Ensure that DNS logging is enabled for all VPC networks",
-		Description: "DNS logging records DNS queries made from VMs — critical for detecting C2 beaconing.",
+		Description: "DNS logging records DNS queries made from VMs - critical for detecting C2 beaconing.",
 		Status:      "UNKNOWN",
-		Evidence:    "DNS policy logging requires Cloud DNS API — check manually in Networking → Cloud DNS.",
+		Evidence:    "DNS policy logging requires Cloud DNS API - check manually in Networking → Cloud DNS.",
 		Remediation: "Enable DNS logging on all VPC networks via Cloud DNS policies.",
 		MITRE:       "T1071.004",
 	})
 
-	// CIS 3.4 — Ensure SSH access is restricted (not 0.0.0.0/0 on port 22)
+	// CIS 3.4 - Ensure SSH access is restricted (not 0.0.0.0/0 on port 22)
 	sshOpen := []string{}
 	for _, fw := range fwResp.Items {
 		if fw.Disabled || fw.Direction != "INGRESS" { continue }
@@ -533,7 +533,7 @@ func runCISNetworking(ctx context.Context, token, projectID string) ([]CISContro
 		MITRE:       "T1190",
 	})
 
-	// CIS 3.5 — Ensure RDP is restricted
+	// CIS 3.5 - Ensure RDP is restricted
 	rdpOpen := []string{}
 	for _, fw := range fwResp.Items {
 		if fw.Disabled || fw.Direction != "INGRESS" { continue }
@@ -558,7 +558,7 @@ func runCISNetworking(ctx context.Context, token, projectID string) ([]CISContro
 		MITRE:       "T1190",
 	})
 
-	// CIS 3.6 — Ensure firewall rules logging is enabled
+	// CIS 3.6 - Ensure firewall rules logging is enabled
 	noLogRules := []string{}
 	for _, fw := range fwResp.Items {
 		if !fw.Disabled && !fw.LogConfig.Enable {
@@ -575,13 +575,13 @@ func runCISNetworking(ctx context.Context, token, projectID string) ([]CISContro
 		MITRE:       "T1562.004",
 	})
 
-	// CIS 3.7 — Ensure Private Google Access is enabled for all subnets
+	// CIS 3.7 - Ensure Private Google Access is enabled for all subnets
 	controls = append(controls, CISControl{
 		ID: "3.7", Section: "Networking", Level: 2,
 		Title:       "Ensure Private Google Access is enabled for all subnets",
 		Description: "Private Google Access allows VMs without external IPs to reach Google APIs.",
 		Status:      "UNKNOWN",
-		Evidence:    "Subnet configuration requires aggregated subnet listing — check in VPC → Subnets.",
+		Evidence:    "Subnet configuration requires aggregated subnet listing - check in VPC → Subnets.",
 		Remediation: "Enable Private Google Access on all subnets that contain VMs without external IPs.",
 		MITRE:       "T1190",
 	})
@@ -656,7 +656,7 @@ func runCISVMs(ctx context.Context, token, projectID string) ([]CISControl, []st
 		}
 	}
 
-	// CIS 4.1 — Ensure OS login is enabled
+	// CIS 4.1 - Ensure OS login is enabled
 	noOSLogin := []string{}
 	for _, vm := range vms {
 		if vm.metadata["enable-oslogin"] != "true" { noOSLogin = append(noOSLogin, vm.name) }
@@ -671,7 +671,7 @@ func runCISVMs(ctx context.Context, token, projectID string) ([]CISControl, []st
 		MITRE:       "T1078",
 	})
 
-	// CIS 4.2 — Ensure serial port access is disabled
+	// CIS 4.2 - Ensure serial port access is disabled
 	serialEnabled := []string{}
 	for _, vm := range vms {
 		if vm.metadata["serial-port-enable"] == "true" || vm.metadata["serial-port-enable"] == "1" {
@@ -688,18 +688,18 @@ func runCISVMs(ctx context.Context, token, projectID string) ([]CISControl, []st
 		MITRE:       "T1133",
 	})
 
-	// CIS 4.3 — Ensure project-wide SSH keys are not used
+	// CIS 4.3 - Ensure project-wide SSH keys are not used
 	controls = append(controls, CISControl{
 		ID: "4.3", Section: "VM", Level: 1,
 		Title:       "Ensure that project-wide SSH keys are not used in project metadata",
-		Description: "Project-wide SSH keys grant access to all VMs in the project — prefer per-instance keys.",
+		Description: "Project-wide SSH keys grant access to all VMs in the project - prefer per-instance keys.",
 		Status:      "UNKNOWN",
 		Evidence:    "Checking project metadata for SSH keys requires project metadata API.",
 		Remediation: "Remove SSH keys from project metadata. Use OS Login or per-instance SSH keys.",
 		MITRE:       "T1078",
 	})
 
-	// CIS 4.4 — Ensure CMEK is used for disks
+	// CIS 4.4 - Ensure CMEK is used for disks
 	noCMEK := []string{}
 	for _, vm := range vms {
 		if !vm.hasBootCMEK { noCMEK = append(noCMEK, vm.name) }
@@ -722,7 +722,7 @@ func runCISVMs(ctx context.Context, token, projectID string) ([]CISControl, []st
 		MITRE:       "T1078.004",
 	})
 
-	// CIS 4.5 — Ensure Shielded VM is enabled
+	// CIS 4.5 - Ensure Shielded VM is enabled
 	noShielded := []string{}
 	for _, vm := range vms {
 		if !vm.shielded.vtpm || !vm.shielded.integrity { noShielded = append(noShielded, vm.name) }
@@ -764,7 +764,7 @@ func runCISStorage(ctx context.Context, token, projectID string) ([]CISControl, 
 		return controls, errors
 	}
 
-	// CIS 5.1 — Ensure bucket access is not publicly accessible
+	// CIS 5.1 - Ensure bucket access is not publicly accessible
 	publicBuckets := []string{}
 	for _, b := range storageResp.Items {
 		if b.IamConfiguration.PublicAccessPrevention == "" || b.IamConfiguration.PublicAccessPrevention == "inherited" {
@@ -781,7 +781,7 @@ func runCISStorage(ctx context.Context, token, projectID string) ([]CISControl, 
 		MITRE:       "T1530",
 	})
 
-	// CIS 5.2 — Ensure bucket logging is enabled
+	// CIS 5.2 - Ensure bucket logging is enabled
 	noLogBuckets := []string{}
 	for _, b := range storageResp.Items {
 		if b.Logging.LogBucket == "" { noLogBuckets = append(noLogBuckets, b.Name) }
@@ -796,7 +796,7 @@ func runCISStorage(ctx context.Context, token, projectID string) ([]CISControl, 
 		MITRE:       "T1530",
 	})
 
-	// CIS 5.3 — Ensure retention policy is set on log buckets
+	// CIS 5.3 - Ensure retention policy is set on log buckets
 	noRetention := []string{}
 	for _, b := range storageResp.Items {
 		if b.RetentionPolicy == nil { noRetention = append(noRetention, b.Name) }
@@ -854,7 +854,7 @@ func runCISSQL(ctx context.Context, token, projectID string) ([]CISControl, []st
 		return controls, errors
 	}
 
-	// CIS 6.1 — Ensure Cloud SQL requires SSL
+	// CIS 6.1 - Ensure Cloud SQL requires SSL
 	noSSL := []string{}
 	for _, inst := range sqlResp.Items {
 		if !inst.Settings.IpConfiguration.RequireSsl { noSSL = append(noSSL, inst.Name) }
@@ -869,7 +869,7 @@ func runCISSQL(ctx context.Context, token, projectID string) ([]CISControl, []st
 		MITRE:       "T1040",
 	})
 
-	// CIS 6.2 — Ensure no public IP on Cloud SQL
+	// CIS 6.2 - Ensure no public IP on Cloud SQL
 	publicSQL := []string{}
 	for _, inst := range sqlResp.Items {
 		if inst.Settings.IpConfiguration.Ipv4Enabled { publicSQL = append(publicSQL, inst.Name) }
@@ -884,7 +884,7 @@ func runCISSQL(ctx context.Context, token, projectID string) ([]CISControl, []st
 		MITRE:       "T1190",
 	})
 
-	// CIS 6.3 — Ensure 0.0.0.0/0 is not in authorized networks
+	// CIS 6.3 - Ensure 0.0.0.0/0 is not in authorized networks
 	openSQL := []string{}
 	for _, inst := range sqlResp.Items {
 		for _, n := range inst.Settings.IpConfiguration.AuthorizedNetworks {
@@ -901,7 +901,7 @@ func runCISSQL(ctx context.Context, token, projectID string) ([]CISControl, []st
 		MITRE:       "T1190",
 	})
 
-	// CIS 6.4 — Ensure backups are enabled
+	// CIS 6.4 - Ensure backups are enabled
 	noBackup := []string{}
 	for _, inst := range sqlResp.Items {
 		if !inst.Settings.BackupConfiguration.Enabled { noBackup = append(noBackup, inst.Name) }
@@ -916,7 +916,7 @@ func runCISSQL(ctx context.Context, token, projectID string) ([]CISControl, []st
 		MITRE:       "T1485",
 	})
 
-	// CIS 6.5 — Ensure MySQL has no root account with no host restriction
+	// CIS 6.5 - Ensure MySQL has no root account with no host restriction
 	mysqlNoRoot := []string{}
 	for _, inst := range sqlResp.Items {
 		if strings.HasPrefix(inst.DatabaseVersion, "MYSQL") {

@@ -1,6 +1,6 @@
 package api
 
-// devops_azuredevops.go — Azure DevOps polling and webhook ingestion
+// devops_azuredevops.go - Azure DevOps polling and webhook ingestion
 //
 // Azure DevOps REST API v7.0
 // Auth: Personal Access Token (PAT) via Basic auth (base64 encoded ":PAT")
@@ -55,10 +55,10 @@ func (c *azureClient) getJSON(ctx context.Context, url string, out interface{}) 
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode == 401 {
-		return fmt.Errorf("Azure DevOps: unauthorized — check PAT token and scopes")
+		return fmt.Errorf("Azure DevOps: unauthorized - check PAT token and scopes")
 	}
 	if resp.StatusCode == 404 {
-		return fmt.Errorf("Azure DevOps: not found — %s", url)
+		return fmt.Errorf("Azure DevOps: not found - %s", url)
 	}
 	if resp.StatusCode != 200 {
 		body, _ := io.ReadAll(resp.Body)

@@ -1,6 +1,6 @@
 package api
 
-// G-44: additional GCP CSPM checks — default network, HTTPS load balancer
+// G-44: additional GCP CSPM checks - default network, HTTPS load balancer
 // minimum TLS, and DNSSEC on public Cloud DNS zones.
 
 import (

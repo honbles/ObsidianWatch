@@ -74,9 +74,9 @@ export default function AuditLog() {
                 </td>
                 <td className="px-4 py-2.5 text-siem-text font-medium">{e.username}</td>
                 <td className={`px-4 py-2.5 text-xs font-mono ${ACTION_COLORS[e.action] || 'text-siem-muted'}`}>{e.action}</td>
-                <td className="px-4 py-2.5 text-siem-muted text-xs">{e.target || '—'}</td>
-                <td className="px-4 py-2.5 text-siem-muted text-xs truncate max-w-[200px]">{e.detail || '—'}</td>
-                <td className="px-4 py-2.5 text-siem-muted text-xs font-mono">{e.ip_address || '—'}</td>
+                <td className="px-4 py-2.5 text-siem-muted text-xs">{e.target || '-'}</td>
+                <td className="px-4 py-2.5 text-siem-muted text-xs truncate max-w-[200px]">{e.detail || '-'}</td>
+                <td className="px-4 py-2.5 text-siem-muted text-xs font-mono">{e.ip_address || '-'}</td>
               </tr>
             ))}
           </tbody>

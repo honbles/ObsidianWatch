@@ -1,6 +1,6 @@
 package api
 
-// cloud_gcp_suppress.go — Alert suppression and allowlist engine for GCP.
+// cloud_gcp_suppress.go - Alert suppression and allowlist engine for GCP.
 //
 // Prevents alert fatigue from high-volume but legitimate activity.
 // Suppression rules are stored in the settings table under "suppress:gcp:*"
@@ -15,9 +15,9 @@ package api
 //   - Expiry (suppress until a specific time)
 //
 // API endpoints (registered in server.go):
-//   GET    /api/v1/cloud-connectors/suppress        — list rules
-//   POST   /api/v1/cloud-connectors/suppress        — create rule
-//   DELETE /api/v1/cloud-connectors/suppress/{id}   — delete rule
+//   GET    /api/v1/cloud-connectors/suppress        - list rules
+//   POST   /api/v1/cloud-connectors/suppress        - create rule
+//   DELETE /api/v1/cloud-connectors/suppress/{id}   - delete rule
 
 import (
 	"context"
@@ -131,11 +131,11 @@ func (s *GCPSuppressor) IsSuppressed(sigID string, ev store.Event) bool {
 				inWindow = hour >= rule.HourFrom || hour <= rule.HourTo
 			}
 			if !inWindow {
-				continue // Outside suppression window — don't suppress
+				continue // Outside suppression window - don't suppress
 			}
 		}
 
-		// All specified criteria matched — suppress
+		// All specified criteria matched - suppress
 		return true
 	}
 	return false

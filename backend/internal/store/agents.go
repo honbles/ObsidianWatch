@@ -23,7 +23,7 @@ type Agent struct {
 // UpsertAgent inserts or updates agent metadata on each batch received.
 // last_ip comes from the HTTP request RemoteAddr.
 // UpsertAgent records an ingest batch's sender. installKey is only ever
-// used on first registration (the INSERT branch) — I-02: ingest trusts
+// used on first registration (the INSERT branch) - I-02: ingest trusts
 // agent_id/host/os/install_key straight from the request body, and this
 // used to let any ingest batch (authenticated with nothing more than the
 // one fleet-wide API key baked into every agent binary) silently replace
@@ -32,7 +32,7 @@ type Agent struct {
 // the incoming key whenever it's non-empty). Since the install key is
 // meant to be the one thing that can authorize an uninstall, that was a
 // way to hijack it without ever touching the host. The ON CONFLICT path
-// now always keeps the key already on file, full stop — an attacker who
+// now always keeps the key already on file, full stop - an attacker who
 // can forge ingest batches gains nothing against it anymore.
 func (db *DB) UpsertAgent(ctx context.Context, id, hostname, os, version, remoteIP, installKey string, eventCount int) error {
 	_, err := db.ExecContext(ctx, `

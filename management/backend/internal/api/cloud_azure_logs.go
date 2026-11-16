@@ -1,6 +1,6 @@
 package api
 
-// cloud_azure_logs.go — Extended Azure log source ingestion.
+// cloud_azure_logs.go - Extended Azure log source ingestion.
 //
 // Pulls three additional log sources beyond Activity Log + Entra sign-ins:
 //
@@ -297,7 +297,7 @@ func pullEntraAuditLogs(ctx context.Context, graphToken string, since time.Time,
 // any available flow log events from Log Analytics if configured.
 func pullAzureNSGFlowLogs(ctx context.Context, token, sub string, since time.Time, connID int64, logger *slog.Logger) ([]CloudEvent, error) {
 	// First check which NSGs have flow logging enabled via Network Watcher
-	// Network Watchers are per-region — enumerate all
+	// Network Watchers are per-region - enumerate all
 	nwURL := fmt.Sprintf("https://management.azure.com/subscriptions/%s/providers/Microsoft.Network/networkWatchers?api-version=2023-05-01", sub)
 	var nwResp struct {
 		Value []struct {
@@ -336,7 +336,7 @@ func pullAzureNSGFlowLogs(ctx context.Context, token, sub string, since time.Tim
 
 		for _, fl := range flowResp.Value {
 			if fl.Properties.Enabled {
-				// Flow logging is on — record as info event for visibility
+				// Flow logging is on - record as info event for visibility
 				nsgName := fl.Name
 				if parts := strings.Split(fl.Properties.TargetResourceID, "/"); len(parts) > 0 {
 					nsgName = parts[len(parts)-1]
@@ -370,7 +370,7 @@ func pullAzureNSGFlowLogs(ctx context.Context, token, sub string, since time.Tim
 	return events, nil
 }
 
-// ── Extended sync — called from syncAzure ────────────────────────────────────
+// ── Extended sync - called from syncAzure ────────────────────────────────────
 
 func syncAzureExtendedLogs(ctx context.Context, conn *store.CloudConnector, db *store.DB, eventDB *store.DB, logger *slog.Logger) int {
 	tenantID     := conn.Credentials["tenant_id"]
@@ -424,7 +424,7 @@ func syncAzureExtendedLogs(ctx context.Context, conn *store.CloudConnector, db *
 		}
 
 		// AZ-04: the former "NSG flow log" event was a synthetic per-NSG,
-		// per-day configuration summary — not real flow records — and no rule
+		// per-day configuration summary - not real flow records - and no rule
 		// used it, so it only added noise. It is no longer ingested. Real flow
 		// data needs the flow-log storage account / Traffic Analytics or
 		// VNet flow logs (NSG flow logs are being retired by Microsoft).
@@ -463,7 +463,7 @@ func recordOK(connID int64, source string) bool {
 }
 
 // statusFromErr extracts an HTTP status code from errors shaped "... 403 ..."
-// (best effort — pull helpers format status codes into their messages).
+// (best effort - pull helpers format status codes into their messages).
 func statusFromErr(err error) int {
 	for _, tok := range strings.Fields(err.Error()) {
 		tok = strings.Trim(tok, ":()[],")

@@ -1,8 +1,8 @@
 package store
 
-// db.go — local SQLite state for the network probe.
+// db.go - local SQLite state for the network probe.
 // Stores: device inventory, flow baselines, ARP table, bandwidth history.
-// All raw syslog/netflow data stays here — only summaries go up.
+// All raw syslog/netflow data stays here - only summaries go up.
 
 import (
 	"context"

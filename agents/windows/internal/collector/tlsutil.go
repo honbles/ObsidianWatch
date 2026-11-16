@@ -2,7 +2,7 @@
 
 package collector
 
-// tlsutil.go — helpers for building TLS clients that trust ObsidianWatch's
+// tlsutil.go - helpers for building TLS clients that trust ObsidianWatch's
 // self-signed CA certificates.
 //
 // The agent talks to two separate TLS endpoints:
@@ -84,7 +84,7 @@ func tlsConfigForCAPEM(caPEM, caFile string, allowInsecure bool) *tls.Config {
 	}
 	tlsCfg, err := config.BuildTLSConfig(certBytes, allowInsecure)
 	if err != nil {
-		return &tls.Config{} // fail closed — verification will fail, not be skipped
+		return &tls.Config{} // fail closed - verification will fail, not be skipped
 	}
 	return tlsCfg
 }

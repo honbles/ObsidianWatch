@@ -56,7 +56,7 @@ func TLSConfig(certFile, keyFile string) (*tls.Config, error) {
 
 // MTLSMiddleware extracts the verified client CN from the TLS connection
 // and adds it to the request context. Must be used after mTLS is enforced
-// at the TLS layer — this is a belt-and-suspenders check at HTTP level.
+// at the TLS layer - this is a belt-and-suspenders check at HTTP level.
 func MTLSMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.TLS == nil || len(r.TLS.VerifiedChains) == 0 {

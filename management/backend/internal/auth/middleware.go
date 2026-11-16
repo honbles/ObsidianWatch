@@ -14,8 +14,8 @@ const ClaimsKey contextKey = "claims"
 var publicAPIPaths = map[string]bool{
 	"/api/v1/agent/register-key":         true,
 	"/api/v1/verify-install-key":         true,
-	"/api/v1/live-response/agent-tunnel": true, // agent WS tunnel — uses API key auth
-	"/api/v1/devops/webhook/":            true, // prefix — webhooks use their own secret
+	"/api/v1/live-response/agent-tunnel": true, // agent WS tunnel - uses API key auth
+	"/api/v1/devops/webhook/":            true, // prefix - webhooks use their own secret
 }
 
 // Middleware validates the Authorization: Bearer <token> header.

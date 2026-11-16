@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-// beaconNote flags a destination contacted at near-regular intervals — a
+// beaconNote flags a destination contacted at near-regular intervals - a
 // beacon *candidate*, not a verdict (health checks and pollers look the same).
 // Needs at least 6 contacts, a median interval of 5s or more, and low jitter
 // (coefficient of variation <= 0.25).

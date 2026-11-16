@@ -1,12 +1,12 @@
 package api
 
-// cloud_aws.go — AWS CloudTrail log puller.
+// cloud_aws.go - AWS CloudTrail log puller.
 //
 // Supports two modes:
-//   1. LookupEvents API  — no S3 config needed, pulls last 90 days, 50 events/call
-//   2. S3 bucket mode    — reads gzip CloudTrail log files directly from S3
+//   1. LookupEvents API  - no S3 config needed, pulls last 90 days, 50 events/call
+//   2. S3 bucket mode    - reads gzip CloudTrail log files directly from S3
 //
-// Uses AWS Signature Version 4 — no external SDK.
+// Uses AWS Signature Version 4 - no external SDK.
 //
 // Required IAM permissions:
 //   cloudtrail:LookupEvents          (LookupEvents mode)
@@ -184,7 +184,7 @@ func testAWSConnection(ctx context.Context, creds awsCreds) (string, error) {
 	respBody, _ := io.ReadAll(resp.Body)
 
 	if resp.StatusCode != 200 {
-		return "", fmt.Errorf("invalid credentials — STS returned %d", resp.StatusCode)
+		return "", fmt.Errorf("invalid credentials - STS returned %d", resp.StatusCode)
 	}
 	for _, line := range strings.Split(string(respBody), "\n") {
 		line = strings.TrimSpace(line)
@@ -557,11 +557,11 @@ func syncAWS(ctx context.Context, conn *store.CloudConnector, db *store.DB, even
 		//
 		// AW-01/G-01: this used to watermark on conn.LastSync, which
 		// UpdateCloudConnectorStatus bumps to NOW() on every run including
-		// a failed one — so a throttle error partway through a sync still
+		// a failed one - so a throttle error partway through a sync still
 		// advanced the window past whatever pages hadn't been read yet,
 		// permanently losing them. Now it watermarks on conn.SyncCursor
 		// (max CloudTrail EventTime actually ingested, like the GCP/Azure
-		// cursors), which only ever advances to what was truly ingested —
+		// cursors), which only ever advances to what was truly ingested -
 		// including on a partial failure, never past it.
 		startTime := time.Now().UTC().Add(-24 * time.Hour)
 		if conn.SyncCursor != "" {
@@ -673,7 +673,7 @@ func listGuardDutyDetectors(ctx context.Context, creds awsCreds) ([]string, erro
 	body, _ := io.ReadAll(resp.Body)
 
 	if resp.StatusCode == 403 || resp.StatusCode == 404 {
-		return nil, nil // GuardDuty not enabled — skip silently
+		return nil, nil // GuardDuty not enabled - skip silently
 	}
 	if resp.StatusCode != 200 {
 		return nil, fmt.Errorf("guardduty list detectors %d", resp.StatusCode)

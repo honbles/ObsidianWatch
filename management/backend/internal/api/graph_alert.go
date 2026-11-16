@@ -1,6 +1,6 @@
 package api
 
-// graph_alert.go — Alert Graph phase 3 (spec §5). The builder is pure apart
+// graph_alert.go - Alert Graph phase 3 (spec §5). The builder is pure apart
 // from the graphSource it queries: events and anchors in, a bounded graph
 // out. Process alerts are anchored on the exact process instance (GUID) and
 // follow ancestors, descendants and per-process artifacts. Every edge says
@@ -1369,7 +1369,7 @@ func (b *gBuilder) finish(g *AlertGraph) {
 		if n.Type == "process" {
 			what := "started " + n.Label
 			if n.Cmd != "" {
-				what += " — " + graphTrunc(n.Cmd, 120)
+				what += " - " + graphTrunc(n.Cmd, 120)
 			}
 			if n.Meta["start_seen"] == "false" {
 				what = "activity from " + n.Label + " (start not seen)"

@@ -70,7 +70,7 @@ var linuxAccountSignatures = []ThreatSig{
 	},
 	{
 		ID: "L-ACCT-002", Name: "User Added to Privileged Group",
-		Description: "usermod/gpasswd/adduser was used to add an account to sudo, wheel, admin, docker or root groups — a direct privilege-escalation path.",
+		Description: "usermod/gpasswd/adduser was used to add an account to sudo, wheel, admin, docker or root groups - a direct privilege-escalation path.",
 		Severity: 4, MITRE: "T1098", Category: "Privilege Escalation",
 		Match: func(ev store.Event) bool {
 			if ev.EventType != "process" || ev.ProcessName == nil || ev.CommandLine == nil {

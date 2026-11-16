@@ -37,7 +37,7 @@ function StatCard({ icon: Icon, label, value, sub, color='text-siem-accent', war
         <div className="flex-1 min-w-0">
           <div className="text-[10px] uppercase tracking-wider text-siem-muted/70 font-medium mb-2">{label}</div>
           <div className={`text-3xl font-bold font-mono tabular-nums leading-none ${color}`}>
-            {value?.toLocaleString() ?? '—'}
+            {value?.toLocaleString() ?? '-'}
           </div>
           {sub && <div className="text-[10px] text-siem-muted mt-1.5">{sub}</div>}
         </div>
@@ -370,7 +370,7 @@ export default function Dashboard() {
                 <div style={{ padding:16 }}>
                   {(raw?.by_cloud_provider || []).length === 0
                     ? <div style={{ textAlign:'center', padding:'24px 0', color:'var(--text3)', fontSize:12 }}>
-                        No cloud connectors configured — connect AWS, Azure or GCP under Cloud menu.
+                        No cloud connectors configured - connect AWS, Azure or GCP under Cloud menu.
                       </div>
                     : (raw?.by_cloud_provider || []).map(p => (
                         <div key={p.provider} style={{ display:'flex', alignItems:'center', gap:10, marginBottom:8 }}>
@@ -418,7 +418,7 @@ export default function Dashboard() {
                 <div style={{ overflowX:'auto' }}>
                   {(raw?.sast_results || []).length === 0
                     ? <div style={{ padding:20, fontSize:12, color:'var(--text3)', textAlign:'center', fontStyle:'italic' }}>
-                        No scans yet — connect a repo under DevOps → Code Scan to begin.
+                        No scans yet - connect a repo under DevOps → Code Scan to begin.
                       </div>
                     : <table className="tbl">
                         <thead><tr>
@@ -434,7 +434,7 @@ export default function Dashboard() {
                                            fontFamily:'DM Mono, monospace', fontWeight: r.critical_count > 0 ? 600 : 400 }}>
                                 {r.critical_count}
                               </td>
-                              <td style={{ color:'var(--text3)', fontSize:11 }}>{r.scanned_at ? new Date(r.scanned_at).toLocaleDateString() : '—'}</td>
+                              <td style={{ color:'var(--text3)', fontSize:11 }}>{r.scanned_at ? new Date(r.scanned_at).toLocaleDateString() : '-'}</td>
                             </tr>
                           ))}
                         </tbody>
@@ -497,7 +497,7 @@ export default function Dashboard() {
                     <tr key={i} onClick={() => navigate(`/agents?host=${encodeURIComponent(a.hostname)}`)}
                       style={{ cursor:'pointer' }}>
                       <td style={{ fontFamily:'DM Mono, monospace', fontWeight:500, color:'var(--text)' }}>{a.hostname}</td>
-                      <td><span className="tag">{a.os || '—'}</span></td>
+                      <td><span className="tag">{a.os || '-'}</span></td>
                       <td>
                         <span style={{ display:'flex', alignItems:'center', gap:5, fontSize:11,
                           color: a.online ? 'var(--green)' : 'var(--text3)' }}>
@@ -506,9 +506,9 @@ export default function Dashboard() {
                           {a.online ? 'Online' : 'Offline'}
                         </span>
                       </td>
-                      <td style={{ fontFamily:'DM Mono, monospace', fontSize:11, color:'var(--text2)' }}>{a.ip_address || '—'}</td>
-                      <td style={{ fontSize:11, color:'var(--text3)' }}>{a.last_seen ? new Date(a.last_seen).toLocaleString() : '—'}</td>
-                      <td style={{ fontFamily:'DM Mono, monospace', fontSize:11 }}>{a.events_today?.toLocaleString() || '—'}</td>
+                      <td style={{ fontFamily:'DM Mono, monospace', fontSize:11, color:'var(--text2)' }}>{a.ip_address || '-'}</td>
+                      <td style={{ fontSize:11, color:'var(--text3)' }}>{a.last_seen ? new Date(a.last_seen).toLocaleString() : '-'}</td>
+                      <td style={{ fontFamily:'DM Mono, monospace', fontSize:11 }}>{a.events_today?.toLocaleString() || '-'}</td>
                     </tr>
                   ))}
                   {(raw?.endpoint_agents || []).length === 0 && (
@@ -548,7 +548,7 @@ export default function Dashboard() {
         <div style={{ display:'grid', gridTemplateColumns:'2fr 1fr', gap:12 }}>
           <div className="card">
             <div className="card-head">
-              Event Timeline — 48h
+              Event Timeline - 48h
               <button onClick={() => navigate('/events')}
                 style={{ fontSize:10, color:'var(--accent)', background:'none', border:'none', cursor:'pointer' }}>
                 View all →
@@ -646,7 +646,7 @@ export default function Dashboard() {
                   onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
                   <span style={{ fontFamily:'DM Mono, monospace', fontSize:11, color:'var(--text)',
                     flex:1, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
-                    {p.domain || p.dst_ip || '—'}
+                    {p.domain || p.dst_ip || '-'}
                   </span>
                   <span style={{ fontSize:10, color:'var(--text3)', fontFamily:'DM Mono, monospace', flexShrink:0 }}>
                     {Number(p.count||0).toLocaleString()}
@@ -668,7 +668,7 @@ export default function Dashboard() {
                 return (
                   <div key={i} style={{ marginBottom:8 }}>
                     <div style={{ display:'flex', justifyContent:'space-between', fontSize:11, marginBottom:3 }}>
-                      <span style={{ color:'var(--text2)', fontFamily:'DM Mono, monospace', fontSize:11 }}>{c.country || c.dst_ip || '—'}</span>
+                      <span style={{ color:'var(--text2)', fontFamily:'DM Mono, monospace', fontSize:11 }}>{c.country || c.dst_ip || '-'}</span>
                       <span style={{ color:'var(--text3)', fontFamily:'DM Mono, monospace' }}>{Number(c.count||0).toLocaleString()}</span>
                     </div>
                     <div style={{ height:3, background:'var(--surface2)', borderRadius:2 }}>

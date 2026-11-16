@@ -112,7 +112,7 @@ func (e *ThreatIntelEngine) retroHunt(ctx context.Context, source string, since 
 				sort.Strings(procs)
 				src := strings.ToUpper(ioc.Source)
 				a := store.Alert{
-					Title: fmt.Sprintf("[%s] Retro-hunt %s IOC Match — %s", src, titleCase(ioc.IOCType), ioc.Value),
+					Title: fmt.Sprintf("[%s] Retro-hunt %s IOC Match - %s", src, titleCase(ioc.IOCType), ioc.Value),
 					Description: fmt.Sprintf(
 						"[%s] Retro-hunt: indicator added after these events occurred.\nMatched known malicious %s: %s\nOccurrences: %d (first %s, last %s)\n\nMalware: %s | Threat: %s | Confidence: %d%%\nHost: %s | OS: %s | Process: %s",
 						src, ioc.IOCType, ioc.Value, g.n, g.first.UTC().Format(time.RFC3339), g.last.UTC().Format(time.RFC3339),

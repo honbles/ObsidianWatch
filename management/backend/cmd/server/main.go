@@ -70,8 +70,8 @@ func main() {
 	// Backend database (read-only access to agent events and locations)
 	backendDB, err := store.Connect(cfg.BackendDB, logger)
 	if err != nil {
-		// Non-fatal — management works without backend DB, just loses location data
-		logger.Warn("backend db connection failed — location data unavailable", "err", err)
+		// Non-fatal - management works without backend DB, just loses location data
+		logger.Warn("backend db connection failed - location data unavailable", "err", err)
 		backendDB = nil
 	}
 	if backendDB != nil {

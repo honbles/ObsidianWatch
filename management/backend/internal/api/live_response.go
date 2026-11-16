@@ -186,7 +186,7 @@ func handleAgentTunnel(db *store.DB, registry *TunnelRegistry, logger *slog.Logg
 			logger.Info("lr: agent tunnel disconnected", "agent", agentID)
 		}()
 
-		// Read loop — agent sends data back to waiting analyst connections
+		// Read loop - agent sends data back to waiting analyst connections
 		for {
 			_, msg, err := conn.ReadMessage()
 			if err != nil {
@@ -232,7 +232,7 @@ func handleAgentTunnel(db *store.DB, registry *TunnelRegistry, logger *slog.Logg
 				// M-05: the agent used to also send password/password_hash
 				// here and we persisted them centrally; neither was ever
 				// read back, so we no longer ask for or store a secret at
-				// all — only which mode this agent's sessions use.
+				// all - only which mode this agent's sessions use.
 				if err := json.Unmarshal(env.Payload, &creds); err == nil {
 					db.UpsertLRCredential(r.Context(), agentID, creds.Username, creds.Mode)
 					logger.Info("lr: credentials registered", "agent", agentID, "user", creds.Username, "mode", creds.Mode)
@@ -393,7 +393,7 @@ func handleSessionTerminal(db *store.DB, registry *TunnelRegistry, logger *slog.
 		}()
 
 		// *** Tell the agent to open the SSH session ***
-		// This is the missing step — without it the agent never dials SSH.
+		// This is the missing step - without it the agent never dials SSH.
 		if err := tunnel.sendJSON(map[string]interface{}{
 			"type":  "open_session",
 			"token": token,
@@ -443,14 +443,14 @@ func handleSessionTerminal(db *store.DB, registry *TunnelRegistry, logger *slog.
 		defer maxLife.Stop()
 
 		// Agent → Analyst
-		// Agent sends json.RawMessage(json.Marshal([]byte{...})) — decode and forward raw bytes
+		// Agent sends json.RawMessage(json.Marshal([]byte{...})) - decode and forward raw bytes
 		for {
 			select {
 			case rawPayload, ok := <-dataCh:
 				if !ok {
 					return
 				}
-				// rawPayload is json.RawMessage (JSON-encoded []byte) — decode to raw bytes
+				// rawPayload is json.RawMessage (JSON-encoded []byte) - decode to raw bytes
 				var raw []byte
 				if err := json.Unmarshal(rawPayload, &raw); err != nil {
 					// Fallback: send as-is

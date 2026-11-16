@@ -2,7 +2,7 @@ package api
 
 import "strings"
 
-// sast_rules.go — SAST rule definitions for all supported languages
+// sast_rules.go - SAST rule definitions for all supported languages
 //
 // Rules are modelled after OWASP Top 10 and CWE categories.
 // Each rule has: id, language(s), file pattern, code pattern, severity, CWE, title, detail, fix
@@ -127,7 +127,7 @@ var SASTRules = []SASTRule{
 		FilePat:  regexp.MustCompile(`\.(js|jsx|ts|tsx|mjs|cjs)$`),
 		Pattern:  regexp.MustCompile(`(?m)\.innerHTML\s*=|\.outerHTML\s*=|document\.write\s*\(|insertAdjacentHTML\s*\(`),
 		Severity: "high", CWE: "CWE-79", OWASP: "A03",
-		Title:  "Cross-Site Scripting (XSS) — DOM Sink",
+		Title:  "Cross-Site Scripting (XSS) - DOM Sink",
 		Detail: "Direct assignment to innerHTML/outerHTML or document.write() allows XSS if user-controlled data is used.",
 		Fix:    "Use textContent or innerText for plain text. Sanitize HTML with DOMPurify before assigning innerHTML.",
 	},
@@ -223,7 +223,7 @@ var SASTRules = []SASTRule{
 		Severity: "critical", CWE: "CWE-89", OWASP: "A03",
 		Title:  "SQL Injection",
 		Detail: "String concatenation or fmt.Sprintf used to build SQL query. Use parameterized queries instead.",
-		Fix:    `db.Query("SELECT * FROM users WHERE id = ?", userID) — always use placeholders`,
+		Fix:    `db.Query("SELECT * FROM users WHERE id = ?", userID) - always use placeholders`,
 	},
 	{
 		ID: "GO002", Lang: "go",
@@ -308,7 +308,7 @@ var SASTRules = []SASTRule{
 		Severity: "critical", CWE: "CWE-502", OWASP: "A08",
 		Title:  "Java Deserialization",
 		Detail: "Java's ObjectInputStream.readObject() can execute arbitrary code if given a malicious serialized object.",
-		Fix:    "Use a deserialization filter (ObjectInputFilter). Avoid Java serialization for untrusted data — use JSON/protobuf.",
+		Fix:    "Use a deserialization filter (ObjectInputFilter). Avoid Java serialization for untrusted data - use JSON/protobuf.",
 	},
 	{
 		ID: "JV003", Lang: "java",
@@ -548,7 +548,7 @@ var extendedSASTRules = []SASTRule{
 		ID: "PY017", Lang: "python", FilePat: regexp.MustCompile(`\.py$`),
 		Pattern:  regexp.MustCompile(`(?m)Cipher\.new\s*\(.*MODE_ECB|AES\.new\s*\([^)]*AES\.MODE_ECB`),
 		Severity: "high", CWE: "CWE-327", OWASP: "A02",
-		Title: "AES-ECB Mode — Insecure Block Cipher Mode",
+		Title: "AES-ECB Mode - Insecure Block Cipher Mode",
 		Detail: "ECB mode is deterministic and leaks patterns. Identical plaintext blocks produce identical ciphertext.",
 		Fix:   "Use AES-GCM or AES-CBC with a random IV: AES.new(key, AES.MODE_GCM)",
 	},
@@ -672,7 +672,7 @@ var extendedSASTRules = []SASTRule{
 		ID: "GO010", Lang: "go", FilePat: regexp.MustCompile(`\.go$`),
 		Pattern:  regexp.MustCompile(`(?m)xml\.Unmarshal\s*\(|xml\.NewDecoder\s*\(`),
 		Severity: "medium", CWE: "CWE-611", OWASP: "A05",
-		Title: "XXE — XML Parsing (Go)",
+		Title: "XXE - XML Parsing (Go)",
 		Detail: "Go's encoding/xml processes external entities by default in some configurations.",
 		Fix:   "Use a SAX parser that explicitly disables external entities, or strip DOCTYPE before parsing.",
 	},
@@ -704,7 +704,7 @@ var extendedSASTRules = []SASTRule{
 		ID: "GO014", Lang: "go", FilePat: regexp.MustCompile(`\.go$`),
 		Pattern:  regexp.MustCompile(`(?m)pem\.Decode\s*\(|x509\.ParseCertificate\s*\(|tls\.LoadX509KeyPair\s*\(`),
 		Severity: "info", CWE: "CWE-295", OWASP: "A02",
-		Title: "Certificate Parsing — Verify Error Handling",
+		Title: "Certificate Parsing - Verify Error Handling",
 		Detail: "Certificate parsing errors must be checked. Ignoring errors can allow invalid certs.",
 		Fix:   "Always check the error return from certificate parsing functions.",
 	},
@@ -882,7 +882,7 @@ var extendedSASTRules = []SASTRule{
 		Severity: "critical", CWE: "CWE-78", OWASP: "A03",
 		Title: "OS Command Injection (Ruby)",
 		Detail: "User input interpolated into shell command string.",
-		Fix:   "Use system() with array syntax: system('git', 'clone', user_url) — never interpolate.",
+		Fix:   "Use system() with array syntax: system('git', 'clone', user_url) - never interpolate.",
 	},
 
 	// ── C# ────────────────────────────────────────────────────────────────────
@@ -922,7 +922,7 @@ var extendedSASTRules = []SASTRule{
 		ID: "CS005", Lang: "csharp", FilePat: regexp.MustCompile(`\.cs$`),
 		Pattern:  regexp.MustCompile(`(?m)XmlDocument|XPathDocument|XmlReader|XPathNavigator`),
 		Severity: "medium", CWE: "CWE-611", OWASP: "A05",
-		Title: "XXE — XML Parsing (.NET)",
+		Title: "XXE - XML Parsing (.NET)",
 		Detail: ".NET XML parsers may process external entities by default in older versions.",
 		Fix:   "Set XmlReaderSettings.DtdProcessing = DtdProcessing.Prohibit and XmlResolver = null.",
 	},
@@ -1113,7 +1113,7 @@ var owaspExtendedRules = []SASTRule{
 		Pattern:regexp.MustCompile(`(?i)btoa\(|atob\(`),
 		Severity:"medium", CWE:"CWE-311", OWASP:"A02",
 		Title:"Base64 Is Not Encryption",
-		Detail:"Base64 encoding provides no security — it's trivially reversible.",
+		Detail:"Base64 encoding provides no security - it's trivially reversible.",
 		Fix:"Use proper encryption (AES-GCM) for sensitive data, not encoding."},
 
 	// Go

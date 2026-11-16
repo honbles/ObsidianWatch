@@ -2,7 +2,7 @@
 
 package collector
 
-// configmon.go — Linux sensitive config file monitoring.
+// configmon.go - Linux sensitive config file monitoring.
 //
 // Equivalent to Windows registry monitoring (Run keys, Services, LSA, etc.).
 // Watches critical Linux config paths for modification:

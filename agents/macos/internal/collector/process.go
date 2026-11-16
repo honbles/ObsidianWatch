@@ -2,13 +2,13 @@
 
 package collector
 
-// process.go — macOS process monitoring.
+// process.go - macOS process monitoring.
 //
 // Strategy (two complementary sources):
-//  1. Poll /proc equivalent via sysctl(KERN_PROC_ALL) — enumerates all running
+//  1. Poll /proc equivalent via sysctl(KERN_PROC_ALL) - enumerates all running
 //     processes with PID, PPID, name, UID. Diffs against previous snapshot to
 //     detect new processes. This is the macOS equivalent of Linux /proc polling.
-//  2. Process argv via sysctl(KERN_PROCARGS2) — retrieves full command line for
+//  2. Process argv via sysctl(KERN_PROCARGS2) - retrieves full command line for
 //     each process, equivalent to reading /proc/<pid>/cmdline.
 //
 // Events emitted: event_type="process", source="sysctl-poll"
@@ -199,7 +199,7 @@ func listProcesses() ([]bsdProc, error) {
 		// kinfo_proc layout (macOS):
 		//   offset 0: extern_proc (struct proc fields)
 		//     +24: p_pid  (int32)
-		//     +28: p_ppid (int32) — actually in eproc, not extern_proc
+		//     +28: p_ppid (int32) - actually in eproc, not extern_proc
 		//   offset 440: eproc
 		//     +440+8: e_ppid (int32)
 		//     +440+52: e_ucred → cr_uid (uint32) at +440+52+4

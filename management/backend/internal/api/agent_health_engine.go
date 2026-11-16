@@ -1,9 +1,9 @@
 package api
 
-// agent_health_engine.go — D-11.
+// agent_health_engine.go - D-11.
 //
 // Previously nothing alerted when an agent went silent, a collector
-// stopped reporting, the event queue backed up, or drops started rising —
+// stopped reporting, the event queue backed up, or drops started rising -
 // "online" was just a passive `last_seen < 2 minutes` computed field with
 // no alerting behind it, and the agents' own periodic "health" events
 // (queue_depth, events_dropped, collectors reporting) were collected but
@@ -11,7 +11,7 @@ package api
 // plus the D-01/D-02 engine cursors, into real alerts:
 //
 //   - an agent that was seen before but has gone quiet for a while
-//   - a detection/correlation/etc engine whose cursor hasn't moved —
+//   - a detection/correlation/etc engine whose cursor hasn't moved -
 //     i.e. it has stopped running entirely
 //   - an agent's own queue_depth / events_dropped climbing, from its
 //     self-reported health events
@@ -45,7 +45,7 @@ type agentHealthPayload struct {
 	QueueDepth      int64    `json:"queue_depth"`
 	// SysmonStatus (W-01, Windows agents only) is "" on non-Windows
 	// agents and on Windows agents older than this fix. "running" is the
-	// only healthy value — ETW alone (what the Windows process collector
+	// only healthy value - ETW alone (what the Windows process collector
 	// falls back to without Sysmon) only exposes PID/TID/opcode, so
 	// process detections on that host are effectively blind.
 	SysmonStatus  string `json:"sysmon_status"`
@@ -101,7 +101,7 @@ func (e *AgentHealthEngine) Run(ctx context.Context) {
 
 func (e *AgentHealthEngine) check(ctx context.Context) {
 	// If this loop itself was paused (VM suspended, host asleep, long GC or DB
-	// stall), every engine looks stalled the moment it resumes — wait for them.
+	// stall), every engine looks stalled the moment it resumes - wait for them.
 	e.mu.Lock()
 	now := time.Now()
 	if !e.lastCheck.IsZero() && now.Sub(e.lastCheck) > 3*time.Minute {
@@ -170,7 +170,7 @@ func (e *AgentHealthEngine) checkSilentAgents(ctx context.Context) {
 }
 
 // checkStalledEngines alerts when a detection/correlation/etc engine's
-// ingested_at cursor (see cursor_paging.go) hasn't advanced recently —
+// ingested_at cursor (see cursor_paging.go) hasn't advanced recently -
 // pageEventCursor advances the cursor even on an empty poll, so a cursor
 // that stops moving means the engine's goroutine itself has stopped, not
 // just that there's no new data.
@@ -237,7 +237,7 @@ func (e *AgentHealthEngine) checkHealthEvents(ctx context.Context) {
 			known[c] = true
 		}
 		// Only complain about a collector that was previously seen and is
-		// absent from this report — never about one we've simply never
+		// absent from this report - never about one we've simply never
 		// observed yet (e.g. a platform that doesn't have it).
 		if len(known) > 0 && len(p.Collectors) > 0 {
 			for c := range known {
@@ -249,8 +249,8 @@ func (e *AgentHealthEngine) checkHealthEvents(ctx context.Context) {
 		e.mu.Unlock()
 
 		// W-01: Sysmon not running means the Windows process collector is
-		// operating on ETW alone — PID/TID/opcode only, no image path,
-		// command line, parent, or user — so most process-based detection
+		// operating on ETW alone - PID/TID/opcode only, no image path,
+		// command line, parent, or user - so most process-based detection
 		// content (including nearly all Sigma process_creation rules) is
 		// silently blind on this host even though it looks "online".
 		if p.SysmonStatus != "" && p.SysmonStatus != "running" {
@@ -261,7 +261,7 @@ func (e *AgentHealthEngine) checkHealthEvents(ctx context.Context) {
 			dedupKey := fmt.Sprintf("health:sysmon:%s:h:%s", ev.AgentID, hourBucket())
 			e.fire(ctx, dedupKey,
 				fmt.Sprintf("Sysmon not running on %s", ev.Host),
-				fmt.Sprintf("Agent %s reports Sysmon status '%s'. Without Sysmon, the Windows process collector falls back to raw ETW, which only exposes PID/TID/opcode — no image path, command line, parent process, or user. Process-based detection content is effectively disabled on this host until Sysmon is installed and running.", ev.Host, p.SysmonStatus),
+				fmt.Sprintf("Agent %s reports Sysmon status '%s'. Without Sysmon, the Windows process collector falls back to raw ETW, which only exposes PID/TID/opcode - no image path, command line, parent process, or user. Process-based detection content is effectively disabled on this host until Sysmon is installed and running.", ev.Host, p.SysmonStatus),
 				ev.AgentID, ev.Host, sev)
 		}
 
@@ -270,7 +270,7 @@ func (e *AgentHealthEngine) checkHealthEvents(ctx context.Context) {
 			dedupKey := fmt.Sprintf("health:queue:%s:h:%s", ev.AgentID, hourBucket())
 			e.fire(ctx, dedupKey,
 				fmt.Sprintf("Event queue backing up on %s", ev.Host),
-				fmt.Sprintf("Agent %s reports a forwarder queue depth of %d — events are being collected faster than they can be sent to the backend.", ev.Host, p.QueueDepth),
+				fmt.Sprintf("Agent %s reports a forwarder queue depth of %d - events are being collected faster than they can be sent to the backend.", ev.Host, p.QueueDepth),
 				ev.AgentID, ev.Host, 3)
 		}
 

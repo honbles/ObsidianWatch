@@ -38,11 +38,11 @@ export function TamperPanel({ agent, onClose, onUpdated }) {
               {newKey&&<button onClick={copy} className="shrink-0 p-1.5 rounded border border-siem-border hover:border-siem-accent/40 text-siem-muted hover:text-siem-text">{copied?<Check size={13} className="text-emerald-400"/>:<Copy size={13}/>}</button>}
               <button onClick={regenerate} disabled={regen} className="shrink-0 text-[10px] px-2 py-1 rounded border border-siem-border text-siem-muted hover:text-siem-text">{regen?'…':'Regenerate'}</button>
             </div>
-            {newKey&&<div className="text-[10px] text-amber-400 mt-1">Copy this key now — it will not be shown again.</div>}
+            {newKey&&<div className="text-[10px] text-amber-400 mt-1">Copy this key now - it will not be shown again.</div>}
           </div>
           <div><div className="text-[10px] uppercase tracking-wider text-siem-muted font-semibold mb-2">Agent Details</div>
             <div className="bg-siem-bg border border-siem-border rounded-xl overflow-hidden">
-              {[['Agent ID',agent.id],['Hostname',agent.hostname],['OS',agent.os||'—'],['Version',agent.version||'—'],['Last IP',agent.last_ip||'—'],['Events',agent.event_count?.toLocaleString()||'0']].map(([k,v],i)=>(
+              {[['Agent ID',agent.id],['Hostname',agent.hostname],['OS',agent.os||'-'],['Version',agent.version||'-'],['Last IP',agent.last_ip||'-'],['Events',agent.event_count?.toLocaleString()||'0']].map(([k,v],i)=>(
                 <div key={k} className={`flex gap-3 px-4 py-2 text-xs ${i%2===0?'':'bg-white/[0.02]'}`}><span className="text-siem-muted w-20 shrink-0">{k}</span><span className="font-mono text-siem-text text-[10px] break-all">{v}</span></div>
               ))}
             </div>
@@ -80,7 +80,7 @@ export function OSGroup({ category, agents, onViewTamper, onSelectHost }) {
                 <td className="px-4 py-2.5"><span className={`text-[9px] px-2 py-0.5 rounded-full border font-medium ${a.online?'bg-emerald-900/30 text-emerald-400 border-emerald-800':'bg-siem-bg text-siem-muted border-siem-border'}`}>{a.online?'Online':'Offline'}</span></td>
                 <td className="px-4 py-2.5 text-siem-muted text-xs">{a.os}</td>
                 <td className="px-4 py-2.5 text-siem-muted text-xs font-mono">{a.last_ip}</td>
-                <td className="px-4 py-2.5 text-siem-muted text-[10px]">{a.last_seen?formatDistanceToNow(new Date(a.last_seen),{addSuffix:true}):'—'}</td>
+                <td className="px-4 py-2.5 text-siem-muted text-[10px]">{a.last_seen?formatDistanceToNow(new Date(a.last_seen),{addSuffix:true}):'-'}</td>
                 <td className="px-4 py-2.5 text-siem-text text-xs text-right">{a.event_count?.toLocaleString()}</td>
                 <td className="px-4 py-2.5"><div className="flex items-center gap-1 justify-end">
                   <button onClick={e=>{e.stopPropagation();onViewTamper(a)}} className="p-1 rounded hover:bg-siem-accent/10">{a.tamper_locked?<Shield size={13} className="text-emerald-400"/>:<ShieldOff size={13} className="text-siem-muted/50"/>}</button>

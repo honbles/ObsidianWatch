@@ -1,6 +1,6 @@
 package api
 
-// DR-02 (first slice): GitHub source-control posture — branch protection,
+// DR-02 (first slice): GitHub source-control posture - branch protection,
 // secret scanning / push protection and org 2FA. Read-only checks; results
 // are returned to the caller (no persistence yet).
 

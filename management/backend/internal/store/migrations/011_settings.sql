@@ -1,5 +1,5 @@
 -- 011_settings.sql
--- Stores platform settings editable from the UI — no yaml restart required.
+-- Stores platform settings editable from the UI - no yaml restart required.
 
 CREATE TABLE IF NOT EXISTS settings (
     key         TEXT PRIMARY KEY,

@@ -1,18 +1,18 @@
 package api
 
-// devops_github.go — GitHub polling and webhook ingestion
+// devops_github.go - GitHub polling and webhook ingestion
 //
 // Polling (every 5 min):
-//   - GET /orgs/{org}/audit-log  — org-level events (member changes, repo visibility, PATs)
-//   - GET /repos/{owner}/{repo}/commits — recent commits with diff
+//   - GET /orgs/{org}/audit-log  - org-level events (member changes, repo visibility, PATs)
+//   - GET /repos/{owner}/{repo}/commits - recent commits with diff
 //
 // Webhooks (real-time):
-//   - push           — commit code changes
-//   - repository     — repo created/deleted/made public
-//   - member         — org member added/removed
-//   - org            — org events (member invited, webhook created)
-//   - workflow_run   — CI pipeline run
-//   - team           — team membership changes
+//   - push           - commit code changes
+//   - repository     - repo created/deleted/made public
+//   - member         - org member added/removed
+//   - org            - org events (member invited, webhook created)
+//   - workflow_run   - CI pipeline run
+//   - team           - team membership changes
 
 import (
 	"context"
@@ -42,7 +42,7 @@ var sensitiveFilePatterns = []string{
 	"terraform.tfvars", "*.tfvars",
 }
 
-// cicdFiles — changes to these trigger pipeline-modification alerts
+// cicdFiles - changes to these trigger pipeline-modification alerts
 var cicdFiles = []string{
 	".github/workflows/", ".gitlab-ci.yml", "azure-pipelines.yml",
 	"Jenkinsfile", ".circleci/config.yml", ".travis.yml",
@@ -219,7 +219,7 @@ func syncGitHub(ctx context.Context, conn *store.DevOpsConnector, db *store.DB, 
 	var auditEvents []map[string]interface{}
 	next, auditErr := client.getJSONNext(ctx, auditURL, &auditEvents)
 	if auditErr == nil {
-		// Org account — has full audit log. DO-04: follow pagination (bounded).
+		// Org account - has full audit log. DO-04: follow pagination (bounded).
 		for pg := 0; ; pg++ {
 			events, newCursor := githubAuditToEvents(auditEvents, conn)
 			if len(events) > 0 {
@@ -240,8 +240,8 @@ func syncGitHub(ctx context.Context, conn *store.DevOpsConnector, db *store.DB, 
 			}
 		}
 	} else {
-		// Personal account — use public events API as fallback
-		setCoverageNote(conn.ID, "Limited coverage: org audit log unavailable ("+auditErr.Error()+"). Using public user events only — requires GitHub Enterprise Cloud and an org-admin token for full audit-log detection.")
+		// Personal account - use public events API as fallback
+		setCoverageNote(conn.ID, "Limited coverage: org audit log unavailable ("+auditErr.Error()+"). Using public user events only - requires GitHub Enterprise Cloud and an org-admin token for full audit-log detection.")
 		userEventsURL := fmt.Sprintf("https://api.github.com/users/%s/events?per_page=100", conn.Org)
 		var userEvents []map[string]interface{}
 		if client.getJSON(ctx, userEventsURL, &userEvents) == nil {
@@ -261,7 +261,7 @@ func syncGitHub(ctx context.Context, conn *store.DevOpsConnector, db *store.DB, 
 		PushedAt      string `json:"pushed_at"`
 		DefaultBranch string `json:"default_branch"`
 	}
-	// Fetch from BOTH endpoints and merge — ensures org repos + personal public + private all included
+	// Fetch from BOTH endpoints and merge - ensures org repos + personal public + private all included
 	seen := map[string]bool{}
 	for _, url := range []string{
 		fmt.Sprintf("https://api.github.com/orgs/%s/repos?per_page=100&sort=pushed&type=all", conn.Org),
@@ -676,7 +676,7 @@ func githubAuditToEvents(entries []map[string]interface{}, conn *store.DevOpsCon
 // githubAuditSeverity rates a GitHub audit-log action.
 //
 // DS-03: matching used to be substring-based ("public" anywhere => Critical,
-// so public_key.create — an SSH key being added — rated 5) and only ~30
+// so public_key.create - an SSH key being added - rated 5) and only ~30
 // actions were rated, so the rest were dropped before ingest. Actions are now
 // matched exactly or by dotted prefix ("hook" matches "hook.create" but not
 // "hookup"), and the list covers audit-streaming, rulesets, 2FA and
@@ -767,7 +767,7 @@ func handleGitHubWebhook(db *store.DB, eventDB *store.DB, logger *slog.Logger) h
 		}
 
 		// DO-01: this used to be `if conn != nil && secret != "" && sig != ""`
-		// — so an unconfigured secret, or simply omitting the signature
+		// - so an unconfigured secret, or simply omitting the signature
 		// header, skipped validation entirely and let anyone POST arbitrary
 		// webhook events. All three cases must now fail closed.
 		if conn.WebhookSecret == "" {
@@ -863,7 +863,7 @@ func processGitHubWebhookEvent(event string, payload map[string]interface{}, con
 
 	switch event {
 	case "push":
-		// Handled by commit polling — webhook gives us real-time notification
+		// Handled by commit polling - webhook gives us real-time notification
 		// We emit a push event and let polling fetch the diff
 		ref, _ := payload["ref"].(string)
 		commits, _ := payload["commits"].([]interface{})

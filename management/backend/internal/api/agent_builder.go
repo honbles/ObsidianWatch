@@ -1,25 +1,25 @@
 package api
 
-// agent_builder.go — on-demand agent compilation with embedded config.
+// agent_builder.go - on-demand agent compilation with embedded config.
 //
 // Flow when admin clicks "Download {platform}":
 //  1. Generate the agent.yaml YAML string from admin's parameters
 //  2. Write it into agents/{platform}/internal/config/embedded.go as a Go constant
-//  3. Run `go build` — the config is now baked into the binary
+//  3. Run `go build` - the config is now baked into the binary
 //  4. Restore embedded.go to the empty stub
 //  5. Save the compiled binary to the cache
 //  6. Save a ready-to-download zip to the cache (binary + INSTALL.md only)
 //  7. Stream the zip to the browser
 //
 // Subsequent downloads of the same platform skip compilation and serve
-// the saved zip directly — instant download, no recompilation needed.
+// the saved zip directly - instant download, no recompilation needed.
 //
 // Routes:
-//   GET  /api/v1/agent-builder/status          — per-platform build status + zip info
-//   POST /api/v1/agent-builder/build           — trigger background compile
-//   POST /api/v1/agent-builder/download        — compile + save + stream zip
-//   GET  /api/v1/agent-builder/download/{platform} — serve saved zip
-//   GET  /api/v1/agent-builder/settings        — saved API keys (masked)
+//   GET  /api/v1/agent-builder/status          - per-platform build status + zip info
+//   POST /api/v1/agent-builder/build           - trigger background compile
+//   POST /api/v1/agent-builder/download        - compile + save + stream zip
+//   GET  /api/v1/agent-builder/download/{platform} - serve saved zip
+//   GET  /api/v1/agent-builder/settings        - saved API keys (masked)
 
 import (
 	"archive/zip"
@@ -100,8 +100,8 @@ const (
 	embeddedStub   = `package config
 
 // EmbeddedConfig holds the agent.yaml baked in at compile time by the Agent Builder.
-// Empty in development builds — falls back to reading agent.yaml from disk.
-// DO NOT EDIT — overwritten by Agent Builder before each compile.
+// Empty in development builds - falls back to reading agent.yaml from disk.
+// DO NOT EDIT - overwritten by Agent Builder before each compile.
 var EmbeddedConfig = ""
 `
 )
@@ -207,7 +207,7 @@ func writeEmbeddedConfig(platform, yamlContent string) error {
 	p := platforms[platform]
 	// Escape backticks in yaml (shouldn't exist but be safe)
 	safe := strings.ReplaceAll(yamlContent, "`", "`+\"`\"+`")
-	content := "package config\n\n// DO NOT EDIT — written by Agent Builder before compile, restored after.\nvar EmbeddedConfig = `" + safe + "`\n"
+	content := "package config\n\n// DO NOT EDIT - written by Agent Builder before compile, restored after.\nvar EmbeddedConfig = `" + safe + "`\n"
 	return os.WriteFile(p.EmbeddedGoFile, []byte(content), 0644)
 }
 
@@ -221,7 +221,7 @@ func restoreEmbeddedStub(platform string) {
 // the build has finished and the stub has been restored.
 //
 // buildState (builds.start/finish) already serializes builds of the same
-// platform *within this process*, which is enough for the common case —
+// platform *within this process*, which is enough for the common case -
 // but it's in-memory, so it does nothing if the backend ever runs as more
 // than one process/replica sharing the same /agent-src volume (a second
 // instance, a manually-run build script, a future horizontally-scaled
@@ -266,7 +266,7 @@ func compilePlatform(platform, yamlContent string) error {
 	if err := writeEmbeddedConfig(platform, yamlContent); err != nil {
 		return fmt.Errorf("write embedded config: %w", err)
 	}
-	// Always restore stub when done, even on error — while still holding
+	// Always restore stub when done, even on error - while still holding
 	// the lock, so no other build can observe or overwrite our in-flight
 	// embedded.go before it's put back.
 	defer restoreEmbeddedStub(platform)
@@ -287,7 +287,7 @@ func compilePlatform(platform, yamlContent string) error {
 		"GOPATH=/root/go",
 		"GOCACHE=/root/.cache/go-build",
 		"GOMODCACHE=/root/go/pkg/mod",
-		"GOPROXY=off", // use only modules cached during docker build — no network
+		"GOPROXY=off", // use only modules cached during docker build - no network
 		"GONOSUMDB=*", // skip sum database lookup
 		"GONOSUMCHECK=*",
 		"GOFLAGS=-mod=readonly", // never update go.sum at runtime
@@ -432,7 +432,7 @@ func handleAgentBuilderDownload(db *store.DB) http.HandlerFunc {
 			return
 		}
 
-		// Save API keys — AI keys to settings table, threat intel keys to threat_intel_sources
+		// Save API keys - AI keys to settings table, threat intel keys to threat_intel_sources
 		if m := buildSettingsMap(cfg); len(m) > 0 {
 			db.SetSettingsMap(r.Context(), m)
 		}
@@ -442,7 +442,7 @@ func handleAgentBuilderDownload(db *store.DB) http.HandlerFunc {
 		zipPath := cachedZipPath(cfg.Platform)
 		if !agentCacheValid(zipPath, agentConfigHash(cfg), time.Now()) {
 			if builds.isBuilding(cfg.Platform) {
-				writeJSON(w, 409, map[string]string{"error": "build already in progress — try again shortly"})
+				writeJSON(w, 409, map[string]string{"error": "build already in progress - try again shortly"})
 				return
 			}
 			if !builds.start(cfg.Platform) {
@@ -462,7 +462,7 @@ func handleAgentBuilderDownload(db *store.DB) http.HandlerFunc {
 }
 
 // handleAgentDownloadCached serves the saved zip for a platform directly.
-// This is what the dashboard download buttons hit — no config params needed.
+// This is what the dashboard download buttons hit - no config params needed.
 func handleAgentDownloadCached() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		platform := r.PathValue("platform")
@@ -471,7 +471,7 @@ func handleAgentDownloadCached() http.HandlerFunc {
 			return
 		}
 		if !agentCacheValid(cachedZipPath(platform), "", time.Now()) {
-			writeJSON(w, 404, map[string]string{"error": "agent not built yet, expired, or failed its integrity check — use the Agent Builder to compile again"})
+			writeJSON(w, 404, map[string]string{"error": "agent not built yet, expired, or failed its integrity check - use the Agent Builder to compile again"})
 			return
 		}
 		serveZip(w, r, platform)
@@ -555,7 +555,7 @@ type AgentBuilderConfig struct {
 }
 
 func buildSettingsMap(cfg AgentBuilderConfig) map[string]string {
-	// Only AI keys go to the settings table — they are read back by handleAIAnalysis.
+	// Only AI keys go to the settings table - they are read back by handleAIAnalysis.
 	// Threat intel keys go directly to threat_intel_sources via saveThreatIntelKeys.
 	m := map[string]string{}
 	if cfg.GroqAPIKey != "" {
@@ -926,7 +926,7 @@ func SeedAgentBuilderDefaults(ctx context.Context, db *store.DB, agentAPIKey str
 	metaPath := "/app/certs/cert-meta.json"
 	data, err := os.ReadFile(metaPath)
 	if err != nil {
-		return // cert-meta.json not found — manual cert setup, skip
+		return // cert-meta.json not found - manual cert setup, skip
 	}
 
 	var meta struct {
@@ -944,12 +944,12 @@ func SeedAgentBuilderDefaults(ctx context.Context, db *store.DB, agentAPIKey str
 		return
 	}
 
-	// If AGENT_API_KEY env var set (legacy), use it — otherwise leave blank for wizard
+	// If AGENT_API_KEY env var set (legacy), use it - otherwise leave blank for wizard
 	if agentAPIKey == "" {
 		agentAPIKey = readBackendAPIKey("/app/backend-server.yaml")
 	}
 
-	// Determine backend URL — prefer domain, then public IP, then private IP
+	// Determine backend URL - prefer domain, then public IP, then private IP
 	backendHost := meta.PrivateIP
 	if meta.PublicIP != "" {
 		backendHost = meta.PublicIP
@@ -964,19 +964,19 @@ func SeedAgentBuilderDefaults(ctx context.Context, db *store.DB, agentAPIKey str
 		mgmtURL = "https://" + meta.BackendDomain
 	}
 
-	// Always update CA cert and URLs — cert may have been regenerated
+	// Always update CA cert and URLs - cert may have been regenerated
 	// Only skip if already seeded AND we're not updating critical values
 	existing, _ := db.GetSetting(ctx, "setup.seeded")
 
 	settings := map[string]string{
-		"setup.ca_cert": string(caCert), // always update — cert may be regenerated
+		"setup.ca_cert": string(caCert), // always update - cert may be regenerated
 	}
 	if agentAPIKey != "" {
 		settings["setup.agent_api_key"] = agentAPIKey
 	}
 
 	if existing != "true" {
-		// First time — also set URLs
+		// First time - also set URLs
 		settings["setup.backend_url"] = backendURL
 		settings["setup.management_url"] = mgmtURL
 	}
@@ -991,7 +991,7 @@ func readBackendAPIKey(path string) string {
 	if err != nil {
 		return ""
 	}
-	// Simple YAML parse — look for api_keys list
+	// Simple YAML parse - look for api_keys list
 	var cfg struct {
 		Auth struct {
 			APIKeys []string `yaml:"api_keys"`

@@ -226,7 +226,7 @@ func RunAWSCSPM(ctx context.Context, creds awsCreds, accountID string) (*CSPMRes
 	// IAM
 	sumB, sumC, err := awsQueryCall(ctx, iamCreds, "iam", "iam.amazonaws.com", "Action=GetAccountSummary&Version=2010-05-08")
 	if err != nil || sumC != 200 {
-		skip("iam_account", "GetAccountSummary denied or failed — grant iam:GetAccountSummary / SecurityAudit")
+		skip("iam_account", "GetAccountSummary denied or failed - grant iam:GetAccountSummary / SecurityAudit")
 	} else {
 		polB, polC, perr := awsQueryCall(ctx, iamCreds, "iam", "iam.amazonaws.com", "Action=GetAccountPasswordPolicy&Version=2010-05-08")
 		if perr != nil || (polC != 200 && polC != 404) {
@@ -245,7 +245,7 @@ func RunAWSCSPM(ctx context.Context, creds awsCreds, accountID string) (*CSPMRes
 			regions = rs
 		}
 	} else {
-		skip("regions", "DescribeRegions denied or failed — only "+creds.Region+" was scanned")
+		skip("regions", "DescribeRegions denied or failed - only "+creds.Region+" was scanned")
 	}
 	if len(regions) > awsMaxRegions {
 		regions = regions[:awsMaxRegions]

@@ -2,9 +2,9 @@
 
 package collector
 
-// live_response.go — Windows live response agent component.
+// live_response.go - Windows live response agent component.
 //
-// Spawns cmd.exe directly via os/exec — no SSH, no user creation.
+// Spawns cmd.exe directly via os/exec - no SSH, no user creation.
 // The agent runs as SYSTEM, so we just exec cmd.exe and pipe
 // stdin/stdout through the existing management WebSocket tunnel.
 //
@@ -92,7 +92,7 @@ func (c *LiveResponseCollector) runTunnel(ctx context.Context) error {
 
 	c.logger.Info("live-response: tunnel connected")
 
-	// Register as direct-shell mode — no credentials needed
+	// Register as direct-shell mode - no credentials needed
 	conn.WriteJSON(map[string]interface{}{
 		"type":    "register_credentials",
 		"payload": json.RawMessage(`{"username":"SYSTEM","mode":"direct-shell"}`),
@@ -165,7 +165,7 @@ func (c *LiveResponseCollector) runTunnel(ctx context.Context) error {
 	}
 }
 
-// handleSession spawns cmd.exe directly — no SSH needed.
+// handleSession spawns cmd.exe directly - no SSH needed.
 func (c *LiveResponseCollector) handleSession(ctx context.Context, token string, inCh chan []byte, writeJSON func(interface{}) error) {
 	// Find PowerShell or fall back to cmd.exe
 	shell := "powershell.exe"

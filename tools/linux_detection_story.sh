@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# ObsidianWatch — Linux detection story (attack-chain simulation)
+# ObsidianWatch - Linux detection story (attack-chain simulation)
 #
 # Replays a realistic intrusion on THIS host so you can watch the real
 # detections, alerts, IOC matching and the Alert Graph react:
@@ -108,7 +108,7 @@ hold; hold
 # ── 4. Flagged IPs ───────────────────────────────────────────────────────────
 # The agent samples /proc/net/tcp every 10s, so every connection here is held
 # open for 25s (a shorter one can fall between two samples and be missed).
-say "4a. Hold a connection to an indicator IP (example.com — add it as a manual IP indicator)"
+say "4a. Hold a connection to an indicator IP (example.com - add it as a manual IP indicator)"
 note "Threat-intel IOC match on destination IP"
 if [ -n "$EX_IP" ] && command -v python3 >/dev/null 2>&1; then
   echo "    connecting to $EX_IP:80 and holding 25s"
@@ -171,7 +171,7 @@ for d in $DOMS pastebin.com; do
   echo "    lookup $d"; getent hosts "$d" >/dev/null 2>&1; sleep 2
 done
 echo "    (Linux only sees DNS names when systemd-resolved is in use; the next step does not depend on that)"
-say "5b. Fetch headers from a URL on an indicator domain (example.com — add it as a manual domain indicator)"
+say "5b. Fetch headers from a URL on an indicator domain (example.com - add it as a manual domain indicator)"
 note "Command-line URL host matches a domain/IP indicator"
 curl -s -m 8 -I http://example.com/ -o /dev/null; sleep "$HOLD"
 
@@ -218,7 +218,7 @@ say "Finished at $(date +%H:%M:%S) (started $STAMP)"
 cat <<DONE
 
 Next, give the agent and engines a minute or two, then:
-  * Alerts page: filter host $(hostname) — you should see the alerts listed above.
+  * Alerts page: filter host $(hostname) - you should see the alerts listed above.
   * Open the Shell / Executable-from-/tmp alert -> Graph tab: this script is the
     parent; its children are the dropper, staged binary, discovery, cron and
     upload steps, with the connections to the listed C2 IPs and domains.

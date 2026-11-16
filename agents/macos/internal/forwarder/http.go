@@ -1,6 +1,6 @@
 package forwarder
 
-// http.go — batched HTTP/2 forwarder with mTLS and API-key fallback.
+// http.go - batched HTTP/2 forwarder with mTLS and API-key fallback.
 // Events are read from the local Queue and POSTed to the backend ingest API.
 
 import (
@@ -85,7 +85,7 @@ func (f *HTTPForwarder) Run(ctx context.Context) error {
 
 
 // SendFinal (D-12) transmits one last event synchronously as the agent shuts
-// down — typically "agent.tamper" (stop requested / signal received) — so the
+// down - typically "agent.tamper" (stop requested / signal received) - so the
 // server sees a stop/uninstall attempt before the agent dies. It bypasses the
 // queue ordering, waits at most 5 seconds, and falls back to the local queue
 // if the backend is unreachable.
@@ -208,7 +208,7 @@ func buildHTTPClient(cfg ForwarderConfig) (*http.Client, error) {
 		tlsCfg.Certificates = []tls.Certificate{cert}
 	}
 
-	// Load CA cert — prefer inline PEM (embedded binary), fall back to file path.
+	// Load CA cert - prefer inline PEM (embedded binary), fall back to file path.
 	var caPEM []byte
 	switch {
 	case cfg.CACertPEM != "":

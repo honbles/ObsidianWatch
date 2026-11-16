@@ -1,6 +1,6 @@
 package api
 
-// cloud_aws_baseline.go — behavioural baseline for AWS CloudTrail principals.
+// cloud_aws_baseline.go - behavioural baseline for AWS CloudTrail principals.
 // Reuses principalBaseline (known IPs, service categories) from the GCP engine.
 //
 //	ANOM-AWS-001  first-ever source IP for a principal

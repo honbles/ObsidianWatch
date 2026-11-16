@@ -2,7 +2,7 @@
 
 package collector
 
-// fim.go — macOS File Integrity Monitoring via kqueue.
+// fim.go - macOS File Integrity Monitoring via kqueue.
 //
 // macOS does not expose FSEvents to Go without CGo.
 // We use kqueue EVFILT_VNODE to watch files and directories for changes.

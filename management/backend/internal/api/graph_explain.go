@@ -1,6 +1,6 @@
 package api
 
-// graph_explain.go — plain-language reading of each graph node (deterministic,
+// graph_explain.go - plain-language reading of each graph node (deterministic,
 // built from the node's edges) and the optional model analysis of the whole
 // graph. The model only ever sees the pruned graph and must cite node IDs;
 // anything it cites that is not in the graph is dropped.

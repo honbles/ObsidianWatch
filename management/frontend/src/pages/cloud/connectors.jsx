@@ -92,7 +92,7 @@ export function ConnectorForm({ provider, onSaved, onCancel }) {
   )
 }
 
-// ── ConnectorDetail — 5-panel architecture ────────────────────────────────────
+// ── ConnectorDetail - 5-panel architecture ────────────────────────────────────
 export function ConnectorDetail({ conn, onSync, onDisconnect, syncing }) {
   const [tab, setTab]               = useState('overview')
   const [cspm, setCspm]             = useState(null)

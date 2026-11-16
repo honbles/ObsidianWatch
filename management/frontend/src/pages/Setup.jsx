@@ -41,7 +41,7 @@ export default function Setup() {
   const submit = async () => {
     setError('')
     if (!form.agent_api_key) {
-      setError('Agent API Key is required — it must match the key in backend/docker/server.yaml')
+      setError('Agent API Key is required - it must match the key in backend/docker/server.yaml')
       return
     }
     setSaving(true)
@@ -78,11 +78,11 @@ export default function Setup() {
           <div className="grid grid-cols-2 gap-3 text-sm">
             <div>
               <div className="text-xs text-siem-muted mb-0.5">Private IP</div>
-              <div className="font-mono text-cyan-400">{status.private_ip || '—'}</div>
+              <div className="font-mono text-cyan-400">{status.private_ip || '-'}</div>
             </div>
             <div>
               <div className="text-xs text-siem-muted mb-0.5">Public IP</div>
-              <div className="font-mono text-cyan-400">{status.public_ip || '—'}</div>
+              <div className="font-mono text-cyan-400">{status.public_ip || '-'}</div>
             </div>
           </div>
           <p className="text-xs text-siem-muted mt-3">
@@ -92,7 +92,7 @@ export default function Setup() {
 
         <div className="space-y-4 mb-5">
 
-          {/* Agent API Key — required */}
+          {/* Agent API Key - required */}
           <div className="rounded-xl border border-red-500/20 bg-siem-surface overflow-hidden">
             <div className="px-4 py-2.5 bg-red-500/10 border-b border-red-500/20 flex items-center gap-2">
               <span className="text-red-400 text-sm font-semibold">🔑 Agent API Key</span>
@@ -149,14 +149,14 @@ export default function Setup() {
                 <input type="text" value={form.backend_url}
                   onChange={e => set('backend_url', e.target.value)}
                   className="w-full bg-siem-bg border border-siem-border rounded-lg px-3 py-2 text-sm text-siem-text focus:outline-none focus:border-cyan-500/50" />
-                <p className="text-xs text-siem-muted mt-1">Agent event ingest — auto-detected from public IP</p>
+                <p className="text-xs text-siem-muted mt-1">Agent event ingest - auto-detected from public IP</p>
               </div>
               <div>
                 <label className="text-xs font-medium text-siem-text mb-1 block">Management URL</label>
                 <input type="text" value={form.management_url}
                   onChange={e => set('management_url', e.target.value)}
                   className="w-full bg-siem-bg border border-siem-border rounded-lg px-3 py-2 text-sm text-siem-text focus:outline-none focus:border-cyan-500/50" />
-                <p className="text-xs text-siem-muted mt-1">Dashboard URL — auto-detected from private IP</p>
+                <p className="text-xs text-siem-muted mt-1">Dashboard URL - auto-detected from private IP</p>
               </div>
             </div>
           </div>
@@ -165,13 +165,13 @@ export default function Setup() {
           <div className="rounded-xl border border-purple-500/20 bg-siem-surface overflow-hidden">
             <div className="px-4 py-2.5 bg-purple-500/10 border-b border-purple-500/20">
               <span className="text-purple-400 text-sm font-semibold">◈ AI Analysis</span>
-              <span className="text-xs text-purple-400/70 ml-2">Optional — AI-powered alert analysis</span>
+              <span className="text-xs text-purple-400/70 ml-2">Optional - AI-powered alert analysis</span>
             </div>
             <div className="p-4 space-y-3">
               {[
-                { key: 'groq_api_key', label: 'Groq API Key', placeholder: 'gsk_... — free at console.groq.com' },
-                { key: 'nvd_api_key', label: 'NVD API Key (CVE Database)', placeholder: 'Optional — get free key at nvd.nist.gov/developers — raises rate limit for faster CVE lookups' },
-                { key: 'anthropic_api_key', label: 'Anthropic API Key', placeholder: 'sk-ant-... — console.anthropic.com' },
+                { key: 'groq_api_key', label: 'Groq API Key', placeholder: 'gsk_... - free at console.groq.com' },
+                { key: 'nvd_api_key', label: 'NVD API Key (CVE Database)', placeholder: 'Optional - get free key at nvd.nist.gov/developers - raises rate limit for faster CVE lookups' },
+                { key: 'anthropic_api_key', label: 'Anthropic API Key', placeholder: 'sk-ant-... - console.anthropic.com' },
               ].map(f => (
                 <div key={f.key}>
                   <label className="text-xs font-medium text-siem-text mb-1 block">{f.label}</label>
@@ -194,7 +194,7 @@ export default function Setup() {
           <div className="rounded-xl border border-orange-500/20 bg-siem-surface overflow-hidden">
             <div className="px-4 py-2.5 bg-orange-500/10 border-b border-orange-500/20">
               <span className="text-orange-400 text-sm font-semibold">◉ Threat Intelligence</span>
-              <span className="text-xs text-orange-400/70 ml-2">Optional — IOC feeds for automated detection</span>
+              <span className="text-xs text-orange-400/70 ml-2">Optional - IOC feeds for automated detection</span>
             </div>
             <div className="p-4 space-y-3">
               {[

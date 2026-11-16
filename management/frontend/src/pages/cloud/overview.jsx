@@ -123,7 +123,7 @@ export function PanelOverview({ conn, cspm, loading, onRunScan, scanning, onTabC
             {cspm?.project_id || cspm?.subscription_id || conn.account_id || (conn.provider === 'azure' ? 'Azure Subscription' : 'GCP Project')}
           </div>
           {cspm && <div style={{ fontSize:11, color:'var(--text3)', marginTop:2 }}>
-            Last scan: {cspm.scanned_at ? format(new Date(cspm.scanned_at), 'MMM d, yyyy HH:mm') : '—'}
+            Last scan: {cspm.scanned_at ? format(new Date(cspm.scanned_at), 'MMM d, yyyy HH:mm') : '-'}
             {' · '}{cspm.scan_duration || ''}
             {cspm.scc_enabled && <span style={{ color:'#34d399', marginLeft:8 }}>✓ SCC ({cspm.scc_findings||0} findings)</span>}
             {cspm.defender_enabled && <span style={{ color:'#38bdf8', marginLeft:8 }}>✓ Defender ({cspm.defender_findings||0} findings)</span>}
@@ -172,7 +172,7 @@ export function PanelOverview({ conn, cspm, loading, onRunScan, scanning, onTabC
               style={{ display:'flex', alignItems:'center', gap:6, fontSize:11, padding:'6px 12px',
                 background:'rgba(251,146,60,0.08)', border:'1px solid rgba(251,146,60,0.25)',
                 color:'#fb923c', borderRadius:7, cursor:'pointer', fontFamily:'inherit' }}>
-              <AlertTriangle size={11}/>{cspm.errors.length} check{cspm.errors.length>1?'s':''} failed — {showErrors?'hide':'show'}
+              <AlertTriangle size={11}/>{cspm.errors.length} check{cspm.errors.length>1?'s':''} failed - {showErrors?'hide':'show'}
             </button>
             {showErrors && (
               <div style={{ marginTop:8, background:'var(--surface)', border:'1px solid rgba(251,146,60,0.2)', borderRadius:8, overflow:'hidden' }}>
@@ -379,7 +379,7 @@ export function PanelAssetGraph({ cspm, cmdbAssets, cmdbLoading, onRunCMDB, conn
   const [viewMode, setViewMode] = useState('all') // all | findings | clean
   const all = cspm?.findings || []
 
-  // Build asset nodes — prefer CMDB data, fall back to findings
+  // Build asset nodes - prefer CMDB data, fall back to findings
   const assetMap = {}
 
   // If we have CMDB data, seed all resources (even clean ones)
@@ -686,7 +686,7 @@ export function PanelAttackSurface({ cspm, conn }) {
         return card?.items.length > 0 ? (
           <div style={{ marginBottom:20 }}>
             <div style={{ fontSize:11, fontWeight:700, color:'var(--text3)', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:10 }}>
-              {card.label} — {card.items.length} finding{card.items.length!==1?'s':''}
+              {card.label} - {card.items.length} finding{card.items.length!==1?'s':''}
             </div>
             <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
               {card.items.map((f,i) => <FindingCard key={f.id||i} f={f} provider={conn?.provider || "gcp"} projectId={cspm?.project_id} subscriptionId={cspm?.subscription_id}/>)}
@@ -788,7 +788,7 @@ export function PanelEventTimeline({ events, loading, conn }) {
           {!loading && filtered.length === 0 && (
             <div style={{ display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', height:200, color:'var(--text3)', gap:8 }}>
               <Activity size={36} strokeWidth={1} color="var(--border)"/>
-              <div style={{ fontSize:13 }}>{events.length === 0 ? 'No events ingested yet — sync the connector' : 'No events match your filter'}</div>
+              <div style={{ fontSize:13 }}>{events.length === 0 ? 'No events ingested yet - sync the connector' : 'No events match your filter'}</div>
             </div>
           )}
           {Object.entries(byDate).map(([date, dayEvents]) => (
@@ -893,5 +893,5 @@ export function PanelEventTimeline({ events, loading, conn }) {
 }
 
 // ── Panel: Blast Radius ──────────────────────────────────────────────────────
-// ── Blast Radius — Principal List + Focus Graph ───────────────────────────────
+// ── Blast Radius - Principal List + Focus Graph ───────────────────────────────
 

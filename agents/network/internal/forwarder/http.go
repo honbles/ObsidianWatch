@@ -1,6 +1,6 @@
 package forwarder
 
-// http.go — forwards probe events to the management backend
+// http.go - forwards probe events to the management backend
 // Uses the same batch format as endpoint agents so the backend needs
 // zero changes to receive network probe data.
 

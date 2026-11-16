@@ -1,9 +1,9 @@
 package collector
 
-// ratelimit.go — per-source sliding window rate limiter and event deduplicator.
+// ratelimit.go - per-source sliding window rate limiter and event deduplicator.
 // Wraps the output channel and silently drops events that exceed the
 // configured per-source rate, or that are exact duplicates within a window.
-// Build tag: none — pure Go, cross-platform.
+// Build tag: none - pure Go, cross-platform.
 
 import (
 	"sync"

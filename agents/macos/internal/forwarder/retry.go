@@ -1,6 +1,6 @@
 package forwarder
 
-// retry.go — exponential backoff with jitter for the HTTP forwarder.
+// retry.go - exponential backoff with jitter for the HTTP forwarder.
 
 import (
 	"context"

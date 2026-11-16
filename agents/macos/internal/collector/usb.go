@@ -2,7 +2,7 @@
 
 package collector
 
-// usb.go — P-12: USB / removable media attach events on macOS.
+// usb.go - P-12: USB / removable media attach events on macOS.
 // Polls `system_profiler SPUSBDataType -json` every 15s; the first scan is a
 // silent baseline. Mass-storage devices (those exposing Media) are Low.
 //

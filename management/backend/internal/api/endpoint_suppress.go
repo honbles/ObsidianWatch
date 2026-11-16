@@ -1,6 +1,6 @@
 package api
 
-// endpoint_suppress.go — suppression / allowlist rules for endpoint
+// endpoint_suppress.go - suppression / allowlist rules for endpoint
 // detections (D-10; only cloud had one before). A rule needs a reason, at
 // least one matcher, and should normally carry an expiry.
 //

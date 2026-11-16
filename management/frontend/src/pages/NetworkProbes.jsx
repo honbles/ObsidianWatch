@@ -31,7 +31,7 @@ export default function NetworkProbes() {
             Network Probes
           </h1>
           <p className="text-[11px] text-siem-muted mt-1">
-            Network intelligence sensors — collect syslog, NetFlow, SNMP from all network devices
+            Network intelligence sensors - collect syslog, NetFlow, SNMP from all network devices
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -52,7 +52,7 @@ export default function NetworkProbes() {
           <Radio size={14} className="text-cyan-400 mt-0.5 shrink-0"/>
           <div className="text-[11px] text-cyan-300/80 leading-relaxed">
             Network probes sit inside your network, receive syslog from all devices (port 514),
-            NetFlow from routers (port 2055), and poll SNMP for device health. All analysis runs locally —
+            NetFlow from routers (port 2055), and poll SNMP for device health. All analysis runs locally -
             only alerts and summaries are sent to this management server.
           </div>
         </div>

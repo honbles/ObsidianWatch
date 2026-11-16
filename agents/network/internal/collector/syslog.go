@@ -1,6 +1,6 @@
 package collector
 
-// syslog.go — UDP/TCP syslog listener
+// syslog.go - UDP/TCP syslog listener
 // Receives syslog from any network device, parses, detects threats,
 // and emits ProbeEvents via the out channel.
 

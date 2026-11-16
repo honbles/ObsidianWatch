@@ -2,8 +2,8 @@
 
 package service
 
-// service.go — macOS launchd service management for ObsidianWatch agent.
-// Config is embedded in the binary — no agent.yaml file needed on disk.
+// service.go - macOS launchd service management for ObsidianWatch agent.
+// Config is embedded in the binary - no agent.yaml file needed on disk.
 
 import (
 	"crypto/rand"
@@ -36,17 +36,17 @@ type InstallConfig struct {
 	BinarySrc           string
 	ManagementURL       string
 	CAFile              string
-	CACertPEM           string // backend CA — inline PEM
-	ManagementCACertPEM string // management CA — inline PEM; falls back to CACertPEM if empty
+	CACertPEM           string // backend CA - inline PEM
+	ManagementCACertPEM string // management CA - inline PEM; falls back to CACertPEM if empty
 	APIKey              string // fleet API key (X-API-Key) required by register-key / verify-install-key
 	AgentID             string
 	Hostname            string
 }
 
 func Install(cfg InstallConfig) error {
-	// If already installed — unload daemon and replace binary cleanly.
+	// If already installed - unload daemon and replace binary cleanly.
 	if _, err := os.Stat(BinaryDst); err == nil {
-		fmt.Println("Existing installation detected — upgrading...")
+		fmt.Println("Existing installation detected - upgrading...")
 		run("launchctl", "unload", PlistPath)
 		removeTamper()            // F-01: must clear uchg before we can overwrite these files
 		os.Chmod(BinaryDst, 0700) // ensure writable
@@ -80,7 +80,7 @@ func Install(cfg InstallConfig) error {
 		}
 	}
 
-	// Install the binary — config is embedded inside it, no yaml file needed.
+	// Install the binary - config is embedded inside it, no yaml file needed.
 	fmt.Printf("Installing binary to %s...\n", BinaryDst)
 	if err := copyFile(cfg.BinarySrc, BinaryDst, 0700); err != nil {
 		return fmt.Errorf("copy binary: %w", err)
@@ -102,13 +102,13 @@ func Install(cfg InstallConfig) error {
 		return fmt.Errorf("launchctl load: %w\n%s", err, out)
 	}
 
-	// F-01: the dashboard's tamper toggle was previously cosmetic — it had
+	// F-01: the dashboard's tamper toggle was previously cosmetic - it had
 	// no agent-side enforcement, so "off" vs "on" made no real difference
 	// and nothing actually required the install key to remove the agent.
 	// This applies real OS-level immutability (chflags uchg), matching what
 	// the Linux (chattr +i) and Windows (service DACL) agents already do:
-	// the files genuinely cannot be deleted or modified — including by a
-	// root user running `rm` directly, bypassing this CLI entirely — until
+	// the files genuinely cannot be deleted or modified - including by a
+	// root user running `rm` directly, bypassing this CLI entirely - until
 	// removeTamper() clears the flag, which only this Uninstall() does,
 	// and only after the install key is verified.
 	applyTamper()
@@ -135,7 +135,7 @@ func Uninstall(managementURL, caFile, caCertPEM, apiKey, agentID string) error {
 	// Read the persisted install key from the state file.
 	installKey, err := config.ReadInstallKey()
 	if err != nil || installKey == "" {
-		return fmt.Errorf("could not read install key — was this agent installed with this tool?\n(expected at %s)", config.InstallKeyFile())
+		return fmt.Errorf("could not read install key - was this agent installed with this tool?\n(expected at %s)", config.InstallKeyFile())
 	}
 
 	// ── Tamper protection: require admin to enter the key ────────────────────
@@ -153,7 +153,7 @@ func Uninstall(managementURL, caFile, caCertPEM, apiKey, agentID string) error {
 	fmt.Scanln(&inputKey)
 	inputKey = strings.TrimSpace(inputKey)
 
-	// F-02: the management server is the authority — it verifies the key and
+	// F-02: the management server is the authority - it verifies the key and
 	// rotates it (single-use), so "Regenerate key" on the dashboard actually
 	// works. The local copy is consulted only when the server cannot be
 	// reached at all; a server rejection is final.
@@ -172,7 +172,7 @@ func Uninstall(managementURL, caFile, caCertPEM, apiKey, agentID string) error {
 	fmt.Println("  ✓ Key accepted. Proceeding with uninstall...")
 	fmt.Println()
 
-	removeTamper() // F-01: clear uchg — only reached after key verification above
+	removeTamper() // F-01: clear uchg - only reached after key verification above
 	exec.Command("launchctl", "unload", "-w", PlistPath).Run()
 
 	for _, path := range []string{PlistPath, BinaryDst, ConfigDir} {
@@ -184,7 +184,7 @@ func Uninstall(managementURL, caFile, caCertPEM, apiKey, agentID string) error {
 }
 
 func writePlist() error {
-	// No --config flag needed — config is embedded in the binary.
+	// No --config flag needed - config is embedded in the binary.
 	plist := fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">

@@ -1,15 +1,15 @@
 package api
 
-// cloud_azure_sigs.go — Azure-specific threat detection rules (50+ rules)
+// cloud_azure_sigs.go - Azure-specific threat detection rules (50+ rules)
 //
 // Covers:
-//   Entra ID / Identity  (C-AZ-IAM-001 to C-AZ-IAM-015) — PIM, MFA, CA, Guest
+//   Entra ID / Identity  (C-AZ-IAM-001 to C-AZ-IAM-015) - PIM, MFA, CA, Guest
 //   Compute / AKS        (C-AZ-COMP-001 to C-AZ-COMP-010)
 //   Data & Storage       (C-AZ-DATA-001 to C-AZ-DATA-010)
 //   Network              (C-AZ-NET-001 to C-AZ-NET-008)
 //   Defense Evasion      (C-AZ-EVA-001 to C-AZ-EVA-008)
-//   Defender SIGs        (C-AZ-DEF-001 to C-AZ-DEF-008) — cloud.azure_defender
-//   Entra Audit SIGs     (C-AZ-AUDIT-001 to C-AZ-AUDIT-006) — cloud.entra_audit
+//   Defender SIGs        (C-AZ-DEF-001 to C-AZ-DEF-008) - cloud.azure_defender
+//   Entra Audit SIGs     (C-AZ-AUDIT-001 to C-AZ-AUDIT-006) - cloud.entra_audit
 
 import (
 	"strings"
@@ -21,7 +21,7 @@ import (
 var azureIAMSignatures = []ThreatSig{
 	{
 		ID: "C-AZ-IAM-001", Name: "Azure PIM Privileged Role Activated",
-		Description: "A privileged role was activated via Azure AD PIM (Privileged Identity Management). Legitimate PIM activations should have a business justification — monitor for unusual timing, unknown users, or repeated activations.",
+		Description: "A privileged role was activated via Azure AD PIM (Privileged Identity Management). Legitimate PIM activations should have a business justification - monitor for unusual timing, unknown users, or repeated activations.",
 		Severity: 3, MITRE: "T1548", Category: "Privilege Escalation",
 		Match: func(ev store.Event) bool {
 			raw := strings.ToLower(rawStr(ev))
@@ -46,7 +46,7 @@ var azureIAMSignatures = []ThreatSig{
 	},
 	{
 		ID: "C-AZ-IAM-003", Name: "Azure Service Principal Password/Certificate Added",
-		Description: "New credentials (password or certificate) added to an application service principal. This is a classic backdoor persistence technique — the attacker maintains access even after a password reset on the underlying user account.",
+		Description: "New credentials (password or certificate) added to an application service principal. This is a classic backdoor persistence technique - the attacker maintains access even after a password reset on the underlying user account.",
 		Severity: 5, MITRE: "T1098.001", Category: "Persistence",
 		Match: func(ev store.Event) bool {
 			raw := strings.ToLower(rawStr(ev))
@@ -95,7 +95,7 @@ var azureIAMSignatures = []ThreatSig{
 	},
 	{
 		ID: "C-AZ-IAM-007", Name: "Azure Subscription Owner Role Assigned",
-		Description: "Owner role assigned at subscription scope — full control over all resources in the subscription. Owner can create/delete resources, assign roles, access all data, and modify security controls.",
+		Description: "Owner role assigned at subscription scope - full control over all resources in the subscription. Owner can create/delete resources, assign roles, access all data, and modify security controls.",
 		Severity: 5, MITRE: "T1098.003", Category: "Privilege Escalation",
 		Match: func(ev store.Event) bool {
 			raw := strings.ToLower(rawStr(ev))
@@ -142,7 +142,7 @@ var azureIAMSignatures = []ThreatSig{
 	},
 	{
 		ID: "C-AZ-IAM-011", Name: "Azure AD Guest Invited with Admin Role",
-		Description: "External guest user invited and immediately granted an administrative role. Guests should never hold admin roles — they bypass many compliance controls.",
+		Description: "External guest user invited and immediately granted an administrative role. Guests should never hold admin roles - they bypass many compliance controls.",
 		Severity: 4, MITRE: "T1136.003", Category: "Persistence",
 		Match: func(ev store.Event) bool {
 			raw := strings.ToLower(rawStr(ev))
@@ -175,7 +175,7 @@ var azureIAMSignatures = []ThreatSig{
 	},
 	{
 		ID: "C-AZ-IAM-014", Name: "Azure AD Authorization Policy Modified",
-		Description: "Tenant-wide authorization policy changed. This controls who can consent to apps, create groups, and invite guests — changes here affect the entire tenant's security posture.",
+		Description: "Tenant-wide authorization policy changed. This controls who can consent to apps, create groups, and invite guests - changes here affect the entire tenant's security posture.",
 		Severity: 4, MITRE: "T1556", Category: "Defense Evasion",
 		Match: func(ev store.Event) bool {
 			raw := strings.ToLower(rawStr(ev))
@@ -203,7 +203,7 @@ var azureIAMSignatures = []ThreatSig{
 var azureComputeSignatures = []ThreatSig{
 	{
 		ID: "C-AZ-COMP-001", Name: "Azure VM Custom Script Extension Executed",
-		Description: "CustomScriptExtension or run-command executed on a VM — remote code execution without RDP/SSH. Legitimate use exists but this is also a primary persistence and lateral movement technique.",
+		Description: "CustomScriptExtension or run-command executed on a VM - remote code execution without RDP/SSH. Legitimate use exists but this is also a primary persistence and lateral movement technique.",
 		Severity: 4, MITRE: "T1059", Category: "Execution",
 		Match: func(ev store.Event) bool {
 			raw := strings.ToLower(rawStr(ev))
@@ -215,7 +215,7 @@ var azureComputeSignatures = []ThreatSig{
 	},
 	{
 		ID: "C-AZ-COMP-002", Name: "Azure VM Disk Snapshot Exported to SAS URL",
-		Description: "A managed disk or VM snapshot was granted a SAS access URI. This allows downloading the full disk contents — operating system, credentials, application data — to any internet-accessible location.",
+		Description: "A managed disk or VM snapshot was granted a SAS access URI. This allows downloading the full disk contents - operating system, credentials, application data - to any internet-accessible location.",
 		Severity: 4, MITRE: "T1537", Category: "Exfiltration",
 		Match: func(ev store.Event) bool {
 			raw := strings.ToLower(rawStr(ev))
@@ -238,7 +238,7 @@ var azureComputeSignatures = []ThreatSig{
 	},
 	{
 		ID: "C-AZ-COMP-004", Name: "AKS ClusterRoleBinding Grants cluster-admin",
-		Description: "A ClusterRoleBinding was created granting cluster-admin access — unrestricted access to all Kubernetes API operations. This is the highest privilege in a Kubernetes cluster.",
+		Description: "A ClusterRoleBinding was created granting cluster-admin access - unrestricted access to all Kubernetes API operations. This is the highest privilege in a Kubernetes cluster.",
 		Severity: 5, MITRE: "T1548", Category: "Privilege Escalation",
 		Match: func(ev store.Event) bool {
 			raw := strings.ToLower(rawStr(ev))
@@ -261,7 +261,7 @@ var azureComputeSignatures = []ThreatSig{
 	},
 	{
 		ID: "C-AZ-COMP-006", Name: "Azure Automation Runbook Created or Modified",
-		Description: "Automation Runbook created or updated — can run PowerShell/Python with the Automation Account's managed identity permissions. Used for legitimate automation but also as a persistence or lateral movement mechanism.",
+		Description: "Automation Runbook created or updated - can run PowerShell/Python with the Automation Account's managed identity permissions. Used for legitimate automation but also as a persistence or lateral movement mechanism.",
 		Severity: 3, MITRE: "T1053.005", Category: "Persistence",
 		Match: func(ev store.Event) bool {
 			raw := strings.ToLower(rawStr(ev))
@@ -334,7 +334,7 @@ var azureDataSignatures = []ThreatSig{
 	},
 	{
 		ID: "C-AZ-DATA-002", Name: "Azure Key Vault Secret Bulk Accessed",
-		Description: "Multiple Key Vault secrets retrieved in rapid succession — likely automated credential harvesting.",
+		Description: "Multiple Key Vault secrets retrieved in rapid succession - likely automated credential harvesting.",
 		Severity: 4, MITRE: "T1552.001", Category: "Credential Access",
 		Match: func(ev store.Event) bool {
 			raw := strings.ToLower(rawStr(ev))
@@ -345,7 +345,7 @@ var azureDataSignatures = []ThreatSig{
 	},
 	{
 		ID: "C-AZ-DATA-003", Name: "Azure Key Vault Key Deleted or Purged",
-		Description: "Key Vault key deleted or purged. Key deletion prevents decryption of any data encrypted under that key — equivalent to ransomware if the data hasn't been backed up.",
+		Description: "Key Vault key deleted or purged. Key deletion prevents decryption of any data encrypted under that key - equivalent to ransomware if the data hasn't been backed up.",
 		Severity: 5, MITRE: "T1485", Category: "Impact",
 		Match: func(ev store.Event) bool {
 			raw := strings.ToLower(rawStr(ev))
@@ -356,7 +356,7 @@ var azureDataSignatures = []ThreatSig{
 	},
 	{
 		ID: "C-AZ-DATA-004", Name: "Azure SQL Database Exported to Storage",
-		Description: "SQL database export (.bacpac) operation initiated. This creates a full copy of the database that can be downloaded from storage — a common data exfiltration technique.",
+		Description: "SQL database export (.bacpac) operation initiated. This creates a full copy of the database that can be downloaded from storage - a common data exfiltration technique.",
 		Severity: 4, MITRE: "T1537", Category: "Exfiltration",
 		Match: func(ev store.Event) bool {
 			raw := strings.ToLower(rawStr(ev))
@@ -404,7 +404,7 @@ var azureDataSignatures = []ThreatSig{
 	},
 	{
 		ID: "C-AZ-DATA-008", Name: "Azure SQL Auditing Disabled",
-		Description: "SQL Server or Database auditing configuration removed or disabled. SQL audit logs capture all queries, schema changes, and authentication events — disabling them creates a forensic blind spot.",
+		Description: "SQL Server or Database auditing configuration removed or disabled. SQL audit logs capture all queries, schema changes, and authentication events - disabling them creates a forensic blind spot.",
 		Severity: 4, MITRE: "T1562.008", Category: "Defense Evasion",
 		Match: func(ev store.Event) bool {
 			raw := strings.ToLower(rawStr(ev))
@@ -428,7 +428,7 @@ var azureDataSignatures = []ThreatSig{
 	},
 	{
 		ID: "C-AZ-DATA-010", Name: "Azure Backup Vault Soft Delete Disabled",
-		Description: "Backup vault soft delete disabled. Disabling soft delete allows immediate permanent deletion of backups — a prerequisite for ransomware attacks that target backup data.",
+		Description: "Backup vault soft delete disabled. Disabling soft delete allows immediate permanent deletion of backups - a prerequisite for ransomware attacks that target backup data.",
 		Severity: 5, MITRE: "T1490", Category: "Impact",
 		Match: func(ev store.Event) bool {
 			raw := strings.ToLower(rawStr(ev))
@@ -446,7 +446,7 @@ var azureDataSignatures = []ThreatSig{
 var azureNetworkSignatures = []ThreatSig{
 	{
 		ID: "C-AZ-NET-001", Name: "Azure Firewall Policy Deleted",
-		Description: "Azure Firewall policy deleted — centralized network filtering removed. Without Azure Firewall, east-west traffic between VNets and outbound internet traffic are unrestricted.",
+		Description: "Azure Firewall policy deleted - centralized network filtering removed. Without Azure Firewall, east-west traffic between VNets and outbound internet traffic are unrestricted.",
 		Severity: 5, MITRE: "T1562.007", Category: "Defense Evasion",
 		Match: func(ev store.Event) bool {
 			raw := strings.ToLower(rawStr(ev))
@@ -457,7 +457,7 @@ var azureNetworkSignatures = []ThreatSig{
 	},
 	{
 		ID: "C-AZ-NET-002", Name: "Azure DDoS Protection Plan Removed",
-		Description: "DDoS Protection plan removed from a virtual network — volumetric DDoS protection disabled.",
+		Description: "DDoS Protection plan removed from a virtual network - volumetric DDoS protection disabled.",
 		Severity: 3, MITRE: "T1562.001", Category: "Defense Evasion",
 		Match: func(ev store.Event) bool {
 			raw := strings.ToLower(rawStr(ev))
@@ -468,7 +468,7 @@ var azureNetworkSignatures = []ThreatSig{
 	},
 	{
 		ID: "C-AZ-NET-003", Name: "Azure Private DNS Zone Modified",
-		Description: "Private DNS zone record set modified. Modifying private DNS records can redirect internal service traffic — databases, APIs, authentication endpoints — to attacker-controlled infrastructure.",
+		Description: "Private DNS zone record set modified. Modifying private DNS records can redirect internal service traffic - databases, APIs, authentication endpoints - to attacker-controlled infrastructure.",
 		Severity: 4, MITRE: "T1584.002", Category: "Resource Development",
 		Match: func(ev store.Event) bool {
 			raw := strings.ToLower(rawStr(ev))
@@ -480,7 +480,7 @@ var azureNetworkSignatures = []ThreatSig{
 	},
 	{
 		ID: "C-AZ-NET-004", Name: "Azure VPN Gateway Connection Modified",
-		Description: "VPN Gateway connection created, modified, or deleted — corporate WAN connectivity to Azure changed.",
+		Description: "VPN Gateway connection created, modified, or deleted - corporate WAN connectivity to Azure changed.",
 		Severity: 3, MITRE: "T1572", Category: "Command and Control",
 		Match: func(ev store.Event) bool {
 			raw := strings.ToLower(rawStr(ev))
@@ -503,7 +503,7 @@ var azureNetworkSignatures = []ThreatSig{
 	},
 	{
 		ID: "C-AZ-NET-006", Name: "Azure Private Endpoint Deleted",
-		Description: "Private endpoint deleted — resource may now only be accessible via public endpoint. Services previously hidden behind private endpoints may be re-exposed to the internet.",
+		Description: "Private endpoint deleted - resource may now only be accessible via public endpoint. Services previously hidden behind private endpoints may be re-exposed to the internet.",
 		Severity: 3, MITRE: "T1562.007", Category: "Defense Evasion",
 		Match: func(ev store.Event) bool {
 			raw := strings.ToLower(rawStr(ev))
@@ -514,7 +514,7 @@ var azureNetworkSignatures = []ThreatSig{
 	},
 	{
 		ID: "C-AZ-NET-007", Name: "Azure ExpressRoute Circuit Modified",
-		Description: "ExpressRoute circuit or peering configuration changed — direct private connectivity between on-premises and Azure modified.",
+		Description: "ExpressRoute circuit or peering configuration changed - direct private connectivity between on-premises and Azure modified.",
 		Severity: 3, MITRE: "T1557", Category: "Collection",
 		Match: func(ev store.Event) bool {
 			raw := strings.ToLower(rawStr(ev))
@@ -543,7 +543,7 @@ var azureNetworkSignatures = []ThreatSig{
 var azureDefenseEvasionSignatures = []ThreatSig{
 	{
 		ID: "C-AZ-EVA-001", Name: "Azure Monitor Diagnostic Settings Deleted",
-		Description: "Diagnostic settings removed — audit log forwarding to Log Analytics, Storage, or Event Hub stopped. This creates a detection blind spot.",
+		Description: "Diagnostic settings removed - audit log forwarding to Log Analytics, Storage, or Event Hub stopped. This creates a detection blind spot.",
 		Severity: 5, MITRE: "T1562.008", Category: "Defense Evasion",
 		Match: func(ev store.Event) bool {
 			raw := strings.ToLower(rawStr(ev))
@@ -554,7 +554,7 @@ var azureDefenseEvasionSignatures = []ThreatSig{
 	},
 	{
 		ID: "C-AZ-EVA-002", Name: "Azure Monitor Alert Rule Deleted",
-		Description: "Metric or activity log alert rule deleted — monitoring notification for a critical condition removed.",
+		Description: "Metric or activity log alert rule deleted - monitoring notification for a critical condition removed.",
 		Severity: 3, MITRE: "T1562.001", Category: "Defense Evasion",
 		Match: func(ev store.Event) bool {
 			raw := strings.ToLower(rawStr(ev))
@@ -565,7 +565,7 @@ var azureDefenseEvasionSignatures = []ThreatSig{
 	},
 	{
 		ID: "C-AZ-EVA-003", Name: "Azure Policy Assignment Deleted",
-		Description: "Azure Policy assignment removed — compliance enforcement for one or more resource types disabled.",
+		Description: "Azure Policy assignment removed - compliance enforcement for one or more resource types disabled.",
 		Severity: 4, MITRE: "T1562.001", Category: "Defense Evasion",
 		Match: func(ev store.Event) bool {
 			raw := strings.ToLower(rawStr(ev))
@@ -599,7 +599,7 @@ var azureDefenseEvasionSignatures = []ThreatSig{
 	},
 	{
 		ID: "C-AZ-EVA-006", Name: "Azure Resource Lock Removed",
-		Description: "Delete or ReadOnly resource lock removed. Resource locks prevent accidental or malicious deletion of critical resources — removing them is a precursor to infrastructure destruction.",
+		Description: "Delete or ReadOnly resource lock removed. Resource locks prevent accidental or malicious deletion of critical resources - removing them is a precursor to infrastructure destruction.",
 		Severity: 4, MITRE: "T1485", Category: "Impact",
 		Match: func(ev store.Event) bool {
 			raw := strings.ToLower(rawStr(ev))
@@ -692,7 +692,7 @@ var azureDefenderSignatures = []ThreatSig{
 	},
 	{
 		ID: "C-AZ-DEF-006", Name: "Defender: Anomalous Azure Resource Deletion",
-		Description: "Defender for Cloud detected anomalous resource deletion activity — unusual volume, timing, or principal.",
+		Description: "Defender for Cloud detected anomalous resource deletion activity - unusual volume, timing, or principal.",
 		Severity: 4, MITRE: "T1485", Category: "Impact",
 		Match: func(ev store.Event) bool {
 			raw := strings.ToLower(rawStr(ev))
@@ -702,7 +702,7 @@ var azureDefenderSignatures = []ThreatSig{
 		},
 	},
 	{
-		ID: "C-AZ-DEF-007", Name: "Defender: Identity Threat — Suspicious Activity",
+		ID: "C-AZ-DEF-007", Name: "Defender: Identity Threat - Suspicious Activity",
 		Description: "Defender for Identity or Defender for Cloud Apps detected suspicious identity activity (impossible travel, anomalous token use, password spray).",
 		Severity: 4, MITRE: "T1078.004", Category: "Initial Access",
 		Match: func(ev store.Event) bool {
@@ -757,7 +757,7 @@ var azureAuditSignatures = []ThreatSig{
 	},
 	{
 		ID: "C-AZ-AUDIT-003", Name: "Entra Audit: Group Membership Bulk Change",
-		Description: "Large number of members added to or removed from a group in a short window — may indicate privilege escalation or account provisioning for lateral movement.",
+		Description: "Large number of members added to or removed from a group in a short window - may indicate privilege escalation or account provisioning for lateral movement.",
 		Severity: 3, MITRE: "T1098", Category: "Privilege Escalation",
 		Match: func(ev store.Event) bool {
 			raw := strings.ToLower(rawStr(ev))
@@ -779,7 +779,7 @@ var azureAuditSignatures = []ThreatSig{
 	},
 	{
 		ID: "C-AZ-AUDIT-005", Name: "Entra Audit: Authentication Method Policy Changed",
-		Description: "Authentication methods policy modified at the tenant level — controls which MFA methods are available to users. Weakening this policy reduces authentication strength.",
+		Description: "Authentication methods policy modified at the tenant level - controls which MFA methods are available to users. Weakening this policy reduces authentication strength.",
 		Severity: 4, MITRE: "T1556", Category: "Defense Evasion",
 		Match: func(ev store.Event) bool {
 			raw := strings.ToLower(rawStr(ev))
@@ -791,7 +791,7 @@ var azureAuditSignatures = []ThreatSig{
 	},
 	{
 		ID: "C-AZ-AUDIT-006", Name: "Entra Audit: Privileged Role Permanently Assigned (No PIM)",
-		Description: "Privileged Azure AD role assigned permanently without PIM just-in-time activation. Permanent role assignment means the account is always elevated — a larger blast radius if compromised.",
+		Description: "Privileged Azure AD role assigned permanently without PIM just-in-time activation. Permanent role assignment means the account is always elevated - a larger blast radius if compromised.",
 		Severity: 4, MITRE: "T1078.004", Category: "Privilege Escalation",
 		Match: func(ev store.Event) bool {
 			raw := strings.ToLower(rawStr(ev))

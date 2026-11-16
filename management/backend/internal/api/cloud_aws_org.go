@@ -1,6 +1,6 @@
 package api
 
-// cloud_aws_org.go — AWS Organizations onboarding (CR-02).
+// cloud_aws_org.go - AWS Organizations onboarding (CR-02).
 // Lists the member accounts of the organisation that the connector's
 // (management-account) credentials belong to and creates one AWS connector per
 // active account, each assuming a read-only role of a given name in that
@@ -100,7 +100,7 @@ func handleAWSOrgImport(db *store.DB) http.HandlerFunc {
 			}
 			b, code, perr := awsJSONPost(ctx, creds, "organizations", "organizations.us-east-1.amazonaws.com", "AWSOrganizationsV20161128.ListAccounts", body)
 			if perr != nil || code != 200 {
-				msg := "ListAccounts failed — the credentials must belong to the organisation's management (or delegated admin) account with organizations:ListAccounts"
+				msg := "ListAccounts failed - the credentials must belong to the organisation's management (or delegated admin) account with organizations:ListAccounts"
 				if perr == nil {
 					msg += fmt.Sprintf(" (HTTP %d)", code)
 				}

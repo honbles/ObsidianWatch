@@ -61,9 +61,9 @@ ObsidianWatch collects security telemetry from **endpoints**, **cloud accounts**
 ```
 obsidianwatch/
 ├── agents/
-│   ├── linux/            Linux agent  — systemd service
-│   ├── windows/          Windows agent — Windows Service + tamper DACL
-│   ├── macos/            macOS agent  — launchd daemon
+│   ├── linux/            Linux agent  - systemd service
+│   ├── windows/          Windows agent - Windows Service + tamper DACL
+│   ├── macos/            macOS agent  - launchd daemon
 │   └── network/          Network probe (under development)
 ├── backend/              Agent ingest server
 ├── management/
@@ -586,7 +586,7 @@ Notes:
 - Malicious **IP, domain and hash** indicators pulled from ThreatFox and OTX are all checked against the events above, live and in retro-hunt.
 - Hash matching needs the agent to report a file hash, so coverage depends on the collector (for example Windows file events via Sysmon).
 - **Confidence weighting:** IOCs below 25% confidence are ignored; 25–49% have their severity lowered.
-- Alerts read `[THREATFOX] Ip IOC Match — <value>` (or `[OTX]`), de-duplicate per source, value, host, hour and entity, and are emailed when they meet the SMTP minimum severity.
+- Alerts read `[THREATFOX] Ip IOC Match - <value>` (or `[OTX]`), de-duplicate per source, value, host, hour and entity, and are emailed when they meet the SMTP minimum severity.
 - DNS categorisation (Quad9, SURBL) and the tiered hash-reputation lookup run alongside IOC matching and are described in 6.2.
 
 ---

@@ -105,7 +105,7 @@ func NewVulnScanner(cfg VulnScannerConfig, agentID, host, osStr string,
 
 func (v *VulnScanner) Run(ctx context.Context) {
 	if !v.cfg.Enabled { return }
-	v.logger.Info("vuln: scanner ready — first scan in 30s")
+	v.logger.Info("vuln: scanner ready - first scan in 30s")
 	select { case <-ctx.Done(): return; case <-time.After(30 * time.Second): }
 	v.scan(ctx)
 	ticker := time.NewTicker(v.cfg.ScanInterval)
@@ -363,13 +363,13 @@ func collectSecurityFindings() []SecurityFinding {
 		})
 	}
 
-	// 8. Audit policy — check if audit logging is configured
+	// 8. Audit policy - check if audit logging is configured
 	out8, _ := exec.Command("auditpol", "/get", "/category:Logon/Logoff").Output()
 	if !strings.Contains(string(out8), "Success and Failure") {
 		findings = append(findings, SecurityFinding{
 			Category: "Audit Policy", Severity: 2,
 			Title:  "Logon/Logoff audit policy not fully configured",
-			Detail: "Not all logon events are being audited — reduces forensic visibility",
+			Detail: "Not all logon events are being audited - reduces forensic visibility",
 			Fix:    "auditpol /set /category:\"Logon/Logoff\" /success:enable /failure:enable",
 		})
 	}
@@ -415,12 +415,12 @@ var portRisks = map[int]portRisk{
 	21:    {"FTP",           "FTP transmits credentials in plaintext.", 4},
 	23:    {"Telnet",        "Telnet transmits everything in plaintext. Replace with SSH.", 5},
 	445:   {"SMB",           "SMB is the primary ransomware vector (EternalBlue/WannaCry).", 4},
-	1433:  {"MSSQL",         "SQL Server exposed — restrict to app servers only.", 4},
-	2375:  {"Docker API",    "Docker API unauthenticated — full root escape possible.", 5},
-	3306:  {"MySQL",         "MySQL exposed — bind to localhost.", 4},
+	1433:  {"MSSQL",         "SQL Server exposed - restrict to app servers only.", 4},
+	2375:  {"Docker API",    "Docker API unauthenticated - full root escape possible.", 5},
+	3306:  {"MySQL",         "MySQL exposed - bind to localhost.", 4},
 	3389:  {"RDP",           "RDP is a common brute-force and BlueKeep target.", 4},
-	4444:  {"Metasploit",    "Metasploit default port — investigate for C2.", 5},
-	5432:  {"PostgreSQL",    "PostgreSQL exposed — bind to localhost.", 4},
+	4444:  {"Metasploit",    "Metasploit default port - investigate for C2.", 5},
+	5432:  {"PostgreSQL",    "PostgreSQL exposed - bind to localhost.", 4},
 	5900:  {"VNC",           "VNC often has weak authentication.", 4},
 	6379:  {"Redis",         "Redis has no auth by default.", 4},
 	8080:  {"HTTP-alt",      "Unencrypted HTTP service.", 3},

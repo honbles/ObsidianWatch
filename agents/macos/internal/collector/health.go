@@ -2,7 +2,7 @@
 
 package collector
 
-// health.go — macOS agent health reporter.
+// health.go - macOS agent health reporter.
 // CPU via sysctl host.cpu_load_info, memory via vm.stat, all disks via getmntinfo,
 // top processes via /proc-style sysctl kern.proc.all + proc_pidinfo.
 
@@ -89,7 +89,7 @@ func (h *HealthReporter) Run(ctx context.Context) error {
 }
 
 // CPU_LOAD_INFO mib: host.cpu_load_info
-// Returns user/sys/idle/nice ticks since boot — we delta between calls.
+// Returns user/sys/idle/nice ticks since boot - we delta between calls.
 func (h *HealthReporter) readCPUPercent() float64 {
 	// host_statistics(HOST_CPU_LOAD_INFO) via sysctl
 	// Fallback to vm.loadavg if syscall unavailable
@@ -139,7 +139,7 @@ func readMemInfo() (totalMB, usedMB, pct float64) {
 
 // readAllDisks uses getmntinfo-style stat on all mounted filesystems.
 func readAllDisks() []DiskMetric {
-	// Use df -l for local filesystems — available on all macOS versions
+	// Use df -l for local filesystems - available on all macOS versions
 	out, err := exec.Command("df", "-lk").Output()
 	if err != nil {
 		return readRootDiskOnly()
@@ -215,7 +215,7 @@ func readRootDiskOnly() []DiskMetric {
 	}}
 }
 
-// readTopProcesses uses `ps` command — reliable on all macOS versions.
+// readTopProcesses uses `ps` command - reliable on all macOS versions.
 func readTopProcesses() []ProcessMetric {
 	out, err := exec.Command("ps", "-A", "-o", "pid,pcpu,rss,comm").Output()
 	if err != nil {

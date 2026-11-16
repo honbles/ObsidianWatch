@@ -2,7 +2,7 @@
 
 package collector
 
-// fim_audit.go — macOS file activity with PID via OpenBSM audit trail.
+// fim_audit.go - macOS file activity with PID via OpenBSM audit trail.
 //
 // /dev/auditpipe is a kernel facility that streams BSM audit records
 // including file operations with full PID attribution. This is the
@@ -11,11 +11,11 @@ package collector
 // Falls back to kqueue FIM (fim.go) if auditpipe is unavailable.
 //
 // Audit record types we care about:
-//   AUE_OPEN_RWT / AUE_OPEN_WT / AUE_OPEN_WTC — file open for write
-//   AUE_CREAT                                  — file create
-//   AUE_UNLINK / AUE_RMDIR                    — file delete
-//   AUE_RENAME                                 — file rename
-//   AUE_TRUNCATE                               — file truncate
+//   AUE_OPEN_RWT / AUE_OPEN_WT / AUE_OPEN_WTC - file open for write
+//   AUE_CREAT                                  - file create
+//   AUE_UNLINK / AUE_RMDIR                    - file delete
+//   AUE_RENAME                                 - file rename
+//   AUE_TRUNCATE                               - file truncate
 
 import (
 	"bufio"
@@ -118,7 +118,7 @@ func (a *AuditFIMCollector) runAuditPipe(ctx context.Context) error {
 
 	a.logger.Info("fim-audit: reading from /dev/auditpipe")
 
-	// Use praudit -x for XML output — easier to parse than raw BSM
+	// Use praudit -x for XML output - easier to parse than raw BSM
 	cmd := exec.CommandContext(ctx, "praudit", "-x")
 	cmd.Stdin = f
 	stdout, err := cmd.StdoutPipe()
@@ -133,7 +133,7 @@ func (a *AuditFIMCollector) runAuditPipe(ctx context.Context) error {
 	scanner := bufio.NewScanner(stdout)
 	scanner.Buffer(make([]byte, 1024*1024), 1024*1024)
 
-	// Parse praudit XML output — each record is wrapped in <record> tags
+	// Parse praudit XML output - each record is wrapped in <record> tags
 	var (
 		inRecord   bool
 		eventType  string

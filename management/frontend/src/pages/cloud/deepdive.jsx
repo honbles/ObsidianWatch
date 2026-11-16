@@ -147,7 +147,7 @@ export function PanelDeepDive({ cspm, conn }) {
             Identity & access misconfigurations, privilege escalation paths, external grants
           </div>
           {iamFindings.length === 0
-            ? <div style={{ fontSize:12, color:'#34d399', padding:'30px 0', textAlign:'center' }}>✓ No IAM findings — access looks well configured</div>
+            ? <div style={{ fontSize:12, color:'#34d399', padding:'30px 0', textAlign:'center' }}>✓ No IAM findings - access looks well configured</div>
             : Object.entries(iamGroups).map(([title, items]) => renderGroup(title, items))
           }
         </>)}

@@ -6,7 +6,7 @@ import (
 	"obsidianwatch/management/internal/store"
 )
 
-// cloud_gcp_sigs.go — GCP-specific threat detection rules
+// cloud_gcp_sigs.go - GCP-specific threat detection rules
 //
 // Covers 50 additional GCP rules across:
 //   - IAM & Privilege Escalation (C-GCP-021 to C-GCP-030)
@@ -27,7 +27,7 @@ import (
 var gcpIAMSignatures = []ThreatSig{
 	{
 		ID: "C-GCP-021", Name: "GCP Owner Role Granted to External User",
-		Description: "Project Owner role (roles/owner) granted to a non-serviceAccount identity — highest privilege escalation. Any user gaining Owner can create backdoor SAs, delete audit logs, and exfiltrate all data.",
+		Description: "Project Owner role (roles/owner) granted to a non-serviceAccount identity - highest privilege escalation. Any user gaining Owner can create backdoor SAs, delete audit logs, and exfiltrate all data.",
 		Severity: 5, MITRE: "T1098.003", Category: "Privilege Escalation",
 		Match: func(ev store.Event) bool {
 			return gcpExternalRoleGrant(ev, "roles/owner")
@@ -35,7 +35,7 @@ var gcpIAMSignatures = []ThreatSig{
 	},
 	{
 		ID: "C-GCP-022", Name: "GCP Editor Role Granted to External User",
-		Description: "Project Editor role granted to an external user or group — near-owner access to all GCP APIs.",
+		Description: "Project Editor role granted to an external user or group - near-owner access to all GCP APIs.",
 		Severity: 4, MITRE: "T1098.003", Category: "Privilege Escalation",
 		Match: func(ev store.Event) bool {
 			return gcpExternalRoleGrant(ev, "roles/editor")
@@ -43,7 +43,7 @@ var gcpIAMSignatures = []ThreatSig{
 	},
 	{
 		ID: "C-GCP-023", Name: "GCP Service Account Token Creator Granted",
-		Description: "iam.serviceAccountTokenCreator role granted — allows the grantee to impersonate any service account in the project, creating a privilege escalation path to any SA's permissions.",
+		Description: "iam.serviceAccountTokenCreator role granted - allows the grantee to impersonate any service account in the project, creating a privilege escalation path to any SA's permissions.",
 		Severity: 5, MITRE: "T1548.005", Category: "Privilege Escalation",
 		Match: func(ev store.Event) bool {
 			raw := strings.ToLower(rawStr(ev))
@@ -75,7 +75,7 @@ var gcpIAMSignatures = []ThreatSig{
 	},
 	{
 		ID: "C-GCP-026", Name: "GCP IAM Policy Modified on High-Value Resource",
-		Description: "IAM policy changed on a sensitive resource — KMS keyring, Secret Manager secret, Cloud SQL instance, or GCS bucket containing audit logs.",
+		Description: "IAM policy changed on a sensitive resource - KMS keyring, Secret Manager secret, Cloud SQL instance, or GCS bucket containing audit logs.",
 		Severity: 4, MITRE: "T1078.004", Category: "Privilege Escalation",
 		Match: func(ev store.Event) bool {
 			raw := strings.ToLower(rawStr(ev))
@@ -86,7 +86,7 @@ var gcpIAMSignatures = []ThreatSig{
 	},
 	{
 		ID: "C-GCP-027", Name: "GCP Workload Identity Pool Created",
-		Description: "Workload Identity Pool created — allows external identities (AWS, Azure, GitHub Actions, Kubernetes) to impersonate GCP service accounts. Misconfigured pools are an initial access vector.",
+		Description: "Workload Identity Pool created - allows external identities (AWS, Azure, GitHub Actions, Kubernetes) to impersonate GCP service accounts. Misconfigured pools are an initial access vector.",
 		Severity: 3, MITRE: "T1199", Category: "Initial Access",
 		Match: func(ev store.Event) bool {
 			raw := strings.ToLower(rawStr(ev))
@@ -97,7 +97,7 @@ var gcpIAMSignatures = []ThreatSig{
 	},
 	{
 		ID: "C-GCP-028", Name: "GCP Service Account Impersonation via generateAccessToken",
-		Description: "generateAccessToken or signJWT called against a service account — SA impersonation in progress. Legitimate use is rare outside Workload Identity flows.",
+		Description: "generateAccessToken or signJWT called against a service account - SA impersonation in progress. Legitimate use is rare outside Workload Identity flows.",
 		Severity: 4, MITRE: "T1548.005", Category: "Privilege Escalation",
 		Match: func(ev store.Event) bool {
 			raw := strings.ToLower(rawStr(ev))
@@ -110,7 +110,7 @@ var gcpIAMSignatures = []ThreatSig{
 	},
 	{
 		ID: "C-GCP-029", Name: "GCP IAM Deny Policy Deleted",
-		Description: "IAM Deny policy deleted — an explicit deny guardrail was removed. Deny policies take precedence over allow policies and are used to enforce mandatory access controls.",
+		Description: "IAM Deny policy deleted - an explicit deny guardrail was removed. Deny policies take precedence over allow policies and are used to enforce mandatory access controls.",
 		Severity: 4, MITRE: "T1562.001", Category: "Defense Evasion",
 		Match: func(ev store.Event) bool {
 			raw := strings.ToLower(rawStr(ev))
@@ -121,7 +121,7 @@ var gcpIAMSignatures = []ThreatSig{
 	},
 	{
 		ID: "C-GCP-030", Name: "GCP allUsers or allAuthenticatedUsers IAM Binding",
-		Description: "IAM policy binding added granting access to allUsers or allAuthenticatedUsers at the project, folder, or organization level — public access to project-level resources.",
+		Description: "IAM policy binding added granting access to allUsers or allAuthenticatedUsers at the project, folder, or organization level - public access to project-level resources.",
 		Severity: 5, MITRE: "T1078.004", Category: "Initial Access",
 		Match: func(ev store.Event) bool {
 			raw := strings.ToLower(rawStr(ev))
@@ -137,7 +137,7 @@ var gcpIAMSignatures = []ThreatSig{
 var gcpCredentialSignatures = []ThreatSig{
 	{
 		ID: "C-GCP-031", Name: "GCP OAuth Token Introspection",
-		Description: "OAuth token introspection endpoint queried — attacker may be validating stolen access tokens before use.",
+		Description: "OAuth token introspection endpoint queried - attacker may be validating stolen access tokens before use.",
 		Severity: 3, MITRE: "T1552.001", Category: "Credential Access",
 		Match: func(ev store.Event) bool {
 			return (ev.EventType == "cloud.gcp_audit" || ev.EventType == "network") &&
@@ -149,7 +149,7 @@ var gcpCredentialSignatures = []ThreatSig{
 	},
 	{
 		ID: "C-GCP-032", Name: "GCP Service Account Key Uploaded (External Key)",
-		Description: "External (user-managed) key uploaded to a service account — attacker may be inserting a backdoor credential they control.",
+		Description: "External (user-managed) key uploaded to a service account - attacker may be inserting a backdoor credential they control.",
 		Severity: 5, MITRE: "T1098.001", Category: "Persistence",
 		Match: func(ev store.Event) bool {
 			raw := strings.ToLower(rawStr(ev))
@@ -160,19 +160,19 @@ var gcpCredentialSignatures = []ThreatSig{
 	},
 	{
 		ID: "C-GCP-033", Name: "GCP Secret Manager Bulk Access",
-		Description: "Multiple Secret Manager secrets accessed in a short window — indicates automated credential harvesting, not normal application access.",
+		Description: "Multiple Secret Manager secrets accessed in a short window - indicates automated credential harvesting, not normal application access.",
 		Severity: 4, MITRE: "T1552.001", Category: "Credential Access",
 		Match: func(ev store.Event) bool {
 			raw := strings.ToLower(rawStr(ev))
 			return ev.EventType == "cloud.gcp_audit" &&
 				containsAny(raw, "secretmanager.versions.access", "accesssecretversion") &&
-				// Fire on high-severity events — engine should correlate volume
+				// Fire on high-severity events - engine should correlate volume
 				ev.Severity >= 3
 		},
 	},
 	{
 		ID: "C-GCP-034", Name: "GCP Compute Metadata Endpoint Queried via HTTP",
-		Description: "GCP instance metadata endpoint (metadata.google.internal or 169.254.169.254) queried directly — SSRF or credential theft. Valid SDKs use this endpoint internally but raw HTTP queries are suspicious.",
+		Description: "GCP instance metadata endpoint (metadata.google.internal or 169.254.169.254) queried directly - SSRF or credential theft. Valid SDKs use this endpoint internally but raw HTTP queries are suspicious.",
 		Severity: 4, MITRE: "T1552.005", Category: "Credential Access",
 		Match: func(ev store.Event) bool {
 			return (ev.EventType == "network" || ev.EventType == "cloud.gcp_audit") &&
@@ -185,7 +185,7 @@ var gcpCredentialSignatures = []ThreatSig{
 	},
 	{
 		ID: "C-GCP-035", Name: "GCP KMS CryptoKey Destroyed or Scheduled for Destruction",
-		Description: "KMS crypto key version scheduled for destruction or destroyed — could be ransomware preparation or deliberate sabotage. Key destruction is irreversible after the scheduled window.",
+		Description: "KMS crypto key version scheduled for destruction or destroyed - could be ransomware preparation or deliberate sabotage. Key destruction is irreversible after the scheduled window.",
 		Severity: 5, MITRE: "T1485", Category: "Impact",
 		Match: func(ev store.Event) bool {
 			raw := strings.ToLower(rawStr(ev))
@@ -197,7 +197,7 @@ var gcpCredentialSignatures = []ThreatSig{
 	},
 	{
 		ID: "C-GCP-036", Name: "GCP KMS Key Disabled",
-		Description: "KMS encryption key disabled — disabling a key with active data encrypted under it effectively ransoms that data.",
+		Description: "KMS encryption key disabled - disabling a key with active data encrypted under it effectively ransoms that data.",
 		Severity: 4, MITRE: "T1486", Category: "Impact",
 		Match: func(ev store.Event) bool {
 			raw := strings.ToLower(rawStr(ev))
@@ -208,7 +208,7 @@ var gcpCredentialSignatures = []ThreatSig{
 	},
 	{
 		ID: "C-GCP-037", Name: "GCP Cloud KMS Key Material Exported",
-		Description: "KMS key wrapping or import operation — key material may have been exported from the GCP boundary.",
+		Description: "KMS key wrapping or import operation - key material may have been exported from the GCP boundary.",
 		Severity: 4, MITRE: "T1552", Category: "Credential Access",
 		Match: func(ev store.Event) bool {
 			raw := strings.ToLower(rawStr(ev))
@@ -218,7 +218,7 @@ var gcpCredentialSignatures = []ThreatSig{
 	},
 	{
 		ID: "C-GCP-038", Name: "GCP Cloud Identity Password Reset",
-		Description: "Google Cloud Identity / Workspace account password reset by an admin — could be account takeover preparation.",
+		Description: "Google Cloud Identity / Workspace account password reset by an admin - could be account takeover preparation.",
 		Severity: 4, MITRE: "T1098", Category: "Persistence",
 		Match: func(ev store.Event) bool {
 			raw := strings.ToLower(rawStr(ev))
@@ -234,7 +234,7 @@ var gcpCredentialSignatures = []ThreatSig{
 var gcpComputeSignatures = []ThreatSig{
 	{
 		ID: "C-GCP-039", Name: "GCP Compute Instance Serial Console Enabled",
-		Description: "Serial console access enabled on a GCE instance — allows interactive console access that bypasses firewall rules and IAP. Often used for debugging but is a persistent backdoor when left on.",
+		Description: "Serial console access enabled on a GCE instance - allows interactive console access that bypasses firewall rules and IAP. Often used for debugging but is a persistent backdoor when left on.",
 		Severity: 3, MITRE: "T1133", Category: "Persistence",
 		Match: func(ev store.Event) bool {
 			raw := strings.ToLower(rawStr(ev))
@@ -246,7 +246,7 @@ var gcpComputeSignatures = []ThreatSig{
 	},
 	{
 		ID: "C-GCP-040", Name: "GCP GKE Cluster Master Authorized Networks Removed",
-		Description: "GKE cluster master authorized networks cleared — Kubernetes API server now accessible from any IP. Combined with any credential leak this is full cluster takeover.",
+		Description: "GKE cluster master authorized networks cleared - Kubernetes API server now accessible from any IP. Combined with any credential leak this is full cluster takeover.",
 		Severity: 5, MITRE: "T1190", Category: "Initial Access",
 		Match: func(ev store.Event) bool {
 			raw := strings.ToLower(rawStr(ev))
@@ -258,7 +258,7 @@ var gcpComputeSignatures = []ThreatSig{
 	},
 	{
 		ID: "C-GCP-041", Name: "GKE Cluster Node Pool Created with Default SA",
-		Description: "GKE node pool created using the default compute service account — all pods on these nodes inherit Editor-equivalent permissions via the metadata endpoint, enabling container escape to full project access.",
+		Description: "GKE node pool created using the default compute service account - all pods on these nodes inherit Editor-equivalent permissions via the metadata endpoint, enabling container escape to full project access.",
 		Severity: 4, MITRE: "T1078.004", Category: "Privilege Escalation",
 		Match: func(ev store.Event) bool {
 			raw := strings.ToLower(rawStr(ev))
@@ -269,7 +269,7 @@ var gcpComputeSignatures = []ThreatSig{
 	},
 	{
 		ID: "C-GCP-042", Name: "GKE Kubernetes exec into Pod",
-		Description: "kubectl exec used to open a shell in a running pod — interactive access to container internals. Legitimate for debugging but a significant lateral movement vector if done to non-test pods.",
+		Description: "kubectl exec used to open a shell in a running pod - interactive access to container internals. Legitimate for debugging but a significant lateral movement vector if done to non-test pods.",
 		Severity: 3, MITRE: "T1609", Category: "Execution",
 		Match: func(ev store.Event) bool {
 			raw := strings.ToLower(rawStr(ev))
@@ -281,7 +281,7 @@ var gcpComputeSignatures = []ThreatSig{
 	},
 	{
 		ID: "C-GCP-043", Name: "GKE Privileged Container Created",
-		Description: "Kubernetes pod created with securityContext.privileged=true — privileged containers have full access to the host kernel and are a standard container escape vector.",
+		Description: "Kubernetes pod created with securityContext.privileged=true - privileged containers have full access to the host kernel and are a standard container escape vector.",
 		Severity: 5, MITRE: "T1611", Category: "Privilege Escalation",
 		Match: func(ev store.Event) bool {
 			raw := strings.ToLower(rawStr(ev))
@@ -293,7 +293,7 @@ var gcpComputeSignatures = []ThreatSig{
 	},
 	{
 		ID: "C-GCP-044", Name: "GKE ClusterRoleBinding Created for cluster-admin",
-		Description: "ClusterRoleBinding created granting cluster-admin — full unrestricted access to the Kubernetes API across all namespaces. This is the Kubernetes equivalent of IAM Owner.",
+		Description: "ClusterRoleBinding created granting cluster-admin - full unrestricted access to the Kubernetes API across all namespaces. This is the Kubernetes equivalent of IAM Owner.",
 		Severity: 5, MITRE: "T1548", Category: "Privilege Escalation",
 		Match: func(ev store.Event) bool {
 			raw := strings.ToLower(rawStr(ev))
@@ -306,7 +306,7 @@ var gcpComputeSignatures = []ThreatSig{
 	},
 	{
 		ID: "C-GCP-045", Name: "GCP Cloud Build Trigger Modified",
-		Description: "Cloud Build trigger created or updated — CI/CD pipeline changes can inject malicious build steps that exfiltrate secrets, deploy backdoored containers, or modify infrastructure.",
+		Description: "Cloud Build trigger created or updated - CI/CD pipeline changes can inject malicious build steps that exfiltrate secrets, deploy backdoored containers, or modify infrastructure.",
 		Severity: 3, MITRE: "T1195.002", Category: "Initial Access",
 		Match: func(ev store.Event) bool {
 			raw := strings.ToLower(rawStr(ev))
@@ -317,7 +317,7 @@ var gcpComputeSignatures = []ThreatSig{
 	},
 	{
 		ID: "C-GCP-046", Name: "GCP Artifact Registry Repository Made Public",
-		Description: "Artifact Registry or Container Registry IAM policy grants allUsers access — container images or packages exposed publicly, enabling supply chain attacks.",
+		Description: "Artifact Registry or Container Registry IAM policy grants allUsers access - container images or packages exposed publicly, enabling supply chain attacks.",
 		Severity: 4, MITRE: "T1195.001", Category: "Initial Access",
 		Match: func(ev store.Event) bool {
 			raw := strings.ToLower(rawStr(ev))
@@ -329,7 +329,7 @@ var gcpComputeSignatures = []ThreatSig{
 	},
 	{
 		ID: "C-GCP-047", Name: "GCP Compute Instance Metadata Modified to Disable OS Login",
-		Description: "OS Login disabled on a GCE instance or project — fallback to SSH key metadata auth which is harder to centrally revoke and audit.",
+		Description: "OS Login disabled on a GCE instance or project - fallback to SSH key metadata auth which is harder to centrally revoke and audit.",
 		Severity: 3, MITRE: "T1556", Category: "Defense Evasion",
 		Match: func(ev store.Event) bool {
 			raw := strings.ToLower(rawStr(ev))
@@ -357,7 +357,7 @@ var gcpDataSignatures = []ThreatSig{
 	},
 	{
 		ID: "C-GCP-049", Name: "GCP BigQuery Table Data Exported",
-		Description: "BigQuery extract job created — large data export from BigQuery to GCS or external location. A common exfiltration pattern: query → extract job → copy bucket to external account.",
+		Description: "BigQuery extract job created - large data export from BigQuery to GCS or external location. A common exfiltration pattern: query → extract job → copy bucket to external account.",
 		Severity: 3, MITRE: "T1537", Category: "Exfiltration",
 		Match: func(ev store.Event) bool {
 			raw := strings.ToLower(rawStr(ev))
@@ -368,7 +368,7 @@ var gcpDataSignatures = []ThreatSig{
 	},
 	{
 		ID: "C-GCP-050", Name: "GCP BigQuery Dataset Deleted",
-		Description: "BigQuery dataset deleted — data destruction or post-exfiltration cleanup.",
+		Description: "BigQuery dataset deleted - data destruction or post-exfiltration cleanup.",
 		Severity: 4, MITRE: "T1485", Category: "Impact",
 		Match: func(ev store.Event) bool {
 			raw := strings.ToLower(rawStr(ev))
@@ -378,7 +378,7 @@ var gcpDataSignatures = []ThreatSig{
 	},
 	{
 		ID: "C-GCP-051", Name: "GCP Cloud Spanner Database Deleted",
-		Description: "Cloud Spanner instance or database deleted — catastrophic data loss for mission-critical systems.",
+		Description: "Cloud Spanner instance or database deleted - catastrophic data loss for mission-critical systems.",
 		Severity: 5, MITRE: "T1485", Category: "Impact",
 		Match: func(ev store.Event) bool {
 			raw := strings.ToLower(rawStr(ev))
@@ -389,7 +389,7 @@ var gcpDataSignatures = []ThreatSig{
 	},
 	{
 		ID: "C-GCP-052", Name: "GCP Cloud SQL Backup Deleted",
-		Description: "Cloud SQL automated or manual backup deleted — precedes ransomware or data destruction to eliminate recovery options.",
+		Description: "Cloud SQL automated or manual backup deleted - precedes ransomware or data destruction to eliminate recovery options.",
 		Severity: 4, MITRE: "T1490", Category: "Impact",
 		Match: func(ev store.Event) bool {
 			raw := strings.ToLower(rawStr(ev))
@@ -399,7 +399,7 @@ var gcpDataSignatures = []ThreatSig{
 	},
 	{
 		ID: "C-GCP-053", Name: "GCP GCS Bucket Transferred to External Project",
-		Description: "Storage Transfer Service job or GCS bucket CORS/ACL modified to allow cross-project access — possible data staging for exfiltration.",
+		Description: "Storage Transfer Service job or GCS bucket CORS/ACL modified to allow cross-project access - possible data staging for exfiltration.",
 		Severity: 3, MITRE: "T1537", Category: "Exfiltration",
 		Match: func(ev store.Event) bool {
 			raw := strings.ToLower(rawStr(ev))
@@ -410,7 +410,7 @@ var gcpDataSignatures = []ThreatSig{
 	},
 	{
 		ID: "C-GCP-054", Name: "GCP Dataflow Job Created with External Sink",
-		Description: "Dataflow pipeline created — batch or streaming jobs can silently exfiltrate data to external BigQuery, GCS, or PubSub destinations outside the project.",
+		Description: "Dataflow pipeline created - batch or streaming jobs can silently exfiltrate data to external BigQuery, GCS, or PubSub destinations outside the project.",
 		Severity: 2, MITRE: "T1537", Category: "Exfiltration",
 		Match: func(ev store.Event) bool {
 			raw := strings.ToLower(rawStr(ev))
@@ -425,7 +425,7 @@ var gcpDataSignatures = []ThreatSig{
 var gcpNetworkSignatures = []ThreatSig{
 	{
 		ID: "C-GCP-055", Name: "GCP VPC Service Control Perimeter Modified",
-		Description: "VPC Service Control perimeter updated — access policy to restrict GCP APIs by network changed. Weakening or deleting a perimeter exposes APIs to exfiltration from outside the VPC.",
+		Description: "VPC Service Control perimeter updated - access policy to restrict GCP APIs by network changed. Weakening or deleting a perimeter exposes APIs to exfiltration from outside the VPC.",
 		Severity: 4, MITRE: "T1562.007", Category: "Defense Evasion",
 		Match: func(ev store.Event) bool {
 			raw := strings.ToLower(rawStr(ev))
@@ -437,7 +437,7 @@ var gcpNetworkSignatures = []ThreatSig{
 	},
 	{
 		ID: "C-GCP-056", Name: "GCP Cloud Armor Security Policy Deleted",
-		Description: "Cloud Armor WAF/DDoS policy deleted — application-layer protection removed from load balancer.",
+		Description: "Cloud Armor WAF/DDoS policy deleted - application-layer protection removed from load balancer.",
 		Severity: 4, MITRE: "T1562.007", Category: "Defense Evasion",
 		Match: func(ev store.Event) bool {
 			raw := strings.ToLower(rawStr(ev))
@@ -447,7 +447,7 @@ var gcpNetworkSignatures = []ThreatSig{
 	},
 	{
 		ID: "C-GCP-057", Name: "GCP Private Google Access Disabled on Subnet",
-		Description: "Private Google Access disabled on a VPC subnet — VMs without public IPs can no longer reach Google APIs, but also indicates network configuration tampering.",
+		Description: "Private Google Access disabled on a VPC subnet - VMs without public IPs can no longer reach Google APIs, but also indicates network configuration tampering.",
 		Severity: 2, MITRE: "T1562.007", Category: "Defense Evasion",
 		Match: func(ev store.Event) bool {
 			raw := strings.ToLower(rawStr(ev))
@@ -458,7 +458,7 @@ var gcpNetworkSignatures = []ThreatSig{
 	},
 	{
 		ID: "C-GCP-058", Name: "GCP Cloud NAT Gateway Deleted",
-		Description: "Cloud NAT configuration deleted — outbound internet connectivity for private VMs lost, or network topology deliberately modified.",
+		Description: "Cloud NAT configuration deleted - outbound internet connectivity for private VMs lost, or network topology deliberately modified.",
 		Severity: 3, MITRE: "T1485", Category: "Impact",
 		Match: func(ev store.Event) bool {
 			raw := strings.ToLower(rawStr(ev))
@@ -469,7 +469,7 @@ var gcpNetworkSignatures = []ThreatSig{
 	},
 	{
 		ID: "C-GCP-059", Name: "GCP Interconnect or VPN Peer Config Changed",
-		Description: "Dedicated Interconnect or Cloud VPN peer tunnel configuration modified — corporate WAN connectivity tampered with.",
+		Description: "Dedicated Interconnect or Cloud VPN peer tunnel configuration modified - corporate WAN connectivity tampered with.",
 		Severity: 3, MITRE: "T1557", Category: "Collection",
 		Match: func(ev store.Event) bool {
 			raw := strings.ToLower(rawStr(ev))
@@ -482,7 +482,7 @@ var gcpNetworkSignatures = []ThreatSig{
 	},
 	{
 		ID: "C-GCP-060", Name: "GCP DNS Zone Modified",
-		Description: "Cloud DNS managed zone record modified — DNS hijacking vector. Changing NS, A, or MX records can redirect traffic.",
+		Description: "Cloud DNS managed zone record modified - DNS hijacking vector. Changing NS, A, or MX records can redirect traffic.",
 		Severity: 4, MITRE: "T1584.002", Category: "Resource Development",
 		Match: func(ev store.Event) bool {
 			raw := strings.ToLower(rawStr(ev))
@@ -493,7 +493,7 @@ var gcpNetworkSignatures = []ThreatSig{
 	},
 	{
 		ID: "C-GCP-061", Name: "GCP Shared VPC Host Project Association Changed",
-		Description: "Shared VPC host project association added or removed — changes which projects share network resources, a lateral movement path between projects.",
+		Description: "Shared VPC host project association added or removed - changes which projects share network resources, a lateral movement path between projects.",
 		Severity: 3, MITRE: "T1078.004", Category: "Lateral Movement",
 		Match: func(ev store.Event) bool {
 			raw := strings.ToLower(rawStr(ev))
@@ -510,7 +510,7 @@ var gcpNetworkSignatures = []ThreatSig{
 var gcpDefenseEvasionSignatures = []ThreatSig{
 	{
 		ID: "C-GCP-062", Name: "GCP Audit Log Configuration Modified",
-		Description: "Cloud Audit Log configuration changed — DATA_READ or DATA_WRITE audit logging disabled for one or more GCP services. Attackers disable audit logging to hide subsequent activity.",
+		Description: "Cloud Audit Log configuration changed - DATA_READ or DATA_WRITE audit logging disabled for one or more GCP services. Attackers disable audit logging to hide subsequent activity.",
 		Severity: 5, MITRE: "T1562.008", Category: "Defense Evasion",
 		Match: func(ev store.Event) bool {
 			raw := strings.ToLower(rawStr(ev))
@@ -523,7 +523,7 @@ var gcpDefenseEvasionSignatures = []ThreatSig{
 	},
 	{
 		ID: "C-GCP-063", Name: "GCP Cloud Logging Sink Deleted",
-		Description: "Log sink (export) deleted — audit log forwarding to SIEM, GCS, or BigQuery stopped. An attacker clearing evidence or creating a detection blind spot.",
+		Description: "Log sink (export) deleted - audit log forwarding to SIEM, GCS, or BigQuery stopped. An attacker clearing evidence or creating a detection blind spot.",
 		Severity: 4, MITRE: "T1562.008", Category: "Defense Evasion",
 		Match: func(ev store.Event) bool {
 			raw := strings.ToLower(rawStr(ev))
@@ -533,7 +533,7 @@ var gcpDefenseEvasionSignatures = []ThreatSig{
 	},
 	{
 		ID: "C-GCP-064", Name: "GCP Cloud Logging Exclusion Created",
-		Description: "Log exclusion filter created — specific log entries will now be silently dropped before reaching Cloud Logging. Used to hide specific operation types.",
+		Description: "Log exclusion filter created - specific log entries will now be silently dropped before reaching Cloud Logging. Used to hide specific operation types.",
 		Severity: 4, MITRE: "T1562.008", Category: "Defense Evasion",
 		Match: func(ev store.Event) bool {
 			raw := strings.ToLower(rawStr(ev))
@@ -545,7 +545,7 @@ var gcpDefenseEvasionSignatures = []ThreatSig{
 	},
 	{
 		ID: "C-GCP-065", Name: "GCP Security Command Center Notification Deleted",
-		Description: "SCC notification config deleted — real-time SCC finding alerts to Pub/Sub stopped. An attacker may disable SCC notifications to prevent alerting on their subsequent actions.",
+		Description: "SCC notification config deleted - real-time SCC finding alerts to Pub/Sub stopped. An attacker may disable SCC notifications to prevent alerting on their subsequent actions.",
 		Severity: 4, MITRE: "T1562.001", Category: "Defense Evasion",
 		Match: func(ev store.Event) bool {
 			raw := strings.ToLower(rawStr(ev))
@@ -556,7 +556,7 @@ var gcpDefenseEvasionSignatures = []ThreatSig{
 	},
 	{
 		ID: "C-GCP-066", Name: "GCP Binary Authorization Policy Weakened",
-		Description: "Binary Authorization policy changed to allow unverified images or set to dry-run mode — container image integrity enforcement weakened.",
+		Description: "Binary Authorization policy changed to allow unverified images or set to dry-run mode - container image integrity enforcement weakened.",
 		Severity: 3, MITRE: "T1195.001", Category: "Defense Evasion",
 		Match: func(ev store.Event) bool {
 			raw := strings.ToLower(rawStr(ev))
@@ -568,7 +568,7 @@ var gcpDefenseEvasionSignatures = []ThreatSig{
 	},
 	{
 		ID: "C-GCP-067", Name: "GCP Asset Inventory Feed Deleted",
-		Description: "Cloud Asset Inventory feed deleted — real-time resource change notifications stopped. Used for continuous compliance monitoring.",
+		Description: "Cloud Asset Inventory feed deleted - real-time resource change notifications stopped. Used for continuous compliance monitoring.",
 		Severity: 3, MITRE: "T1562.001", Category: "Defense Evasion",
 		Match: func(ev store.Event) bool {
 			raw := strings.ToLower(rawStr(ev))
@@ -578,7 +578,7 @@ var gcpDefenseEvasionSignatures = []ThreatSig{
 	},
 	{
 		ID: "C-GCP-068", Name: "GCP Project Lien Removed",
-		Description: "Project lien (deletion protection) removed — project can now be deleted. Removal of liens is a prerequisite for catastrophic project-level data destruction.",
+		Description: "Project lien (deletion protection) removed - project can now be deleted. Removal of liens is a prerequisite for catastrophic project-level data destruction.",
 		Severity: 4, MITRE: "T1485", Category: "Impact",
 		Match: func(ev store.Event) bool {
 			raw := strings.ToLower(rawStr(ev))
@@ -593,7 +593,7 @@ var gcpDefenseEvasionSignatures = []ThreatSig{
 var gcpPersistenceSignatures = []ThreatSig{
 	{
 		ID: "C-GCP-069", Name: "GCP Cloud Function Deployed with Broad IAM Role",
-		Description: "Cloud Function deployed and its service account has Owner, Editor, or other broad role. Serverless functions are a stealthy persistence mechanism — they survive VM reboots and are often overlooked in IR.",
+		Description: "Cloud Function deployed and its service account has Owner, Editor, or other broad role. Serverless functions are a stealthy persistence mechanism - they survive VM reboots and are often overlooked in IR.",
 		Severity: 4, MITRE: "T1525", Category: "Persistence",
 		Match: func(ev store.Event) bool {
 			raw := strings.ToLower(rawStr(ev))
@@ -604,7 +604,7 @@ var gcpPersistenceSignatures = []ThreatSig{
 	},
 	{
 		ID: "C-GCP-070", Name: "GCP Cloud Run Service Deployed Outside CI/CD",
-		Description: "Cloud Run service deployed by a human user identity (not a build SA) — manual production deployments bypass CI/CD controls and may contain unreviewed code.",
+		Description: "Cloud Run service deployed by a human user identity (not a build SA) - manual production deployments bypass CI/CD controls and may contain unreviewed code.",
 		Severity: 3, MITRE: "T1525", Category: "Persistence",
 		Match: func(ev store.Event) bool {
 			raw := strings.ToLower(rawStr(ev))
@@ -616,7 +616,7 @@ var gcpPersistenceSignatures = []ThreatSig{
 	},
 	{
 		ID: "C-GCP-071", Name: "GCP Cloud Workflow Created",
-		Description: "Google Cloud Workflow created or updated — orchestration workflows can chain API calls and are a persistence or automation mechanism for attackers with compromised credentials.",
+		Description: "Google Cloud Workflow created or updated - orchestration workflows can chain API calls and are a persistence or automation mechanism for attackers with compromised credentials.",
 		Severity: 2, MITRE: "T1053", Category: "Persistence",
 		Match: func(ev store.Event) bool {
 			raw := strings.ToLower(rawStr(ev))
@@ -627,7 +627,7 @@ var gcpPersistenceSignatures = []ThreatSig{
 	},
 	{
 		ID: "C-GCP-072", Name: "GCP SSH Key Added to Project Metadata",
-		Description: "SSH key added to GCE project-wide metadata — affects all VMs in the project without OS Login. A single key injection grants SSH access to every instance.",
+		Description: "SSH key added to GCE project-wide metadata - affects all VMs in the project without OS Login. A single key injection grants SSH access to every instance.",
 		Severity: 4, MITRE: "T1098.004", Category: "Persistence",
 		Match: func(ev store.Event) bool {
 			raw := strings.ToLower(rawStr(ev))
@@ -638,7 +638,7 @@ var gcpPersistenceSignatures = []ThreatSig{
 	},
 	{
 		ID: "C-GCP-073", Name: "GCP Pub/Sub Push Subscription to External Endpoint",
-		Description: "Pub/Sub push subscription configured to forward messages to an external HTTPS endpoint — live data exfiltration pipeline established.",
+		Description: "Pub/Sub push subscription configured to forward messages to an external HTTPS endpoint - live data exfiltration pipeline established.",
 		Severity: 3, MITRE: "T1537", Category: "Exfiltration",
 		Match: func(ev store.Event) bool {
 			raw := strings.ToLower(rawStr(ev))
@@ -651,7 +651,7 @@ var gcpPersistenceSignatures = []ThreatSig{
 }
 
 // ── Security Command Center (SCC) findings ────────────────────────────────────
-// These rules match on cloud.gcp_scc event type — SCC finding events
+// These rules match on cloud.gcp_scc event type - SCC finding events
 // pushed via Pub/Sub and ingested by the GCP sync connector.
 
 var gcpSCCSignatures = []ThreatSig{
@@ -668,7 +668,7 @@ var gcpSCCSignatures = []ThreatSig{
 	},
 	{
 		ID: "C-SCC-002", Name: "SCC: Cryptomining Detected",
-		Description: "SCC detected cryptocurrency mining activity — compromised compute resources being abused for financial gain.",
+		Description: "SCC detected cryptocurrency mining activity - compromised compute resources being abused for financial gain.",
 		Severity: 4, MITRE: "T1496", Category: "Impact",
 		Match: func(ev store.Event) bool {
 			raw := strings.ToLower(rawStr(ev))
@@ -678,7 +678,7 @@ var gcpSCCSignatures = []ThreatSig{
 	},
 	{
 		ID: "C-SCC-003", Name: "SCC: Anomalous IAM Grant Detected",
-		Description: "SCC detected an anomalous IAM grant — identity access patterns deviate from baseline, indicating potential account compromise or insider threat.",
+		Description: "SCC detected an anomalous IAM grant - identity access patterns deviate from baseline, indicating potential account compromise or insider threat.",
 		Severity: 4, MITRE: "T1078.004", Category: "Privilege Escalation",
 		Match: func(ev store.Event) bool {
 			raw := strings.ToLower(rawStr(ev))
@@ -689,7 +689,7 @@ var gcpSCCSignatures = []ThreatSig{
 	},
 	{
 		ID: "C-SCC-004", Name: "SCC: Exfiltration Finding",
-		Description: "SCC detected a data exfiltration attempt — data copied to external resources or unusual egress patterns observed.",
+		Description: "SCC detected a data exfiltration attempt - data copied to external resources or unusual egress patterns observed.",
 		Severity: 5, MITRE: "T1537", Category: "Exfiltration",
 		Match: func(ev store.Event) bool {
 			raw := strings.ToLower(rawStr(ev))
@@ -700,7 +700,7 @@ var gcpSCCSignatures = []ThreatSig{
 	},
 	{
 		ID: "C-SCC-005", Name: "SCC: Malware Detected on GCE Instance",
-		Description: "SCC / VM Threat Detection identified malware executing on a GCE instance — kernel-level detection of in-memory malware.",
+		Description: "SCC / VM Threat Detection identified malware executing on a GCE instance - kernel-level detection of in-memory malware.",
 		Severity: 5, MITRE: "T1059", Category: "Execution",
 		Match: func(ev store.Event) bool {
 			raw := strings.ToLower(rawStr(ev))
@@ -711,7 +711,7 @@ var gcpSCCSignatures = []ThreatSig{
 	},
 	{
 		ID: "C-SCC-006", Name: "SCC: Container Escape / Breakout Detected",
-		Description: "SCC detected a container escape attempt — containerized workload accessing host resources outside its expected scope.",
+		Description: "SCC detected a container escape attempt - containerized workload accessing host resources outside its expected scope.",
 		Severity: 5, MITRE: "T1611", Category: "Privilege Escalation",
 		Match: func(ev store.Event) bool {
 			raw := strings.ToLower(rawStr(ev))
@@ -721,7 +721,7 @@ var gcpSCCSignatures = []ThreatSig{
 		},
 	},
 	{
-		ID: "C-SCC-007", Name: "SCC: Initial Access — SSH/RDP Brute Force",
+		ID: "C-SCC-007", Name: "SCC: Initial Access - SSH/RDP Brute Force",
 		Description: "SCC detected brute force authentication attempts against SSH or RDP on a GCE instance.",
 		Severity: 3, MITRE: "T1110", Category: "Credential Access",
 		Match: func(ev store.Event) bool {
@@ -733,7 +733,7 @@ var gcpSCCSignatures = []ThreatSig{
 	},
 	{
 		ID: "C-SCC-008", Name: "SCC: Dormant Service Account Activity",
-		Description: "SCC detected activity from a service account that had been dormant — suggests credential theft and delayed use.",
+		Description: "SCC detected activity from a service account that had been dormant - suggests credential theft and delayed use.",
 		Severity: 4, MITRE: "T1078.004", Category: "Initial Access",
 		Match: func(ev store.Event) bool {
 			raw := strings.ToLower(rawStr(ev))
@@ -749,7 +749,7 @@ var gcpSCCSignatures = []ThreatSig{
 var gcpNewSignatures = []ThreatSig{
 	{
 		ID: "C-GCP-074", Name: "Cloud Run Deployed with Unauthenticated Access",
-		Description: "A Cloud Run service was deployed or updated allowing unauthenticated invocations (allUsers granted roles/run.invoker). Any internet user can now invoke this service — this is the serverless equivalent of a public RCE endpoint.",
+		Description: "A Cloud Run service was deployed or updated allowing unauthenticated invocations (allUsers granted roles/run.invoker). Any internet user can now invoke this service - this is the serverless equivalent of a public RCE endpoint.",
 		Severity: 4, MITRE: "T1190", Category: "Initial Access",
 		Match: func(ev store.Event) bool {
 			raw := strings.ToLower(rawStr(ev))
@@ -785,7 +785,7 @@ var gcpNewSignatures = []ThreatSig{
 	},
 	{
 		ID: "C-GCP-077", Name: "Org Policy Constraint Deleted or Overridden",
-		Description: "A restrictive organization policy constraint was deleted, set to restore-default, or overridden. Org policies are guardrails that prevent misconfigurations at scale — removing them enables attacks that the policy was blocking (e.g., re-enabling SA key creation after iam.disableServiceAccountKeyCreation was enforced).",
+		Description: "A restrictive organization policy constraint was deleted, set to restore-default, or overridden. Org policies are guardrails that prevent misconfigurations at scale - removing them enables attacks that the policy was blocking (e.g., re-enabling SA key creation after iam.disableServiceAccountKeyCreation was enforced).",
 		Severity: 4, MITRE: "T1562.001", Category: "Defense Evasion",
 		Match: func(ev store.Event) bool {
 			raw := strings.ToLower(rawStr(ev))
@@ -799,7 +799,7 @@ var gcpNewSignatures = []ThreatSig{
 	},
 	{
 		ID: "C-GCP-078", Name: "VPC Peering Created to External / Unknown Project",
-		Description: "A new VPC peering connection was created. Peering creates bidirectional network paths between projects — a compromised peer project can reach internal services. Peering to unknown projects is a lateral movement enabler.",
+		Description: "A new VPC peering connection was created. Peering creates bidirectional network paths between projects - a compromised peer project can reach internal services. Peering to unknown projects is a lateral movement enabler.",
 		Severity: 3, MITRE: "T1599", Category: "Lateral Movement",
 		Match: func(ev store.Event) bool {
 			raw := strings.ToLower(rawStr(ev))
@@ -824,7 +824,7 @@ var gcpNewSignatures = []ThreatSig{
 	},
 	{
 		ID: "C-GCP-080", Name: "BigQuery Dataset Shared with External Domain",
-		Description: "A BigQuery dataset IAM policy was updated to grant access to a user or group outside the organization's domain. Sharing datasets with external identities is a common insider threat exfiltration vector — entire datasets can be queried and exported.",
+		Description: "A BigQuery dataset IAM policy was updated to grant access to a user or group outside the organization's domain. Sharing datasets with external identities is a common insider threat exfiltration vector - entire datasets can be queried and exported.",
 		Severity: 4, MITRE: "T1530", Category: "Exfiltration",
 		Match: func(ev store.Event) bool {
 			raw := strings.ToLower(rawStr(ev))
@@ -936,7 +936,7 @@ var gcpTelemetrySignatures = []ThreatSig{
 	},
 	{
 		ID: "C-GCP-DNS-001", Name: "Possible DNS Tunnelling (Long Query Name)",
-		Description: "A Cloud DNS query had an unusually long name or label, or used a TXT/NULL record type with a long name — common in DNS tunnelling and C2-over-DNS.",
+		Description: "A Cloud DNS query had an unusually long name or label, or used a TXT/NULL record type with a long name - common in DNS tunnelling and C2-over-DNS.",
 		Severity: 4, MITRE: "T1071.004", Category: "Command and Control",
 		Match: func(ev store.Event) bool {
 			if ev.EventType != "cloud.gcp_dns" {
@@ -962,7 +962,7 @@ var gcpTelemetrySignatures = []ThreatSig{
 	},
 	{
 		ID: "C-GCP-NET-001", Name: "Outbound Admin/SMB Protocol to the Internet",
-		Description: "An allowed VPC flow from an internal address to a public IP on SSH, RDP, SMB, WinRM or Telnet ports — exposure or lateral/exfil staging.",
+		Description: "An allowed VPC flow from an internal address to a public IP on SSH, RDP, SMB, WinRM or Telnet ports - exposure or lateral/exfil staging.",
 		Severity: 3, MITRE: "T1021", Category: "Lateral Movement",
 		Match: func(ev store.Event) bool {
 			if ev.EventType != "cloud.gcp_vpc_flow" {

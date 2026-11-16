@@ -10,7 +10,7 @@ import (
 )
 
 // alertEntityKey (D-06) fingerprints the specific activity behind an alert
-// — process name + command line — so that dedup keys which previously
+// - process name + command line - so that dedup keys which previously
 // only covered host+hour+rule don't collapse genuinely different attacker
 // activity into one alert just because it happened to match the same rule
 // on the same host within the same hour. Two unrelated processes tripping
@@ -28,7 +28,7 @@ func alertEntityKey(ev store.Event) string {
 		return hex.EncodeToString(sum[:])[:12]
 	}
 	if proc == "-" && cmd == "-" {
-		// No process context (e.g. network/DNS events) — fall back to
+		// No process context (e.g. network/DNS events) - fall back to
 		// whatever identifies the activity for this event type.
 		proc = strOrDash(ev.DstIP)
 		cmd = strOrDash(ev.FilePath)
