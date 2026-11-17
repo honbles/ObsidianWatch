@@ -20,6 +20,7 @@ import Locations from './pages/Locations'
 import CloudPage from './pages/Cloud'
 import AgentBuilder from './pages/AgentBuilder'
 import LiveResponse from './pages/LiveResponse'
+import Hunt from './pages/Hunt'
 import DevOps from './pages/DevOps'
 import NetworkProbes from './pages/NetworkProbes'
 import Setup from './pages/Setup'
@@ -88,6 +89,7 @@ export default function App() {
         <Route path="/cloud"           element={<ProtectedRoute><CloudPage /></ProtectedRoute>} />
           <Route path="/detections"    element={<ProtectedRoute><Detections /></ProtectedRoute>} />
         <Route path="/agent-builder"   element={<ProtectedRoute adminOnly><AgentBuilder /></ProtectedRoute>} />
+        <Route path="/hunt"             element={<ProtectedRoute><Hunt /></ProtectedRoute>} />
         <Route path="/live-response"    element={<ProtectedRoute adminOnly><LiveResponse /></ProtectedRoute>} />
         <Route path="/devops"             element={<ProtectedRoute><DevOps /></ProtectedRoute>} />
         <Route path="/network"            element={<ProtectedRoute><NetworkProbes /></ProtectedRoute>} />

@@ -42,6 +42,7 @@ type cpeRule struct {
 	product  string
 	nameVer  *regexp.Regexp // take the version from the display name instead
 	trimZero bool           // 1.2.0.0 -> 1.2 (some installers pad the version)
+	part     string         // "a" (application, default) or "o" (operating system)
 }
 
 func cr(re, vendor, product string) cpeRule {
@@ -81,6 +82,60 @@ var cpeCatalog = []cpeRule{
 	cr(`^mysql server`, "oracle", "mysql"),
 	cr(`^postgresql \d`, "postgresql", "postgresql"),
 	cr(`^cmake`, "kitware", "cmake"),
+	// .NET: the runtime/SDK/ASP.NET Core are separate NVD products.
+	// The display name carries the real 3-part version (8.0.31); the installer's
+	// 4-part number (8.0.31.36421) is a build id NVD does not use.
+	{re: regexp.MustCompile(`^microsoft \.net (runtime|sdk|desktop runtime)|^microsoft windows desktop runtime`), vendor: "microsoft", product: ".net", nameVer: regexp.MustCompile(`(\d+\.\d+\.\d+)`)},
+	{re: regexp.MustCompile(`^microsoft asp\.net core`), vendor: "microsoft", product: "asp.net_core", nameVer: regexp.MustCompile(`(\d+\.\d+\.\d+)`)},
+	cr(`^microsoft azure cli`, "microsoft", "azure_cli"),
+	cr(`^github cli$`, "github", "cli"),
+	cr(`^powershell \d`, "microsoft", "powershell"),
+	cr(`^microsoft threat modeling tool`, "microsoft", "threat_modeling_tool"),
+	cr(`^dell command \| update|^dell command update`, "dell", "command_update"),
+	cr(`^dell optimizer`, "dell", "optimizer"),
+	cr(`^dell trusted device`, "dell", "trusted_device"),
+	cr(`^dell supportassist os recovery`, "dell", "supportassist_os_recovery"),
+	cr(`^sophos connect`, "sophos", "connect_client"),
+	cr(`^zoom( workplace| meetings)?$|^zoom \(`, "zoom", "zoom"),
+	cr(`^slack$`, "slack", "slack"),
+	cr(`^adobe acrobat reader|^adobe reader`, "adobe", "acrobat_reader_dc"),
+	cr(`^citrix workspace`, "citrix", "workspace"),
+	cr(`^nmap`, "nmap", "nmap"),
+	cr(`^curl \d`, "haxx", "curl"),
+	cr(`^kubectl|^kubernetes cli`, "kubernetes", "kubernetes"),
+	cr(`^terraform \d`, "hashicorp", "terraform"),
+	cr(`^microsoft visual studio (community|professional|enterprise) 2022`, "microsoft", "visual_studio_2022"),
+	cr(`^java\(tm\) se runtime|^java \d|^oracle java`, "oracle", "jre"),
+	// Windows itself, from the build number (see windowsOSName in scanFacts).
+	{re: regexp.MustCompile(`^os: windows 10 22h2$`), vendor: "microsoft", product: "windows_10_22h2", part: "o"},
+	{re: regexp.MustCompile(`^os: windows 11 21h2$`), vendor: "microsoft", product: "windows_11_21h2", part: "o"},
+	{re: regexp.MustCompile(`^os: windows 11 22h2$`), vendor: "microsoft", product: "windows_11_22h2", part: "o"},
+	{re: regexp.MustCompile(`^os: windows 11 23h2$`), vendor: "microsoft", product: "windows_11_23h2", part: "o"},
+	{re: regexp.MustCompile(`^os: windows 11 24h2$`), vendor: "microsoft", product: "windows_11_24h2", part: "o"},
+	{re: regexp.MustCompile(`^os: windows 11 25h2$`), vendor: "microsoft", product: "windows_11_25h2", part: "o"},
+}
+
+// osPkgPrefix marks a synthetic "package" that stands for the operating system.
+const osPkgPrefix = "OS: "
+
+var winVerRe = regexp.MustCompile(`10\.0\.(\d{4,6})\.(\d+)`)
+
+// windowsOSPkg turns "Microsoft Windows [Version 10.0.26100.7171]" into a
+// synthetic package so the OS build is matched against NVD like any product.
+// Only client builds that map one-to-one to an NVD product are returned.
+func windowsOSPkg(osRelease string) (scanPkg, bool) {
+	m := winVerRe.FindStringSubmatch(osRelease)
+	if m == nil {
+		return scanPkg{}, false
+	}
+	name := map[string]string{
+		"19045": "Windows 10 22H2", "22000": "Windows 11 21H2", "22621": "Windows 11 22H2",
+		"22631": "Windows 11 23H2", "26100": "Windows 11 24H2", "26200": "Windows 11 25H2",
+	}[m[1]]
+	if name == "" {
+		return scanPkg{}, false
+	}
+	return scanPkg{Name: osPkgPrefix + name, Version: "10.0." + m[1] + "." + m[2]}, true
 }
 
 var leadingVersion = regexp.MustCompile(`^\d+(?:\.\d+)*`)
@@ -107,7 +162,11 @@ func cpeFor(name, version string) (cpe string, ok bool) {
 				v = strings.TrimSuffix(v, ".0")
 			}
 		}
-		return fmt.Sprintf("cpe:2.3:a:%s:%s:%s:*:*:*:*:*:*:*", r.vendor, r.product, v), true
+		part := r.part
+		if part == "" {
+			part = "a"
+		}
+		return fmt.Sprintf("cpe:2.3:%s:%s:%s:%s:*:*:*:*:*:*:*", part, r.vendor, r.product, v), true
 	}
 	return "", false
 }
@@ -167,11 +226,46 @@ var nvdCVEURL = "https://services.nvd.nist.gov/rest/json/cves/2.0"
 
 var nvdHTTP = &http.Client{Timeout: 40 * time.Second}
 
-// nvdQueryCPE asks NVD for CVEs affecting this exact CPE (version-range aware).
+const (
+	nvdPageSize = 200
+	nvdMaxPages = 6 // up to 1200 CVEs per product; enough to include every high-severity one for a patched-late build
+)
+
+// nvdQueryCPE asks NVD for CVEs affecting this exact CPE (version-range aware),
+// following pages so a product with many CVEs is not cut off before the severe
+// ones are seen.
 func nvdQueryCPE(ctx context.Context, apiKey, cpe string) (rows []cpeCVE, total int, err error) {
+	for page := 0; page < nvdMaxPages; page++ {
+		pr, tot, e := nvdQueryPage(ctx, apiKey, cpe, page*nvdPageSize)
+		if e != nil {
+			if page > 0 && len(rows) > 0 {
+				break // keep what we have rather than lose the whole product
+			}
+			return nil, 0, e
+		}
+		rows = append(rows, pr...)
+		total = tot
+		if (page+1)*nvdPageSize >= tot {
+			break
+		}
+	}
+	sort.Slice(rows, func(i, j int) bool {
+		if rows[i].CVSS != rows[j].CVSS {
+			return rows[i].CVSS > rows[j].CVSS
+		}
+		return rows[i].ID < rows[j].ID
+	})
+	if len(rows) > cveMaxPerCPE {
+		rows = rows[:cveMaxPerCPE]
+	}
+	return rows, total, nil
+}
+
+func nvdQueryPage(ctx context.Context, apiKey, cpe string, start int) (rows []cpeCVE, total int, err error) {
 	q := url.Values{}
 	q.Set("virtualMatchString", cpe)
-	q.Set("resultsPerPage", "200")
+	q.Set("resultsPerPage", fmt.Sprint(nvdPageSize))
+	q.Set("startIndex", fmt.Sprint(start))
 	reqURL := nvdCVEURL + "?" + q.Encode() + "&noRejected"
 	var lastErr error
 	for attempt := 0; attempt < 3; attempt++ {
@@ -220,15 +314,6 @@ func nvdQueryCPE(ctx context.Context, apiKey, cpe string) (rows []cpeCVE, total 
 				}
 				rows = append(rows, cpeCVE{ID: it.CVE.ID, CVSS: score, Severity: sev, Description: desc, Published: pub})
 			}
-			sort.Slice(rows, func(i, j int) bool {
-				if rows[i].CVSS != rows[j].CVSS {
-					return rows[i].CVSS > rows[j].CVSS
-				}
-				return rows[i].ID < rows[j].ID
-			})
-			if len(rows) > cveMaxPerCPE {
-				rows = rows[:cveMaxPerCPE]
-			}
 			return rows, nr.TotalResults, nil
 		case resp.StatusCode == 429 || resp.StatusCode == 503 || resp.StatusCode == 403:
 			lastErr = fmt.Errorf("NVD %s (rate limited; an API key in Settings raises the limit 10x)", resp.Status)
@@ -242,6 +327,49 @@ func nvdQueryCPE(ctx context.Context, apiKey, cpe string) (rows []cpeCVE, total 
 		}
 	}
 	return nil, 0, lastErr
+}
+
+// nvdCPEURL is the NVD product dictionary endpoint (variable for tests).
+var nvdCPEURL = "https://services.nvd.nist.gov/rest/json/cpes/2.0"
+
+// nvdProductKnown reports whether NVD's product dictionary has any CPE under
+// this vendor and product. It separates "no CVEs for this version" from "NVD
+// does not know this product by this name, so nothing was really checked".
+func nvdProductKnown(ctx context.Context, apiKey, cpe string) (known bool, err error) {
+	parts := strings.Split(cpe, ":")
+	if len(parts) < 5 {
+		return false, fmt.Errorf("bad cpe")
+	}
+	match := strings.Join(parts[:5], ":")
+	q := url.Values{}
+	q.Set("cpeMatchString", match)
+	q.Set("resultsPerPage", "1")
+	if err := nvdWait(ctx, apiKey != ""); err != nil {
+		return false, err
+	}
+	req, e := http.NewRequestWithContext(ctx, http.MethodGet, nvdCPEURL+"?"+q.Encode(), nil)
+	if e != nil {
+		return false, e
+	}
+	if apiKey != "" {
+		req.Header.Set("apiKey", apiKey)
+	}
+	req.Header.Set("User-Agent", "ObsidianWatch-SIEM/1.0")
+	resp, e := nvdHTTP.Do(req)
+	if e != nil {
+		return false, e
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		return false, fmt.Errorf("NVD CPE API: %s", resp.Status)
+	}
+	var r struct {
+		TotalResults int `json:"totalResults"`
+	}
+	if json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&r) != nil {
+		return false, fmt.Errorf("unreadable NVD CPE response")
+	}
+	return r.TotalResults > 0, nil
 }
 
 // ---- host result ---------------------------------------------------------------
@@ -265,6 +393,9 @@ type HostCVEChecked struct {
 	CVEs    int    `json:"cves"`         // after the score filter
 	Total   int    `json:"total_in_nvd"` // before it
 	Failed  bool   `json:"failed,omitempty"`
+	// NotInNVD: NVD's product dictionary has nothing under this name, so a
+	// result of zero means "not assessed", not "no vulnerabilities".
+	NotInNVD bool `json:"not_in_nvd,omitempty"`
 }
 
 type HostCVEResult struct {
@@ -303,7 +434,13 @@ func scanFacts(raw json.RawMessage) (osRelease, osName string, pkgs []scanPkg) {
 	if json.Unmarshal(raw, &m) != nil {
 		return "", "", nil
 	}
-	return m.System.OSRelease, m.OS, m.Packages
+	pkgs = m.Packages
+	if strings.EqualFold(m.OS, "windows") {
+		if p, ok := windowsOSPkg(m.System.OSRelease); ok {
+			pkgs = append(append([]scanPkg{}, pkgs...), p)
+		}
+	}
+	return m.System.OSRelease, m.OS, pkgs
 }
 
 // hostUsesCPEPath reports whether a host's CVEs come from the CPE/NVD path:
@@ -344,7 +481,13 @@ func cveTargets(pkgs []scanPkg) (targets []cveTarget, unmapped int) {
 // repeated runs and the AI path are fast. progress is called after each product.
 func computeHostCVE(ctx context.Context, db *store.DB, apiKey string, pkgs []scanPkg, progress func(done, total int)) *HostCVEResult {
 	targets, unmapped := cveTargets(pkgs)
-	res := &HostCVEResult{Method: hostCVEMethod, PackagesTotal: len(pkgs), Unmapped: unmapped, ToCheck: len(targets),
+	pt := 0
+	for _, p := range pkgs {
+		if !strings.HasPrefix(p.Name, osPkgPrefix) {
+			pt++
+		}
+	}
+	res := &HostCVEResult{Method: hostCVEMethod, PackagesTotal: pt, Unmapped: unmapped, ToCheck: len(targets),
 		HasKey: apiKey != "", Note: hostCVENote, Findings: []HostCVE{}, Checked: []HostCVEChecked{}}
 	for i, t := range targets {
 		if ctx.Err() != nil {
@@ -373,7 +516,23 @@ func computeHostCVE(ctx context.Context, db *store.DB, apiKey string, pkgs []sca
 				_ = db.CPECachePut(ctx, t.cpe, total, b)
 			}
 		}
-		res.Checked = append(res.Checked, HostCVEChecked{Name: t.name, Version: t.version, CPE: t.cpe, CVEs: len(rows), Total: total})
+		chk := HostCVEChecked{Name: t.name, Version: t.version, CPE: t.cpe, CVEs: len(rows), Total: total}
+		if total == 0 {
+			dkey := "dict:" + strings.Join(strings.Split(t.cpe, ":")[:5], ":")
+			if _, _, hit := db.CPECacheGet(ctx, dkey, 30*24*time.Hour); !hit {
+				if known, err := nvdProductKnown(ctx, apiKey, t.cpe); err == nil {
+					n := 0
+					if known {
+						n = 1
+					}
+					_ = db.CPECachePut(ctx, dkey, n, json.RawMessage(`[]`))
+				}
+			}
+			if _, n, hit := db.CPECacheGet(ctx, dkey, 30*24*time.Hour); hit && n == 0 {
+				chk.NotInNVD = true
+			}
+		}
+		res.Checked = append(res.Checked, chk)
 		for _, c := range rows {
 			res.Findings = append(res.Findings, HostCVE{Package: t.name, Version: t.version, CPE: t.cpe, CVEID: c.ID, CVSS: c.CVSS,
 				Severity: c.Severity, Description: c.Description, Published: c.Published, URL: "https://nvd.nist.gov/vuln/detail/" + c.ID})

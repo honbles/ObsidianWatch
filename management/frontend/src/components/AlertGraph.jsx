@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import { Maximize2, Minimize2, AlertTriangle, Loader2, RefreshCw, X, Sparkles } from 'lucide-react'
 import { format } from 'date-fns'
 import api from '../api/client'
+import { QuickActions } from './ResponseActions.jsx'
 
 // Alert Graph: what happened around this alert and how it got here, built
 // from evidence (process GUIDs, parent links) and never from time proximity.
@@ -100,7 +101,7 @@ const VERDICT = {
   unclear: ['Unclear', 'text-siem-muted border-siem-border bg-siem-bg'],
 }
 
-function NodeDetail({ node, edges, nodesById, aiNote, onClose }) {
+function NodeDetail({ node, edges, nodesById, aiNote, onClose, alert }) {
   const [events, setEvents] = useState(null)
   useEffect(() => { setEvents(null) }, [node?.id])
   const myEdges = edges.filter(e => e.source === node.id || e.target === node.id)
@@ -127,6 +128,12 @@ function NodeDetail({ node, edges, nodesById, aiNote, onClose }) {
           <div className="text-[9px] uppercase tracking-wider text-siem-muted mb-1">What is going on here</div>
           {node.explain}
         </div>
+      )}
+      {(node.type === 'process' || node.type === 'file') && alert?.agent_id && (
+        <QuickActions agentId={alert.agent_id} host={alert.host} alertId={alert.id}
+          pid={node.type === 'process' ? node.pid : 0}
+          image={node.type === 'process' ? node.detail : ''}
+          path={node.detail || ''} />
       )}
       {node.meta?.beacon && (
         <div className="rounded-lg border border-orange-800/50 bg-orange-950/20 p-2.5 text-[11px] text-orange-200">
@@ -302,7 +309,7 @@ function GraphBody({ graph, selected, setSelected, ai, aiLoading, aiErr, runAI }
       <div className="shrink-0 h-[42%] min-h-[190px] border-t border-siem-border overflow-y-auto p-4 grid grid-cols-1 lg:grid-cols-5 gap-4">
         <div className="lg:col-span-3">
           {sel
-            ? <NodeDetail node={sel} edges={graph.edges} nodesById={nodesById} aiNote={ai?.nodes?.[sel.id]} onClose={() => setSelected(null)} />
+            ? <NodeDetail node={sel} edges={graph.edges} nodesById={nodesById} aiNote={ai?.nodes?.[sel.id]} onClose={() => setSelected(null)} alert={graph.alert} />
             : <div className="text-[11px] text-siem-muted">Click any node to read what it is doing, the evidence behind its links, and its raw events.</div>}
         </div>
         <div className="lg:col-span-2 lg:border-l lg:border-siem-border lg:pl-4">

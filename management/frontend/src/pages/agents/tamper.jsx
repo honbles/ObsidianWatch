@@ -55,7 +55,7 @@ export function TamperPanel({ agent, onClose, onUpdated }) {
 
 // ── OSGroup (fleet view) ──────────────────────────────────────────────────────
 
-export function OSGroup({ category, agents, onViewTamper, onSelectHost }) {
+export function OSGroup({ category, agents, onViewTamper, onSelectHost, isolatedIds }) {
   const [collapsed,setCollapsed]=useState(false)
   const style=OS_GROUPS[category]||OS_GROUPS.other, Icon=style.icon, online=agents.filter(a=>a.online).length
   return (
@@ -76,7 +76,7 @@ export function OSGroup({ category, agents, onViewTamper, onSelectHost }) {
           <tbody>
             {agents.map(a=>(
               <tr key={a.id} className="border-b border-siem-border/30 hover:bg-white/[0.02] group transition-colors cursor-pointer" onClick={()=>onSelectHost(a)}>
-                <td className="px-4 py-2.5"><div className="flex items-center gap-2">{a.online?<Wifi size={12} className="text-emerald-400 shrink-0"/>:<WifiOff size={12} className="text-siem-muted/50 shrink-0"/>}<div><div className="text-siem-text font-medium text-sm">{a.hostname}</div><div className="text-siem-muted text-[9px] font-mono">{a.id?.slice(0,16)}…</div></div></div></td>
+                <td className="px-4 py-2.5"><div className="flex items-center gap-2">{a.online?<Wifi size={12} className="text-emerald-400 shrink-0"/>:<WifiOff size={12} className="text-siem-muted/50 shrink-0"/>}<div><div className="text-siem-text font-medium text-sm">{a.hostname}{isolatedIds&&isolatedIds.has(a.id)&&<span className="ml-2 text-[8px] px-1.5 py-0.5 rounded-full border border-red-700 bg-red-900/40 text-red-300 font-semibold align-middle">ISOLATED</span>}</div><div className="text-siem-muted text-[9px] font-mono">{a.id?.slice(0,16)}…</div></div></div></td>
                 <td className="px-4 py-2.5"><span className={`text-[9px] px-2 py-0.5 rounded-full border font-medium ${a.online?'bg-emerald-900/30 text-emerald-400 border-emerald-800':'bg-siem-bg text-siem-muted border-siem-border'}`}>{a.online?'Online':'Offline'}</span></td>
                 <td className="px-4 py-2.5 text-siem-muted text-xs">{a.os}</td>
                 <td className="px-4 py-2.5 text-siem-muted text-xs font-mono">{a.last_ip}</td>

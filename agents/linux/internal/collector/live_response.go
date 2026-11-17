@@ -15,6 +15,7 @@ package collector
 
 import (
 	"obsidianwatch/linux-agent/internal/ownproc"
+	"obsidianwatch/linux-agent/internal/response"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -54,7 +55,11 @@ type LiveResponseCollector struct {
 	caFile        string
 	caPEM         string // embedded CA cert PEM (preferred over caFile)
 	logger        *slog.Logger
+	resp          *response.Handler // one-click response actions (isolate, kill, quarantine, fleet queries)
 }
+
+// SetResponse enables response actions over the tunnel.
+func (c *LiveResponseCollector) SetResponse(h *response.Handler) { c.resp = h }
 
 func NewLiveResponseCollector(agentID, hostname, managementURL, apiKey, caFile, managementCAFile string, logger *slog.Logger) *LiveResponseCollector {
 	return &LiveResponseCollector{
@@ -125,6 +130,16 @@ func (c *LiveResponseCollector) runTunnel(ctx context.Context) error {
 		return conn.WriteJSON(v)
 	}
 
+	// Tell the server the current isolation state so it can show it and
+	// re-send an isolate if the host lost its rules.
+	if c.resp != nil {
+		_ = writeJSON(map[string]interface{}{"type": "response_state", "payload": c.resp.State()})
+		c.resp.SetOnChange(func() {
+			_ = writeJSON(map[string]interface{}{"type": "response_state", "payload": c.resp.State()})
+		})
+		defer c.resp.SetOnChange(nil)
+	}
+
 	for {
 		_, msg, err := conn.ReadMessage()
 		if err != nil {
@@ -143,6 +158,28 @@ func (c *LiveResponseCollector) runTunnel(ctx context.Context) error {
 		}
 
 		switch env.Type {
+		case "action":
+			if c.resp == nil {
+				_ = writeJSON(map[string]interface{}{"type": "action_result", "token": env.Token,
+					"payload": response.Result{Message: "response actions are not enabled on this agent"}})
+				continue
+			}
+			var req struct {
+				Action string          `json:"action"`
+				Params response.Params `json:"params"`
+			}
+			if err := json.Unmarshal(env.Payload, &req); err != nil {
+				_ = writeJSON(map[string]interface{}{"type": "action_result", "token": env.Token,
+					"payload": response.Result{Message: "bad action payload"}})
+				continue
+			}
+			tok := env.Token
+			go func() {
+				res := c.resp.Handle(ctx, req.Action, req.Params)
+				_ = writeJSON(map[string]interface{}{"type": "action_result", "token": tok, "payload": res})
+				_ = writeJSON(map[string]interface{}{"type": "response_state", "payload": c.resp.State()})
+			}()
+
 		case "open_session":
 			tok := env.Token
 			cols, rows := env.Cols, env.Rows

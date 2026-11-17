@@ -299,7 +299,7 @@ func BuildAlertGraph(ctx context.Context, src graphSource, in graphInput) (*Aler
 
 	g := &AlertGraph{Anchors: in.Anchors}
 	g.Alert = map[string]interface{}{"id": in.Alert.ID, "title": in.Alert.Title, "time": b.alertT,
-		"severity": in.Alert.Severity, "host": in.Alert.Host}
+		"severity": in.Alert.Severity, "host": in.Alert.Host, "agent_id": in.Alert.AgentID}
 
 	var guidSeeds, pidSeeds []Anchor
 	for _, a := range in.Anchors {

@@ -37,6 +37,7 @@ const (
 // ── Agent tunnel registry ─────────────────────────────────────────────────────
 
 type agentTunnel struct {
+	broker   *actionBroker
 	agentID  string
 	conn     *websocket.Conn
 	mu       sync.Mutex
@@ -53,11 +54,14 @@ func (t *agentTunnel) sendJSON(v any) error {
 type TunnelRegistry struct {
 	mu      sync.RWMutex
 	tunnels map[string]*agentTunnel
+	broker  *actionBroker // correlates response-action results with their requests
 }
 
 func NewTunnelRegistry() *TunnelRegistry {
-	return &TunnelRegistry{tunnels: make(map[string]*agentTunnel)}
+	return &TunnelRegistry{tunnels: make(map[string]*agentTunnel), broker: newActionBroker()}
 }
+
+func brokerFor(t *agentTunnel) *actionBroker { return t.broker }
 
 func (r *TunnelRegistry) Register(agentID string, t *agentTunnel) {
 	r.mu.Lock()
@@ -147,6 +151,7 @@ func handleAgentTunnel(db *store.DB, registry *TunnelRegistry, logger *slog.Logg
 		}
 
 		tunnel := &agentTunnel{
+			broker:   registry.broker,
 			agentID:  agentID,
 			conn:     conn,
 			sessions: make(map[string]chan []byte),
@@ -186,6 +191,7 @@ func handleAgentTunnel(db *store.DB, registry *TunnelRegistry, logger *slog.Logg
 			logger.Info("lr: agent tunnel disconnected", "agent", agentID)
 		}()
 
+		firstState := true
 		// Read loop - agent sends data back to waiting analyst connections
 		for {
 			_, msg, err := conn.ReadMessage()
@@ -198,6 +204,13 @@ func handleAgentTunnel(db *store.DB, registry *TunnelRegistry, logger *slog.Logg
 				continue
 			}
 			switch env.Type {
+			case "action_result":
+				if env.Token != "" {
+					registry.broker.deliver(env.Token, env.Payload)
+				}
+			case "response_state":
+				go onResponseState(db, tunnel, agentID, env.Payload, firstState, logger)
+				firstState = false
 			case "data":
 				if env.Token == "" {
 					continue

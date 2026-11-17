@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { Wifi, Shield, ShieldOff, ShieldCheck, ChevronRight, X, RefreshCw, Search, Activity, GitBranch, LayoutDashboard, Cpu, MapPin, Zap, Globe as GlobeIcon, Bug, LogIn, FolderOpen, Terminal } from 'lucide-react'
+import { Wifi, Shield, ShieldOff, ShieldCheck, ChevronRight, X, RefreshCw, Search, Activity, GitBranch, LayoutDashboard, Cpu, MapPin, Zap, Globe as GlobeIcon, Bug, LogIn, FolderOpen, Terminal, ShieldAlert } from 'lucide-react'
 import api from '../api/client'
 import { OS_GROUPS, getOSCategory } from './agents/shared.jsx'
 import { TabAlerts, TabDNS, TabEvents, TabFiles, TabLogons, TabNetwork, TabOverview, TabThreats } from './agents/tabs_basic.jsx'
@@ -8,6 +8,7 @@ import { TabDevice, TabLocation, TabTerminal } from './agents/tabs_device.jsx'
 import { TabRCA, TabVuln } from './agents/tabs_vuln.jsx'
 import { TabCompliance } from './agents/tabs_compliance.jsx'
 import { OSGroup, TamperPanel } from './agents/tamper.jsx'
+import { TabResponse, IsolatedBadge, useResponseState } from '../components/ResponseActions.jsx'
 
 const DETAIL_TABS=[
   {id:'overview', label:'Overview',  icon:LayoutDashboard},
@@ -22,6 +23,7 @@ const DETAIL_TABS=[
   {id:'compliance', label:'Compliance', icon:ShieldCheck},
   {id:'location', label:'Location',  icon:MapPin},
   {id:'terminal',     label:'Terminal',     icon:Terminal},
+  {id:'response',     label:'Response',     icon:ShieldAlert},
   {id:'vulnerability', label:'Vulnerability', icon:Bug},
   {id:'rca',           label:'RCA',           icon:Search},
 ]
@@ -32,8 +34,9 @@ function AgentDetail({ agent, onBack }) {
   const [agentData,setAgentData]=useState(agent)
   const osStyle=OS_GROUPS[getOSCategory(agent.os)]||OS_GROUPS.other
   const Icon=osStyle.icon
+  const [respState]=useResponseState(agent.id)
   const reload=async()=>{try{const{data}=await api.get('/api/v1/agents');const found=(data.agents||[]).find(a=>a.id===agent.id);if(found)setAgentData(found)}catch(e){}}
-  const fullHeight=['events','threats','location','logons','network','dns','files','terminal','vulnerability','rca','compliance'].includes(activeTab)
+  const fullHeight=['events','threats','location','logons','network','dns','files','terminal','vulnerability','rca','compliance','response'].includes(activeTab)
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
@@ -46,6 +49,7 @@ function AgentDetail({ agent, onBack }) {
             <h2 className="text-lg font-bold text-siem-text">{agentData.hostname}</h2>
             <div className="flex items-center gap-2 mt-0.5">
               <span className={`text-[9px] px-2 py-0.5 rounded-full border font-medium ${agentData.online?'bg-emerald-900/30 text-emerald-400 border-emerald-800':'bg-siem-bg text-siem-muted border-siem-border'}`}>{agentData.online?'Online':'Offline'}</span>
+              <IsolatedBadge state={respState}/>
               <span className="text-[10px] text-siem-muted">{agentData.os}</span>
               <span className="text-[10px] text-siem-muted">{agentData.last_ip}</span>
               <button onClick={()=>setTamperOpen(true)} className="ml-2 flex items-center gap-1 text-[9px] text-siem-muted hover:text-siem-text transition-colors">
@@ -76,6 +80,7 @@ function AgentDetail({ agent, onBack }) {
         {activeTab==='compliance'&&<TabCompliance agent={agentData}/>}
         {activeTab==='location' &&<TabLocation  agent={agentData}/>}
         {activeTab==='terminal'     &&<TabTerminal  agent={agentData}/>}
+        {activeTab==='response'     &&<TabResponse  agent={agentData}/>}
         {activeTab==='vulnerability' &&<TabVuln      agent={agentData}/>}
         {activeTab==='rca'           &&<TabRCA       agent={agentData}/>}
       </div>
@@ -93,7 +98,9 @@ export default function Agents() {
   const [search,setSearch]=useState('')
   const hostParam=searchParams.get('host')
 
-  const load=async()=>{setLoading(true);try{const{data}=await api.get('/api/v1/agents');setAgents(data.agents||[])}finally{setLoading(false)}}
+  const [isolatedIds,setIsolatedIds]=useState(new Set())
+  const load=async()=>{setLoading(true);try{const{data}=await api.get('/api/v1/agents');setAgents(data.agents||[])}finally{setLoading(false)}
+    try{const{data}=await api.get('/api/v1/response/isolated');setIsolatedIds(new Set((data.agents||[]).map(a=>a.agent_id)))}catch(e){}}
   useEffect(()=>{load();const id=setInterval(load,15000);return()=>clearInterval(id)},[])
 
   const selectedAgent=hostParam?agents.find(a=>a.hostname===hostParam):null
@@ -125,7 +132,7 @@ export default function Agents() {
       {loading?<div className="text-center py-16 text-siem-muted">Loading agents…</div>:(
         <div className="space-y-4">
           {categoryOrder.filter(cat=>byCategory[cat]?.length>0).map(cat=>(
-            <OSGroup key={cat} category={cat} agents={byCategory[cat]} onViewTamper={a=>setTamperAgent(a)} onSelectHost={a=>setSearchParams({host:a.hostname})}/>
+            <OSGroup key={cat} category={cat} isolatedIds={isolatedIds} agents={byCategory[cat]} onViewTamper={a=>setTamperAgent(a)} onSelectHost={a=>setSearchParams({host:a.hostname})}/>
           ))}
         </div>
       )}

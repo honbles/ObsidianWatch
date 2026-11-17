@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Bell, Activity, Zap, GitBranch, Cloud,
   Monitor, Server, Apple, Globe, Settings, Users, Key,
   ClipboardList, LogOut, Sun, Moon, ChevronDown, Radio,
-  Network, BookOpen, Eye, Code2, Shield, Database, Boxes
+  Network, BookOpen, Eye, Code2, Shield, Database, Boxes, Crosshair
 } from 'lucide-react'
 import { useTheme } from '../api/useTheme'
 import api from '../api/client'
@@ -310,7 +310,7 @@ export function Navbar({ user }) {
         </NavDropdownWithClose>
 
         {/* Detection */}
-        <NavDropdownWithClose label="Detection" icon={Shield} isActive={isPath('/detections', '/alert-rules', '/insights')}>
+        <NavDropdownWithClose label="Detection" icon={Shield} isActive={isPath('/detections', '/alert-rules', '/insights', '/hunt')}>
           {(close) => (
             <>
               <div className={`dropdown-item ${isPath('/detections') ? 'active' : ''}`}
@@ -322,6 +322,11 @@ export function Navbar({ user }) {
                 onClick={() => { close(); navigate('/alert-rules') }}>
                 <BookOpen size={13} style={{ color: 'var(--text3)' }}/>
                 <span>Alert Rules</span>
+              </div>
+              <div className={`dropdown-item ${isPath('/hunt') ? 'active' : ''}`}
+                onClick={() => { close(); navigate('/hunt') }}>
+                <Crosshair size={13} style={{ color: 'var(--accent)' }}/>
+                <span>Threat Hunting</span>
               </div>
               <div className={`dropdown-item ${isPath('/insights') ? 'active' : ''}`}
                 onClick={() => { close(); navigate('/insights') }}>

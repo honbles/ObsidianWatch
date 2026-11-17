@@ -85,9 +85,9 @@ type EventFilter struct {
 	NotTokens   []string // F-07: events matching any of these tokens are excluded
 	// Expr is a parsed KQL-style query (AND/OR/NOT, fields, comparisons).
 	// It is ANDed with every other filter on this struct.
-	Expr *QueryExpr
-	Since       time.Time
-	Until       time.Time
+	Expr  *QueryExpr
+	Since time.Time
+	Until time.Time
 	// IngestedAfter (D-01/D-02): when set, filters and orders by
 	// ingested_at instead of time, and takes priority over Since/Until.
 	// This is what cursor-based engine polling uses (see
@@ -113,7 +113,10 @@ type EventFilter struct {
 	Offset     int
 }
 
-func (db *DB) QueryEvents(ctx context.Context, f EventFilter) ([]Event, int64, error) {
+// buildEventWhere compiles an EventFilter to a SQL WHERE clause and its
+// arguments. Shared by QueryEvents and the fleet-hunt rollup so both read the
+// same filters (chips, tokens and the KQL expression) the same way.
+func buildEventWhere(f EventFilter) (string, []interface{}, error) {
 	where, args, n := []string{"1=1"}, []interface{}{}, 1
 
 	if f.AgentID != "" {
@@ -266,7 +269,7 @@ func (db *DB) QueryEvents(ctx context.Context, f EventFilter) ([]Event, int64, e
 	if f.Expr != nil {
 		clause, qargs, err := f.Expr.SQL(n)
 		if err != nil {
-			return nil, 0, err
+			return "", nil, err
 		}
 		where = append(where, clause)
 		args = append(args, qargs...)
@@ -289,13 +292,19 @@ func (db *DB) QueryEvents(ctx context.Context, f EventFilter) ([]Event, int64, e
 		}
 	}
 
+	return strings.Join(where, " AND "), args, nil
+}
+
+func (db *DB) QueryEvents(ctx context.Context, f EventFilter) ([]Event, int64, error) {
+	whereStr, args, err := buildEventWhere(f)
+	if err != nil {
+		return nil, 0, err
+	}
 	if f.Limit <= 0 {
 		f.Limit = 100
 	} else if f.Limit > 5000 {
 		f.Limit = 5000
 	}
-
-	whereStr := strings.Join(where, " AND ")
 
 	var total int64
 	if !f.SkipCount {

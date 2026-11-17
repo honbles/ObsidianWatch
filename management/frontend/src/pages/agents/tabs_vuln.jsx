@@ -373,7 +373,7 @@ export function TabVuln({ agent }) {
                     <div key={i} className="px-4 py-1.5 flex gap-3">
                       <span className="text-siem-text">{c.name}</span>
                       <span className="font-mono">{c.version}</span>
-                      <span className="ml-auto">{c.failed ? <span className="text-amber-400">lookup failed</span> : `${c.cves} CVE${c.cves === 1 ? "" : "s"} (CVSS 4+) of ${c.total_in_nvd} in NVD`}</span>
+                      <span className="ml-auto">{c.failed ? <span className="text-amber-400">lookup failed</span> : c.not_in_nvd ? <span className="text-amber-400" title="NVD has no product under this vendor/name, so nothing could be checked">not in NVD's product list (not assessed)</span> : `${c.cves} CVE${c.cves === 1 ? "" : "s"} (CVSS 4+) of ${c.total_in_nvd} in NVD`}</span>
                     </div>
                   ))}
                 </div>

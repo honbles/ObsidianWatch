@@ -19,6 +19,7 @@ import (
 	"obsidianwatch/linux-agent/internal/forwarder"
 	"obsidianwatch/linux-agent/internal/ownproc"
 	"obsidianwatch/linux-agent/internal/parser"
+	"obsidianwatch/linux-agent/internal/response"
 	"obsidianwatch/linux-agent/internal/service"
 	"obsidianwatch/linux-agent/pkg/schema"
 )
@@ -265,6 +266,10 @@ func main() {
 			cfg.Forwarder.CAFile,
 			logger,
 		)
+		// One-click response actions share the tunnel; isolation survives restarts.
+		rh := response.New("", []string{cfg.Forwarder.BackendURL, cfg.Forwarder.ManagementURL}, logger)
+		go rh.Run(ctx)
+		lr.SetResponse(rh)
 		// Pass embedded CA PEM so tunnel TLS works when no ca_file is set on disk
 		caPEM := cfg.Forwarder.ManagementCACertPEM
 		if caPEM == "" {

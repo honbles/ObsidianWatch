@@ -80,6 +80,10 @@ func (e *ThreatIntelEngine) syncAll(ctx context.Context) {
 			}
 		case "sigma":
 			count, syncErr = e.syncSigma(ctx)
+		case "feodo":
+			count, syncErr = e.syncFeodo(ctx)
+		case "spamhaus_bcl":
+			count, syncErr = e.syncSpamhausBCL(ctx, src.APIKey)
 		}
 		if syncErr != nil {
 			e.logger.Warn("threat-intel: sync failed", "source", src.Name, "err", syncErr)
@@ -120,6 +124,10 @@ func (e *ThreatIntelEngine) SyncSource(ctx context.Context, name string, apiKey 
 		}
 	case "sigma":
 		count, syncErr = e.syncSigma(ctx)
+	case "feodo":
+		count, syncErr = e.syncFeodo(ctx)
+	case "spamhaus_bcl":
+		count, syncErr = e.syncSpamhausBCL(ctx, apiKey)
 	default:
 		return
 	}

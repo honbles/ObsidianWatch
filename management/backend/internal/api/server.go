@@ -169,6 +169,18 @@ func New(cfg *config.Config, db *store.DB, backendDB *store.DB, logger *slog.Log
 	protected.HandleFunc("GET /api/v1/live-response/agents", handleListLRAgents(db, lrRegistry))
 	protected.HandleFunc("GET /api/v1/live-response/terminal", handleSessionTerminal(db, lrRegistry, logger))
 
+	// One-click response (isolate/release, kill, quarantine) and threat hunting at scale.
+	protected.HandleFunc("POST /api/v1/agents/{id}/actions", adminOnly(handleAgentAction(db, lrRegistry, logger)))
+	protected.HandleFunc("GET /api/v1/agents/{id}/response", handleAgentResponseState(db, lrRegistry))
+	protected.HandleFunc("GET /api/v1/response/isolated", handleIsolatedAgents(db))
+	protected.HandleFunc("GET /api/v1/response/actions", handleResponseActions(db))
+	protected.HandleFunc("POST /api/v1/hunt/live", adminOnly(handleStartFleetHunt(db, lrRegistry, logger)))
+	protected.HandleFunc("GET /api/v1/hunt/live", handleListFleetHunts(db))
+	protected.HandleFunc("GET /api/v1/hunt/live/{id}", handleGetFleetHunt(db))
+	protected.HandleFunc("GET /api/v1/hunt/live/{id}/csv", handleFleetHuntCSV(db))
+	protected.HandleFunc("GET /api/v1/hunt/history", handleHistoryHunt(db))
+	protected.HandleFunc("GET /api/v1/hunt/library", handleHuntLibrary())
+
 	// Cloud Connectors
 	protected.HandleFunc("GET /api/v1/cloud-connectors", handleListCloudConnectors(db))
 	protected.HandleFunc("POST /api/v1/cloud-connectors", adminOnly(handleSaveCloudConnector(db)))

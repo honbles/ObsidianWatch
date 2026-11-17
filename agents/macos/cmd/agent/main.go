@@ -19,6 +19,7 @@ import (
 	"obsidianwatch/macos-agent/internal/config"
 	"obsidianwatch/macos-agent/internal/forwarder"
 	"obsidianwatch/macos-agent/internal/ownproc"
+	"obsidianwatch/macos-agent/internal/response"
 	"obsidianwatch/macos-agent/internal/parser"
 	"obsidianwatch/macos-agent/internal/service"
 	"obsidianwatch/macos-agent/pkg/schema"
@@ -266,6 +267,10 @@ func main() {
 			cfg.Forwarder.CAFile,
 			logger,
 		)
+		// One-click response actions share the tunnel; isolation survives restarts.
+		rh := response.New("", []string{cfg.Forwarder.BackendURL, cfg.Forwarder.ManagementURL}, logger)
+		go rh.Run(ctx)
+		lr.SetResponse(rh)
 		go func() { lr.Run(ctx) }()
 		activeCollectors = append(activeCollectors, "live-response")
 	}

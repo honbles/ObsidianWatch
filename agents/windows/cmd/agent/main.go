@@ -38,6 +38,7 @@ import (
 	"obsidianwatch/agent/internal/config"
 	"obsidianwatch/agent/internal/forwarder"
 	"obsidianwatch/agent/internal/ownproc"
+	"obsidianwatch/agent/internal/response"
 	"obsidianwatch/agent/internal/parser"
 	sysmonpkg "obsidianwatch/agent/internal/sysmon"
 	"obsidianwatch/agent/pkg/schema"
@@ -520,6 +521,10 @@ func run(ctx context.Context, cfg *config.Config, logger *slog.Logger) error {
 		if caPEM != "" {
 			lr.SetCAPEM(caPEM)
 		}
+		// One-click response actions share the tunnel; isolation survives restarts.
+		rh := response.New("", []string{cfg.Forwarder.BackendURL, cfg.Forwarder.ManagementURL}, logger)
+		go rh.Run(ctx)
+		lr.SetResponse(rh)
 		go func() { lr.Run(ctx) }()
 		activeCollectors = append(activeCollectors, "live-response")
 	}

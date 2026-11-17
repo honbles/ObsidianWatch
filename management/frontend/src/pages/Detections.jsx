@@ -89,6 +89,19 @@ const SOURCE_META = {
     needsKey: true,
     keyPlaceholder: 'OTX API key (free at otx.alienvault.com)',
   },
+  feodo: {
+    label: 'Abuse.ch Feodo Tracker',
+    desc: 'Botnet command-and-control server IPs (Emotet, QakBot, Dridex and others). Free, no key. Refreshed every sync.',
+    color: 'text-red-400',
+    needsKey: false,
+  },
+  spamhaus_bcl: {
+    label: 'Spamhaus Botnet Controller List',
+    desc: 'Spamhaus BCL: dedicated botnet C2 servers. A Spamhaus subscription product with no public download: paste the feed URL they give you (plain text or CSV).',
+    color: 'text-rose-400',
+    needsKey: true,
+    keyPlaceholder: 'BCL feed URL from your Spamhaus subscription (https://...)',
+  },
   sigma: {
     label: 'Sigma Rules',
     desc: 'Community detection rules from SigmaHQ. Maps to MITRE ATT&CK. Pulled from GitHub.',

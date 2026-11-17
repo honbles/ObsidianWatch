@@ -715,3 +715,24 @@ repository does not grant permission to copy, modify, distribute,
 or commercially use its source code.
 
 See [LICENSE](./LICENSE) for details.
+
+## Response actions and threat hunting
+
+**One-click response** (agent page, Response tab; also from the Alert Graph on a process or file):
+
+| Action | What it does |
+|---|---|
+| Isolate host | Blocks all traffic in both directions except the ObsidianWatch backend and management addresses (plus loopback and DHCP). No other host, no internet. Survives reboots; an optional timer releases it automatically. Windows uses Windows Firewall block rules, Linux uses nftables (iptables as fallback), macOS uses pf. |
+| Release host | Restores normal networking. Works on an offline host: the request is queued and applied when it reconnects. |
+| Kill process | By PID, optionally with children. The expected image path guards against PID reuse; system processes and the agent itself are refused. |
+| Quarantine / restore file | Moves the file to a locked vault on the host with its SHA-256 recorded; can be restored. Operating-system directories are refused. |
+
+Requirements: the agent must be built with **Live Response enabled** (actions ride the same tunnel), and the signed-in user must be an admin. Every action is recorded (who, why, outcome) in the host's action history and in the audit log. Migration `044_response_and_hunt.sql` adds the tables.
+
+**Threat hunting** (Detection, Threat Hunting):
+
+- *History hunt*: run an Events query (same language as the Events page) and see which hosts match, how often and when.
+- *Live fleet query*: ask every connected agent a fixed, read-only question (processes, connections, listening ports, persistence, installed software, local users, file search by name or SHA-256). Nothing is executed on the host.
+- A library of ready-made hunts of both kinds, mapped to ATT&CK.
+
+**Botnet C2 feeds** (Detection, Intel Sources): abuse.ch Feodo Tracker (free) and the Spamhaus Botnet Controller List (subscription: paste the feed URL Spamhaus gives you). Matches are retro-hunted against stored events.
