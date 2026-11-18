@@ -115,6 +115,7 @@ func New(cfg *config.Config, db *store.DB, backendDB *store.DB, logger *slog.Log
 	protected.HandleFunc("GET /api/v1/agents", handleListAgents(db))
 	protected.HandleFunc("GET /api/v1/agents/locations", handleGetAgentLocations(db, s.backendDB))
 	protected.HandleFunc("GET /api/v1/agents/{id}", handleGetAgent(db))
+	protected.HandleFunc("DELETE /api/v1/agents/{id}", adminOnly(handleDeleteAgent(db, lrRegistry, logger)))
 	protected.HandleFunc("PATCH /api/v1/agents/{id}/tamper", adminOnly(handleSetTamperLock(db)))
 	protected.HandleFunc("POST /api/v1/agents/{id}/regen-key", adminOnly(handleRegenerateKey(db)))
 
@@ -172,6 +173,7 @@ func New(cfg *config.Config, db *store.DB, backendDB *store.DB, logger *slog.Log
 	// One-click response (isolate/release, kill, quarantine) and threat hunting at scale.
 	protected.HandleFunc("POST /api/v1/agents/{id}/actions", adminOnly(handleAgentAction(db, lrRegistry, logger)))
 	protected.HandleFunc("GET /api/v1/agents/{id}/response", handleAgentResponseState(db, lrRegistry))
+	protected.HandleFunc("GET /api/v1/agents/{id}/processes", adminOnly(handleAgentProcesses(db, lrRegistry)))
 	protected.HandleFunc("GET /api/v1/response/isolated", handleIsolatedAgents(db))
 	protected.HandleFunc("GET /api/v1/response/actions", handleResponseActions(db))
 	protected.HandleFunc("POST /api/v1/hunt/live", adminOnly(handleStartFleetHunt(db, lrRegistry, logger)))

@@ -1800,6 +1800,14 @@ func (e *DetectionEngine) evaluateEvents(ctx context.Context, events []store.Eve
 
 			hour := ev.Time.UTC().Format("2006010215")
 			dedupKey := fmt.Sprintf("sig:sigma:%s:host:%s:h:%s:e:%s", rule.ID, ev.Host, hour, alertEntityKey(ev)) // D-06: entity fingerprint folded in
+			if sigmaNoisy[strings.ToLower(strings.TrimSpace(rule.Title))] {
+				// One alert per rule per host per day; repeats raise occurrence_count instead of
+				// opening a new alert for every process.
+				dedupKey = fmt.Sprintf("sig:sigma:%s:host:%s:d:%s", rule.ID, ev.Host, ev.Time.UTC().Format("20060102"))
+				if sigSev > 2 {
+					sigSev = 2
+				}
+			}
 			mitre := rule.MITRE
 			if mitre == "" {
 				mitre = "Sigma"
@@ -2000,7 +2008,7 @@ func (e *DetectionEngine) matchIOC(ev store.Event,
 	}
 
 	// Hash match - file events
-	if ev.EventType == "file" && ev.FileHash != nil {
+	if (ev.EventType == "file" || ev.EventType == "process" || ev.EventType == "sysmon") && ev.FileHash != nil {
 		for _, part := range strings.Split(*ev.FileHash, ",") {
 			hash := strings.ToLower(strings.TrimSpace(part))
 			if idx := strings.Index(hash, "="); idx >= 0 {
@@ -2079,3 +2087,11 @@ func isOwnAgentProcess(ev store.Event) bool {
 var shPipeToShellRe = regexp.MustCompile(`(curl|wget)[^|;]*\|\s*(sudo\s+)?(ba|z|da)?sh\b`)
 
 var shInteractiveRe = regexp.MustCompile(`(^|[\s/])(bash|sh) -i(\s|$)`)
+
+// sigmaNoisy lists Sigma rules that match routine activity on endpoints whose telemetry lacks
+// the field the rule tests (for example a process event without a resolvable image path), so
+// they would open an alert per process. They still fire, but collapse to one Low alert per
+// host per day. Titles are lower case.
+var sigmaNoisy = map[string]bool{
+	"execution of non-existing file": true,
+}

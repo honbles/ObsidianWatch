@@ -127,11 +127,9 @@ export default function Locations() {
     ro.observe(mapRef.current)
     setTimeout(() => map.invalidateSize(), 100)
 
-    // Dark tile layer (CartoDB Dark Matter)
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-      attribution: '&copy; <a href="https://carto.com/">CARTO</a>',
-      subdomains: 'abcd',
-      maxZoom: 19,
+    // Dark tile layer (OpenStreetMap, darkened in CSS; CARTO now requires an API key)
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors', maxZoom: 19, className: 'ow-dark-tiles',
     }).addTo(map)
 
     mapInst.current = map

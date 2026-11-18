@@ -1,7 +1,7 @@
 package api
 
 // app_routes.go - OWNED BY THE APPLICATION BUILD. All /api/v1/app/* routes are
-// registered here. Foundation stub.
+// registered here.
 
 import (
 	"net/http"
@@ -10,7 +10,20 @@ import (
 )
 
 func registerAppRoutes(protected *http.ServeMux, db *store.DB, backendDB *store.DB) {
-	_ = protected
-	_ = db
-	_ = backendDB
+	appStartRules(db, backendDB, nil) // the rule worker and scanner start with the routes
+	protected.HandleFunc("GET /api/v1/app/services", appHandleListServices(db, backendDB))
+	protected.HandleFunc("GET /api/v1/app/services/{id}", appHandleGetService(db, backendDB))
+	protected.HandleFunc("GET /api/v1/app/rules/status", appHandleRulesStatus())
+	protected.HandleFunc("GET /api/v1/app/map", appHandleMap(db, backendDB))
+	protected.HandleFunc("GET /api/v1/app/overview", appHandleOverview(db, backendDB))
+	protected.HandleFunc("GET /api/v1/app/instances/{id}", appHandleGetInstance(db, backendDB))
+	protected.HandleFunc("GET /api/v1/app/services/{id}/runtime", appHandleServiceRuntime(db, backendDB))
+	protected.HandleFunc("GET /api/v1/app/services/{id}/alerts", appHandleServiceAlerts(db, backendDB))
+	protected.HandleFunc("GET /api/v1/app/services/{id}/events", appHandleServiceEvents(db, backendDB))
+	protected.HandleFunc("GET /api/v1/app/services/{id}/red", appHandleREDSeries(db, backendDB))
+	protected.HandleFunc("GET /api/v1/app/services/{id}/routes", appHandleRoutes(db, backendDB))
+	protected.HandleFunc("GET /api/v1/app/services/{id}/edges", appHandleServiceEdges(db, backendDB))
+	protected.HandleFunc("GET /api/v1/app/traces", appHandleListTraces(db, backendDB))
+	protected.HandleFunc("GET /api/v1/app/traces/{trace_id}", appHandleGetTrace(db, backendDB))
+	protected.HandleFunc("PUT /api/v1/app/services/{id}/settings", adminOnly(appHandlePutServiceSettings(db, backendDB)))
 }

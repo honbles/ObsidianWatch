@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Bell, Activity, Zap, GitBranch, Cloud,
   Monitor, Server, Apple, Globe, Settings, Users, Key,
   ClipboardList, LogOut, Sun, Moon, ChevronDown, Radio,
-  Network, BookOpen, Eye, Code2, Shield, Database, Boxes, Crosshair
+  Network, BookOpen, Eye, Code2, Shield, Database, Boxes
 } from 'lucide-react'
 import { useTheme } from '../api/useTheme'
 import api from '../api/client'
@@ -310,7 +310,7 @@ export function Navbar({ user }) {
         </NavDropdownWithClose>
 
         {/* Detection */}
-        <NavDropdownWithClose label="Detection" icon={Shield} isActive={isPath('/detections', '/alert-rules', '/insights', '/hunt')}>
+        <NavDropdownWithClose label="Detection" icon={Shield} isActive={isPath('/detections', '/alert-rules', '/insights')}>
           {(close) => (
             <>
               <div className={`dropdown-item ${isPath('/detections') ? 'active' : ''}`}
@@ -322,11 +322,6 @@ export function Navbar({ user }) {
                 onClick={() => { close(); navigate('/alert-rules') }}>
                 <BookOpen size={13} style={{ color: 'var(--text3)' }}/>
                 <span>Alert Rules</span>
-              </div>
-              <div className={`dropdown-item ${isPath('/hunt') ? 'active' : ''}`}
-                onClick={() => { close(); navigate('/hunt') }}>
-                <Crosshair size={13} style={{ color: 'var(--accent)' }}/>
-                <span>Threat Hunting</span>
               </div>
               <div className={`dropdown-item ${isPath('/insights') ? 'active' : ''}`}
                 onClick={() => { close(); navigate('/insights') }}>
@@ -379,6 +374,19 @@ export function Navbar({ user }) {
         </button>
 
         {/* [APP-NAV-BEGIN] - Application build: one "Applications" nav group */}
+        <NavDropdownWithClose label="Applications" icon={Boxes} isActive={location.pathname.startsWith('/applications')}>
+          {(close) => (
+            <>
+              {[['Overview', '/applications'], ['Services', '/applications/services'], ['Dependencies', '/applications/map'],
+                ['Coverage', '/applications/coverage'], ['Settings', '/applications/settings']].map(([label, to]) => (
+                <div key={to} className={`dropdown-item ${location.pathname === to ? 'active' : ''}`}
+                  onClick={() => { close(); navigate(to) }}>
+                  <span>{label}</span>
+                </div>
+              ))}
+            </>
+          )}
+        </NavDropdownWithClose>
         {/* [APP-NAV-END] */}
 
         {/* DevOps */}

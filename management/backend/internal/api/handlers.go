@@ -346,6 +346,7 @@ func parseEventFilter(r *http.Request) store.EventFilter {
 		CommandLine: q.Get("command_line"),
 		ImagePath:   q.Get("image_path"),
 		FilePath:    q.Get("file_path"),
+		FileActions: splitLowerCSV(q.Get("file_action")),
 		RegKey:      q.Get("reg_key"),
 		Channel:     q.Get("channel"),
 		Source:      q.Get("source"),
@@ -541,4 +542,15 @@ func trimTo(s string, n int) string {
 		return s[:n]
 	}
 	return s
+}
+
+// splitLowerCSV turns "created, Modified" into ["created","modified"]; empty input gives nil.
+func splitLowerCSV(s string) []string {
+	var out []string
+	for _, p := range strings.Split(s, ",") {
+		if p = strings.ToLower(strings.TrimSpace(p)); p != "" && len(out) < 12 {
+			out = append(out, p)
+		}
+	}
+	return out
 }

@@ -112,13 +112,17 @@ func validateAction(action string, p actionParams) string {
 		if p.TTLMinutes < 0 || p.TTLMinutes > 7*24*60 {
 			return "ttl_minutes must be between 0 and 10080"
 		}
-	case "release", "list_quarantine":
+	case "release", "list_quarantine", "list_blocked":
 	case "kill_process":
 		if p.PID <= 1 || p.PID > 4194304 {
 			return "a valid pid is required"
 		}
 		if len(p.Image) > 1024 {
 			return "image too long"
+		}
+	case "block_process", "unblock_process":
+		if !absPath(p.Path) || len(p.Path) > 2048 || strings.ContainsRune(p.Path, 0) {
+			return "the full path of the program is required"
 		}
 	case "quarantine_file":
 		if !absPath(p.Path) || len(p.Path) > 2048 || strings.ContainsRune(p.Path, 0) {
@@ -360,3 +364,57 @@ func onResponseState(db *store.DB, t *agentTunnel, agentID string, payload json.
 }
 
 var _ = fmt.Sprintf
+
+// GET /api/v1/agents/{id}/processes - live process list (pid, ppid, user, name, memory, path,
+// command line) read from the host right now through the Live Response tunnel. Read-only.
+func handleAgentProcesses(db *store.DB, reg *TunnelRegistry) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id := r.PathValue("id")
+		t, up := reg.Get(id)
+		if !up {
+			writeJSON(w, 409, map[string]string{"error": "agent is offline or its Live Response tunnel is not connected"})
+			return
+		}
+		tok := newToken()
+		ch := make(chan actionResult, 1)
+		reg.broker.expect(tok, 40*time.Second, func(res actionResult) { ch <- res })
+		if err := sendAction(t, tok, "query", mustJSON(map[string]any{"kind": "processes", "limit": 5000})); err != nil {
+			reg.broker.deliver(tok, mustJSON(actionResult{Message: "could not reach the agent: " + err.Error()}))
+		}
+		select {
+		case res := <-ch:
+			if !res.OK {
+				writeJSON(w, 502, map[string]string{"error": res.Message})
+				return
+			}
+			var tb json.RawMessage = res.Data
+			writeJSON(w, 200, map[string]any{"table": tb, "at": time.Now().UTC()})
+		case <-r.Context().Done():
+		}
+	}
+}
+
+// DELETE /api/v1/agents/{id} - remove a stale agent record (for example the old record left
+// behind when a machine is renamed or re-imaged, since an agent's identity is its host name).
+// Refused while the agent is connected or has reported within the last 10 minutes.
+func handleDeleteAgent(db *store.DB, reg *TunnelRegistry, logger *slog.Logger) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id := r.PathValue("id")
+		a, err := db.GetAgent(r.Context(), id)
+		if err != nil {
+			writeJSON(w, 404, map[string]string{"error": "agent not found"})
+			return
+		}
+		if _, up := reg.Get(id); up || time.Since(a.LastSeen) < 10*time.Minute {
+			writeJSON(w, 409, map[string]string{"error": "this agent reported within the last 10 minutes; only offline agents can be removed"})
+			return
+		}
+		if err := db.DeleteAgent(r.Context(), id); err != nil {
+			writeJSON(w, 409, map[string]string{"error": "could not remove: " + err.Error()})
+			return
+		}
+		db.WriteAudit(r.Context(), actor(r), "agent_removed", "agent:"+id, a.Hostname+" "+a.LastIP, clientIP(r))
+		logger.Warn("agent record removed", "agent", id, "by", actor(r))
+		writeJSON(w, 200, map[string]string{"status": "removed"})
+	}
+}

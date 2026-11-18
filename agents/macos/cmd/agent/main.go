@@ -276,6 +276,7 @@ func main() {
 	}
 
 	// [APP-COLLECTORS-BEGIN]
+	cfg.StartAppMonitoring(ctx, agentID, hostname, rawCh, agentVersion, logger, &activeCollectors)
 	// [APP-COLLECTORS-END]
 
 	go func() { fwd.Run(ctx) }()

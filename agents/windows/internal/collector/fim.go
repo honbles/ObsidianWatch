@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -88,24 +89,78 @@ func NewFIMCollector(dirs []FIMConfig, agentID, host string, out chan<- schema.E
 }
 
 func (f *FIMCollector) Run(ctx context.Context) error {
-	if len(f.dirs) == 0 {
-		f.logger.Info("fim: no directories configured, collector idle")
-		<-ctx.Done()
-		return nil
-	}
-
-	for _, dir := range f.dirs {
-		go func(d FIMConfig) {
+	// Every configured directory is watched, plus the interactive folders of each
+	// local user profile (Downloads, Desktop, Documents, Temp, Startup). Those are where
+	// malware and dropped files land, and they are not in the system-directory defaults.
+	// Profiles created after start are picked up by the periodic rescan.
+	watched := map[string]bool{}
+	start := func(d FIMConfig) {
+		key := strings.ToLower(d.Path)
+		if watched[key] {
+			return
+		}
+		watched[key] = true
+		go func() {
 			w := &dirWatcher{cfg: d, collector: f}
 			if err := w.watch(ctx); err != nil && err != context.Canceled {
 				f.logger.Error("fim: watcher error", "dir", d.Path, "err", err)
 			}
-		}(dir)
-		f.logger.Info("fim: watching", "dir", dir.Path, "recursive", dir.Recursive)
+		}()
+		f.logger.Info("fim: watching", "dir", d.Path, "recursive", d.Recursive)
 	}
+	for _, dir := range f.dirs {
+		start(dir)
+	}
+	scan := func() {
+		for _, d := range userProfileDirs() {
+			start(d)
+		}
+	}
+	scan()
+	tick := time.NewTicker(10 * time.Minute)
+	defer tick.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-tick.C:
+			scan()
+		}
+	}
+}
 
-	<-ctx.Done()
-	return nil
+// userProfileDirs lists the per-user folders to watch for every profile under C:\Users.
+func userProfileDirs() []FIMConfig {
+	noise := []string{".tmp", ".crdownload", ".part", "desktop.ini", "~$"}
+	rel := []struct {
+		path string
+		rec  bool
+	}{
+		{`Downloads`, true},
+		{`Desktop`, true},
+		{`Documents`, false},
+		{`AppData\Local\Temp`, false},
+		{`AppData\Roaming\Microsoft\Windows\Start Menu\Programs\Startup`, true},
+	}
+	root := os.Getenv("SystemDrive")
+	if root == "" {
+		root = "C:"
+	}
+	users, _ := filepath.Glob(root + `\Users\*`)
+	var out []FIMConfig
+	for _, u := range users {
+		switch strings.ToLower(filepath.Base(u)) {
+		case "default", "default user", "all users", "defaultuser0":
+			continue
+		}
+		for _, r := range rel {
+			p := filepath.Join(u, r.path)
+			if st, err := os.Stat(p); err == nil && st.IsDir() {
+				out = append(out, FIMConfig{Path: p, Recursive: r.rec, Exclude: noise})
+			}
+		}
+	}
+	return out
 }
 
 type dirWatcher struct {
@@ -264,9 +319,12 @@ func (w *dirWatcher) parseNotifications(buf []byte) {
 
 func (w *dirWatcher) shouldEmit(path string) bool {
 	lPath := strings.ToLower(path)
+	base := filepath.Base(lPath)
 	for _, pattern := range w.cfg.Exclude {
-		matched, _ := filepath.Match(strings.ToLower(pattern), lPath)
-		if matched {
+		lp := strings.ToLower(pattern)
+		// Glob patterns are matched against the file name: a "*" never crosses a path
+		// separator, so matching the full path made "*.log" style excludes inert.
+		if matched, _ := filepath.Match(lp, base); matched {
 			return false
 		}
 		// Also match if the pattern appears anywhere in the path

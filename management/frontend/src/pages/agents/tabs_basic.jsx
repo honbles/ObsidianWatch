@@ -9,6 +9,7 @@ import { SeverityBadge } from '../../components/SeverityBadge'
 import { GraphCanvas, NodeDetail } from './graph.jsx'
 import { EVENT_TYPE_META, SEV_LABEL, TAG_COLORS, VTHashBadge } from './shared.jsx'
 import { AgentSavedSearchPanel } from './tamper.jsx'
+import { HealthBoard } from './health_board.jsx'
 
 export function TabOverview({ agent }) {
   const navigate = useNavigate()
@@ -21,6 +22,7 @@ export function TabOverview({ agent }) {
           <div key={label} className="bg-siem-bg border border-siem-border rounded-xl p-4"><div className="text-[10px] text-siem-muted uppercase tracking-wider mb-1">{label}</div><div className={`text-base font-bold font-mono ${color}`}>{value}</div></div>
         ))}
       </div>
+      <HealthBoard agent={agent}/>
       <div className="grid grid-cols-2 gap-4">
         <div className="bg-siem-surface border border-siem-border rounded-xl p-4">
           <div className="text-[10px] uppercase tracking-wider text-siem-muted font-semibold mb-3">System info</div>
@@ -132,7 +134,7 @@ export function TabEvents({ agent }) {
   const ET_CLS = { process:'et et-process',network:'et et-network',logon:'et et-logon',file:'et et-file',registry:'et et-registry',dns:'et et-dns',sysmon:'et et-sysmon',health:'et et-health' }
   const SEV_CLS = { 1:'bg-siem-bg text-siem-muted border-siem-border',2:'bg-blue-900/30 text-blue-400 border-blue-800',3:'bg-yellow-900/30 text-yellow-400 border-yellow-800',4:'bg-orange-900/30 text-orange-400 border-orange-800',5:'bg-red-900/30 text-red-400 border-red-800' }
   const HINTS=['process','network','dns','logon','file','registry','health','critical','high','medium']
-  const PRESETS=[{label:'1h',ms:3600000},{label:'6h',ms:21600000},{label:'24h',ms:86400000},{label:'7d',ms:604800000}]
+  const PRESETS=[{label:'1h',ms:3600000},{label:'6h',ms:21600000},{label:'24h',ms:86400000},{label:'7d',ms:604800000},{label:'30d',ms:2592000000}]
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
@@ -697,11 +699,13 @@ export function TabNetwork({ agent }) {
   const [loading, setLoading]   = useState(true)
   const [search, setSearch]     = useState('')
   const [hours, setHours]       = useState(24)
+  const [qd, setQd]             = useState('')
+  useEffect(() => { const t = setTimeout(() => setQd(search.trim()), 350); return () => clearTimeout(t) }, [search])
   const [ispData, setIspData]   = useState({})
 
   useEffect(() => {
     setLoading(true)
-    api.get(`/api/v1/threat-intel/${agent.hostname}`, { params: { hours } })
+    api.get(`/api/v1/threat-intel/${agent.hostname}`, { params: { hours, q: qd || undefined } })
       .then(r => {
         setData(r.data || {})
         // Enrich external IPs with ISP data
@@ -717,7 +721,7 @@ export function TabNetwork({ agent }) {
       })
       .catch(() => setData({}))
       .finally(() => setLoading(false))
-  }, [agent.hostname, hours])
+  }, [agent.hostname, hours, qd])
 
   const connections  = data.top_connections  || []
   const flaggedIPs   = data.flagged_ips      || []
@@ -747,7 +751,7 @@ export function TabNetwork({ agent }) {
           placeholder="Filter by IP, port, protocol…"
           className="flex-1 min-w-[140px] bg-siem-bg border border-siem-border rounded-lg px-3 py-1.5 text-xs text-siem-text placeholder-siem-muted/50 outline-none focus:border-siem-accent"/>
         <div className="flex gap-1 shrink-0">
-          {[['1h',1],['24h',24],['7d',168]].map(([l,h]) => (
+          {[['1h',1],['24h',24],['7d',168],['30d',720],['All',8760]].map(([l,h]) => (
             <button key={h} onClick={() => setHours(h)}
               className={`text-[10px] px-3 py-1 rounded-full border transition-colors ${hours===h?'border-siem-accent text-siem-accent bg-siem-accent/10':'border-siem-border text-siem-muted hover:text-siem-text'}`}>
               {l}
@@ -872,12 +876,14 @@ export function TabDNS({ agent }) {
   const [loading, setLoading]   = useState(true)
   const [search, setSearch]     = useState('')
   const [hours, setHours]       = useState(24)
+  const [qd, setQd]             = useState('')
+  useEffect(() => { const t = setTimeout(() => setQd(search.trim()), 350); return () => clearTimeout(t) }, [search])
 
   const [newDomains, setNewDomains] = useState([])
 
   useEffect(() => {
     setLoading(true)
-    api.get(`/api/v1/threat-intel/${agent.hostname}`, { params: { hours } })
+    api.get(`/api/v1/threat-intel/${agent.hostname}`, { params: { hours, q: qd || undefined } })
       .then(r => {
         setDomains(r.data.top_domains || [])
         setNewDomains(r.data.new_domains || [])
@@ -898,7 +904,7 @@ export function TabDNS({ agent }) {
       })
       .catch(() => { setDomains([]); setFlagged([]) })
       .finally(() => setLoading(false))
-  }, [agent.hostname, hours])
+  }, [agent.hostname, hours, qd])
 
   const flaggedSet = new Set(flagged.map(f => f.domain))
   const filtered   = domains.filter(d => !search || String(d.domain||'').toLowerCase().includes(search.toLowerCase()))
@@ -916,7 +922,7 @@ export function TabDNS({ agent }) {
           placeholder="Search domains…"
           className="flex-1 bg-siem-bg border border-siem-border rounded-lg px-3 py-1.5 text-xs text-siem-text placeholder-siem-muted/50 outline-none focus:border-siem-accent"/>
         <div className="flex gap-1">
-          {[['1h',1],['24h',24],['7d',168]].map(([l,h]) => (
+          {[['1h',1],['24h',24],['7d',168],['30d',720],['All',8760]].map(([l,h]) => (
             <button key={h} onClick={() => setHours(h)}
               className={`text-[10px] px-3 py-1 rounded-full border transition-colors ${hours===h?'border-siem-accent text-siem-accent bg-siem-accent/10':'border-siem-border text-siem-muted hover:text-siem-text'}`}>
               {l}
@@ -1034,12 +1040,18 @@ export function TabFiles({ agent }) {
   const [loading, setLoading]     = useState(true)
   const [search, setSearch]       = useState('')
   const [filter, setFilter]       = useState('all')
+  const [hours, setHours]         = useState(168)
+  const [searchQ, setSearchQ]     = useState('')
+  useEffect(() => { const t = setTimeout(() => setSearchQ(search.trim()), 350); return () => clearTimeout(t) }, [search])
 
   useEffect(() => {
     setLoading(true)
     Promise.all([
-      api.get('/api/v1/events', { params: { host: agent.hostname, event_type: 'file', limit: 500 } }),
-      api.get(`/api/v1/threat-intel/${agent.hostname}`, { params: { hours: 24 } }),
+      api.get('/api/v1/events', { params: { host: agent.hostname, event_type: 'file', limit: 1000, since: new Date(Date.now() - hours * 3600000).toISOString(),
+        // Writes is filtered on the server: filtering the newest 500 events in the browser hid writes behind a burst of other file activity
+        ...(filter === 'writes' ? { file_action: 'created,modified,renamed_to' } : {}),
+        file_path: searchQ || undefined } }),
+      api.get(`/api/v1/threat-intel/${agent.hostname}`, { params: { hours: Math.min(hours, 720) } }),
     ])
       .then(([evRes, tiRes]) => {
         setEvents(evRes.data.events || [])
@@ -1047,7 +1059,7 @@ export function TabFiles({ agent }) {
       })
       .catch(() => { setEvents([]); setFlaggedHashes([]) })
       .finally(() => setLoading(false))
-  }, [agent.hostname])
+  }, [agent.hostname, hours, filter === 'writes', searchQ])
 
   const parseRaw = ev => {
     if (!ev?.raw) return {}
@@ -1123,6 +1135,14 @@ export function TabFiles({ agent }) {
           {[['all','All'],['writes','Writes'],['suspicious','Suspicious'],['executables','Executables']].map(([v,l]) => (
             <button key={v} onClick={() => setFilter(v)}
               className={`text-[10px] px-3 py-1 rounded-full border transition-colors ${filter===v?'border-siem-accent text-siem-accent bg-siem-accent/10':'border-siem-border text-siem-muted hover:text-siem-text'}`}>
+              {l}
+            </button>
+          ))}
+        </div>
+        <div className="flex gap-1 shrink-0">
+          {[['1h',1],['24h',24],['7d',168],['30d',720],['All',8760]].map(([l,h]) => (
+            <button key={h} onClick={() => setHours(h)}
+              className={`text-[10px] px-3 py-1 rounded-full border transition-colors ${hours===h?'border-siem-accent text-siem-accent bg-siem-accent/10':'border-siem-border text-siem-muted hover:text-siem-text'}`}>
               {l}
             </button>
           ))}

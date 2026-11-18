@@ -1,6 +1,7 @@
 package store
 
 import (
+	"strings"
 	"context"
 	"fmt"
 	"time"
@@ -271,8 +272,22 @@ func (db *DB) ThreatIntel(ctx context.Context) (map[string]interface{}, error) {
 }
 
 // ThreatIntelHost returns threat intel scoped to a specific host.
-func (db *DB) ThreatIntelHost(ctx context.Context, host string, hours int) (map[string]interface{}, error) {
-	result := map[string]interface{}{"host": host, "hours": hours}
+func (db *DB) ThreatIntelHost(ctx context.Context, host string, hours int, q string) (map[string]interface{}, error) {
+	if hours < 1 {
+		hours = 24
+	}
+	if hours > 8760 {
+		hours = 8760
+	}
+	// q narrows the domain and connection tables on the server. They used to be a fixed
+	// top 20/25 that the page then searched in the browser, so anything outside the top
+	// was unfindable.
+	q = strings.TrimSpace(q)
+	like, topN := "%", 100
+	if q != "" {
+		like, topN = "%"+escapeLike(q)+"%", 1000
+	}
+	result := map[string]interface{}{"host": host, "hours": hours, "query": q}
 	interval := fmt.Sprintf("%d hours", hours)
 
 	run := func(q string, args ...interface{}) ([]map[string]interface{}, error) {
@@ -302,80 +317,82 @@ func (db *DB) ThreatIntelHost(ctx context.Context, host string, hours int) (map[
 		       COUNT(DISTINCT DATE(time)) as days_seen,
 		       COUNT(DISTINCT DATE(time)) > 7 as persistent
 		FROM events
-		WHERE host ILIKE $1 AND event_type = 'dns'
+		WHERE lower(host) = lower($1) AND event_type = 'dns'
 		  AND dst_ip IS NOT NULL AND dst_ip != ''
 		  AND time > NOW() - ($2 || ' hours')::interval
-		GROUP BY dst_ip ORDER BY count DESC LIMIT 25
-	`, "%"+host+"%", interval); err == nil { result["top_domains"] = rows }
+		  AND dst_ip ILIKE $3
+		GROUP BY dst_ip ORDER BY count DESC LIMIT $4
+	`, host, interval, like, topN); err == nil { result["top_domains"] = rows }
 
 	// NEW domains - first seen in this window (not seen before)
 	if rows, err := run(`
 		SELECT dst_ip as domain, COUNT(*) as count, MIN(time) as first_seen
 		FROM events
-		WHERE host ILIKE $1 AND event_type = 'dns'
+		WHERE lower(host) = lower($1) AND event_type = 'dns'
 		  AND dst_ip IS NOT NULL AND dst_ip != ''
 		  AND time > NOW() - ($2 || ' hours')::interval
 		  AND dst_ip NOT IN (
 		    SELECT DISTINCT dst_ip FROM events
-		    WHERE host ILIKE $1 AND event_type = 'dns'
+		    WHERE lower(host) = lower($1) AND event_type = 'dns'
 		      AND dst_ip IS NOT NULL
 		      AND time < NOW() - ($2 || ' hours')::interval
 		      AND time > NOW() - INTERVAL '30 days'
 		  )
 		GROUP BY dst_ip ORDER BY count DESC LIMIT 10
-	`, "%"+host+"%", interval); err == nil { result["new_domains"] = rows }
+	`, host, interval); err == nil { result["new_domains"] = rows }
 
 	// Top destination IPs/ports
 	if rows, err := run(`
 		SELECT dst_ip, dst_port, proto, COUNT(*) as count
 		FROM events
-		WHERE host ILIKE $1 AND event_type = 'network'
+		WHERE lower(host) = lower($1) AND event_type = 'network'
 		  AND dst_ip IS NOT NULL AND dst_ip != ''
 		  AND time > NOW() - ($2 || ' hours')::interval
-		GROUP BY dst_ip, dst_port, proto ORDER BY count DESC LIMIT 20
-	`, "%"+host+"%", interval); err == nil { result["top_connections"] = rows }
+		  AND (dst_ip ILIKE $3 OR dst_port::text ILIKE $3 OR proto ILIKE $3)
+		GROUP BY dst_ip, dst_port, proto ORDER BY count DESC LIMIT $4
+	`, host, interval, like, topN); err == nil { result["top_connections"] = rows }
 
 	// Top processes by event count
 	if rows, err := run(`
 		SELECT process_name, COUNT(*) as count, MAX(severity) as max_severity
 		FROM events
-		WHERE host ILIKE $1
+		WHERE lower(host) = lower($1)
 		  AND process_name IS NOT NULL AND process_name != ''
 		  AND time > NOW() - ($2 || ' hours')::interval
 		GROUP BY process_name ORDER BY count DESC LIMIT 20
-	`, "%"+host+"%", interval); err == nil { result["top_processes"] = rows }
+	`, host, interval); err == nil { result["top_processes"] = rows }
 
 	// Top users
 	if rows, err := run(`
 		SELECT user_name, COUNT(*) as count, MAX(severity) as max_severity
 		FROM events
-		WHERE host ILIKE $1
+		WHERE lower(host) = lower($1)
 		  AND user_name IS NOT NULL AND user_name != ''
 		  AND time > NOW() - ($2 || ' hours')::interval
 		GROUP BY user_name ORDER BY count DESC LIMIT 15
-	`, "%"+host+"%", interval); err == nil { result["top_users"] = rows }
+	`, host, interval); err == nil { result["top_users"] = rows }
 
 	// Top registry keys
 	if rows, err := run(`
 		SELECT COALESCE(NULLIF(reg_key,''), raw->>'key', raw->>'TargetObject') as reg_key,
 		       COUNT(*) as count
 		FROM events
-		WHERE host ILIKE $1 AND event_type = 'registry'
+		WHERE lower(host) = lower($1) AND event_type = 'registry'
 		  AND time > NOW() - ($2 || ' hours')::interval
 		  AND COALESCE(NULLIF(reg_key,''), raw->>'key', raw->>'TargetObject') IS NOT NULL
 		GROUP BY 1 ORDER BY count DESC LIMIT 15
-	`, "%"+host+"%", interval); err == nil { result["top_registry"] = rows }
+	`, host, interval); err == nil { result["top_registry"] = rows }
 
 	// Top file paths
 	if rows, err := run(`
 		SELECT COALESCE(NULLIF(file_path,''), raw->>'path') as file_path,
 		       COUNT(*) as count
 		FROM events
-		WHERE host ILIKE $1 AND event_type = 'file'
+		WHERE lower(host) = lower($1) AND event_type = 'file'
 		  AND time > NOW() - ($2 || ' hours')::interval
 		  AND COALESCE(NULLIF(file_path,''), raw->>'path') IS NOT NULL
 		GROUP BY 1 ORDER BY count DESC LIMIT 15
-	`, "%"+host+"%", interval); err == nil { result["top_files"] = rows }
+	`, host, interval); err == nil { result["top_files"] = rows }
 
 	// High severity events
 	if rows, err := run(`
@@ -385,39 +402,39 @@ func (db *DB) ThreatIntelHost(ctx context.Context, host string, hours int) (map[
 		       COALESCE(NULLIF(dst_ip,''), '') as dst_ip,
 		       COALESCE(NULLIF(file_path,''), raw->>'path', '') as file_path
 		FROM events
-		WHERE host ILIKE $1 AND severity >= 3
+		WHERE lower(host) = lower($1) AND severity >= 3
 		  AND time > NOW() - ($2 || ' hours')::interval
 		ORDER BY severity DESC, time DESC LIMIT 30
-	`, "%"+host+"%", interval); err == nil { result["high_severity"] = rows }
+	`, host, interval); err == nil { result["high_severity"] = rows }
 
 	// Event type summary
 	if rows, err := run(`
 		SELECT event_type, COUNT(*) as count, MAX(severity) as max_severity
 		FROM events
-		WHERE host ILIKE $1
+		WHERE lower(host) = lower($1)
 		  AND time > NOW() - ($2 || ' hours')::interval
 		GROUP BY event_type ORDER BY count DESC
-	`, "%"+host+"%", interval); err == nil { result["event_types"] = rows }
+	`, host, interval); err == nil { result["event_types"] = rows }
 
 	// Timeline (hourly buckets)
 	if rows, err := run(`
 		SELECT date_trunc('hour', time) as hour, COUNT(*) as count
 		FROM events
-		WHERE host ILIKE $1
+		WHERE lower(host) = lower($1)
 		  AND time > NOW() - ($2 || ' hours')::interval
 		GROUP BY 1 ORDER BY 1
-	`, "%"+host+"%", interval); err == nil { result["timeline"] = rows }
+	`, host, interval); err == nil { result["timeline"] = rows }
 
 	// Active alerts for this host
 	if rows, err := run(`
 		SELECT id, created_at, title, severity, status, event_type, source_event_id
 		FROM alerts
-		WHERE host ILIKE $1
+		WHERE lower(host) = lower($1)
 		  AND status = 'open'
 		  AND created_at > NOW() - ($2 || ' hours')::interval
 		ORDER BY severity DESC, created_at DESC
 		LIMIT 20
-	`, "%"+host+"%", interval); err == nil { result["active_alerts"] = rows }
+	`, host, interval); err == nil { result["active_alerts"] = rows }
 
 	// IOC matches - events from this host that matched ThreatFox/OTX indicators
 	if rows, err := run(`
@@ -432,12 +449,12 @@ func (db *DB) ThreatIntelHost(ctx context.Context, host string, hours int) (map[
 		       e.file_hash
 		FROM alerts a
 		LEFT JOIN events e ON e.id = a.source_event_id
-		WHERE a.host ILIKE $1
+		WHERE a.lower(host) = lower($1)
 		  AND a.created_at > NOW() - ($2 || ' hours')::interval
 		  AND (a.title LIKE '%%IOC Match%%' OR a.title LIKE '%%ThreatFox%%' OR a.title LIKE '%%OTX%%')
 		ORDER BY a.severity DESC, a.created_at DESC
 		LIMIT 20
-	`, "%"+host+"%", interval); err == nil { result["ioc_matches"] = rows }
+	`, host, interval); err == nil { result["ioc_matches"] = rows }
 
 	// DNS category flags - domains this host resolved that are in IOC category lists
 	// (from Quad9/SURBL/Spamhaus via dns_categorization engine)
@@ -453,14 +470,14 @@ func (db *DB) ThreatIntelHost(ctx context.Context, host string, hours int) (map[
 		      AND i.value = LOWER(e.dst_ip)
 		      AND (i.expires_at IS NULL OR i.expires_at > NOW())
 		      AND i.tags != 'clean'
-		WHERE e.host ILIKE $1
+		WHERE e.lower(host) = lower($1)
 		  AND e.event_type = 'dns'
 		  AND e.dst_ip IS NOT NULL
 		  AND e.time > NOW() - ($2 || ' hours')::interval
 		GROUP BY e.dst_ip, i.tags, i.severity, i.source
 		ORDER BY i.severity DESC, query_count DESC
 		LIMIT 20
-	`, "%"+host+"%", interval); err == nil { result["dns_category_flags"] = rows }
+	`, host, interval); err == nil { result["dns_category_flags"] = rows }
 
 	// Also replace the old hardcoded suspicious domain query with IOC-backed one
 	// Flagged IPs - network connections to known malicious IPs
@@ -479,14 +496,14 @@ func (db *DB) ThreatIntelHost(ctx context.Context, host string, hours int) (map[
 		       ON i.ioc_type = 'ip'
 		      AND i.value = LOWER(e.dst_ip)
 		      AND (i.expires_at IS NULL OR i.expires_at > NOW())
-		WHERE e.host ILIKE $1
+		WHERE e.lower(host) = lower($1)
 		  AND e.event_type = 'network'
 		  AND e.dst_ip IS NOT NULL
 		  AND e.time > NOW() - ($2 || ' hours')::interval
 		GROUP BY e.dst_ip, e.dst_port, e.proto, i.malware, i.threat_type, i.severity, i.source
 		ORDER BY i.severity DESC, connection_count DESC
 		LIMIT 20
-	`, "%"+host+"%", interval); err == nil { result["flagged_ips"] = rows }
+	`, host, interval); err == nil { result["flagged_ips"] = rows }
 
 	// Flagged domains - DNS queries to known malicious domains (OTX/ThreatFox)
 	if rows, err := run(`
@@ -502,14 +519,14 @@ func (db *DB) ThreatIntelHost(ctx context.Context, host string, hours int) (map[
 		       ON i.ioc_type = 'domain'
 		      AND LOWER(i.value) = LOWER(e.dst_ip)
 		      AND (i.expires_at IS NULL OR i.expires_at > NOW())
-		WHERE e.host ILIKE $1
+		WHERE e.lower(host) = lower($1)
 		  AND e.event_type = 'dns'
 		  AND e.dst_ip IS NOT NULL
 		  AND e.time > NOW() - ($2 || ' hours')::interval
 		GROUP BY e.dst_ip, i.malware, i.threat_type, i.severity, i.source
 		ORDER BY i.severity DESC, query_count DESC
 		LIMIT 20
-	`, "%"+host+"%", interval); err == nil { result["flagged_domains"] = rows }
+	`, host, interval); err == nil { result["flagged_domains"] = rows }
 
 	// Flagged hashes - file events with hashes matching OTX/ThreatFox IOCs
 	if rows, err := run(`
@@ -527,14 +544,14 @@ func (db *DB) ThreatIntelHost(ctx context.Context, host string, hours int) (map[
 		       ON i.ioc_type = 'hash'
 		      AND LOWER(i.value) = LOWER(e.file_hash)
 		      AND (i.expires_at IS NULL OR i.expires_at > NOW())
-		WHERE e.host ILIKE $1
+		WHERE e.lower(host) = lower($1)
 		  AND e.event_type = 'file'
 		  AND e.file_hash IS NOT NULL
 		  AND e.time > NOW() - ($2 || ' hours')::interval
 		GROUP BY e.file_hash, e.file_path, e.process_name, i.malware, i.threat_type, i.severity, i.source
 		ORDER BY i.severity DESC, hit_count DESC
 		LIMIT 20
-	`, "%"+host+"%", interval); err == nil { result["flagged_hashes"] = rows }
+	`, host, interval); err == nil { result["flagged_hashes"] = rows }
 
 	return result, nil
 }

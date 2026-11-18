@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/lib/pq"
 	"strconv"
 	"strings"
 	"time"
@@ -76,6 +77,8 @@ type EventFilter struct {
 	CommandLine string
 	ImagePath   string
 	FilePath    string
+	// FileActions restricts file events to these raw.action values (created, modified, ...).
+	FileActions []string
 	RegKey      string
 	Channel     string
 	EventID     uint32
@@ -208,6 +211,11 @@ func buildEventWhere(f EventFilter) (string, []interface{}, error) {
 	if f.FilePath != "" {
 		where = append(where, fmt.Sprintf("file_path ILIKE $%d", n))
 		args = append(args, "%"+escapeLike(f.FilePath)+"%")
+		n++
+	}
+	if len(f.FileActions) > 0 {
+		where = append(where, fmt.Sprintf("lower(raw->>'action') = ANY($%d)", n))
+		args = append(args, pq.Array(f.FileActions))
 		n++
 	}
 	if f.RegKey != "" {

@@ -5,6 +5,7 @@ package service
 // service.go - Linux systemd service management for ObsidianWatch agent.
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/subtle"
 	"crypto/tls"
@@ -13,6 +14,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"obsidianwatch/linux-agent/internal/response"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -95,6 +97,14 @@ func Install(cfg InstallConfig) error {
 	fmt.Printf("Writing systemd unit %s...\n", UnitFile)
 	if err := writeUnit(); err != nil {
 		return fmt.Errorf("write unit: %w", err)
+	}
+
+	// One-click host isolation needs nftables (or iptables). Install it now, while we
+	// are running outside the service sandbox, so isolation works the first time it is used.
+	if err := response.EnsureFirewallTool(context.Background()); err != nil {
+		fmt.Printf("Warning: %v\nHost isolation will not work until a firewall tool is installed.\n", err)
+	} else {
+		fmt.Println("Firewall tool for host isolation: OK")
 	}
 
 	fmt.Println("Enabling and starting service...")

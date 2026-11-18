@@ -33,9 +33,9 @@ export default function AgentMap({ lat, lng, accuracy, label }) {
         dragging: true, scrollWheelZoom: true, doubleClickZoom: true, touchZoom: true, inertia: true,
         zoomControl: true,
       })
-      L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-        attribution: '&copy; OpenStreetMap &copy; CARTO', subdomains: 'abcd', maxZoom: 19,
-      }).addTo(map)
+      L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors', maxZoom: 19, className: 'ow-dark-tiles',
+    }).addTo(map)
       L.circle([lat, lng], { radius: accuracy || 5000, color: '#38bdf8', fillColor: '#38bdf8', fillOpacity: 0.1, weight: 1 }).addTo(map)
       L.circleMarker([lat, lng], { radius: 7, color: '#fff', weight: 2, fillColor: '#38bdf8', fillOpacity: 1 })
         .bindTooltip(label || 'Agent', { permanent: false }).addTo(map)

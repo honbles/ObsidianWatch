@@ -8,7 +8,7 @@ import { TabDevice, TabLocation, TabTerminal } from './agents/tabs_device.jsx'
 import { TabRCA, TabVuln } from './agents/tabs_vuln.jsx'
 import { TabCompliance } from './agents/tabs_compliance.jsx'
 import { OSGroup, TamperPanel } from './agents/tamper.jsx'
-import { TabResponse, IsolatedBadge, useResponseState } from '../components/ResponseActions.jsx'
+import { TabResponse, IsolatedBadge, useResponseState, isAdminUser } from '../components/ResponseActions.jsx'
 
 const DETAIL_TABS=[
   {id:'overview', label:'Overview',  icon:LayoutDashboard},
@@ -56,6 +56,12 @@ function AgentDetail({ agent, onBack }) {
                 {agentData.tamper_locked?<Shield size={11} className="text-emerald-400"/>:<ShieldOff size={11}/>}
                 {agentData.tamper_locked?'Protected':'Unprotected'}
               </button>
+              {!agentData.online&&isAdminUser()&&(
+                <button onClick={async()=>{
+                  if(!window.confirm(`Remove the offline agent record for ${agentData.hostname}?\n\nIts collected events are kept. If the agent is still installed somewhere it will register again the next time it connects.`))return
+                  try{await api.delete(`/api/v1/agents/${encodeURIComponent(agent.id)}`);onBack()}catch(e){window.alert(e.response?.data?.error||e.message)}
+                }} className="ml-2 text-[9px] text-red-400 hover:text-red-300 border border-red-900/50 rounded px-1.5 py-0.5">Remove record</button>
+              )}
             </div>
           </div>
         </div>

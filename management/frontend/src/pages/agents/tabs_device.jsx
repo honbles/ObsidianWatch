@@ -6,6 +6,8 @@ import { formatDistanceToNow, format } from 'date-fns'
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, BarChart, Bar, Cell } from 'recharts'
 import api, { getWSTicket } from '../../api/client'
 import AgentMap from '../../components/AgentMap'
+import { ProcessTree } from '../../components/ProcessList.jsx'
+import { runAction, isAdminUser } from '../../components/ResponseActions.jsx'
 
 // CPU% from older agents could be a raw tick count (trillions); treat anything
 // outside 0-6400 as unknown and cap the rest at 100 so the chart stays honest.
@@ -247,6 +249,19 @@ export function TabDevice({ agent }) {
           )}
         </div>
       </>)}
+      <div className="bg-siem-surface border border-siem-border rounded-xl p-4">
+        <div className="text-[10px] uppercase tracking-wider text-siem-muted font-semibold mb-2">Running processes</div>
+        <ProcessTree agent={agent} canKill={isAdminUser()} onBlock={async p => {
+          if (!window.confirm(`Block ${p.path} from running on ${agent.hostname}?\n\nRunning copies are ended and it cannot start again until you unblock it (Response tab).`)) return
+          const r = await runAction(agent.id, 'block_process', { path: p.path })
+          window.alert(r.ok ? (r.data?.message || 'Blocked') : `Failed: ${r.error || r.data?.message || 'unknown error'}`)
+        }} onKill={async p => {
+          const kids = window.confirm(`Kill ${p.name} (PID ${p.pid}) on ${agent.hostname}?\n\nOK = also kill its child processes\nCancel = ask again for this process only`)
+          if (!kids && !window.confirm(`Kill only ${p.name} (PID ${p.pid}), leaving children running?`)) return
+          const r = await runAction(agent.id, 'kill_process', { pid: p.pid, image: p.path, tree: kids })
+          window.alert(r.ok ? `Killed ${p.name} (PID ${p.pid})` : `Failed: ${r.error || r.data?.message || 'unknown error'}`)
+        }} />
+      </div>
     </div>
   )
 }

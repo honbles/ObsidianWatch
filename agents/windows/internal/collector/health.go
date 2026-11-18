@@ -370,6 +370,7 @@ func (h *HealthReporter) emit() {
 		"queue_depth":      GlobalHealth.QueueDepth.Load(),
 		"forward_errors":   GlobalHealth.ForwardErrors.Load(),
 		"sysmon_status":    sysmonStatusString(),
+		"components":       buildComponents(h.collectors),
 		"agent_memory_mb":  float64(mem.Alloc) / 1024 / 1024,
 		"goroutines":       runtime.NumGoroutine(),
 		"os":               "windows", "arch": runtime.GOARCH,

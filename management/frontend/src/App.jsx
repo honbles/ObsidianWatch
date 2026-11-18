@@ -20,7 +20,6 @@ import Locations from './pages/Locations'
 import CloudPage from './pages/Cloud'
 import AgentBuilder from './pages/AgentBuilder'
 import LiveResponse from './pages/LiveResponse'
-import Hunt from './pages/Hunt'
 import DevOps from './pages/DevOps'
 import NetworkProbes from './pages/NetworkProbes'
 import Setup from './pages/Setup'
@@ -89,13 +88,17 @@ export default function App() {
         <Route path="/cloud"           element={<ProtectedRoute><CloudPage /></ProtectedRoute>} />
           <Route path="/detections"    element={<ProtectedRoute><Detections /></ProtectedRoute>} />
         <Route path="/agent-builder"   element={<ProtectedRoute adminOnly><AgentBuilder /></ProtectedRoute>} />
-        <Route path="/hunt"             element={<ProtectedRoute><Hunt /></ProtectedRoute>} />
         <Route path="/live-response"    element={<ProtectedRoute adminOnly><LiveResponse /></ProtectedRoute>} />
         <Route path="/devops"             element={<ProtectedRoute><DevOps /></ProtectedRoute>} />
         <Route path="/network"            element={<ProtectedRoute><NetworkProbes /></ProtectedRoute>} />
         {/* [NET-ROUTES-BEGIN] - Network build adds /network/* routes here */}
         {/* [NET-ROUTES-END] */}
         {/* [APP-ROUTES-BEGIN] - Application build adds /applications/* routes here */}
+        {/* Every pages/app/*.route.jsx exports `default` (the page) and `appPath` (its route); import.meta.glob avoids edits outside this block. */}
+        {Object.entries(import.meta.glob('./pages/app/*.route.jsx', { eager: true })).map(([file, mod]) => {
+          const AppPage = mod.default
+          return <Route key={file} path={mod.appPath} element={<ProtectedRoute><AppPage /></ProtectedRoute>} />
+        })}
         {/* [APP-ROUTES-END] */}
         <Route path="/insights"           element={<ProtectedRoute><Insights /></ProtectedRoute>} />
         <Route path="*"             element={<Navigate to="/" replace />} />

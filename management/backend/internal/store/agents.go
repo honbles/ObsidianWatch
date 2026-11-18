@@ -270,3 +270,23 @@ func (db *DB) GetAgentLocations(ctx context.Context) ([]Agent, error) {
 	}
 	return agents, rows.Err()
 }
+
+// DeleteAgent removes an agent record and its response state. Events already collected
+// are kept (they are keyed by host name, not by the record).
+func (db *DB) DeleteAgent(ctx context.Context, id string) error {
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	for _, q := range []string{
+		`DELETE FROM response_actions WHERE agent_id = $1`,
+		`DELETE FROM agent_response_state WHERE agent_id = $1`,
+		`DELETE FROM agents WHERE id = $1`,
+	} {
+		if _, err := tx.ExecContext(ctx, q, id); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}

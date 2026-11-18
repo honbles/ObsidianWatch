@@ -118,6 +118,9 @@ func iptablesCmds(bin string, allow []netip.Addr) [][]string {
 func have(bin string) bool { _, err := exec.LookPath(bin); return err == nil }
 
 func applyIsolation(allow []netip.Addr, _ string) (string, error) {
+	if err := ensureFirewallTool(context.Background()); err != nil {
+		return "", err
+	}
 	if have("nft") {
 		_, _ = run("", "nft", "delete", "table", "inet", nftTable) // idempotent
 		if out, err := run(nftScript(allow), "nft", "-f", "-"); err != nil {

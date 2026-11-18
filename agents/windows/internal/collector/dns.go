@@ -127,8 +127,14 @@ func (d *DNSCollector) mapDNSEvent(ev schema.Event) *schema.Event {
 	action := "query"
 	switch ev.EventID {
 	case dnsEventQueryFailed:
-		sev = schema.SeverityLow
-		action = "nxdomain"
+		// Event 3008 is "query completed" for every query, successful or not; the status says
+		// which. Labelling all of them nxdomain made normal lookups look like failures.
+		if queryStatus != "" && queryStatus != "0" {
+			sev = schema.SeverityLow
+			action = "nxdomain"
+		} else {
+			action = "response"
+		}
 	case dnsEventCacheHit:
 		action = "cache_hit"
 	case dnsEventQueryCompleted:

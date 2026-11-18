@@ -345,3 +345,6 @@ body {
   from { opacity:0; transform: translateY(20px) scale(0.98); }
   to   { opacity:1; transform: translateY(0) scale(1); }
 }
+
+/* Keyless OpenStreetMap tiles, darkened to match the theme */
+.ow-dark-tiles { filter: invert(1) hue-rotate(180deg) brightness(0.9) contrast(0.9) saturate(0.6); }

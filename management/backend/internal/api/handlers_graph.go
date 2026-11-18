@@ -19,7 +19,7 @@ func handleThreatIntelHost(db *store.DB) http.HandlerFunc {
 				hours = v
 			}
 		}
-		data, err := db.ThreatIntelHost(r.Context(), host, hours)
+		data, err := db.ThreatIntelHost(r.Context(), host, hours, r.URL.Query().Get("q"))
 		if err != nil {
 			writeJSON(w, 500, map[string]string{"error": err.Error()})
 			return

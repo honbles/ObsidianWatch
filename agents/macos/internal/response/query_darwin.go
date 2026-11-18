@@ -7,12 +7,13 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 )
 
 func qProcesses(ctx context.Context) ([]string, [][]string, error) {
-	cols := []string{"pid", "ppid", "user", "name", "path", "cmdline"}
-	out, err := run(ctx, "ps", "-axww", "-o", "pid=,ppid=,user=,comm=")
+	cols := []string{"pid", "ppid", "user", "name", "mem_mb", "path", "cmdline"}
+	out, err := run(ctx, "ps", "-axww", "-o", "pid=,ppid=,user=,rss=,comm=")
 	if err != nil {
 		return nil, nil, err
 	}
@@ -26,11 +27,12 @@ func qProcesses(ctx context.Context) ([]string, [][]string, error) {
 	var rows [][]string
 	for _, l := range strings.Split(out, "\n") {
 		f := strings.Fields(l)
-		if len(f) < 4 {
+		if len(f) < 5 {
 			continue
 		}
-		path := strings.Join(f[3:], " ")
-		rows = append(rows, []string{f[0], f[1], f[2], filepath.Base(path), path, cmd[f[0]]})
+		path := strings.Join(f[4:], " ")
+		rss, _ := strconv.ParseFloat(f[3], 64)
+		rows = append(rows, []string{f[0], f[1], f[2], filepath.Base(path), strconv.FormatFloat(rss/1024, 'f', 1, 64), path, cmd[f[0]]})
 	}
 	return cols, rows, nil
 }

@@ -27,7 +27,7 @@ func sh(ctx context.Context, name string, args ...string) (string, error) {
 }
 
 func qProcesses(ctx context.Context) ([]string, [][]string, error) {
-	cols := []string{"pid", "ppid", "user", "name", "path", "cmdline"}
+	cols := []string{"pid", "ppid", "user", "name", "mem_mb", "path", "cmdline"}
 	ents, err := os.ReadDir("/proc")
 	if err != nil {
 		return nil, nil, err
@@ -50,7 +50,7 @@ func qProcesses(ctx context.Context) ([]string, [][]string, error) {
 		if st, err := os.Stat(dir); err == nil {
 			user = uidName(st)
 		}
-		rows = append(rows, []string{strconv.Itoa(pid), strconv.Itoa(procPPID(pid)), user, strings.TrimSpace(string(comm)), exe, cmdline})
+		rows = append(rows, []string{strconv.Itoa(pid), strconv.Itoa(procPPID(pid)), user, strings.TrimSpace(string(comm)), procMemMB(dir), exe, cmdline})
 	}
 	sort.Slice(rows, func(i, j int) bool { a, _ := strconv.Atoi(rows[i][0]); b, _ := strconv.Atoi(rows[j][0]); return a < b })
 	return cols, rows, nil
@@ -225,4 +225,18 @@ func qUsers(ctx context.Context) ([]string, [][]string, error) {
 		rows = append(rows, []string{f[0], f[2], f[6], f[5], admin})
 	}
 	return cols, rows, nil
+}
+
+// procMemMB returns the resident set size in MB (one decimal), "" when unreadable.
+func procMemMB(dir string) string {
+	b, err := os.ReadFile(dir + "/statm")
+	if err != nil {
+		return ""
+	}
+	f := strings.Fields(string(b))
+	if len(f) < 2 {
+		return ""
+	}
+	pages, _ := strconv.ParseInt(f[1], 10, 64)
+	return strconv.FormatFloat(float64(pages*int64(os.Getpagesize()))/1048576, 'f', 1, 64)
 }

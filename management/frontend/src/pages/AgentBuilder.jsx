@@ -303,6 +303,44 @@ export default function AgentBuilder() {
                 </label>
               )}
               {/* [APP-BUILDER-BEGIN] */}
+              {group.title === 'Connection' && (
+                <div className="space-y-2">
+                  <label className="flex items-start gap-2 text-xs text-siem-muted">
+                    <input type="checkbox" checked={!!form.enable_app_profile} onChange={e => setForm(f => ({ ...f, enable_app_profile: e.target.checked }))} />
+                    <span><b className="text-siem-text">Enable the app-server profile (Application Monitoring)</b> - off by default. Starts a local OpenTelemetry receiver (loopback only) and, on Linux, the host runtime sensor. Use it on hosts that run your applications.</span>
+                  </label>
+                  {form.enable_app_profile && (
+                    <div className="ml-6 grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs font-medium text-siem-text mb-1">Unix socket path (optional)</label>
+                        <input value={form.app_otlp_socket || ''} onChange={e => setForm(f => ({ ...f, app_otlp_socket: e.target.value }))}
+                          placeholder="/run/obsidianwatch/otlp.sock" className="w-full bg-siem-surface2 border border-siem-border rounded-lg px-2.5 py-1.5 text-xs text-siem-text font-mono" />
+                        <span className="block text-[10px] text-siem-muted mt-1">For containers: mount this socket into the container instead of using the network.</span>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-siem-text mb-1">Host sensor tier (Linux)</label>
+                        <select value={form.app_sensor_mode || 'auto'} onChange={e => setForm(f => ({ ...f, app_sensor_mode: e.target.value }))}
+                          className="w-full bg-siem-surface2 border border-siem-border rounded-lg px-2.5 py-1.5 text-xs text-siem-text">
+                          <option value="auto">Automatic (best available)</option><option value="procevent">Proc connector + polling</option><option value="poll">Polling only (works without root)</option>
+                        </select>
+                        <span className="block text-[10px] text-siem-muted mt-1">Discovers services by their listening ports and watches what they run, connect to and write.</span>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-siem-text mb-1">Environment for discovered services</label>
+                        <input value={form.app_environment || ''} onChange={e => setForm(f => ({ ...f, app_environment: e.target.value }))}
+                          placeholder="prod" className="w-full bg-siem-surface2 border border-siem-border rounded-lg px-2.5 py-1.5 text-xs text-siem-text font-mono" />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-siem-text mb-1">Client address storage</label>
+                        <select value={form.app_client_ip_mode || 'full'} onChange={e => setForm(f => ({ ...f, app_client_ip_mode: e.target.value }))}
+                          className="w-full bg-siem-surface2 border border-siem-border rounded-lg px-2.5 py-1.5 text-xs text-siem-text">
+                          <option value="full">Full address</option><option value="truncated">Truncated (/24, /48)</option><option value="off">Do not store</option>
+                        </select>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
               {/* [APP-BUILDER-END] */}
               {group.fields.map(field => {
                 const isSaved = savedKeys[`has_${field.key}`]

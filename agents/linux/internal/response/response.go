@@ -222,6 +222,12 @@ func (h *Handler) Handle(ctx context.Context, action string, p Params) (res Resu
 		return h.quarantine(p.Path)
 	case "restore_file":
 		return h.restore(p.ID)
+	case "block_process":
+		return h.block(ctx, p)
+	case "unblock_process":
+		return h.unblock(p)
+	case "list_blocked":
+		return h.listBlocked()
 	case "list_quarantine":
 		h.mu.Lock()
 		defer h.mu.Unlock()
@@ -311,6 +317,8 @@ func (h *Handler) Restore() {
 // periodically (so a flushed firewall or a changed backend IP self-heals) and
 // honours an expiry set with ttl_minutes.
 func (h *Handler) Run(ctx context.Context) {
+	go h.enforceLoop(ctx)
+	go h.EnsurePrereqs(ctx) // install nftables now if the host has no firewall tool, so isolation is ready
 	h.Restore()
 	t := time.NewTicker(2 * time.Minute)
 	defer t.Stop()

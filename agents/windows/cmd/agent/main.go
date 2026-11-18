@@ -301,6 +301,9 @@ func run(ctx context.Context, cfg *config.Config, logger *slog.Logger) error {
 	norm := parser.NewNormalizer(logger)
 	enrch := parser.NewEnricher(hostInfo, logger)
 
+	hashedCh := make(chan schema.Event, 256)
+	fileHasher := collector.NewFileHasher(hashedCh)
+
 	// Dispatcher goroutine: reads from eventCh, normalises, enriches, enqueues.
 	go func() {
 		buf := make([]schema.Event, 0, cfg.Forwarder.BatchSize)
@@ -321,7 +324,15 @@ func run(ctx context.Context, cfg *config.Config, logger *slog.Logger) error {
 			case <-ctx.Done():
 				flush()
 				return
+			case ev := <-hashedCh:
+				buf = append(buf, ev)
+				if len(buf) >= cfg.Forwarder.BatchSize {
+					flush()
+				}
 			case ev := <-eventCh:
+				if !fileHasher.Handle(ev) {
+					continue
+				}
 				if ownproc.IsOwn(ev.PID, ev.PPID) {
 					ev.Raw = ownproc.TagRaw(ev.Raw)
 					ev.Severity = schema.SeverityInfo
@@ -347,12 +358,14 @@ func run(ctx context.Context, cfg *config.Config, logger *slog.Logger) error {
 					msg := fmt.Sprintf("collector PANIC: %s: %v", name, r)
 					logStep(msg)
 					logger.Error("collector: panic", "name", name, "err", r)
+					collector.ReportCollectorFailure(name, msg)
 				}
 			}()
 			logger.Info("collector: starting", "name", name)
 			logStep("collector starting: " + name)
 			if err := fn(ctx); err != nil {
 				logStep("collector error: " + name + ": " + err.Error())
+				collector.ReportCollectorFailure(name, err.Error())
 				logger.Error("collector: error", "name", name, "err", err)
 				errCh <- fmt.Errorf("%s: %w", name, err)
 			} else {
@@ -428,7 +441,7 @@ func run(ctx context.Context, cfg *config.Config, logger *slog.Logger) error {
 		activeCollectors = append(activeCollectors, "dns")
 	}
 
-	if cfg.Collector.FIM.Enabled && len(cfg.Collector.FIM.Dirs) > 0 {
+	if cfg.Collector.FIM.Enabled {
 		fimDirs := make([]collector.FIMConfig, len(cfg.Collector.FIM.Dirs))
 		for i, d := range cfg.Collector.FIM.Dirs {
 			fimDirs[i] = collector.FIMConfig{
@@ -530,6 +543,7 @@ func run(ctx context.Context, cfg *config.Config, logger *slog.Logger) error {
 	}
 
 	// [APP-COLLECTORS-BEGIN]
+	cfg.StartAppMonitoring(ctx, agentID, hostInfo.Hostname, dispatchCh, cfg.Agent.Version, logger, &activeCollectors)
 	// [APP-COLLECTORS-END]
 
 	// Start the HTTP forwarder (reads from queue, not eventCh).

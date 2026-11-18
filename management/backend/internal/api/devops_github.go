@@ -245,7 +245,7 @@ func syncGitHub(ctx context.Context, conn *store.DevOpsConnector, db *store.DB, 
 		userEventsURL := fmt.Sprintf("https://api.github.com/users/%s/events?per_page=100", conn.Org)
 		var userEvents []map[string]interface{}
 		if client.getJSON(ctx, userEventsURL, &userEvents) == nil {
-			events, _ := githubAuditToEvents(userEvents, conn)
+			events := githubUserEventsToEvents(userEvents, conn)
 			if len(events) > 0 {
 				n, _ := ingestCloudEvents(ctx, eventDB, events)
 				total += n
@@ -648,7 +648,13 @@ func githubAuditToEvents(entries []map[string]interface{}, conn *store.DevOpsCon
 
 		sev := githubAuditSeverity(action)
 		if sev == 0 {
-			continue // skip low-interest events
+			// Unrated actions used to be dropped before ingest, which made the feed look complete
+			// while hiding most of the audit log. Keep them as informational so they stay
+			// searchable; only per-clone/fetch git traffic (very high volume) is skipped.
+			if action == "" || strings.HasPrefix(strings.ToLower(action), "git.") {
+				continue
+			}
+			sev = 1
 		}
 
 		raw, _ := json.Marshal(entry)
@@ -935,9 +941,150 @@ func processGitHubWebhookEvent(event string, payload map[string]interface{}, con
 		}
 		raw := map[string]interface{}{"event": "org." + action, "actor": actor}
 		events = append(events, makeEvent("devops.org_"+action, sev, raw))
+
+	default:
+		if et, sev, raw, ok := githubWebhookExtra(event, payload, actor, repoName); ok {
+			events = append(events, makeEvent(et, sev, raw))
+		}
 	}
 
 	return events
+}
+
+// githubWebhookExtra maps the remaining webhook event types. Anything not listed explicitly is
+// still recorded as an informational event (except noisy ones), so new GitHub event types are
+// not silently discarded.
+func githubWebhookExtra(event string, payload map[string]interface{}, actor, repo string) (string, int, map[string]interface{}, bool) {
+	action, _ := payload["action"].(string)
+	raw := map[string]interface{}{"event": event, "action": action, "actor": actor, "repo": repo}
+	name := "devops." + event
+	if action != "" {
+		name += "_" + action
+	}
+	switch event {
+	case "ping", "star", "watch", "issues", "issue_comment", "status", "check_run", "check_suite", "gollum", "label", "milestone", "project", "projects_v2", "discussion", "discussion_comment", "sponsorship":
+		return "", 0, nil, false // chatty and not security relevant
+	case "create", "delete":
+		refType, _ := payload["ref_type"].(string)
+		ref, _ := payload["ref"].(string)
+		raw["ref_type"], raw["ref"] = refType, ref
+		sev := 1
+		if event == "delete" && refType == "branch" && isProtectedBranch(ref) {
+			sev = 4
+		} else if event == "delete" {
+			sev = 2
+		}
+		return "devops." + event + "_" + refType, sev, raw, true
+	case "public":
+		return "devops.repo_publicized", 5, raw, true
+	case "fork":
+		return name, 2, raw, true
+	case "release":
+		return name, 2, raw, true
+	case "pull_request":
+		pr, _ := payload["pull_request"].(map[string]interface{})
+		if merged, _ := pr["merged"].(bool); merged && action == "closed" {
+			base, _ := pr["base"].(map[string]interface{})
+			ref, _ := base["ref"].(string)
+			raw["merged"], raw["base"] = true, ref
+			sev := 1
+			if isProtectedBranch(ref) {
+				sev = 2
+			}
+			return "devops.pull_request_merged", sev, raw, true
+		}
+		return name, 1, raw, true
+	case "pull_request_review", "pull_request_review_comment", "workflow_job":
+		return name, 1, raw, true
+	case "deploy_key", "team", "team_add", "membership", "organization", "installation", "installation_repositories", "github_app_authorization":
+		sev := 3
+		if action == "created" || action == "added" {
+			sev = 4
+		}
+		return name, sev, raw, true
+	case "branch_protection_rule", "branch_protection_configuration", "repository_ruleset", "security_and_analysis", "repository_import":
+		sev := 3
+		if action == "deleted" || action == "disabled" {
+			sev = 4
+		}
+		return name, sev, raw, true
+	case "secret_scanning_alert", "secret_scanning_alert_location", "code_scanning_alert", "dependabot_alert", "repository_vulnerability_alert", "repository_advisory", "security_advisory":
+		sev := 3
+		if action == "created" || action == "reopened" {
+			sev = 4
+		}
+		return name, sev, raw, true
+	case "personal_access_token_request":
+		return name, 3, raw, true
+	}
+	return name, 1, raw, true
+}
+
+// githubUserEventsToEvents converts the public user-events feed used for personal accounts.
+// Those entries carry "type" (PushEvent, DeleteEvent...) and no "action", so the audit-log
+// converter used to discard every one of them.
+func githubUserEventsToEvents(entries []map[string]interface{}, conn *store.DevOpsConnector) []CloudEvent {
+	out := []CloudEvent{}
+	for _, e := range entries {
+		typ, _ := e["type"].(string)
+		id, _ := e["id"].(string)
+		if typ == "" || id == "" {
+			continue
+		}
+		actorObj, _ := e["actor"].(map[string]interface{})
+		actor, _ := actorObj["login"].(string)
+		repoObj, _ := e["repo"].(map[string]interface{})
+		repo, _ := repoObj["name"].(string)
+		payload, _ := e["payload"].(map[string]interface{})
+		when := time.Now()
+		if ts, _ := e["created_at"].(string); ts != "" {
+			if t, err := time.Parse(time.RFC3339, ts); err == nil {
+				when = t
+			}
+		}
+		refType, _ := payload["ref_type"].(string)
+		ref, _ := payload["ref"].(string)
+		var action string
+		sev := 1
+		switch typ {
+		case "PushEvent":
+			action = "push"
+		case "CreateEvent":
+			action = "create." + refType
+			if refType == "repository" {
+				action, sev = "repo.create", 4
+			}
+		case "DeleteEvent":
+			action, sev = "delete."+refType, 2
+			if refType == "branch" && isProtectedBranch(ref) {
+				sev = 4
+			}
+		case "PublicEvent":
+			action, sev = "repo.make_public", 5
+		case "MemberEvent":
+			action, sev = "member."+fmt.Sprint(payload["action"]), 4
+		case "ForkEvent":
+			action, sev = "fork", 2
+		case "ReleaseEvent":
+			action, sev = "release."+fmt.Sprint(payload["action"]), 2
+		case "PullRequestEvent":
+			action = "pull_request." + fmt.Sprint(payload["action"])
+		case "WatchEvent", "IssuesEvent", "IssueCommentEvent", "CommitCommentEvent", "GollumEvent":
+			continue
+		default:
+			action = strings.ToLower(strings.TrimSuffix(typ, "Event"))
+		}
+		raw, _ := json.Marshal(e)
+		host := conn.Org
+		if repo != "" {
+			host = repo
+		}
+		out = append(out, CloudEvent{
+			ID: "gh-user:" + id, Time: when, AgentID: fmt.Sprintf("devops:%d", conn.ID), Host: host, OS: "devops",
+			EventType: "devops." + strings.ReplaceAll(action, ".", "_"), Severity: sev, Source: "github_events", Username: actor, Raw: raw,
+		})
+	}
+	return out
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────

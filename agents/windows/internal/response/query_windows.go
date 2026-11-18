@@ -47,8 +47,9 @@ func psTable(ctx context.Context, script string, cols []string) ([]string, [][]s
 }
 
 func qProcesses(ctx context.Context) ([]string, [][]string, error) {
-	return psTable(ctx, `Get-CimInstance Win32_Process | ForEach-Object { [pscustomobject]@{pid=$_.ProcessId;ppid=$_.ParentProcessId;name=$_.Name;path=$_.ExecutablePath;cmdline=$_.CommandLine} }`,
-		[]string{"pid", "ppid", "name", "path", "cmdline"})
+	return psTable(ctx, `$g=@{}; Get-Process -IncludeUserName -ErrorAction SilentlyContinue | ForEach-Object { $g[[int]$_.Id]=$_ }
+Get-CimInstance Win32_Process | ForEach-Object { $x=$g[[int]$_.ProcessId]; [pscustomobject]@{pid=$_.ProcessId;ppid=$_.ParentProcessId;user=$(if ($x) {$x.UserName} else {''});name=$_.Name;mem_mb=[math]::Round($_.WorkingSetSize/1MB,1);path=$_.ExecutablePath;cmdline=$_.CommandLine} }`,
+		[]string{"pid", "ppid", "user", "name", "mem_mb", "path", "cmdline"})
 }
 
 func qConnections(ctx context.Context) ([]string, [][]string, error) {

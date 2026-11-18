@@ -550,6 +550,10 @@ type AgentBuilderConfig struct {
 	SiteName         string `json:"site_name"`          // Network probe site name
 	// [APP-FIELDS-BEGIN]
 	EnableAppProfile bool `json:"enable_app_profile"` // app-server profile: eBPF sensor + OTLP receiver
+	AppOTLPSocket    string `json:"app_otlp_socket"`    // optional Unix socket path for the OTLP receiver (containers)
+	AppClientIPMode  string `json:"app_client_ip_mode"` // full | truncated | off (default full)
+	AppSensorMode    string `json:"app_sensor_mode"`    // host sensor tier: auto | procevent | poll (default auto)
+	AppEnvironment   string `json:"app_environment"`    // deployment environment given to discovered services
 	// [APP-FIELDS-END]
 	EnableLiveResponse bool `json:"enable_live_response"` // H-2: opt-in remote shell (default off)
 }

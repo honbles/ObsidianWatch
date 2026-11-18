@@ -22,7 +22,9 @@ import (
 	"obsidianwatch/management/internal/store"
 )
 
-const feodoURL = "https://feodotracker.abuse.ch/downloads/ipblocklist.txt"
+// The aggressive list adds IPs that have been seen as C2 over the past year (the default list holds
+// only servers online right now, usually a handful).
+const feodoURL = "https://feodotracker.abuse.ch/downloads/ipblocklist_aggressive.txt"
 
 // feedMaxBytes bounds a feed download (a BCL is ~2,000 lines).
 const feedMaxBytes = 8 << 20

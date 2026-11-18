@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { ShieldAlert, ShieldCheck, Skull, FileX2, Loader2, RotateCcw, WifiOff } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
 import api from '../api/client'
+import { ProcessPicker } from './ProcessList.jsx'
 
 // One-click response: isolate / release a host, kill a process, quarantine a
 // file. Everything is confirmed, audited server-side and shown in the history.
@@ -58,6 +59,7 @@ export function TabResponse({ agent }) {
   const [tree, setTree] = useState(true)
   const [path, setPath] = useState('')
   const [quar, setQuar] = useState(null)
+  const [blocked, setBlocked] = useState(null)
 
   const state = st?.state
   const isolated = !!state?.isolated
@@ -72,6 +74,10 @@ export function TabResponse({ agent }) {
     setBusy(''); reload()
     if (action === 'list_quarantine' && r.data?.result) setQuar(r.data.result)
     return r
+  }
+  const loadBlocked = async () => {
+    const r = await go('lb', 'list_blocked', {})
+    if (r?.data?.result) setBlocked(r.data.result)
   }
   const loadQuar = async () => {
     const r = await go('quar', 'list_quarantine', {})
@@ -131,11 +137,18 @@ export function TabResponse({ agent }) {
         <div className="grid md:grid-cols-2 gap-4">
           <div className="rounded-xl border border-siem-border bg-siem-surface/40 p-4 space-y-2">
             <div className="text-xs font-semibold text-siem-text flex items-center gap-1.5"><Skull size={13} className="text-red-400" /> Kill process</div>
+            <ProcessPicker agentId={agent.id} enabled={online} onPick={p => { setPid(String(p.pid)); setImage(p.path || '') }} />
             <input value={pid} onChange={e => setPid(e.target.value.replace(/\D/g, ''))} placeholder="PID" className="w-full bg-siem-bg border border-siem-border rounded px-2 py-1.5 text-xs text-siem-text font-mono" />
             <input value={image} onChange={e => setImage(e.target.value)} placeholder="Expected image, e.g. C:\Users\x\evil.exe (guards against PID reuse)" className="w-full bg-siem-bg border border-siem-border rounded px-2 py-1.5 text-xs text-siem-text font-mono" />
             <label className="flex items-center gap-2 text-[11px] text-siem-muted"><input type="checkbox" checked={tree} onChange={e => setTree(e.target.checked)} /> Also kill child processes</label>
             <button disabled={!pid || !!busy || !online} onClick={() => go('kill', 'kill_process', { pid: +pid, image, tree }, `Kill PID ${pid}${tree ? ' and its children' : ''} on ${agent.hostname}?`)}
               className="px-3 py-1.5 rounded bg-red-700 hover:bg-red-600 text-white text-xs font-semibold disabled:opacity-40">{busy === 'kill' ? 'Killing…' : 'Kill process'}</button>
+            <div className="text-[10px] text-siem-muted pt-1">Killing does not stop it starting again. Block makes the program non-executable and ends it every time it is started. System files and the agent cannot be blocked.</div>
+            <div className="flex gap-2">
+              <button disabled={!/^([A-Za-z]:[\\/]|\/)/.test(image) || !!busy || !online} onClick={() => go('blk', 'block_process', { path: image }, `Block ${image} from running on ${agent.hostname}? Running copies are ended and it cannot be started until you unblock it.`).then(loadBlocked)}
+                className="px-3 py-1.5 rounded bg-red-900 hover:bg-red-800 text-white text-xs font-semibold disabled:opacity-40">{busy === 'blk' ? 'Blocking…' : 'Block from running'}</button>
+              <button disabled={!!busy || !online} onClick={loadBlocked} className="px-3 py-1.5 rounded border border-siem-border text-siem-muted hover:text-siem-text text-xs disabled:opacity-40">Blocked programs</button>
+            </div>
           </div>
           <div className="rounded-xl border border-siem-border bg-siem-surface/40 p-4 space-y-2">
             <div className="text-xs font-semibold text-siem-text flex items-center gap-1.5"><FileX2 size={13} className="text-orange-400" /> Quarantine file</div>
@@ -147,6 +160,23 @@ export function TabResponse({ agent }) {
               <button disabled={!!busy || !online} onClick={loadQuar} className="px-3 py-1.5 rounded border border-siem-border text-siem-muted hover:text-siem-text text-xs disabled:opacity-40">View vault ({state?.quarantined ?? 0})</button>
             </div>
           </div>
+        </div>
+      )}
+
+      {blocked && (
+        <div className="rounded-xl border border-siem-border overflow-hidden">
+          <div className="px-3 py-2 text-[10px] uppercase tracking-wider text-siem-muted bg-siem-surface/40">Blocked programs</div>
+          {(blocked.rows || []).length === 0 ? <div className="p-3 text-xs text-siem-muted">Nothing is blocked.</div> : (
+            <table className="w-full text-xs"><tbody>
+              {blocked.rows.map(r => (
+                <tr key={r[0]} className="border-t border-siem-border/40">
+                  <td className="px-3 py-2 font-mono break-all">{r[0]}</td>
+                  <td className="px-3 py-2 text-[10px] text-siem-muted">{formatDistanceToNow(new Date(r[1]), { addSuffix: true })}</td>
+                  <td className="px-3 py-2 text-right">{admin && <button onClick={() => go('ub' + r[0], 'unblock_process', { path: r[0] }, `Unblock ${r[0]}?`).then(loadBlocked)} className="text-siem-muted hover:text-siem-text flex items-center gap-1 ml-auto"><RotateCcw size={11} /> Unblock</button>}</td>
+                </tr>
+              ))}
+            </tbody></table>
+          )}
         </div>
       )}
 
