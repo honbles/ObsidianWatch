@@ -1,3 +1,4 @@
+import { useDragSize } from '../hooks/useDragSize'
 import { useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Maximize2, Minimize2, AlertTriangle, Loader2, RefreshCw, X, Sparkles } from 'lucide-react'
@@ -284,6 +285,7 @@ function GraphBody({ graph, selected, setSelected, ai, aiLoading, aiErr, runAI }
   const L = useMemo(() => layout(graph), [graph])
   const nodesById = useMemo(() => Object.fromEntries(graph.nodes.map(n => [n.id, n])), [graph])
   const sel = selected ? nodesById[selected] : null
+  const [detailH, detailHandle] = useDragSize('alertgraph_detail', 260, 80, 700, 'y', true)
   return (
     <div className="flex flex-col flex-1 min-h-0">
       <CampaignStrip campaign={graph.campaign} />
@@ -306,7 +308,8 @@ function GraphBody({ graph, selected, setSelected, ai, aiLoading, aiErr, runAI }
           {graph.nodes.map(n => L.pos[n.id] && <NodeBox key={n.id} n={n} p={L.pos[n.id]} selected={selected === n.id} onClick={() => setSelected(selected === n.id ? null : n.id)} />)}
         </svg>
       </div>
-      <div className="shrink-0 h-[42%] min-h-[190px] border-t border-siem-border overflow-y-auto p-4 grid grid-cols-1 lg:grid-cols-5 gap-4">
+      <div {...detailHandle}/>
+      <div style={{ height: detailH }} className="shrink-0 border-t border-siem-border overflow-y-auto p-4 grid grid-cols-1 lg:grid-cols-5 gap-4">
         <div className="lg:col-span-3">
           {sel
             ? <NodeDetail node={sel} edges={graph.edges} nodesById={nodesById} aiNote={ai?.nodes?.[sel.id]} onClose={() => setSelected(null)} alert={graph.alert} />

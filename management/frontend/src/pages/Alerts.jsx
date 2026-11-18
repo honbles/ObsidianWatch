@@ -1,3 +1,4 @@
+import { useDragSize } from '../hooks/useDragSize'
 import { useEffect, useState, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import {
@@ -282,6 +283,7 @@ export default function Alerts() {
   const [loading, setLoading]       = useState(true)
   const [showCreate, setShowCreate] = useState(false)
   const [selectedId, setSelectedId] = useState(null)
+  const [listW, listHandle] = useDragSize('alerts_list', 420, 300, 800, 'x')
   const [users, setUsers]           = useState([])
   const [search, setSearch]         = useState('')
   const [checked, setChecked]       = useState(() => new Set())
@@ -342,7 +344,8 @@ export default function Alerts() {
       {showCreate && <CreateModal onClose={() => setShowCreate(false)} onCreated={load}/>}
 
       {/* Left panel - alert list */}
-      <div className={`flex flex-col border-r border-siem-border transition-all duration-300 ${selectedId ? 'w-[420px]' : 'flex-1'}`}>
+      <div style={selectedId ? { width: listW } : undefined} className={`relative flex flex-col border-r border-siem-border ${selectedId ? '' : 'flex-1'}`}>
+        {selectedId && <div {...listHandle}/>}
 
         {/* Header */}
         <div className="flex-shrink-0 px-5 pt-5 pb-4 border-b border-siem-border bg-siem-surface">

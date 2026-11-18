@@ -7,6 +7,7 @@ import {
 } from 'lucide-react'
 import { useTheme } from '../api/useTheme'
 import api from '../api/client'
+import { useDragSize } from '../hooks/useDragSize'
 
 function OWLogo({ size = 26 }) {
   return (
@@ -165,6 +166,7 @@ export function Shell({ user, children }) {
   const [collapsed, setCollapsed] = useState(() => { try { return localStorage.getItem('ow_sb_collapsed') === '1' } catch { return false } })
   const [openIds, setOpenIds] = useState(() => new Set())
   const menuRef = useRef(null)
+  const [sbw, sbHandle] = useDragSize('sidebar', 212, 160, 360, 'x')
 
   useEffect(() => {
     const load = () => {
@@ -214,7 +216,7 @@ export function Shell({ user, children }) {
   }
 
   return (
-    <div className={`shell ${collapsed ? 'collapsed' : ''}`}>
+    <div className={`shell ${collapsed ? 'collapsed' : ''}`} style={{ '--sb-w': sbw + 'px' }}>
       <aside className="sidebar">
         <div className="sb-brand" onClick={() => go('/')}>
           <OWLogo size={26}/>
@@ -236,6 +238,7 @@ export function Shell({ user, children }) {
             {admin.map(it => <Item key={it.id} it={it} loc={loc} nav={go} collapsed={collapsed} openIds={openIds} toggle={toggleGroup}/>)}
           </div>
         )}
+        {!collapsed && <div {...sbHandle}/>}
       </aside>
 
       <div className="shell-main">

@@ -325,17 +325,21 @@ func run(ctx context.Context, cfg *config.Config, logger *slog.Logger) error {
 				flush()
 				return
 			case ev := <-hashedCh:
+				if ownproc.IsOwn(ev.PID, ev.PPID) { // hashed file events must carry the self-activity tag too
+					ev.Raw = ownproc.TagRaw(ev.Raw)
+					ev.Severity = schema.SeverityInfo
+				}
 				buf = append(buf, ev)
 				if len(buf) >= cfg.Forwarder.BatchSize {
 					flush()
 				}
 			case ev := <-eventCh:
-				if !fileHasher.Handle(ev) {
-					continue
-				}
 				if ownproc.IsOwn(ev.PID, ev.PPID) {
 					ev.Raw = ownproc.TagRaw(ev.Raw)
 					ev.Severity = schema.SeverityInfo
+				}
+				if !fileHasher.Handle(ev) {
+					continue
 				}
 				buf = append(buf, ev)
 				if len(buf) >= cfg.Forwarder.BatchSize {

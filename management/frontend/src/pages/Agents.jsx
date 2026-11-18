@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useDragSize } from '../hooks/useDragSize'
 import { useSearchParams } from 'react-router-dom'
 import { Wifi, Shield, ShieldOff, ShieldCheck, ChevronRight, X, RefreshCw, Search, Activity, GitBranch, LayoutDashboard, Cpu, MapPin, Zap, Globe as GlobeIcon, Bug, LogIn, FolderOpen, Terminal, ShieldAlert } from 'lucide-react'
 import api from '../api/client'
@@ -28,8 +29,20 @@ const DETAIL_TABS=[
   {id:'rca',           label:'RCA',           icon:Search},
 ]
 
+// Same fifteen views as before, grouped into a left rail so all of them stay one click away.
+const TAB_GROUPS=[
+  {label:'Summary',      ids:['overview']},
+  {label:'Activity',     ids:['events','threats','alerts','logons','network','dns','files']},
+  {label:'Endpoint',     ids:['device','location','compliance','vulnerability']},
+  {label:'Investigate',  ids:['rca','terminal','response']},
+]
+
 function AgentDetail({ agent, onBack }) {
-  const [activeTab,setActiveTab]=useState('overview')
+  const [searchP,setSearchP]=useSearchParams()
+  const tabParam=searchP.get('tab')
+  const activeTab=DETAIL_TABS.some(t=>t.id===tabParam)?tabParam:'overview'
+  const setActiveTab=(id)=>{const n=new URLSearchParams(searchP);if(id==='overview')n.delete('tab');else n.set('tab',id);setSearchP(n,{replace:true})}
+  const [railW,railHandle]=useDragSize('agent_rail',160,120,280,'x')
   const [tamperOpen,setTamperOpen]=useState(false)
   const [agentData,setAgentData]=useState(agent)
   const osStyle=OS_GROUPS[getOSCategory(agent.os)]||OS_GROUPS.other
@@ -41,12 +54,12 @@ function AgentDetail({ agent, onBack }) {
   return (
     <div className="flex flex-col h-full overflow-hidden">
       {tamperOpen&&<TamperPanel agent={agentData} onClose={()=>setTamperOpen(false)} onUpdated={reload}/>}
-      <div className="px-5 pt-4 pb-0 border-b border-siem-border shrink-0">
-        <button onClick={onBack} className="flex items-center gap-1.5 text-xs text-siem-muted hover:text-siem-text mb-3 transition-colors"><ChevronRight size={11} className="rotate-180"/> Back to fleet</button>
-        <div className="flex items-center gap-3 mb-3">
+      <div className="px-4 py-2.5 border-b border-siem-border shrink-0 bg-siem-surface">
+        <button onClick={onBack} className="flex items-center gap-1.5 text-xs text-siem-muted hover:text-siem-text mb-1.5 transition-colors"><ChevronRight size={11} className="rotate-180"/> Back to fleet</button>
+        <div className="flex items-center gap-3">
           <div className={`w-8 h-8 rounded-lg flex items-center justify-center border ${osStyle.border} ${osStyle.bg}`}><Icon size={15} className={osStyle.color}/></div>
           <div>
-            <h2 className="text-lg font-bold text-siem-text">{agentData.hostname}</h2>
+            <h2 className="text-base font-bold text-siem-text leading-tight">{agentData.hostname}</h2>
             <div className="flex items-center gap-2 mt-0.5">
               <span className={`text-[9px] px-2 py-0.5 rounded-full border font-medium ${agentData.online?'bg-emerald-900/30 text-emerald-400 border-emerald-800':'bg-siem-bg text-siem-muted border-siem-border'}`}>{agentData.online?'Online':'Offline'}</span>
               <IsolatedBadge state={respState}/>
@@ -65,15 +78,20 @@ function AgentDetail({ agent, onBack }) {
             </div>
           </div>
         </div>
-        <div className="flex gap-0 overflow-x-auto">
-          {DETAIL_TABS.map(({id,label,icon:TabIcon})=>(
-            <button key={id} onClick={()=>setActiveTab(id)} className={`flex items-center gap-1.5 px-4 py-2.5 text-xs font-medium transition-colors border-b-2 whitespace-nowrap ${activeTab===id?'border-siem-accent text-siem-accent':'border-transparent text-siem-muted hover:text-siem-text'}`}>
-              <TabIcon size={12}/>{label}
-            </button>
-          ))}
-        </div>
       </div>
-      <div className={`flex-1 ${fullHeight?'overflow-hidden':'overflow-y-auto'}`}>
+      <div className="flex flex-1 min-h-0">
+        <nav className="agent-rail relative shrink-0 overflow-y-auto border-r border-siem-border bg-siem-surface" style={{width:railW}}>
+          {TAB_GROUPS.map(g=>(
+            <div key={g.label}>
+              <div className="agent-rail-label">{g.label}</div>
+              {g.ids.map(id=>{const t=DETAIL_TABS.find(x=>x.id===id);const TabIcon=t.icon;return(
+                <button key={id} onClick={()=>setActiveTab(id)} className={`agent-rail-item ${activeTab===id?'active':''}`}><TabIcon size={13}/><span>{t.label}</span></button>
+              )})}
+            </div>
+          ))}
+          <div {...railHandle}/>
+        </nav>
+        <div className={`flex-1 min-w-0 ${fullHeight?'overflow-hidden':'overflow-y-auto'}`}>
         {activeTab==='overview' &&<TabOverview  agent={agentData}/>}
         {activeTab==='events'   &&<TabEvents    agent={agentData}/>}
         {activeTab==='threats'  &&<TabThreats   agent={agentData}/>}
@@ -89,6 +107,7 @@ function AgentDetail({ agent, onBack }) {
         {activeTab==='response'     &&<TabResponse  agent={agentData}/>}
         {activeTab==='vulnerability' &&<TabVuln      agent={agentData}/>}
         {activeTab==='rca'           &&<TabRCA       agent={agentData}/>}
+      </div>
       </div>
     </div>
   )

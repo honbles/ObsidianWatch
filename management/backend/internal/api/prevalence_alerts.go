@@ -47,6 +47,9 @@ func rarityCandidates(events []store.Event, max int) map[string]store.Event {
 		if ev.EventType != "process" || ev.ImagePath == nil || !inWritableDir(*ev.ImagePath) {
 			continue
 		}
+		if isSelfActivity(ev) || isOwnAgentProcess(ev) || isOwnSysmon(ev) {
+			continue // the agent and what it spawns are not "rare binaries"
+		}
 		k := hashKey(ev)
 		if k == "" {
 			continue
@@ -85,7 +88,10 @@ func (e *DetectionEngine) alertRareBinaries(ctx context.Context, events []store.
 			Description: fmt.Sprintf("%s ran from %s on %s. This file hash has been seen on no other host in the fleet.\nHash key: %s",
 				derefStr(ev.ProcessName), derefStr(ev.ImagePath), ev.Host, k),
 			Severity: 2, AgentID: ev.AgentID, Host: ev.Host, EventType: ev.EventType,
-			EventID: "prev:rare:" + sha12(k+"|"+ev.Host), SourceEventID: ev.ID,
+			// One alert per host, program name and day: a program that is rebuilt or updated gets a new hash
+			// each time, and keying on the hash opened a new alert for every version.
+			EventID: "prev:rare:" + sha12(strings.ToLower(derefStr(ev.ProcessName))+"|"+ev.Host+"|"+time.Now().UTC().Format("2006-01-02")),
+			SourceEventID: ev.ID,
 		}
 		if _, _, err := e.db.CreateAlertDeduped(ctx, a); err != nil {
 			e.logger.Warn("prevalence: rare-binary alert failed", "err", err)

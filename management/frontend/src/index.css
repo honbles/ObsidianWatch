@@ -48,7 +48,7 @@ html.light {
   --border2:   #b8c8dc;
   --text:      #0d1828;
   --text2:     #4a6080;
-  --text3:     #8aa0bc;
+  --text3:     #64789a;
   --nav-bg:    #0d1b3e;
   --nav-border:#1a3060;
   --nav-text:  #8fb8e8;
@@ -406,3 +406,54 @@ body {
 .page { animation: none; }
 .card-head { text-transform: none; }
 @media (max-width: 900px) { .shell:not(.collapsed) .sidebar { width: var(--sb-w-collapsed); } .shell:not(.collapsed) .shell-main { margin-left: var(--sb-w-collapsed); } }
+
+/* ── Light theme: pages hard-code pastel dark-theme colours inline. Remap them to readable ones here
+   instead of editing every page (inline hex is normalised by the browser to rgb()). ── */
+html.light [style*="color: rgb(52, 211, 153)"] { color: #047857 !important; }
+html.light [style*="color: rgb(248, 113, 113)"] { color: #dc2626 !important; }
+html.light [style*="color: rgb(251, 146, 60)"] { color: #c2410c !important; }
+html.light [style*="color: rgb(167, 139, 250)"] { color: #6d28d9 !important; }
+html.light [style*="color: rgb(56, 189, 248)"] { color: #0369a1 !important; }
+html.light [style*="color: rgb(251, 191, 36)"] { color: #b45309 !important; }
+html.light [style*="color: rgb(96, 165, 250)"] { color: #1d4ed8 !important; }
+html.light [style*="color: rgb(148, 163, 184)"] { color: #475569 !important; }
+html.light [style*="color: rgb(192, 132, 252)"] { color: #7e22ce !important; }
+html.light [style*="color: rgb(249, 115, 22)"] { color: #c2410c !important; }
+html.light [style*="color: rgb(239, 68, 68)"] { color: #dc2626 !important; }
+html.light [style*="color: rgb(0, 194, 224)"] { color: #0e7490 !important; }
+html.light [style*="background: rgb(22, 27, 34)"], html.light [style*="background-color: rgb(22, 27, 34)"] { background: var(--surface2) !important; color: var(--text); }
+html.light [style*="background: rgb(15, 25, 35)"], html.light [style*="background-color: rgb(15, 25, 35)"] { background: var(--surface2) !important; color: var(--text); }
+html.light [style*="background: rgb(15, 23, 42)"], html.light [style*="background-color: rgb(15, 23, 42)"] { background: var(--surface2) !important; color: var(--text); }
+html.light [style*="background: rgb(10, 15, 26)"], html.light [style*="background-color: rgb(10, 15, 26)"] { background: var(--surface2) !important; color: var(--text); }
+html.light .sidebar, html.light .sidebar * { --text: #fff; }
+html.light .card, html.light .kpi { box-shadow: 0 1px 2px rgba(13,24,40,0.06); }
+html.light .tb-btn, html.light .tb-user { background: var(--surface); }
+html.light ::selection { background: rgba(2,132,199,0.25); }
+
+/* Drag handles */
+.ow-resizer { position: absolute; z-index: 60; background: transparent; transition: background 0.1s; }
+.ow-resizer:hover, .ow-resizer:active { background: var(--accent); }
+.ow-resizer-x { top: 0; bottom: 0; right: -2px; width: 5px; cursor: col-resize; }
+.ow-resizer-y { left: 0; right: 0; height: 5px; cursor: row-resize; position: relative; flex-shrink: 0; margin: -2px 0; }
+.sidebar { position: fixed; }
+/* pages that size themselves to the viewport must leave room for the top bar */
+#app-shell .h-screen { height: calc(100vh - var(--topbar-h)); }
+#app-shell .min-h-screen { min-height: calc(100vh - var(--topbar-h)); }
+
+/* ── Rigid KPI and card geometry (dashboard) ── */
+.kpi { border-radius: 2px; padding: 12px 14px 11px 17px; background: var(--surface); border: 1px solid var(--border); border-left: 1px solid var(--border); transition: background 0.1s; }
+.kpi:hover { background: var(--surface2); border-color: var(--border2); box-shadow: none; }
+.kpi-accent-line { top: 0; bottom: 0; left: 0; right: auto; width: 4px; height: auto; }
+.kpi-label { font-size: 9.5px; letter-spacing: 0.1em; margin-bottom: 6px; }
+.kpi-value { font-size: 24px; letter-spacing: -0.3px; font-weight: 500; }
+.kpi-sub { font-size: 10px; margin-top: 5px; padding-top: 5px; border-top: 1px solid var(--border); }
+.card { border-radius: 2px; }
+.card-head { background: var(--surface2); padding: 8px 14px; font-size: 10.5px; letter-spacing: 0.1em; }
+.card-head + div { padding-top: 10px; }
+
+/* Agent detail left rail */
+.agent-rail-label { padding: 10px 12px 3px; font-size: 9px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: var(--text3); }
+.agent-rail-item { display: flex; align-items: center; gap: 8px; width: 100%; height: 30px; padding: 0 12px; border: 0; border-left: 3px solid transparent;
+  background: transparent; color: var(--text2); font-size: 12px; cursor: pointer; text-align: left; }
+.agent-rail-item:hover { background: var(--surface3); color: var(--text); }
+.agent-rail-item.active { background: var(--accent-bg); color: var(--accent); border-left-color: var(--accent); font-weight: 600; }
