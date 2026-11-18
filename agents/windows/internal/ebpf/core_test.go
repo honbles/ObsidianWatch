@@ -142,3 +142,25 @@ func TestRawProcContract(t *testing.T) {
 		t.Fatalf("without ancestry the parent is the lineage: %v", got)
 	}
 }
+
+func TestDiscoverNameWindowsPaths(t *testing.T) {
+	cases := []struct {
+		exe  string
+		args []string
+		want string
+	}{
+		{`C:\Program Files\Java\bin\java.exe`, []string{"-jar", `D:\apps\orders\orders-1.2.3.jar`}, "orders"},
+		{`C:\Program Files\nodejs\node.exe`, []string{`C:\srv\shop\server.js`}, "server"},
+		{`C:\Python312\python.exe`, []string{"-m", "uvicorn"}, "uvicorn"},
+		{`C:\Program Files\dotnet\dotnet.exe`, []string{`C:\inetpub\billing\Billing.Api.dll`}, "BillingApi"},
+	}
+	for _, c := range cases {
+		got := DiscoverName(c.exe, c.args, "")
+		if got == "" || got == "java" || got == "node" {
+			t.Errorf("%s %v -> %q (want a name like %q)", c.exe, c.args, got, c.want)
+		}
+	}
+	if baseOf(`C:\x\y\Evil.exe`) != "Evil.exe" {
+		t.Error("baseOf must split on backslashes")
+	}
+}

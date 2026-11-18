@@ -85,7 +85,7 @@ func build(o *Options, typ schema.EventType, source string, p ProcInfo, rp RawPr
 }
 
 func baseOf(p string) string {
-	if i := strings.LastIndexByte(p, '/'); i >= 0 {
+	if i := strings.LastIndexAny(p, `/\`); i >= 0 { // either separator: Windows paths use a backslash
 		return p[i+1:]
 	}
 	return p

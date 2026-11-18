@@ -21,13 +21,16 @@ func cleanName(s string) string {
 	return s
 }
 
+// norm lets Windows paths (backslashes) be handled like Unix ones.
+func norm(p string) string { return strings.ReplaceAll(p, `\`, "/") }
+
 func stripExt(p string) string {
-	b := path.Base(p)
+	b := path.Base(norm(p))
 	return strings.TrimSuffix(b, path.Ext(b))
 }
 
 func parentDir(p string) string {
-	d := path.Base(path.Dir(p))
+	d := path.Base(path.Dir(norm(p)))
 	if d == "." || d == "/" {
 		return ""
 	}
@@ -37,7 +40,7 @@ func parentDir(p string) string {
 // DiscoverName derives a stable service name for a process found listening on a port. Names come
 // from what an operator would call the service: the jar, script, module or DLL, never a pid.
 func DiscoverName(exe string, args []string, cwd string) string {
-	base := strings.ToLower(path.Base(exe))
+	base := strings.TrimSuffix(strings.ToLower(path.Base(norm(exe))), ".exe")
 	first := func(skipFlags bool) string {
 		for _, a := range args {
 			if skipFlags && strings.HasPrefix(a, "-") {

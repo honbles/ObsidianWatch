@@ -25,26 +25,48 @@ export function useProcesses(agentId, enabled = true) {
 }
 
 // Builds [{p, depth, hasKids}] in tree order. Orphans (parent not listed) become roots.
+// Windows has a real process with pid 0 (System Idle), so the virtual root must not be 0.
+const ROOT = -1
+
 function flatten(rows, open, q) {
   const byPid = new Map(rows.map(r => [r.pid, r]))
+  // Windows reuses PIDs, so a listed "parent" can be a descendant (or the process itself): a loop in
+  // the parent chain made the old recursion run forever. A process whose chain loops becomes a root.
+  const loops = r => {
+    const seen = new Set([r.pid])
+    let cur = byPid.get(r.ppid)
+    for (let i = 0; cur && i < 200; i++) {
+      if (seen.has(cur.pid)) return true
+      seen.add(cur.pid)
+      if (cur.ppid === cur.pid) return false // a self-parented root (System Idle) ends the chain, it is not a loop
+      cur = byPid.get(cur.ppid)
+    }
+    return false
+  }
   const kids = new Map()
   for (const r of rows) {
-    const par = byPid.has(r.ppid) && r.ppid !== r.pid ? r.ppid : 0
+    const par = byPid.has(r.ppid) && r.ppid !== r.pid && !loops(r) ? r.ppid : ROOT
     if (!kids.has(par)) kids.set(par, [])
     kids.get(par).push(r)
   }
   const match = r => !q || `${r.pid} ${r.name} ${r.user} ${r.path} ${r.cmd}`.toLowerCase().includes(q)
   const keep = new Map()
-  const mark = r => { let k = match(r); for (const c of kids.get(r.pid) || []) if (mark(c)) k = true; keep.set(r.pid, k); return k }
-  for (const r of kids.get(0) || []) mark(r)
+  const mark = (r, depth) => {
+    if (depth > 100) return false
+    let k = match(r)
+    for (const c of kids.get(r.pid) || []) if (mark(c, depth + 1)) k = true
+    keep.set(r.pid, k)
+    return k
+  }
+  for (const r of kids.get(ROOT) || []) mark(r, 0)
   const out = []
   const walk = (r, depth) => {
-    if (!keep.get(r.pid)) return
+    if (depth > 100 || !keep.get(r.pid)) return
     const ch = kids.get(r.pid) || []
     out.push({ p: r, depth, hasKids: ch.length > 0 })
     if (q || open.has(r.pid)) for (const c of ch) walk(c, depth + 1)
   }
-  for (const r of (kids.get(0) || []).sort((a, b) => a.pid - b.pid)) walk(r, 0)
+  for (const r of (kids.get(ROOT) || []).sort((a, b) => a.pid - b.pid)) walk(r, 0)
   return out
 }
 
