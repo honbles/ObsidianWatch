@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react'
 import ErrorBoundary from './components/ErrorBoundary'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
-import { Navbar } from './components/Navbar'
+import { Shell } from './components/Shell'
+import Hunt from './pages/Hunt'
 import Login from './pages/Login'
 import Dashboard from './pages/Dashboard'
 import Events from './pages/Events'
@@ -26,14 +27,7 @@ import Setup from './pages/Setup'
 import Insights from './pages/Insights'
 
 function Layout({ user, children }) {
-  return (
-    <div style={{ minHeight:'100vh', background:'var(--bg)' }}>
-      <Navbar user={user} />
-      <div id="app-shell">
-        {children}
-      </div>
-    </div>
-  )
+  return <Shell user={user}>{children}</Shell>
 }
 
 export default function App() {
@@ -100,6 +94,7 @@ export default function App() {
           return <Route key={file} path={mod.appPath} element={<ProtectedRoute><AppPage /></ProtectedRoute>} />
         })}
         {/* [APP-ROUTES-END] */}
+        <Route path="/hunt"               element={<ProtectedRoute><Hunt /></ProtectedRoute>} />
         <Route path="/insights"           element={<ProtectedRoute><Insights /></ProtectedRoute>} />
         <Route path="*"             element={<Navigate to="/" replace />} />
       </Routes>
