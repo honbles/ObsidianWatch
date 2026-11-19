@@ -212,6 +212,12 @@ function AlertRow({ alert, selected, onClick }) {
             {SEV_LABEL[alert.severity] || alert.severity}
           </span>
           <StatusPill status={alert.status}/>
+          {alert.occurrence_count > 1 && (
+            <span className="text-[9px] font-mono text-siem-muted border border-siem-border rounded px-1.5 py-0.5"
+              title={`Seen ${alert.occurrence_count} times; the latest ${alert.last_seen ? new Date(alert.last_seen).toLocaleString() : ''}. Repeats within 30 minutes are folded into this alert.`}>
+              ×{alert.occurrence_count}
+            </span>
+          )}
           {alert.assigned_to && (
             <span className="flex items-center gap-1 text-[9px] text-yellow-400 bg-yellow-950/20 border border-yellow-800/30 rounded-full px-2 py-0.5">
               <User size={8}/>{alert.assigned_to}

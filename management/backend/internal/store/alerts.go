@@ -41,7 +41,7 @@ func (db *DB) ListAlerts(ctx context.Context, status string, limit int) ([]Alert
 		       COALESCE(agent_id,''), COALESCE(host,''), COALESCE(event_type,''),
 		       COALESCE(event_id,''), COALESCE(source_event_id,''), acknowledged_by, acknowledged_at,
 		       assigned_to, case_notes, closed_by, closed_at, review_comment,
-		       ai_analysis, ai_analysed_at
+		       ai_analysis, ai_analysed_at, occurrence_count, last_seen
 		FROM alerts`
 	args := []interface{}{}
 	if status != "" {
@@ -64,7 +64,7 @@ func (db *DB) ListAlerts(ctx context.Context, status string, limit int) ([]Alert
 			&a.AgentID, &a.Host, &a.EventType, &a.EventID, &a.SourceEventID,
 			&a.AcknowledgedBy, &a.AcknowledgedAt,
 			&a.AssignedTo, &a.CaseNotes, &a.ClosedBy, &a.ClosedAt, &a.ReviewComment,
-			&a.AIAnalysis, &a.AIAnalysedAt,
+			&a.AIAnalysis, &a.AIAnalysedAt, &a.OccurrenceCount, &a.LastSeen,
 		); err != nil {
 			return nil, err
 		}
@@ -150,11 +150,70 @@ func (db *DB) AlertExists(ctx context.Context, eventID string) (bool, error) {
 // not block.
 var AlertCreatedHook func(a Alert)
 
+// AlertDedupeWindow is how long a repeat of the same alert (same title on the same host) is folded into
+// the existing open alert instead of creating a new one. The window slides: each repeat extends it, but an
+// alert older than AlertDedupeMaxAge is never extended, so a long-running condition raises a fresh alert daily.
+const (
+	AlertDedupeWindow = 30 * time.Minute
+	AlertDedupeMaxAge = 24 * time.Hour
+	maxRelatedEvents  = 50
+)
+
+// CreateAlertDeduped creates an alert unless one already covers it. Two layers:
+//  1. the same event_id (a rule's own key) increments the existing alert;
+//  2. the same title on the same host (or agent) seen within AlertDedupeWindow, while that alert is still
+//     open or acknowledged, is folded into it: occurrence_count and last_seen are updated, the severity is
+//     raised if the repeat is more severe, and the triggering event is recorded in alert_related_events.
+// An alert an analyst has closed is never reopened by a repeat; the next occurrence is a new alert.
+// It returns the alert id and whether a new alert was inserted.
 func (db *DB) CreateAlertDeduped(ctx context.Context, a Alert) (int64, bool, error) {
 	a = db.weighAlert(ctx, a)
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, false, err
+	}
+	defer tx.Rollback()
+
+	hostKey := a.Host
+	if hostKey == "" {
+		hostKey = a.AgentID
+	}
+	if hostKey != "" {
+		// serialise concurrent identical alerts so two workers cannot both insert
+		if _, err := tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock(hashtext($1))`, a.Title+"|"+hostKey); err != nil {
+			return 0, false, err
+		}
+		var existing int64
+		err := tx.QueryRowContext(ctx, `
+			UPDATE alerts SET occurrence_count = occurrence_count + 1, last_seen = NOW(),
+			       severity = GREATEST(severity, $4)
+			WHERE id = (
+				SELECT id FROM alerts
+				WHERE title = $1 AND COALESCE(NULLIF(host,''), agent_id, '') = $2
+				  AND status IN ('open','acknowledged')
+				  AND last_seen > NOW() - make_interval(secs => $3)
+				  AND created_at > NOW() - make_interval(secs => $5)
+				ORDER BY last_seen DESC LIMIT 1)
+			RETURNING id`, a.Title, hostKey, AlertDedupeWindow.Seconds(), a.Severity, AlertDedupeMaxAge.Seconds()).Scan(&existing)
+		if err == nil {
+			if a.SourceEventID != "" {
+				_, _ = tx.ExecContext(ctx, `INSERT INTO alert_related_events (alert_id, source_event_id)
+					SELECT $1, $2 WHERE (SELECT count(*) FROM alert_related_events WHERE alert_id=$1) < $3
+					ON CONFLICT DO NOTHING`, existing, a.SourceEventID, maxRelatedEvents)
+			}
+			if err := tx.Commit(); err != nil {
+				return 0, false, err
+			}
+			return existing, false, nil
+		}
+		if err != sql.ErrNoRows {
+			return 0, false, err
+		}
+	}
+
 	var id int64
 	var inserted bool
-	err := db.QueryRowContext(ctx, `
+	err = tx.QueryRowContext(ctx, `
 		INSERT INTO alerts (title, description, severity, status, agent_id, host, event_type, event_id, source_event_id, occurrence_count, last_seen)
 		VALUES ($1,$2,$3,'open',$4,$5,$6,$7,$8,1,NOW())
 		ON CONFLICT (event_id) WHERE event_id IS NOT NULL AND event_id != '' DO UPDATE SET
@@ -169,6 +228,9 @@ func (db *DB) CreateAlertDeduped(ctx context.Context, a Alert) (int64, bool, err
 		if err == sql.ErrNoRows {
 			return 0, false, nil
 		}
+		return 0, false, err
+	}
+	if err := tx.Commit(); err != nil {
 		return 0, false, err
 	}
 	if inserted && AlertCreatedHook != nil {
