@@ -157,6 +157,7 @@ func handleAgentTunnel(db *store.DB, registry *TunnelRegistry, logger *slog.Logg
 			sessions: make(map[string]chan []byte),
 		}
 		registry.Register(agentID, tunnel)
+		go dispatchQueuedHunts(db, registry, agentID, logger)
 		logger.Info("lr: agent tunnel connected", "agent", agentID)
 
 		// F-05: heartbeat. Ping every 30s; if no pong (or any frame) arrives

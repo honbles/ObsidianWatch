@@ -84,6 +84,37 @@ func main() {
 	runCtx, runCancel := context.WithCancel(ctx)
 	defer runCancel()
 
+	// Application monitoring retention: purge route/edge statistics, traces and client counters past
+	// their configured age (docs/app). Runs shortly after start, then every 6 hours.
+	go func() {
+		purge := func() {
+			res, err := db.AppPurge(runCtx, time.Now())
+			if err != nil {
+				logger.Warn("app retention purge failed", "err", err)
+				return
+			}
+			if res.Stats+res.Traces+res.EdgeStats+res.ClientStats > 0 {
+				logger.Info("app retention purge", "route_stats", res.Stats, "edge_stats", res.EdgeStats, "traces", res.Traces, "client_stats", res.ClientStats)
+			}
+		}
+		select {
+		case <-time.After(2 * time.Minute):
+			purge()
+		case <-runCtx.Done():
+			return
+		}
+		tk := time.NewTicker(6 * time.Hour)
+		defer tk.Stop()
+		for {
+			select {
+			case <-tk.C:
+				purge()
+			case <-runCtx.Done():
+				return
+			}
+		}
+	}()
+
 	errCh := make(chan error, 1)
 	go func() {
 		if err := srv.Start(runCtx); err != nil && err != http.ErrServerClosed {

@@ -1,4 +1,4 @@
-# Application Monitoring - host runtime sensor (Linux)
+# Application Monitoring - host runtime sensor (Linux, Windows, macOS)
 
 Part of the **app-server profile** (Agent Builder → "Enable the app-server profile"); off unless selected. It is the agent's
 `internal/ebpf` package, started from `app_monitoring.ebpf` (`enabled`, `mode`, `poll_interval`, `environment`, `watch_dirs`, `secret_files`).
@@ -20,6 +20,20 @@ A per-second budget (300 events) protects the host; drops are counted.
 fanotify (file events) needs `CAP_SYS_ADMIN`; where refused the sensor runs without file events and logs why. It watches the default web roots
 (`/var/www`, `/srv/www`, nginx html, tomcat webapps) and `watch_dirs` to a depth of 3 (500 directories), for close-after-write, and credential
 files (`/etc/shadow`, SSH keys, cloud credentials, `secret_files`) for opens. Marks are on inodes, so the cost is tiny.
+
+## Windows and macOS: polling sensor
+Windows and macOS have one tier, `poll`, a portable sensor that reads the process table and connection table on an interval and reports
+the same under-a-service process and network events, through the same channel and budget. It identifies listeners for discovery (Tier 0)
+and applies the same naming and redaction.
+
+| Gap versus Linux | Effect |
+|---|---|
+| No file events | Rules that need file writes under a web root (H03 and similar) do not fire |
+| No uid-change events | H08 (privilege change under a service) does not fire |
+| Polling only | A process or connection that starts and ends between two polls is missed |
+
+Status: the shared sensor and the Windows and macOS process tables are covered by unit tests with a fake provider and by cross-builds. They
+have **not been run on real Windows or macOS hosts**, so expect rough edges and report them.
 
 ## Discovery (Tier 0)
 A process with a listening TCP socket that is not a known system daemon is a **discovered service**. Its name comes from what an operator would

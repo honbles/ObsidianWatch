@@ -41,7 +41,7 @@ function HuntResults({ id }) {
         const { data } = await api.get(`/api/v1/hunt/live/${id}`)
         if (stop) return
         setData(data)
-        if (!data.hunt.completed_at) timer.current = setTimeout(load, 2500)
+        if (!data.hunt.completed_at) timer.current = setTimeout(load, data.hunt.queued > 0 ? 15000 : 2500)
       } catch { /* ignore */ }
     }
     load()
@@ -60,7 +60,8 @@ function HuntResults({ id }) {
         <div className="text-sm font-semibold text-siem-text">{hunt.name}</div>
         <span className="text-[10px] text-siem-muted">{hunt.responded}/{hunt.agents_total} hosts answered</span>
         <span className="text-[10px] text-siem-muted">{hunt.hosts_with_hits} with hits · {hunt.total_rows} rows</span>
-        {!done && <span className="text-[10px] text-amber-300 flex items-center gap-1"><Loader2 size={11} className="animate-spin" /> collecting…</span>}
+        {!done && <span className="text-[10px] text-amber-300 flex items-center gap-1"><Loader2 size={11} className="animate-spin" /> {hunt.queued > 0 ? `${hunt.queued} waiting for hosts to come online` : 'collecting…'}</span>}
+        {hunt.expires_at && !done && <span className="text-[10px] text-siem-muted">window ends {formatDistanceToNow(new Date(hunt.expires_at), { addSuffix: true })}</span>}
         <button onClick={download} className="ml-auto text-[11px] text-siem-muted hover:text-siem-text flex items-center gap-1"><Download size={12} /> CSV</button>
       </div>
       <div className="rounded-xl border border-siem-border overflow-hidden">
@@ -74,8 +75,8 @@ function HuntResults({ id }) {
                 {hit ? (isOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />) : <span className="w-3" />}
                 <span className="text-xs font-medium text-siem-text">{r.hostname}</span>
                 <span className="text-[10px] text-siem-muted">{r.os}</span>
-                <span className={`ml-auto text-[10px] ${r.status === 'ok' ? (hit ? 'text-orange-300' : 'text-siem-muted') : r.status === 'pending' ? 'text-amber-300' : 'text-red-300'}`}>
-                  {r.status === 'ok' ? `${r.row_count} row${r.row_count === 1 ? '' : 's'}${r.truncated ? '+' : ''}` : r.status === 'pending' ? 'waiting…' : `${r.status}: ${r.message}`}
+                <span className={`ml-auto text-[10px] ${r.status === 'ok' ? (hit ? 'text-orange-300' : 'text-siem-muted') : (r.status === 'pending' || r.status === 'queued') ? 'text-amber-300' : 'text-red-300'}`}>
+                  {r.status === 'ok' ? `${r.row_count} row${r.row_count === 1 ? '' : 's'}${r.truncated ? '+' : ''}${r.was_queued ? ' · answered late' : ''}` : r.status === 'queued' ? 'offline, will run when it reconnects' : r.status === 'pending' ? 'waiting…' : `${r.status}: ${r.message}`}
                 </span>
               </div>
               {isOpen && hit && <div className="px-3 pb-3"><Table cols={cols} rows={rows} /></div>}
@@ -93,6 +94,8 @@ function LiveTab({ library, initial }) {
   const [match, setMatch] = useState(initial?.match || '')
   const [path, setPath] = useState('')
   const [os, setOS] = useState('')
+  const [offline, setOffline] = useState('skip')
+  const [waitH, setWaitH] = useState(24)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
   const [hunts, setHunts] = useState([])
@@ -104,7 +107,7 @@ function LiveTab({ library, initial }) {
   const run = async () => {
     setBusy(true); setErr('')
     try {
-      const { data } = await api.post('/api/v1/hunt/live', { kind, match, path, os })
+      const { data } = await api.post('/api/v1/hunt/live', { kind, match, path, os, offline, wait_hours: waitH })
       setActive(data.id); loadHunts()
     } catch (e) { setErr(e.response?.data?.error || e.message) } finally { setBusy(false) }
   }
@@ -112,7 +115,7 @@ function LiveTab({ library, initial }) {
     <div className="grid lg:grid-cols-[340px_1fr] gap-5">
       <div className="space-y-4">
         <div className="rounded-xl border border-siem-border bg-siem-surface/40 p-4 space-y-2.5">
-          <div className="text-xs font-semibold text-siem-text">Ask every connected host</div>
+          <div className="text-xs font-semibold text-siem-text">Ask the fleet</div>
           <select value={kind} onChange={e => setKind(e.target.value)} className="w-full bg-siem-bg border border-siem-border rounded px-2 py-1.5 text-xs text-siem-text">
             {KINDS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
           </select>
@@ -121,7 +124,19 @@ function LiveTab({ library, initial }) {
           <select value={os} onChange={e => setOS(e.target.value)} className="w-full bg-siem-bg border border-siem-border rounded px-2 py-1.5 text-xs text-siem-text">
             <option value="">All operating systems</option><option value="windows">Windows</option><option value="linux">Linux</option><option value="darwin">macOS</option>
           </select>
-          <div className="text-[10px] text-siem-muted">Fixed, read-only questions: nothing is executed on the host. Several words must all match; <code>col:text</code> limits a word to one column. Only hosts with a live tunnel answer.</div>
+          <div className="flex items-center gap-2 text-xs text-siem-text">
+            <span className="text-siem-muted">Offline hosts</span>
+            <select value={offline} onChange={e => setOffline(e.target.value)} className="bg-siem-bg border border-siem-border rounded px-2 py-1 text-xs">
+              <option value="skip">Skip</option><option value="wait">Wait for them</option>
+            </select>
+            {offline === 'wait' && (
+              <select value={waitH} onChange={e => setWaitH(+e.target.value)} className="bg-siem-bg border border-siem-border rounded px-2 py-1 text-xs">
+                <option value={1}>1 hour</option><option value={24}>24 hours</option><option value={72}>3 days</option><option value={168}>7 days</option>
+              </select>
+            )}
+          </div>
+          {offline === 'wait' && <div className="text-[10px] text-siem-muted">Offline hosts get the question the moment they reconnect, until the window ends. Late answers are marked.</div>}
+          <div className="text-[10px] text-siem-muted">Fixed, read-only questions: nothing is executed on the host. Several words must all match; <code>col:text</code> limits a word to one column. Hosts need a live tunnel to answer.</div>
           {admin ? (
             <button onClick={run} disabled={busy || (kind === 'file_find' && !match)} className="w-full px-3 py-2 rounded bg-siem-accent text-white text-xs font-semibold flex items-center justify-center gap-1.5 disabled:opacity-50">
               {busy ? <Loader2 size={13} className="animate-spin" /> : <Play size={13} />} Run on fleet

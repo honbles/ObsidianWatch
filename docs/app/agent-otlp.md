@@ -16,14 +16,17 @@ The agent's OTLP/HTTP receiver is part of the **app-server profile** (Agent Buil
 ## Identity: who is sending?
 The application never says which host, process or container it runs in. For each connection
 the agent resolves the sending process itself (Linux: `SO_PEERCRED` for Unix sockets, a `/proc`
-socket lookup for loopback TCP) and records pid, process start time, executable and container id
+socket lookup for loopback TCP; Windows: the owning pid from the TCP connection table
+(`GetExtendedTcpTable`); macOS: `lsof` on the loopback connection) and records pid, process start time, executable and container id
 (from the process cgroup). `host.*`, `container.*` and `k8s.*` resource attributes are discarded.
 
 A service name is bound to the first process that claims it. Later telemetry is **verified**
 when it comes from a known process or one running the same executable, otherwise **asserted**.
 Asserted telemetry is stored and shown but cannot raise high-severity alerts on its own.
-On Windows and macOS process identification is not implemented yet, so telemetry there is
-always `asserted`. A container whose network namespace differs from the agent's cannot be
+On Windows and macOS the sending process is identified the same way (see above), so telemetry
+there can be `verified`. That code is covered by unit tests of the parsing and by cross-builds,
+but **has not been run on a real Windows or macOS host yet**: until it has, treat identity there
+as unconfirmed. Where the lookup fails, telemetry stays `asserted`. A Unix socket is Linux-only. A container whose network namespace differs from the agent's cannot be
 resolved over loopback TCP; use the Unix socket for those.
 
 ## What is kept

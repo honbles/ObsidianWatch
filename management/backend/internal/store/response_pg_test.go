@@ -32,6 +32,15 @@ func TestResponseAndHuntStorePG(t *testing.T) {
 			t.Fatalf("migration run %d: %v", i+1, err)
 		}
 	}
+	mig2, err := os.ReadFile("migrations/061_hunt_offline_queue.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 2; i++ {
+		if _, err := sdb.Exec(string(mig2)); err != nil {
+			t.Fatalf("061 run %d: %v", i+1, err)
+		}
+	}
 	sdb.Exec(`DROP TABLE IF EXISTS events`)
 	if _, err := sdb.Exec(`CREATE TABLE events (id text primary key, time timestamptz, ingested_at timestamptz default now(), agent_id text, host text, os text,
 		event_type text, severity int, source text, raw jsonb, pid int, ppid int, process_name text, command_line text, image_path text, user_name text,
@@ -115,7 +124,7 @@ func TestResponseAndHuntStorePG(t *testing.T) {
 
 	// live fleet hunt lifecycle
 	h := FleetHunt{ID: "hunt1", Name: "t", Kind: "processes", Match: "x", RequestedBy: "admin"}
-	if err := db.CreateFleetHunt(ctx, h, []Agent{{ID: "a1", Hostname: "LAP1", OS: "windows"}, {ID: "a2", Hostname: "SRV2", OS: "linux"}}); err != nil {
+	if err := db.CreateFleetHunt(ctx, h, []Agent{{ID: "a1", Hostname: "LAP1", OS: "windows"}, {ID: "a2", Hostname: "SRV2", OS: "linux"}}, nil, nil); err != nil {
 		t.Fatal(err)
 	}
 	if err := db.CompleteHuntResult(ctx, "hunt1", "a1", "ok", "2 row(s)", json.RawMessage(`["pid","name"]`), json.RawMessage(`[["1","a"],["2","b"]]`), 2, false); err != nil {
@@ -142,6 +151,48 @@ func TestResponseAndHuntStorePG(t *testing.T) {
 	}
 	if l, err := db.ListFleetHunts(ctx, 10); err != nil || len(l) == 0 {
 		t.Fatalf("list: %v", err)
+	}
+
+	// offline queue: a2 is offline and the hunt waits for it
+	exp := time.Now().Add(time.Hour)
+	if err := db.CreateFleetHunt(ctx, FleetHunt{ID: "hunt2", Name: "q", Kind: "processes", Match: "evil", RequestedBy: "admin"},
+		[]Agent{{ID: "a1", Hostname: "LAP1", OS: "windows"}, {ID: "a2", Hostname: "SRV2", OS: "linux"}}, map[string]bool{"a2": true}, &exp); err != nil {
+		t.Fatal(err)
+	}
+	db.CompleteHuntResult(ctx, "hunt2", "a1", "ok", "", nil, nil, 0, false)
+	got, _, _ = db.GetFleetHunt(ctx, "hunt2")
+	if got.Queued != 1 || got.CompletedAt != nil || got.Responded != 1 {
+		t.Fatalf("a hunt with a queued host must stay open: %+v", got)
+	}
+	if q, _ := db.ClaimQueuedHunts(ctx, "a1"); len(q) != 0 {
+		t.Fatalf("a1 has nothing queued: %+v", q)
+	}
+	q, err := db.ClaimQueuedHunts(ctx, "a2")
+	if err != nil || len(q) != 1 || q[0].ID != "hunt2" || q[0].Match != "evil" {
+		t.Fatalf("claim: %v %+v", err, q)
+	}
+	if again, _ := db.ClaimQueuedHunts(ctx, "a2"); len(again) != 0 {
+		t.Fatal("a queued hunt must be claimed once")
+	}
+	db.CompleteHuntResult(ctx, "hunt2", "a2", "ok", "", json.RawMessage(`["pid"]`), json.RawMessage(`[["9"]]`), 1, false)
+	got, res, _ = db.GetFleetHunt(ctx, "hunt2")
+	if got.CompletedAt == nil || got.Queued != 0 {
+		t.Fatalf("hunt should complete once the late host answers: %+v", got)
+	}
+	for _, r := range res {
+		if r.AgentID == "a2" && (!r.WasQueued || r.Status != "ok") {
+			t.Fatalf("late answer must be marked: %+v", r)
+		}
+	}
+	// expiry: a window that has already ended is not dispatched and ends the wait
+	past := time.Now().Add(-time.Minute)
+	db.CreateFleetHunt(ctx, FleetHunt{ID: "hunt3", Name: "e", Kind: "users", RequestedBy: "admin"}, []Agent{{ID: "a3", Hostname: "OLD", OS: "linux"}}, map[string]bool{"a3": true}, &past)
+	if q, _ := db.ClaimQueuedHunts(ctx, "a3"); len(q) != 0 {
+		t.Fatalf("expired hunt must not be sent: %+v", q)
+	}
+	got, res, _ = db.GetFleetHunt(ctx, "hunt3")
+	if got.CompletedAt == nil || len(res) != 1 || res[0].Status != "expired" {
+		t.Fatalf("expiry: %+v %+v", got, res)
 	}
 	sdb.Exec(`DELETE FROM fleet_hunts; DELETE FROM response_actions; DELETE FROM agent_response_state`)
 }

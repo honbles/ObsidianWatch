@@ -41,6 +41,10 @@ func handleStartFleetHunt(db *store.DB, reg *TunnelRegistry, logger *slog.Logger
 			Path     string   `json:"path"`
 			AgentIDs []string `json:"agent_ids"`
 			OS       string   `json:"os"` // "", windows, linux, macos
+			// Offline hosts: "skip" (default) asks only hosts connected now; "wait" stores the question for the
+			// others and sends it when they reconnect, for up to WaitHours (default 24, max 168).
+			Offline   string `json:"offline"`
+			WaitHours int    `json:"wait_hours"`
 		}
 		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 16<<10)).Decode(&req); err != nil {
 			writeJSON(w, 400, map[string]string{"error": "invalid request"})
@@ -74,6 +78,18 @@ func handleStartFleetHunt(db *store.DB, reg *TunnelRegistry, logger *slog.Logger
 		for _, id := range req.AgentIDs {
 			want[id] = true
 		}
+		wait := req.Offline == "wait"
+		var expires *time.Time
+		if wait {
+			if req.WaitHours <= 0 {
+				req.WaitHours = 24
+			}
+			if req.WaitHours > 168 {
+				req.WaitHours = 168
+			}
+			t := time.Now().Add(time.Duration(req.WaitHours) * time.Hour)
+			expires = &t
+		}
 		osf := strings.ToLower(req.OS)
 		var targets []store.Agent
 		skipped := 0
@@ -84,7 +100,7 @@ func handleStartFleetHunt(db *store.DB, reg *TunnelRegistry, logger *slog.Logger
 			if osf != "" && !strings.Contains(strings.ToLower(a.OS), osf) {
 				continue
 			}
-			if _, up := reg.Get(a.ID); !up && len(want) == 0 {
+			if _, up := reg.Get(a.ID); !up && len(want) == 0 && !wait {
 				skipped++ // "whole fleet" only means agents we can reach right now
 				continue
 			}
@@ -97,6 +113,14 @@ func handleStartFleetHunt(db *store.DB, reg *TunnelRegistry, logger *slog.Logger
 		if len(targets) > huntMaxAgents {
 			targets = targets[:huntMaxAgents]
 		}
+		offline := map[string]bool{}
+		if wait {
+			for _, a := range targets {
+				if _, up := reg.Get(a.ID); !up {
+					offline[a.ID] = true
+				}
+			}
+		}
 		name := strings.TrimSpace(req.Name)
 		if name == "" {
 			name = req.Kind
@@ -106,7 +130,7 @@ func handleStartFleetHunt(db *store.DB, reg *TunnelRegistry, logger *slog.Logger
 		}
 		by := actor(r)
 		h := store.FleetHunt{ID: newToken(), Name: name, Kind: req.Kind, Match: req.Match, Path: req.Path, RequestedBy: by}
-		if err := db.CreateFleetHunt(r.Context(), h, targets); err != nil {
+		if err := db.CreateFleetHunt(r.Context(), h, targets, offline, expires); err != nil {
 			writeJSON(w, 500, map[string]string{"error": "db error"})
 			return
 		}
@@ -117,6 +141,9 @@ func handleStartFleetHunt(db *store.DB, reg *TunnelRegistry, logger *slog.Logger
 		for _, a := range targets {
 			a := a
 			t, up := reg.Get(a.ID)
+			if offline[a.ID] {
+				continue // stored as queued; sent by dispatchQueuedHunts when the agent reconnects
+			}
 			if !up {
 				_ = db.CompleteHuntResult(r.Context(), h.ID, a.ID, "offline", "agent was offline; not asked", nil, nil, 0, false)
 				continue
@@ -127,7 +154,32 @@ func handleStartFleetHunt(db *store.DB, reg *TunnelRegistry, logger *slog.Logger
 				reg.broker.deliver(tok, mustJSON(actionResult{Message: "could not reach the agent: " + err.Error()}))
 			}
 		}
-		writeJSON(w, 202, map[string]any{"id": h.ID, "agents": len(targets), "skipped_offline": skipped})
+		writeJSON(w, 202, map[string]any{"id": h.ID, "agents": len(targets), "skipped_offline": skipped, "queued": len(offline)})
+	}
+}
+
+// dispatchQueuedHunts sends the hunts that were waiting for this agent. Called when its tunnel connects.
+func dispatchQueuedHunts(db *store.DB, reg *TunnelRegistry, agentID string, logger *slog.Logger) {
+	time.Sleep(2 * time.Second) // let the agent finish its own startup before the first question
+	ctx := contextBG()
+	qs, err := db.ClaimQueuedHunts(ctx, agentID)
+	if err != nil {
+		logger.Warn("hunt: claim queued failed", "agent", agentID, "err", err)
+		return
+	}
+	for _, q := range qs {
+		q := q
+		t, up := reg.Get(agentID)
+		if !up {
+			return
+		}
+		params := mustJSON(map[string]any{"kind": q.Kind, "match": q.Match, "path": q.Path, "limit": huntPerHostRows})
+		tok := newToken()
+		reg.broker.expect(tok, huntAgentTimeout, func(res actionResult) { saveHuntResult(db, q.ID, agentID, res) })
+		if err := sendAction(t, tok, "query", params); err != nil {
+			reg.broker.deliver(tok, mustJSON(actionResult{Message: "could not reach the agent: " + err.Error()}))
+		}
+		logger.Info("hunt: sent queued hunt to reconnected agent", "agent", agentID, "hunt", q.ID)
 	}
 }
 

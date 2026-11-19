@@ -10,6 +10,7 @@ import { GraphCanvas, NodeDetail } from './graph.jsx'
 import { EVENT_TYPE_META, SEV_LABEL, TAG_COLORS, VTHashBadge } from './shared.jsx'
 import { AgentSavedSearchPanel } from './tamper.jsx'
 import { HealthBoard } from './health_board.jsx'
+import AppHostApplications from '../../components/app/AppHostApplications.jsx'
 
 export function TabOverview({ agent }) {
   const navigate = useNavigate()
@@ -23,6 +24,7 @@ export function TabOverview({ agent }) {
         ))}
       </div>
       <HealthBoard agent={agent}/>
+      <AppHostApplications agentId={agent.id}/>
       <div className="grid grid-cols-2 gap-4">
         <div className="bg-siem-surface border border-siem-border rounded-xl p-4">
           <div className="text-[10px] uppercase tracking-wider text-siem-muted font-semibold mb-3">System info</div>
