@@ -9,21 +9,24 @@ import (
 )
 
 type BatchInstance struct {
-	Service      string          `json:"service"`
-	Environment  string          `json:"environment"`
-	Source       string          `json:"source"`
-	InstanceRef  string          `json:"instance_ref"`
-	Version      string          `json:"version"`
-	PID          int             `json:"pid"`
-	ProcStart    time.Time       `json:"proc_start"`
-	ContainerID  string          `json:"container_id"`
-	Identity     string          `json:"identity"`
-	Instrumented bool            `json:"instrumented"`
-	Listen       json.RawMessage `json:"listen,omitempty"`
-	Language     string          `json:"language"`
-	SDK          string          `json:"sdk"`
-	Exe          string          `json:"exe"`
-	Sensor       string          `json:"sensor,omitempty"` // host sensor tier that saw it: ebpf | procevent | poll
+	Service       string          `json:"service"`
+	Environment   string          `json:"environment"`
+	Source        string          `json:"source"`
+	InstanceRef   string          `json:"instance_ref"`
+	Version       string          `json:"version"`
+	PID           int             `json:"pid"`
+	ProcStart     time.Time       `json:"proc_start"`
+	ContainerID   string          `json:"container_id"`
+	Identity      string          `json:"identity"`
+	Instrumented  bool            `json:"instrumented"`
+	Listen        json.RawMessage `json:"listen,omitempty"`
+	Language      string          `json:"language"`
+	SDK           string          `json:"sdk"`
+	Exe           string          `json:"exe"`
+	Sensor        string          `json:"sensor,omitempty"`         // host sensor tier that saw it: ebpf | procevent | poll
+	Unit          string          `json:"unit,omitempty"`           // systemd service the process runs under
+	ContainerName string          `json:"container_name,omitempty"` // docker container name
+	Image         string          `json:"image,omitempty"`          // docker image
 }
 
 type BatchRoute struct {

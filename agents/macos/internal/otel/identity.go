@@ -49,7 +49,16 @@ type Binder struct {
 
 func NewBinder() *Binder { return &Binder{svcs: map[string][]boundInstance{}} }
 
-const maxBoundPerService = 64
+const (
+	maxBoundPerService = 64
+	maxBoundServices   = 2000 // distinct (service, environment) names remembered; more are asserted and not recorded
+)
+
+// ProcAlive reports whether the process with this pid and start time is still running. It is set where
+// the platform can answer (Linux); when nil every recorded instance is treated as alive, so nothing is
+// ever released. Used so a redeployed application (new process, possibly a new executable path) can take
+// over the binding once the old process is gone, instead of being "asserted" until the agent restarts.
+var ProcAlive func(pid int, start time.Time) bool
 
 // Bind returns the identity for telemetry claiming (service, env) from peer.
 //
@@ -68,12 +77,33 @@ func (b *Binder) Bind(service, env string, p Peer) string {
 	defer b.mu.Unlock()
 	known := b.svcs[k]
 	if len(known) == 0 {
+		if _, seen := b.svcs[k]; !seen && len(b.svcs) >= maxBoundServices {
+			return IdentityAsserted // a local process inventing service names cannot grow this without bound
+		}
 		b.svcs[k] = []boundInstance{{p.PID, p.ProcStart, p.Exe}}
 		return IdentityVerified
 	}
 	for _, ki := range known {
 		if ki.pid == p.PID && ki.procStart.Equal(p.ProcStart) {
 			return IdentityVerified
+		}
+	}
+	// None of the recorded processes is this one. Forget the ones that have exited; if none is left the
+	// service has been restarted or redeployed and this process becomes the binding.
+	if ProcAlive != nil {
+		live := known[:0:0]
+		for _, ki := range known {
+			if ProcAlive(ki.pid, ki.procStart) {
+				live = append(live, ki)
+			}
+		}
+		if len(live) != len(known) {
+			known = live
+			b.svcs[k] = live
+			if len(live) == 0 {
+				b.svcs[k] = []boundInstance{{p.PID, p.ProcStart, p.Exe}}
+				return IdentityVerified
+			}
 		}
 	}
 	if p.Exe != "" {

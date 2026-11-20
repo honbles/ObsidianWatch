@@ -10,10 +10,12 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"log/slog"
 	"net"
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"obsidianwatch/management/internal/auth"
@@ -34,24 +36,27 @@ type appMaintenance struct {
 }
 
 type appServiceSettings struct {
-	Exposure        string           `json:"exposure"`
-	Criticality     string           `json:"criticality"`
-	DataSensitivity string           `json:"data_sensitivity"`
-	Owner           string           `json:"owner"`
-	NotifyRoute     string           `json:"notify_route"`
-	TrustedProxies  []string         `json:"trusted_proxies"`
-	LoginRoutes     []string         `json:"login_routes"`
-	ExportRoutes    []string         `json:"export_routes"`
-	PublicRoutes    []string         `json:"public_routes"`
-	LatencyTargetMs *int             `json:"latency_target_ms"`
-	ErrorBudgetPct  *float64         `json:"error_budget_pct"`
-	Maintenance     []appMaintenance `json:"maintenance"`
-	StoreClientIP   string           `json:"store_client_ip"`
-	CleartextUsers  bool             `json:"cleartext_users"`
-	LearningStarted *time.Time       `json:"learning_started"`
-	ResetLearning   bool             `json:"reset_learning,omitempty"` // input only
-	UpdatedBy       string           `json:"updated_by,omitempty"`
-	UpdatedAt       *time.Time       `json:"updated_at,omitempty"`
+	Exposure          string           `json:"exposure"`
+	ExposureInferred  string           `json:"exposure_inferred,omitempty"` // output only: used when exposure is "unknown"
+	ExposureReason    string           `json:"exposure_reason,omitempty"`
+	ExposureEffective string           `json:"exposure_effective,omitempty"`
+	Criticality       string           `json:"criticality"`
+	DataSensitivity   string           `json:"data_sensitivity"`
+	Owner             string           `json:"owner"`
+	NotifyRoute       string           `json:"notify_route"`
+	TrustedProxies    []string         `json:"trusted_proxies"`
+	LoginRoutes       []string         `json:"login_routes"`
+	ExportRoutes      []string         `json:"export_routes"`
+	PublicRoutes      []string         `json:"public_routes"`
+	LatencyTargetMs   *int             `json:"latency_target_ms"`
+	ErrorBudgetPct    *float64         `json:"error_budget_pct"`
+	Maintenance       []appMaintenance `json:"maintenance"`
+	StoreClientIP     string           `json:"store_client_ip"`
+	CleartextUsers    bool             `json:"cleartext_users"`
+	LearningStarted   *time.Time       `json:"learning_started"`
+	ResetLearning     bool             `json:"reset_learning,omitempty"` // input only
+	UpdatedBy         string           `json:"updated_by,omitempty"`
+	UpdatedAt         *time.Time       `json:"updated_at,omitempty"`
 }
 
 func appDefaultSettings() appServiceSettings {
@@ -183,10 +188,19 @@ func appRange(r *http.Request) (from, to time.Time) {
 	return from, to
 }
 
+var appIngestDBOnce sync.Once
+
+// appIngestDB is the connection application data is read from: the ingest backend's database when one
+// is configured, otherwise the management database. Both must hold the application tables (the ingest
+// backend writes them), so the choice is logged once.
 func appIngestDB(db, backendDB *store.DB) *store.DB {
 	if backendDB != nil {
+		appIngestDBOnce.Do(func() { slog.Info("application monitoring reads from the ingest (backend) database") })
 		return backendDB
 	}
+	appIngestDBOnce.Do(func() {
+		slog.Warn("application monitoring reads from the management database because no separate backend database is configured; this only works when the ingest backend writes to the same database")
+	})
 	return db
 }
 
@@ -243,7 +257,7 @@ func appHandleListServices(db, backendDB *store.DB) http.HandlerFunc {
 			  AND ($6 = '' OR EXISTS (SELECT 1 FROM service_instances x WHERE x.service_id = s.id AND x.agent_id = $6))
 			ORDER BY s.last_seen DESC LIMIT $5`, from, to, q, env, limit, agent)
 		if err != nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "query failed"})
+			appQueryFailed(w, r.URL.Path, 0, err)
 			return
 		}
 		defer rows.Close()
@@ -254,7 +268,7 @@ func appHandleListServices(db, backendDB *store.DB) http.HandlerFunc {
 			var attrs []byte
 			if err := rows.Scan(&s.ID, &s.Name, &s.Environment, &s.Source, &s.FirstSeen, &s.LastSeen, &attrs,
 				&s.Instances, &s.Versions, &s.Edges, &s.Routes); err != nil {
-				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "query failed"})
+				appQueryFailed(w, r.URL.Path, 0, err)
 				return
 			}
 			s.Attrs = json.RawMessage(attrs)
@@ -263,6 +277,7 @@ func appHandleListServices(db, backendDB *store.DB) http.HandlerFunc {
 			list = append(list, s)
 		}
 		settings := appSettingsByID(r.Context(), db, ids)
+		appApplyExposure(r.Context(), idb, ids, settings)
 		totals := appServiceTotals(r.Context(), idb, ids, from, to)
 		learn := appLearningCalls(r.Context(), idb, ids, settings)
 		for i := range list {
@@ -375,6 +390,7 @@ func appHandleGetService(db, backendDB *store.DB) http.HandlerFunc {
 
 		s.Settings = appDefaultSettings()
 		sm := appSettingsByID(r.Context(), db, []int64{id})
+		appApplyExposure(r.Context(), idb, []int64{id}, sm)
 		if st, ok := sm[id]; ok {
 			s.Settings = st
 		}

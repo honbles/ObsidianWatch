@@ -41,6 +41,7 @@ func newProcFS(root string) *procFS {
 type procDetail struct {
 	ProcInfo
 	Args []string
+	Unit string // systemd service the process runs under, if any
 }
 
 var containerRe = regexp.MustCompile(`[0-9a-f]{64}`)
@@ -147,6 +148,7 @@ func (f *procFS) info(pid int) (procDetail, error) {
 	d.User = f.userName(d.UID)
 	if cg, err := os.ReadFile(fmt.Sprintf("%s/%d/cgroup", f.root, pid)); err == nil {
 		d.Container = containerRe.FindString(string(cg))
+		d.Unit = UnitFromCgroup(string(cg))
 	}
 	return d, nil
 }

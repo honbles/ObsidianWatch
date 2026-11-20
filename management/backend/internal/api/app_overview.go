@@ -10,6 +10,7 @@ package api
 import (
 	"database/sql"
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
@@ -52,7 +53,7 @@ func appHandleOverview(db, backendDB *store.DB) http.HandlerFunc {
 			  (SELECT COUNT(*) FROM service_instances i WHERE i.service_id=s.id AND i.stopped_at IS NULL AND i.last_seen >= $2)
 			FROM services s WHERE s.last_seen >= $1 ORDER BY s.name LIMIT 2000`, from, active)
 		if err != nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "query failed"})
+			appQueryFailed(w, r.URL.Path, 0, err)
 			return
 		}
 		var svcs []svc
@@ -62,7 +63,7 @@ func appHandleOverview(db, backendDB *store.DB) http.HandlerFunc {
 			var attrs []byte
 			if err := rows.Scan(&s.ID, &s.Name, &s.Environment, &s.Source, &attrs, &s.Asserted, &s.Live); err != nil {
 				rows.Close()
-				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "query failed"})
+				appQueryFailed(w, r.URL.Path, 0, err)
 				return
 			}
 			s.Key = appServiceKey(s.Name, s.Environment)
@@ -72,6 +73,7 @@ func appHandleOverview(db, backendDB *store.DB) http.HandlerFunc {
 		}
 		rows.Close()
 		settings := appSettingsByID(ctx, db, ids)
+		appApplyExposure(ctx, idb, ids, settings)
 
 		exposure := map[string]int{"internet": 0, "internal": 0, "unknown": 0}
 		criticality := map[string]int{"low": 0, "normal": 0, "high": 0, "critical": 0}
@@ -83,7 +85,7 @@ func appHandleOverview(db, backendDB *store.DB) http.HandlerFunc {
 			if !ok {
 				st = appDefaultSettings()
 			}
-			exposure[st.Exposure]++
+			exposure[st.EffectiveExposure()]++
 			criticality[st.Criticality]++
 			tiers[strconv.Itoa(appTier(s.Source))]++
 			keyToSvc[s.Key] = s.appOverviewService
@@ -253,7 +255,7 @@ func appHandleServiceAlerts(db, backendDB *store.DB) http.HandlerFunc {
 			WHERE e.kind = 'service' AND e.key = $1 AND ($2 = false OR a.status <> 'closed')
 			ORDER BY a.id DESC LIMIT $3`, appServiceKey(name, env), openOnly, limit)
 		if err != nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "query failed"})
+			appQueryFailed(w, r.URL.Path, 0, err)
 			return
 		}
 		defer rows.Close()
@@ -308,7 +310,7 @@ func appHandleServiceEvents(db, backendDB *store.DB) http.HandlerFunc {
 			  AND ($5 = '' OR raw->'app'->>'event.name' = $5)
 			ORDER BY time DESC LIMIT $6`, from, to, name, env, evName, limit)
 		if err != nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "query failed"})
+			appQueryFailed(w, r.URL.Path, 0, err)
 			return
 		}
 		defer rows.Close()
@@ -381,6 +383,15 @@ func appHandleGetInstance(db, backendDB *store.DB) http.HandlerFunc {
 //
 // It returns the service's host instances (pid, container, listening ports, the sensor tier of the host)
 // and the recent host events whose process is one of those instances or descends from one (raw.proc.ancestors).
+// appQueryFailed logs the real database error (it used to be swallowed, which hid a bad query for weeks)
+// and gives the UI something an operator can act on.
+func appQueryFailed(w http.ResponseWriter, what string, serviceID int64, err error) {
+	slog.Error("application monitoring query failed", "query", what, "service_id", serviceID, "err", err)
+	writeJSON(w, http.StatusInternalServerError, map[string]string{
+		"error": "Could not read " + what + " for this service (database error). The details are in the management backend log under \"application monitoring query failed\".",
+	})
+}
+
 func appHandleServiceRuntime(db, backendDB *store.DB) http.HandlerFunc {
 	idb := appIngestDB(db, backendDB)
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -405,25 +416,28 @@ func appHandleServiceRuntime(db, backendDB *store.DB) http.HandlerFunc {
 		}
 		ctx := r.Context()
 		irows, err := idb.QueryContext(ctx, `
-			SELECT id, agent_id, host, pid, container_id, listen, instrumented, identity, attrs->>'sensor', attrs->>'exe', last_seen, stopped_at IS NOT NULL
+			SELECT id, agent_id, host, pid, container_id, listen, instrumented, identity, attrs->>'sensor', attrs->>'exe', attrs->>'unit', attrs->>'container_name', attrs->>'image', last_seen, stopped_at IS NOT NULL
 			FROM service_instances WHERE service_id = $1 AND last_seen > $2 ORDER BY last_seen DESC LIMIT 200`, id, from.Add(-7*24*time.Hour))
 		if err != nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "query failed"})
+			appQueryFailed(w, "runtime instances", id, err)
 			return
 		}
 		type inst struct {
-			ID           int64           `json:"id"`
-			AgentID      string          `json:"agent_id"`
-			Host         string          `json:"host"`
-			PID          int             `json:"pid"`
-			ContainerID  string          `json:"container_id"`
-			Listen       json.RawMessage `json:"listen"`
-			Instrumented bool            `json:"instrumented"`
-			Identity     string          `json:"identity"`
-			Sensor       string          `json:"sensor"`
-			Exe          string          `json:"exe"`
-			LastSeen     time.Time       `json:"last_seen"`
-			Stopped      bool            `json:"stopped"`
+			ID            int64           `json:"id"`
+			AgentID       string          `json:"agent_id"`
+			Host          string          `json:"host"`
+			PID           int             `json:"pid"`
+			ContainerID   string          `json:"container_id"`
+			Listen        json.RawMessage `json:"listen"`
+			Instrumented  bool            `json:"instrumented"`
+			Identity      string          `json:"identity"`
+			Sensor        string          `json:"sensor"`
+			Exe           string          `json:"exe"`
+			Unit          string          `json:"unit"`
+			ContainerName string          `json:"container_name"`
+			Image         string          `json:"image"`
+			LastSeen      time.Time       `json:"last_seen"`
+			Stopped       bool            `json:"stopped"`
 		}
 		insts := []inst{}
 		var pids []int64
@@ -431,11 +445,12 @@ func appHandleServiceRuntime(db, backendDB *store.DB) http.HandlerFunc {
 		for irows.Next() {
 			var i inst
 			var listen []byte
-			var sensor, exe sql.NullString
-			if irows.Scan(&i.ID, &i.AgentID, &i.Host, &i.PID, &i.ContainerID, &listen, &i.Instrumented, &i.Identity, &sensor, &exe, &i.LastSeen, &i.Stopped) != nil {
+			var sensor, exe, unit, cname, image sql.NullString
+			if irows.Scan(&i.ID, &i.AgentID, &i.Host, &i.PID, &i.ContainerID, &listen, &i.Instrumented, &i.Identity, &sensor, &exe, &unit, &cname, &image, &i.LastSeen, &i.Stopped) != nil {
 				continue
 			}
 			i.Listen, i.Sensor, i.Exe = json.RawMessage(listen), sensor.String, exe.String
+			i.Unit, i.ContainerName, i.Image = unit.String, cname.String, image.String
 			insts = append(insts, i)
 			if !i.Stopped && i.PID > 0 {
 				pids = append(pids, int64(i.PID))
@@ -468,7 +483,7 @@ func appHandleServiceRuntime(db, backendDB *store.DB) http.HandlerFunc {
 		if len(pids) > 0 {
 			rows, err := idb.QueryContext(ctx, `
 				SELECT id, time, event_type, source, host, COALESCE(pid,0), COALESCE(ppid,0), COALESCE(process_name,''), COALESCE(command_line,''),
-				       COALESCE(user_name,''), COALESCE(host(dst_ip),''), COALESCE(dst_port,0), COALESCE(raw->>'path', COALESCE(file_path,'')), raw->'proc'
+				       COALESCE(user_name,''), COALESCE(split_part(dst_ip::text, '/', 1),''), COALESCE(dst_port,0), COALESCE(raw->>'path', COALESCE(file_path,'')), raw->'proc'
 				FROM events
 				WHERE agent_id = ANY($1) AND time >= $2 AND time < $3 AND event_type IN ('process','network','file')
 				  AND ($4 = '' OR event_type = $4)
@@ -476,7 +491,7 @@ func appHandleServiceRuntime(db, backendDB *store.DB) http.HandlerFunc {
 				       OR EXISTS (SELECT 1 FROM unnest($5::bigint[]) p WHERE raw->'proc'->'ancestors' @> jsonb_build_array(jsonb_build_object('pid', p))))
 				ORDER BY time DESC LIMIT $6`, pq.Array(agentList), from, to, typ, pq.Array(pids), limit)
 			if err != nil {
-				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "query failed"})
+				appQueryFailed(w, "runtime host events", id, err)
 				return
 			}
 			for rows.Next() {

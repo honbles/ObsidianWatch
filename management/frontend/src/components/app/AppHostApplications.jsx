@@ -31,7 +31,7 @@ export default function AppHostApplications({ agentId }) {
                 {s.name} <span className="text-siem-muted text-xs">{s.environment}</span>
               </Link>
               <span className="flex items-center gap-2 text-xs text-siem-muted">
-                <AppTierBadge tier={s.tier} /><AppExposureBadge exposure={s.settings.exposure} />
+                <AppTierBadge tier={s.tier} /><AppExposureBadge exposure={s.settings.exposure} settings={s.settings} />
                 <span>{s.instances} inst.</span><span>{appRel(s.last_seen)}</span>
               </span>
             </li>

@@ -173,7 +173,7 @@ func appHandleREDSeries(db, backendDB *store.DB) http.HandlerFunc {
 			  AND ($4 = '' OR route = $4) AND ($6 = '' OR method = $6)
 			GROUP BY b ORDER BY b`, id, from, to, route, step, method)
 		if err != nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "query failed"})
+			appQueryFailed(w, r.URL.Path, 0, err)
 			return
 		}
 		points := map[int64]*appREDPoint{}
@@ -183,7 +183,7 @@ func appHandleREDSeries(db, backendDB *store.DB) http.HandlerFunc {
 			var p appREDPoint
 			if err := rows.Scan(&p.T, &p.Calls, &p.Errors, &p.Status2xx, &p.Status4013, &p.Status429, &p.Status5xx); err != nil {
 				rows.Close()
-				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "query failed"})
+				appQueryFailed(w, r.URL.Path, 0, err)
 				return
 			}
 			p.T = p.T.UTC()
@@ -207,7 +207,7 @@ func appHandleREDSeries(db, backendDB *store.DB) http.HandlerFunc {
 			  AND ($4 = '' OR s.route = $4) AND ($6 = '' OR s.method = $6)
 			GROUP BY b, g.i`, id, from, to, route, step, method)
 		if err != nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "query failed"})
+			appQueryFailed(w, r.URL.Path, 0, err)
 			return
 		}
 		hists := map[int64][]int64{}
@@ -277,7 +277,7 @@ func appHandleRoutes(db, backendDB *store.DB) http.HandlerFunc {
 			WHERE r.service_id = $1
 			ORDER BY COALESCE(s.calls,0) DESC, r.last_seen DESC LIMIT $4`, id, from, to, appMaxRouteRows)
 		if err != nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "query failed"})
+			appQueryFailed(w, r.URL.Path, 0, err)
 			return
 		}
 		list := []appRouteRow{}
@@ -287,7 +287,7 @@ func appHandleRoutes(db, backendDB *store.DB) http.HandlerFunc {
 			if err := rows.Scan(&x.Route, &x.Method, &x.FirstSeen, &x.LastSeen, &x.Stats.Calls, &x.Stats.Errors,
 				&x.Stats.Status2xx, &x.Stats.Status4013, &x.Stats.Status429, &x.Stats.Status5xx); err != nil {
 				rows.Close()
-				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "query failed"})
+				appQueryFailed(w, r.URL.Path, 0, err)
 				return
 			}
 			x.Active = x.Stats.Calls > 0

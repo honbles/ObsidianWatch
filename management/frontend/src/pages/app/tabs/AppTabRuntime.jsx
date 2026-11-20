@@ -36,6 +36,9 @@ export default function AppTabRuntime({ service, range }) {
   const icols = [
     { key: 'host', label: 'Host', render: i => <Link className="text-siem-accent hover:underline" to={`/agents?host=${encodeURIComponent(i.host)}`}>{i.host}</Link> },
     { key: 'pid', label: 'Process', render: i => <span className="font-mono text-xs">{i.pid || '-'}{i.exe ? <span className="text-siem-muted"> {i.exe.split('/').pop()}</span> : ''}</span> },
+    { key: 'container', label: 'Container / unit', render: i => (i.container_name || i.unit)
+      ? <span className="text-xs">{i.container_name ? <span className="font-mono">{i.container_name}{i.image ? <span className="text-siem-muted"> ({i.image})</span> : ''}</span> : null}{i.unit ? <span className="text-siem-muted"> {i.unit}</span> : null}</span>
+      : <span className="text-siem-muted">-</span> },
     { key: 'listen', label: 'Listening', render: i => <span className="font-mono text-xs">{(i.listen || []).join(', ') || '-'}</span> },
     { key: 'sensor', label: 'Host sensor', render: i => <SensorBadge tier={i.sensor} /> },
     { key: 'instrumented', label: 'Telemetry', render: i => (i.instrumented ? 'OpenTelemetry' : 'host only') },

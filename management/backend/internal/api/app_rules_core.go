@@ -78,7 +78,7 @@ func appWeigh(base int, st appServiceSettings, identity string, degraded, operat
 	if operational {
 		return sev, factors
 	}
-	if st.Exposure == "internet" && sev < appSevCrit {
+	if st.EffectiveExposure() == "internet" && sev < appSevCrit {
 		sev++
 		factors = append(factors, "internet-facing +1")
 	}
@@ -296,7 +296,7 @@ func appAlertBody(f appFinding, meta RuleMeta, observe bool, sev int, factors []
 	}
 	line("Identity", f.Identity)
 	if f.Svc.ID != 0 && !meta.Operational {
-		line("Service exposure / criticality", f.Svc.Settings.Exposure+" / "+f.Svc.Settings.Criticality)
+		line("Service exposure / criticality", f.Svc.Settings.EffectiveExposure()+" / "+f.Svc.Settings.Criticality)
 	}
 	sevNote := fmt.Sprintf("default %d", f.BaseSev)
 	if len(factors) > 0 {

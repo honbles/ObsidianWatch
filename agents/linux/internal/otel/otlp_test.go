@@ -107,3 +107,32 @@ func TestDecodeLogsHelperEvents(t *testing.T) {
 		t.Fatalf("%v %+v", err, jl)
 	}
 }
+
+// Older SDKs name the peer and client address differently; without these, the per-client failure
+// counters (rules A01, A09, A13) stay empty for those apps.
+func TestOldSemconvClientAddress(t *testing.T) {
+	mk := func(attrs string) Span {
+		body := `{"resourceSpans":[{"resource":{"attributes":[{"key":"service.name","value":{"stringValue":"api"}}]},
+		 "scopeSpans":[{"spans":[{"traceId":"ab","spanId":"12","name":"x","kind":2,"startTimeUnixNano":"1","endTimeUnixNano":"2000001",
+		 "attributes":[` + attrs + `]}]}]}]}`
+		spans, err := DecodeTracesJSON([]byte(body))
+		if err != nil || len(spans) != 1 {
+			t.Fatalf("%v %d", err, len(spans))
+		}
+		return spans[0]
+	}
+	str := func(k, v string) string { return `{"key":"` + k + `","value":{"stringValue":"` + v + `"}}` }
+	if s := mk(str("net.peer.ip", "10.1.1.9")); s.PeerAddr != "10.1.1.9" {
+		t.Fatalf("net.peer.ip: %+v", s)
+	}
+	if s := mk(str("net.sock.peer.addr", "10.1.1.8")); s.PeerAddr != "10.1.1.8" {
+		t.Fatalf("net.sock.peer.addr: %+v", s)
+	}
+	if s := mk(str("http.client_ip", "203.0.113.5") + "," + str("net.peer.ip", "10.0.0.1")); s.ClientAddr != "203.0.113.5" || s.PeerAddr != "10.0.0.1" {
+		t.Fatalf("http.client_ip: %+v", s)
+	}
+	// the new names win over the old ones whatever the order
+	if s := mk(str("http.client_ip", "1.1.1.1") + "," + str("client.address", "2.2.2.2") + "," + str("net.peer.ip", "3.3.3.3") + "," + str("network.peer.address", "4.4.4.4")); s.ClientAddr != "2.2.2.2" || s.PeerAddr != "4.4.4.4" {
+		t.Fatalf("precedence: %+v", s)
+	}
+}

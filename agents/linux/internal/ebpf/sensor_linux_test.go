@@ -104,7 +104,16 @@ func TestPollTierReportsChildOfAService(t *testing.T) {
 	}
 	// A process that is NOT under the service is not reported at all.
 	unrelated := c.find("process", "", func(e schema.Event) bool {
-		return e.PPID != self && e.PID != child.Process.Pid && !strings.Contains(string(e.Raw), `"pid":`+strconv.Itoa(self))
+		if e.PPID == self || e.PID == child.Process.Pid || strings.Contains(string(e.Raw), `"pid":`+strconv.Itoa(self)) {
+			return false
+		}
+		// The host may run its own listeners (a CI runner, an agent); anything under those is legitimately watched.
+		for _, p := range s.reg.PIDs() {
+			if p != self && (e.PPID == p || strings.Contains(string(e.Raw), `"pid":`+strconv.Itoa(p))) {
+				return false
+			}
+		}
+		return true
 	})
 	if unrelated != nil {
 		t.Fatalf("only service descendants are reported: %+v", unrelated)

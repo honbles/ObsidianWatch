@@ -51,7 +51,7 @@ export default function AppServices() {
     { key: 'name', label: 'Service', render: s => <span className="text-siem-text font-medium">{s.name}</span>, sort: s => s.name },
     { key: 'environment', label: 'Env', sort: s => s.environment },
     { key: 'tier', label: 'Tier', render: s => <AppTierBadge tier={s.tier} />, sort: s => s.tier, width: 60 },
-    { key: 'exposure', label: 'Exposure', render: s => <AppExposureBadge exposure={s.settings.exposure} />, sort: s => s.settings.exposure },
+    { key: 'exposure', label: 'Exposure', render: s => <AppExposureBadge exposure={s.settings.exposure} settings={s.settings} />, sort: s => s.settings.exposure },
     { key: 'criticality', label: 'Criticality', render: s => <AppCriticalityBadge criticality={s.settings.criticality} />, sort: s => s.settings.criticality },
     { key: 'instances', label: 'Inst.', align: 'right', sort: s => s.instances },
     { key: 'calls', label: 'Requests', align: 'right', render: s => (s.red ? appInt(s.red.calls) : '-'), sort: s => s.red?.calls || 0 },

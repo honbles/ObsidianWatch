@@ -61,7 +61,7 @@ export default function AppServiceSettingsForm({ service, requests, onSaved, com
     <div className="space-y-4">
       {!admin && <div className="text-[11px] text-amber-300">Read-only: changing settings needs the admin role.</div>}
       <div className={`grid gap-3 ${compact ? 'grid-cols-1' : 'grid-cols-1 md:grid-cols-3'}`}>
-        <Field label="Exposure" hint="Internet-facing services raise alert severity one level.">
+        <Field label="Exposure" hint={f.exposure === 'unknown' && s0.exposure_inferred && s0.exposure_inferred !== 'unknown' ? `Inferred ${s0.exposure_inferred}: ${s0.exposure_reason}. Choose a value to override.` : 'Internet-facing services raise alert severity one level.'}>
           <select className={inputCls} value={f.exposure} onChange={set('exposure')} disabled={dis}>
             <option value="unknown">unknown</option><option value="internet">internet</option><option value="internal">internal</option></select></Field>
         <Field label="Criticality" hint="High and critical raise severity one level.">

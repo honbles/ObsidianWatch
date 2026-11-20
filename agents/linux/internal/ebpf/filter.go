@@ -11,6 +11,8 @@ var ignoredListeners = map[string]bool{
 	"sshd": true, "systemd": true, "systemd-resolve": true, "systemd-resolved": true, "rpcbind": true, "chronyd": true, "ntpd": true,
 	"cupsd": true, "avahi-daemon": true, "dnsmasq": true, "master": true, "named": true, "unbound": true, "containerd": true,
 	"dockerd": true, "kubelet": true, "node_exporter": true, "dhclient": true, "rsyslogd": true, "crond": true, "cron": true,
+	// Docker publishes each port through a docker-proxy on the host, and the shims supervise containers; none is an application.
+	"docker-proxy": true, "containerd-shim": true, "containerd-shim-runc-v2": true, "containerd-shim-runc-v1": true,
 	"agent": true, "obsidianwatch-agent": true, "obsidian-agent": true, "snapd": true, "polkitd": true, "exim4": true, "smbd": true, "nmbd": true,
 }
 

@@ -82,7 +82,7 @@ export default function AppServiceDetail() {
       <StateBlock loading={svcQ.loading && !svc} error={svcQ.error} empty={!svcQ.loading && !svc} emptyText="Service not found. It may not have reported in the last 90 days.">
         {full && (<>
           <div className="flex flex-wrap items-center gap-2 text-xs">
-            <AppTierBadge tier={full.tier} /><AppExposureBadge exposure={full.settings.exposure} /><AppCriticalityBadge criticality={full.settings.criticality} />
+            <AppTierBadge tier={full.tier} /><AppExposureBadge exposure={full.settings.exposure} settings={full.settings} /><AppCriticalityBadge criticality={full.settings.criticality} />
             {full.settings.owner && <span className="text-siem-muted">owner <b className="text-siem-text">{full.settings.owner}</b></span>}
             {liveAsserted > 0 && <span className="text-amber-300">{liveAsserted} instance{liveAsserted > 1 ? 's' : ''} with asserted identity</span>}
             <Link to="/applications/services" className="ml-auto text-siem-accent hover:underline">All services</Link>

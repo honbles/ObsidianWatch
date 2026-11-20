@@ -54,7 +54,7 @@ func appHandleMap(db, backendDB *store.DB) http.HandlerFunc {
 		ctx := r.Context()
 		srows, err := idb.QueryContext(ctx, `SELECT id, name, environment, source, first_seen FROM services WHERE last_seen >= $1 ORDER BY name, environment LIMIT 500`, from)
 		if err != nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "query failed"})
+			appQueryFailed(w, r.URL.Path, 0, err)
 			return
 		}
 		type svcRow struct {
@@ -78,12 +78,13 @@ func appHandleMap(db, backendDB *store.DB) http.HandlerFunc {
 		}
 		srows.Close()
 		settings := appSettingsByID(ctx, db, ids)
+		appApplyExposure(ctx, idb, ids, settings)
 		for id, s := range svcs {
 			st, ok := settings[id]
 			if !ok {
 				st = appDefaultSettings()
 			}
-			s.node.Exposure, s.node.Criticality = st.Exposure, st.Criticality
+			s.node.Exposure, s.node.Criticality = st.EffectiveExposure(), st.Criticality
 		}
 
 		erows, err := idb.QueryContext(ctx, `
@@ -95,7 +96,7 @@ func appHandleMap(db, backendDB *store.DB) http.HandlerFunc {
 			WHERE e.last_seen >= $3
 			ORDER BY COALESCE(h.calls,0) DESC LIMIT 2000`, from.Truncate(time.Hour), to, from)
 		if err != nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "query failed"})
+			appQueryFailed(w, r.URL.Path, 0, err)
 			return
 		}
 		nodes := map[string]*appMapNode{}

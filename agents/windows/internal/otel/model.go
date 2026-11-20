@@ -97,6 +97,8 @@ var spanAllow = map[string]bool{
 	"http.route": true, "http.request.method": true, "http.method": true,
 	"http.response.status_code": true, "http.status_code": true,
 	"client.address": true, "network.peer.address": true,
+	// older semantic conventions, still sent by many SDK versions (Node 0.5x, Java agent 1.x, .NET opt-out)
+	"http.client_ip": true, "net.peer.ip": true, "net.sock.peer.addr": true, "client.socket.address": true,
 	"db.system": true, "server.address": true, "server.port": true, "peer.service": true,
 	"messaging.system": true, "enduser.id": true, "exception.type": true,
 }
@@ -179,8 +181,14 @@ func (s *Span) set(k string, v attrValue) {
 		}
 	case "client.address":
 		s.ClientAddr = v.str()
-	case "network.peer.address":
-		s.PeerAddr = v.str()
+	case "http.client_ip": // old name for the client address (set from X-Forwarded-For); never overrides client.address
+		if s.ClientAddr == "" {
+			s.ClientAddr = v.str()
+		}
+	case "network.peer.address", "net.sock.peer.addr", "client.socket.address", "net.peer.ip":
+		if s.PeerAddr == "" || k == "network.peer.address" {
+			s.PeerAddr = v.str()
+		}
 	case "db.system":
 		s.DBSystem = v.str()
 	case "server.address":

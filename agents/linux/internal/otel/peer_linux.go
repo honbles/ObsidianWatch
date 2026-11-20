@@ -131,6 +131,18 @@ func (r *linuxResolver) pidForInode(inode string) int {
 	return 0
 }
 
+func init() {
+	r := &linuxResolver{proc: "/proc"}
+	ProcAlive = func(pid int, start time.Time) bool {
+		stat, err := os.ReadFile(fmt.Sprintf("%s/%d/stat", r.proc, pid))
+		if err != nil {
+			return false
+		}
+		_, st := parseStat(string(stat), r.bootTime())
+		return start.IsZero() || st.IsZero() || st.Equal(start) // a reused pid has a different start time
+	}
+}
+
 var containerRe = regexp.MustCompile(`[0-9a-f]{64}`)
 
 func (r *linuxResolver) describe(pid int) Peer {

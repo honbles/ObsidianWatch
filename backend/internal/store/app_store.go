@@ -26,21 +26,24 @@ const AppHistLen = 12
 // application never supplies them. Identity is "verified" when the sending process
 // was bound to the service, "asserted" otherwise.
 type AppInstance struct {
-	Service      string          `json:"service"`
-	Environment  string          `json:"environment"`
-	Source       string          `json:"source"` // otel | discovered
-	InstanceRef  string          `json:"instance_ref"`
-	Version      string          `json:"version"`
-	PID          int             `json:"pid"`
-	ProcStart    time.Time       `json:"proc_start"`
-	ContainerID  string          `json:"container_id"`
-	Identity     string          `json:"identity"`
-	Instrumented bool            `json:"instrumented"`
-	Listen       json.RawMessage `json:"listen"`
-	Language     string          `json:"language"`
-	SDK          string          `json:"sdk"`
-	Exe          string          `json:"exe"`
-	Sensor       string          `json:"sensor"` // host sensor tier: ebpf | procevent | poll (discovered instances)
+	Service       string          `json:"service"`
+	Environment   string          `json:"environment"`
+	Source        string          `json:"source"` // otel | discovered
+	InstanceRef   string          `json:"instance_ref"`
+	Version       string          `json:"version"`
+	PID           int             `json:"pid"`
+	ProcStart     time.Time       `json:"proc_start"`
+	ContainerID   string          `json:"container_id"`
+	Identity      string          `json:"identity"`
+	Instrumented  bool            `json:"instrumented"`
+	Listen        json.RawMessage `json:"listen"`
+	Language      string          `json:"language"`
+	SDK           string          `json:"sdk"`
+	Exe           string          `json:"exe"`
+	Sensor        string          `json:"sensor"` // host sensor tier: ebpf | procevent | poll (discovered instances)
+	Unit          string          `json:"unit"`
+	ContainerName string          `json:"container_name"`
+	Image         string          `json:"image"`
 }
 
 // AppRouteStat is one per-minute aggregate for a route template.
@@ -230,7 +233,8 @@ func (db *DB) AppIngestBatch(ctx context.Context, agentID, host string, b AppBat
 		if procStart.IsZero() {
 			procStart = time.Unix(0, 0).UTC()
 		}
-		attrs, _ := json.Marshal(map[string]string{"language": in.Language, "sdk": in.SDK, "exe": in.Exe, "sensor": in.Sensor})
+		attrs, _ := json.Marshal(map[string]string{"language": in.Language, "sdk": in.SDK, "exe": in.Exe, "sensor": in.Sensor,
+			"unit": in.Unit, "container_name": in.ContainerName, "image": in.Image})
 		identity := in.Identity
 		if identity != "verified" {
 			identity = "asserted" // default to the weaker claim

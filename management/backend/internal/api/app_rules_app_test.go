@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 )
@@ -323,6 +324,34 @@ func TestAppO03TrafficDrop(t *testing.T) {
 		f.neg("APM-O03")
 		_ = name
 	}
+}
+
+// Several instances silent at once give ONE alert for the service, and a discovered (non-OTel) service,
+// whose processes legitimately come and go, never raises O05.
+func TestAppO05GroupedAndOtelOnly(t *testing.T) {
+	setup := func(f *appFx) {
+		f.d.insts = []appInst{
+			{ID: 11, ServiceID: 1, AgentID: "a1", Host: "web-01", PID: 100, FirstSeen: appNow.Add(-5 * 24 * time.Hour), LastSeen: appNow.Add(-30 * time.Minute)},
+			{ID: 13, ServiceID: 1, AgentID: "a1", Host: "web-01", PID: 101, FirstSeen: appNow.Add(-5 * 24 * time.Hour), LastSeen: appNow.Add(-31 * time.Minute)},
+			{ID: 14, ServiceID: 1, AgentID: "a1", Host: "web-01", PID: 102, FirstSeen: appNow.Add(-5 * 24 * time.Hour), LastSeen: appNow.Add(-32 * time.Minute)},
+			{ID: 12, ServiceID: 1, AgentID: "a2", Host: "web-02", PID: 200, FirstSeen: appNow.Add(-5 * 24 * time.Hour), LastSeen: appNow},
+		}
+		f.d.agentSeen = map[string]time.Time{"a1": appNow, "a2": appNow}
+	}
+	fx := appNewFx(t)
+	setup(fx)
+	fx.scan()
+	got := fx.pos("APM-O05", 1)
+	if len(got) != 1 || !strings.Contains(got[0].F.Detail, "pid 100") || !strings.Contains(got[0].F.Detail, "What to check") {
+		t.Fatalf("three silent instances must give one explanatory alert: %+v", got)
+	}
+	d := appNewFx(t)
+	setup(d)
+	sv := d.d.svcs[1]
+	sv.Source = "discovered"
+	d.d.svcs[1] = sv
+	d.scan()
+	d.neg("APM-O05")
 }
 
 func TestAppO05InstanceMissing(t *testing.T) {

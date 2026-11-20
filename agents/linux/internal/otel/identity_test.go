@@ -1,6 +1,8 @@
 package otel
 
 import (
+	"os"
+	"strconv"
 	"testing"
 	"time"
 )
@@ -56,4 +58,37 @@ func TestHasherAndClientIP(t *testing.T) {
 	if ApplyClientIP("203.0.113.77", ClientIPOff) != "" || ApplyClientIP("203.0.113.77", ClientIPFull) != "203.0.113.77" || ApplyClientIP("junk", ClientIPTruncated) != "" {
 		t.Fatal("ip modes")
 	}
+}
+
+func TestBinderReleasesDeadInstancesAndCapsNames(t *testing.T) {
+	old := ProcAlive
+	defer func() { ProcAlive = old }()
+	t0 := time.Unix(1700000000, 0)
+	alive := map[int]bool{100: true}
+	ProcAlive = func(pid int, _ time.Time) bool { return alive[pid] }
+	b := NewBinder()
+	a := Peer{Resolved: true, PID: 100, ProcStart: t0, Exe: "/opt/app/v1/app"}
+	if b.Bind("svc", "prod", a) != IdentityVerified {
+		t.Fatal("first claimant must be verified")
+	}
+	n := Peer{Resolved: true, PID: 200, ProcStart: t0.Add(time.Hour), Exe: "/opt/app/v2/app"}
+	if b.Bind("svc", "prod", n) != IdentityAsserted {
+		t.Fatal("a different executable must stay asserted while the bound process is alive")
+	}
+	alive[100] = false // the old version exited (redeploy)
+	if b.Bind("svc", "prod", n) != IdentityVerified {
+		t.Fatal("after the bound process exits, the replacement must take over the binding")
+	}
+	for i := 0; i < maxBoundServices+10; i++ {
+		b.Bind("spam-"+strconv.Itoa(i), "x", Peer{Resolved: true, PID: 300 + i, ProcStart: t0, Exe: "/bin/x"})
+	}
+	if len(b.svcs) > maxBoundServices {
+		t.Fatalf("binder grew to %d service names, cap is %d", len(b.svcs), maxBoundServices)
+	}
+}
+
+// Most tests use made-up pids that are not running; liveness checking is exercised explicitly above.
+func TestMain(m *testing.M) {
+	ProcAlive = nil
+	os.Exit(m.Run())
 }

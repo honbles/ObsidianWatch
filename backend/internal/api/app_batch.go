@@ -203,6 +203,7 @@ func appSanitizeBatch(b *store.AppBatch, now time.Time) (dropped int) {
 		in.InstanceRef, in.Version = appClean(in.InstanceRef, 128), appClean(in.Version, 64)
 		in.Language, in.SDK = appClean(in.Language, 32), appClean(in.SDK, 64)
 		in.ContainerID, in.Exe = appClean(in.ContainerID, 128), appClean(in.Exe, 512)
+		in.Unit, in.ContainerName, in.Image = appClean(in.Unit, 128), appClean(in.ContainerName, 128), appClean(in.Image, 256)
 		if in.PID < 0 {
 			in.PID = 0
 		}

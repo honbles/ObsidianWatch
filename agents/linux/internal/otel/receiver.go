@@ -41,17 +41,18 @@ type RecvStats struct {
 }
 
 type Receiver struct {
-	opt      ReceiverOptions
-	agg      *Aggregator
-	binder   *Binder
-	resolver PeerResolver
-	ec       EventContext
-	emit     func(schema.Event) bool
-	log      *slog.Logger
-	mu       sync.RWMutex // guards srvs and lns (Addrs/OnlyLocal may run while Start is appending)
-	srvs     []*http.Server
-	lns      []net.Listener
-	Stats    RecvStats
+	opt        ReceiverOptions
+	agg        *Aggregator
+	binder     *Binder
+	resolver   PeerResolver
+	ec         EventContext
+	emit       func(schema.Event) bool
+	log        *slog.Logger
+	mu         sync.RWMutex // guards srvs and lns (Addrs/OnlyLocal may run while Start is appending)
+	srvs       []*http.Server
+	lns        []net.Listener
+	Stats      RecvStats
+	resolveSem chan struct{}
 }
 
 func NewReceiver(opt ReceiverOptions, agg *Aggregator, binder *Binder, resolver PeerResolver, ec EventContext,
@@ -59,7 +60,7 @@ func NewReceiver(opt ReceiverOptions, agg *Aggregator, binder *Binder, resolver 
 	if opt.SocketMode == 0 {
 		opt.SocketMode = 0o666
 	}
-	return &Receiver{opt: opt, agg: agg, binder: binder, resolver: resolver, ec: ec, emit: emit, log: logger}
+	return &Receiver{opt: opt, agg: agg, binder: binder, resolver: resolver, ec: ec, emit: emit, log: logger, resolveSem: make(chan struct{}, 4)}
 }
 
 // ValidateListen rejects any TCP address that is not a loopback IP literal.
@@ -84,11 +85,23 @@ type lazyPeer struct {
 	once sync.Once
 	conn net.Conn
 	res  PeerResolver
+	sem  chan struct{} // bounds concurrent identifications: each one scans /proc, so a flood of new connections must not pin the CPU
 	peer Peer
 }
 
 func (l *lazyPeer) get() Peer {
-	l.once.Do(func() { l.peer = l.res.Resolve(l.conn) })
+	l.once.Do(func() {
+		if l.sem != nil {
+			select {
+			case l.sem <- struct{}{}:
+				defer func() { <-l.sem }()
+			case <-time.After(2 * time.Second):
+				l.peer = Peer{Reason: "identification busy"} // counted as unresolved: telemetry is stored as asserted
+				return
+			}
+		}
+		l.peer = l.res.Resolve(l.conn)
+	})
 	return l.peer
 }
 
@@ -144,7 +157,7 @@ func (r *Receiver) Start(ctx context.Context) error {
 			IdleTimeout:       120 * time.Second,
 			MaxHeaderBytes:    64 << 10,
 			ConnContext: func(ctx context.Context, c net.Conn) context.Context {
-				return context.WithValue(ctx, connKeyT{}, &lazyPeer{conn: c, res: r.resolver})
+				return context.WithValue(ctx, connKeyT{}, &lazyPeer{conn: c, res: r.resolver, sem: r.resolveSem})
 			},
 		}
 		r.mu.Lock()

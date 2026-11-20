@@ -6,6 +6,7 @@ package api
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -123,7 +124,9 @@ func (r *appRules) o03(ctx context.Context, svc appSvc, now time.Time) {
 
 func (r *appRules) o05(ctx context.Context, svc appSvc, now time.Time) {
 	g, on := r.enabled(ctx, "APM-O05", svc)
-	if !on || appInMaintenance(svc.Settings, now) {
+	// Only services that report telemetry have a heartbeat to lose. A discovered (non-OTel) service is seen
+	// by polling, and its processes legitimately come and go (workers, one docker-proxy per published port).
+	if !on || svc.Source != "otel" || appInMaintenance(svc.Settings, now) {
 		return
 	}
 	insts, err := r.d.Instances(ctx, svc.ID)
@@ -140,7 +143,9 @@ func (r *appRules) o05(ctx context.Context, svc appSvc, now time.Time) {
 	if reporting == 0 {
 		return // nobody reports: that is a traffic problem (O03) or an idle service, not one missing instance
 	}
-	for _, i := range insts {
+	var missing []string
+	var first *appInst
+	for idx, i := range insts {
 		if i.Stopped || now.Sub(i.LastSeen) <= grace || now.Sub(i.LastSeen) > 24*time.Hour {
 			continue
 		}
@@ -163,12 +168,36 @@ func (r *appRules) o05(ctx context.Context, svc appSvc, now time.Time) {
 			appSkip("APM-O05", "deploy window")
 			continue
 		}
-		r.fire(ctx, appFinding{RuleID: "APM-O05", Svc: svc, BaseSev: appSevHigh, Summary: "Instance stopped reporting",
-			Detail: fmt.Sprintf("Instance %d on %s (pid %d) has not reported for %d minutes while the host is up and other instances of the service are reporting.%s",
-				i.ID, i.Host, i.PID, int(now.Sub(i.LastSeen).Minutes()), appNotifyLine(svc)),
-			InstanceID: i.ID, AgentID: i.AgentID, Host: i.Host, EventType: "app.alert", Time: now,
-			DedupKey: fmt.Sprintf("%d:%d:%s", svc.ID, i.ID, now.UTC().Format("2006010215"))})
+		missing = append(missing, fmt.Sprintf("pid %d on %s (silent %d min)", i.PID, i.Host, int(now.Sub(i.LastSeen).Minutes())))
+		if first == nil {
+			first = &insts[idx]
+		}
 	}
+	if first == nil {
+		return
+	}
+	// One alert per service and hour, however many instances went quiet.
+	exposure := svc.Settings.EffectiveExposure()
+	if exposure == "" {
+		exposure = "unknown"
+	}
+	lastReq := "no request statistics yet"
+	if last, err := r.d.LastRequestMinute(ctx, svc.ID); err == nil && !last.IsZero() {
+		lastReq = "last request seen " + last.UTC().Format("15:04 UTC")
+	}
+	list := missing
+	more := ""
+	if len(list) > 5 {
+		more = fmt.Sprintf(" and %d more", len(list)-5)
+		list = list[:5]
+	}
+	r.fire(ctx, appFinding{RuleID: "APM-O05", Svc: svc, BaseSev: appSevHigh,
+		Summary: fmt.Sprintf("%d of %d instances of %s stopped reporting", len(missing), len(insts), svc.Name),
+		Detail: fmt.Sprintf("Service %s (%s, exposure: %s) has %d instance(s) that stopped sending telemetry for more than %d minutes while the host is up and %d other instance(s) still report: %s%s. %s.\n"+
+			"What to check: whether the process is still running on that host (it may have crashed or been replaced), whether the application's exporter can still reach the agent at 127.0.0.1:4318, and whether a deploy is in progress. If this is expected, add a maintenance window or a deploy window to the service.%s",
+			svc.Name, svc.Env, exposure, len(missing), int(grace.Minutes()), reporting, strings.Join(list, "; "), more, lastReq, appNotifyLine(svc)),
+		InstanceID: first.ID, AgentID: first.AgentID, Host: first.Host, EventType: "app.alert", Time: now,
+		DedupKey: fmt.Sprintf("%d:o05:%s", svc.ID, now.UTC().Format("2006010215"))})
 }
 
 // ── X06: instrumentation dropped while the process runs ────────────────────

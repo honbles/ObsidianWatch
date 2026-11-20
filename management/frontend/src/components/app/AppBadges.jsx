@@ -12,8 +12,12 @@ export function AppTierBadge({ tier }) {
 }
 
 const EXPOSURE = { internet: 'border-red-500/40 text-red-300', internal: 'border-slate-500/40 text-slate-300', unknown: 'border-amber-500/40 text-amber-300' }
-export function AppExposureBadge({ exposure }) {
-  return <span className={`${base} ${EXPOSURE[exposure] || EXPOSURE.unknown}`}>{exposure || 'unknown'}</span>
+// settings is the service's settings object: the analyst's value wins, otherwise the inferred one is shown (marked "auto").
+export function AppExposureBadge({ exposure, settings }) {
+  const inferred = settings && (!exposure || exposure === 'unknown') && settings.exposure_inferred && settings.exposure_inferred !== 'unknown'
+  const v = inferred ? settings.exposure_inferred : exposure
+  return <span title={inferred ? `Inferred: ${settings.exposure_reason}. Set it in the service settings to override.` : undefined}
+    className={`${base} ${EXPOSURE[v] || EXPOSURE.unknown}`}>{v || 'unknown'}{inferred ? ' (auto)' : ''}</span>
 }
 
 const CRIT = { low: 'text-slate-400 border-slate-500/30', normal: 'text-slate-300 border-slate-500/40', high: 'text-orange-300 border-orange-500/40', critical: 'text-red-300 border-red-500/40' }

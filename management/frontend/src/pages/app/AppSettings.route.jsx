@@ -18,7 +18,7 @@ export default function AppSettings() {
 
   const cols = [
     { key: 'name', label: 'Service', render: s => <Link className="text-siem-text hover:underline" to={`/applications/services/${encodeURIComponent(s.key)}?tab=settings`}>{s.name} <span className="text-siem-muted text-xs">{s.environment}</span></Link>, sort: s => s.name },
-    { key: 'exposure', label: 'Exposure', render: s => <AppExposureBadge exposure={s.settings.exposure} />, sort: s => s.settings.exposure },
+    { key: 'exposure', label: 'Exposure', render: s => <AppExposureBadge exposure={s.settings.exposure} settings={s.settings} />, sort: s => s.settings.exposure },
     { key: 'criticality', label: 'Criticality', render: s => <AppCriticalityBadge criticality={s.settings.criticality} />, sort: s => s.settings.criticality },
     { key: 'owner', label: 'Owner', render: s => s.settings.owner || <span className="text-siem-muted">-</span> },
     { key: 'learn', label: 'Learning', render: s => <span className={s.learn.state === 'ready' ? 'text-emerald-300' : 'text-amber-300'}>{appLearningText(s.learn)}</span>, sort: s => s.learn.state },

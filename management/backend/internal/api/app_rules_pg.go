@@ -77,7 +77,9 @@ func (d appPGData) ServiceForLineage(ctx context.Context, agentID, containerID s
 }
 
 func (d appPGData) settings(ctx context.Context, id int64) appServiceSettings {
-	if st, ok := appSettingsByID(ctx, d.db, []int64{id})[id]; ok {
+	sm := appSettingsByID(ctx, d.db, []int64{id})
+	appApplyExposure(ctx, d.idb, []int64{id}, sm)
+	if st, ok := sm[id]; ok {
 		return st
 	}
 	return appDefaultSettings()
@@ -172,6 +174,7 @@ func (d appPGData) ActiveServices(ctx context.Context, since time.Time) ([]appSv
 	}
 	rows.Close()
 	st := appSettingsByID(ctx, d.db, ids)
+	appApplyExposure(ctx, d.idb, ids, st)
 	for i := range out {
 		if s, ok := st[out[i].ID]; ok {
 			out[i].Settings = s

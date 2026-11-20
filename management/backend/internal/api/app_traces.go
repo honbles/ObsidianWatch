@@ -82,7 +82,7 @@ func appHandleListTraces(db, backendDB *store.DB) http.HandlerFunc {
 			  AND t.duration_ms >= $6 AND ($7 = '' OR t.root_route ILIKE '%' || $7 || '%')
 			ORDER BY t.started DESC LIMIT $8`, from, to, sid, reason, status, minDur, route, limit)
 		if err != nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "query failed"})
+			appQueryFailed(w, r.URL.Path, 0, err)
 			return
 		}
 		defer rows.Close()
@@ -91,7 +91,7 @@ func appHandleListTraces(db, backendDB *store.DB) http.HandlerFunc {
 			var t appTraceRow
 			if err := rows.Scan(&t.TraceID, &t.ServiceID, &t.Service, &t.Environment, &t.AgentID, &t.Started,
 				&t.DurationMs, &t.RootRoute, &t.Status, &t.KeepReason, &t.SpanCount); err != nil {
-				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "query failed"})
+				appQueryFailed(w, r.URL.Path, 0, err)
 				return
 			}
 			list = append(list, t)
@@ -121,7 +121,7 @@ func appHandleGetTrace(db, backendDB *store.DB) http.HandlerFunc {
 			return
 		}
 		if err != nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "query failed"})
+			appQueryFailed(w, r.URL.Path, 0, err)
 			return
 		}
 		t.Spans = json.RawMessage(spans)
@@ -152,7 +152,7 @@ func appHandleServiceEdges(db, backendDB *store.DB) http.HandlerFunc {
 			WHERE e.src_service = $1 AND e.last_seen >= $2 AND e.first_seen < $3
 			ORDER BY COALESCE(h.calls,0) DESC, e.calls DESC LIMIT 500`, id, from, to, from.Truncate(time.Hour))
 		if err != nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "query failed"})
+			appQueryFailed(w, r.URL.Path, 0, err)
 			return
 		}
 		defer rows.Close()

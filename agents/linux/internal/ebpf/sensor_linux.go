@@ -25,10 +25,11 @@ const (
 
 // Sensor is the running host runtime sensor.
 type Sensor struct {
-	o    Options
-	fs   *procFS
-	reg  *Registry
-	mode atomic.Value // string
+	o          Options
+	fs         *procFS
+	reg        *Registry
+	mode       atomic.Value // string
+	containers *containerCache
 
 	nProc, nNet, nFile, nPriv, nDrop atomic.Int64
 
@@ -53,7 +54,7 @@ func New(o Options) *Sensor {
 		root = "/proc"
 	}
 	s := &Sensor{o: o, fs: newProcFS(root), reg: NewRegistry(), seenSock: map[string]struct{}{}, seenProc: map[int]uint64{},
-		uidOf: map[int]int{}, tokens: maxEventsPerSecond, tokenAt: time.Now()}
+		uidOf: map[int]int{}, tokens: maxEventsPerSecond, tokenAt: time.Now(), containers: newContainerCache("")}
 	s.mode.Store(ModePoll)
 	return s
 }
@@ -185,6 +186,8 @@ func (s *Sensor) discover() []otel.BatchInstance {
 		d     procDetail
 		name  string
 		ports []int
+		ci    ContainerInfo
+		unit  string
 	}
 	found := map[int]*svc{}
 	self := os.Getpid()
@@ -197,7 +200,13 @@ func (s *Sensor) discover() []otel.BatchInstance {
 			continue
 		}
 		sort.Ints(ps)
-		found[pid] = &svc{d: d, name: DiscoverName(d.Exe, d.Args, ""), ports: ps}
+		name := DiscoverName(d.Exe, d.Args, "")
+		ci, haveCI := ContainerInfo{}, false
+		if d.Container != "" && s.containers != nil {
+			ci, haveCI = s.containers.Lookup(d.Container)
+		}
+		name = BetterName(name, d.Unit, ci, haveCI)
+		found[pid] = &svc{d: d, name: name, ports: ps, ci: ci, unit: d.Unit}
 	}
 	// Workers that inherited their parent's listening socket are the same service.
 	for pid, v := range found {
@@ -218,7 +227,7 @@ func (s *Sensor) discover() []otel.BatchInstance {
 		listen, _ := json.Marshal(v.ports)
 		out = append(out, otel.BatchInstance{Service: v.name, Environment: s.o.Environment, Source: "discovered", PID: pid,
 			ProcStart: v.d.Start, ContainerID: v.d.Container, Identity: "verified", Instrumented: false, Listen: listen,
-			Exe: v.d.Exe, Sensor: s.Mode()})
+			Exe: v.d.Exe, Sensor: s.Mode(), Unit: v.unit, ContainerName: v.ci.Name, Image: v.ci.Image})
 	}
 	if s.o.ServicePIDs != nil { // services known from OpenTelemetry are watched too
 		for _, p := range s.o.ServicePIDs() {
