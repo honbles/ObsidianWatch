@@ -31,8 +31,11 @@ resolved over loopback TCP; use the Unix socket for those.
 
 ## What is kept
 Only allowlisted attributes survive decoding (`otel/model.go`). Route templates only
-(`http.route`; a request with no route becomes `(unmatched)`, never the raw path). No URLs,
-query strings, headers or bodies. Per service, at most 500 distinct routes; the rest collapse
+(`http.route`; a request with no route becomes `(unmatched)`, never the raw path). No URLs, headers or
+response bodies. Query-string and request-body **field names** are kept per route; **values** are forwarded only for routes an
+administrator has reviewed, only for fields left unmasked, and never for credential-style names or values
+(`PAYLOAD_CAPTURE_DESIGN.md`). Values are also scanned in memory for injection signatures, and only the class label leaves the host.
+Per service, at most 500 distinct routes; the rest collapse
 into `other` and the overflow is counted.
 
 ## What is sent

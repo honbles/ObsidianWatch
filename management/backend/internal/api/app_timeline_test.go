@@ -21,14 +21,14 @@ func TestAppTimelineIntegration(t *testing.T) {
 	}
 	defer raw.Close()
 	if _, err := raw.Exec(`DROP TABLE IF EXISTS app_traces, app_route_stats, app_baselines, service_versions, service_routes, service_edges,
-		service_instances, services, service_settings, app_edge_stats, app_client_stats, app_service_merges, events, alert_entities, alerts CASCADE`); err != nil {
+		service_instances, services, service_settings, app_payloads, app_edge_stats, app_client_stats, app_service_merges, events, alert_entities, alerts CASCADE`); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := raw.Exec(`CREATE TABLE events (id TEXT, time TIMESTAMPTZ NOT NULL, agent_id TEXT, host TEXT, event_type TEXT, source TEXT,
 		pid INT, ppid INT, process_name TEXT, command_line TEXT, user_name TEXT, dst_ip TEXT, dst_port INT, file_path TEXT, raw JSONB)`); err != nil {
 		t.Fatal(err) // dst_ip is TEXT in production (migration 004)
 	}
-	for _, f := range []string{"../../../../backend/internal/store/migrations/030_app_services.sql", "../../../../backend/internal/store/migrations/031_app_edge_client_stats.sql", "../store/migrations/060_app_service_settings.sql"} {
+	for _, f := range []string{"../../../../backend/internal/store/migrations/030_app_services.sql", "../../../../backend/internal/store/migrations/031_app_edge_client_stats.sql", "../../../../backend/internal/store/migrations/033_app_payloads.sql", "../../../../backend/internal/store/migrations/034_app_payloads_latency.sql", "../store/migrations/060_app_service_settings.sql"} {
 		b, _ := os.ReadFile(f)
 		if _, err := raw.Exec(string(b)); err != nil {
 			t.Fatalf("%s: %v", f, err)
@@ -54,6 +54,7 @@ func TestAppTimelineIntegration(t *testing.T) {
 	ev("l1", 2*time.Minute, "network", 100, "127.0.0.1", 5432) // a local database connection: kept
 	ev("u1", 2*time.Minute, "network", 999, "198.51.100.1", 80) // unrelated pid
 
+	appMustExec(t, raw, `INSERT INTO app_payloads (service_id, time, route, method, status, duration_ms, trace_id, params, withheld) VALUES (1,$1,'/search','GET',200,12,'t1','{"q":"apple"}','["sort"]')`, now.Add(-time.Minute))
 	db := &store.DB{DB: raw}
 	rng := "?from=" + now.Add(-time.Hour).Format(time.RFC3339) + "&to=" + now.Add(time.Minute).Format(time.RFC3339)
 	pv := map[string]string{"id": "1"}
@@ -77,7 +78,7 @@ func TestAppTimelineIntegration(t *testing.T) {
 		return out
 	}
 	all := get("")
-	if all.Counts["connection"] != 4 || all.Counts["process"] != 1 || all.Counts["lifecycle"] != 4 || len(all.Hosts) != 1 {
+	if all.Counts["connection"] != 4 || all.Counts["process"] != 1 || all.Counts["lifecycle"] != 4 || all.Counts["request"] != 1 || len(all.Hosts) != 1 {
 		t.Fatalf("counts: %+v", all)
 	}
 	kinds := map[string]bool{}

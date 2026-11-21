@@ -249,35 +249,59 @@ func appHandleListPayloads(db, backendDB *store.DB) http.HandlerFunc {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": msg})
 			return
 		}
-		limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
-		if limit <= 0 || limit > 500 {
-			limit = 100
+		q := r.URL.Query()
+		limit, _ := strconv.Atoi(q.Get("limit"))
+		if limit <= 0 || limit > 200 {
+			limit = 50
 		}
-		route, method := r.URL.Query().Get("route"), strings.ToUpper(r.URL.Query().Get("method"))
+		offset, _ := strconv.Atoi(q.Get("offset"))
+		if offset < 0 || offset > 100000 {
+			offset = 0
+		}
+		route, method := q.Get("route"), strings.ToUpper(q.Get("method"))
+		// status filter: an exact code ("500") or a class ("2xx", "4xx", "5xx"); "" means all
+		lo, hi := 0, 1000
+		if st := strings.ToLower(strings.TrimSpace(q.Get("status"))); st != "" {
+			if len(st) == 3 && st[1:] == "xx" && st[0] >= '1' && st[0] <= '5' {
+				lo = int(st[0]-'0') * 100
+				hi = lo + 100
+			} else if n, err := strconv.Atoi(st); err == nil && n >= 0 && n < 1000 {
+				lo, hi = n, n+1
+			} else {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid status filter"})
+				return
+			}
+		}
+		where := `service_id = $1 AND time >= $2 AND time < $3 AND ($4 = '' OR route = $4) AND ($5 = '' OR method = $5) AND status >= $6 AND status < $7`
+		var total int
+		if err := idb.QueryRowContext(r.Context(), `SELECT COUNT(*) FROM app_payloads WHERE `+where, id, from, to, route, method, lo, hi).Scan(&total); err != nil {
+			appQueryFailed(w, r.URL.Path, id, err)
+			return
+		}
 		rows, err := idb.QueryContext(r.Context(), `
-			SELECT time, route, method, status, trace_id, params, withheld FROM app_payloads
-			WHERE service_id = $1 AND time >= $2 AND time < $3 AND ($4 = '' OR route = $4) AND ($5 = '' OR method = $5)
-			ORDER BY time DESC LIMIT $6`, id, from, to, route, method, limit)
+			SELECT time, route, method, status, duration_ms, trace_id, params, withheld FROM app_payloads
+			WHERE `+where+` ORDER BY time DESC, id DESC LIMIT $8 OFFSET $9`, id, from, to, route, method, lo, hi, limit, offset)
 		if err != nil {
 			appQueryFailed(w, r.URL.Path, id, err)
 			return
 		}
 		defer rows.Close()
 		type item struct {
-			Time     time.Time         `json:"time"`
-			Route    string            `json:"route"`
-			Method   string            `json:"method"`
-			Status   int               `json:"status"`
-			TraceID  string            `json:"trace_id,omitempty"`
-			Params   map[string]string `json:"params"`
-			Withheld []string          `json:"withheld"`
+			Time       time.Time         `json:"time"`
+			Route      string            `json:"route"`
+			Method     string            `json:"method"`
+			Status     int               `json:"status"`
+			DurationMs float64           `json:"duration_ms"`
+			TraceID    string            `json:"trace_id,omitempty"`
+			Params     map[string]string `json:"params"`
+			Withheld   []string          `json:"withheld"`
 		}
 		list := []item{}
 		for rows.Next() {
 			var it item
 			var pj, wj []byte
 			var tr sql.NullString
-			if rows.Scan(&it.Time, &it.Route, &it.Method, &it.Status, &tr, &pj, &wj) == nil {
+			if rows.Scan(&it.Time, &it.Route, &it.Method, &it.Status, &it.DurationMs, &tr, &pj, &wj) == nil {
 				it.TraceID = tr.String
 				_ = json.Unmarshal(pj, &it.Params)
 				_ = json.Unmarshal(wj, &it.Withheld)
@@ -290,7 +314,8 @@ func appHandleListPayloads(db, backendDB *store.DB) http.HandlerFunc {
 				list = append(list, it)
 			}
 		}
-		writeJSON(w, http.StatusOK, map[string]any{"payloads": list, "from": from, "to": to})
+		writeJSON(w, http.StatusOK, map[string]any{"payloads": list, "total": total, "offset": offset, "limit": limit,
+			"has_more": offset+len(list) < total, "from": from, "to": to})
 	}
 }
 

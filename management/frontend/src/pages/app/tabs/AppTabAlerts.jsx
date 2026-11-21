@@ -4,7 +4,7 @@ import { DataTable } from '../../../components/shared'
 import { SeverityBadge } from '../../../components/SeverityBadge'
 import { appApi } from '../../../api/app'
 import useAppLoad from '../../../components/app/useAppLoad'
-import { appRel } from '../../../components/app/appFormat'
+import { appRel, appReviewPathFromKey } from '../../../components/app/appFormat'
 
 // Alerts for this service, all families (spec 11.3).
 export default function AppTabAlerts({ service }) {
@@ -13,6 +13,7 @@ export default function AppTabAlerts({ service }) {
   const cols = [
     { key: 'severity', label: 'Severity', render: a => <SeverityBadge severity={a.severity} />, sort: a => a.severity, width: 90 },
     { key: 'title', label: 'Alert' },
+    { key: 'route', label: 'Route', render: a => { const p = appReviewPathFromKey(a.route_key); return p ? <Link className="text-siem-accent hover:underline" to={p}>{a.route_key.slice(a.route_key.indexOf('|', a.route_key.indexOf('|') + 1) + 1)}</Link> : '-' } },
     { key: 'status', label: 'Status', width: 110 },
     { key: 'host', label: 'Host', render: a => (a.host ? <Link className="text-siem-accent hover:underline" to={`/agents?host=${encodeURIComponent(a.host)}`}>{a.host}</Link> : '-') },
     { key: 'created_at', label: 'Raised', render: a => appRel(a.created_at), sort: a => a.created_at },

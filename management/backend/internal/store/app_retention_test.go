@@ -76,7 +76,7 @@ func TestAppPurgeRemovesOldPayloads(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer raw.Close()
-	for _, f := range []string{"migrations/011_settings.sql", "../../../../backend/internal/store/migrations/030_app_services.sql", "../../../../backend/internal/store/migrations/031_app_edge_client_stats.sql", "../../../../backend/internal/store/migrations/033_app_payloads.sql"} {
+	for _, f := range []string{"migrations/011_settings.sql", "../../../../backend/internal/store/migrations/030_app_services.sql", "../../../../backend/internal/store/migrations/031_app_edge_client_stats.sql", "../../../../backend/internal/store/migrations/033_app_payloads.sql", "../../../../backend/internal/store/migrations/034_app_payloads_latency.sql"} {
 		b, err := os.ReadFile(f)
 		if err != nil {
 			t.Fatal(err)

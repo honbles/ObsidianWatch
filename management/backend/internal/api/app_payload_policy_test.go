@@ -29,7 +29,7 @@ func TestAppPayloadPolicyIntegration(t *testing.T) {
 		service_route_params, app_payloads, app_route_payload_policy, app_route_payload_policy_log CASCADE`); err != nil {
 		t.Fatal(err)
 	}
-	for _, f := range []string{"030_app_services.sql", "031_app_edge_client_stats.sql", "032_app_route_params.sql", "033_app_payloads.sql"} {
+	for _, f := range []string{"030_app_services.sql", "031_app_edge_client_stats.sql", "032_app_route_params.sql", "033_app_payloads.sql", "034_app_payloads_latency.sql"} {
 		b, _ := os.ReadFile("../../../../backend/internal/store/migrations/" + f)
 		if _, err := raw.Exec(string(b)); err != nil {
 			t.Fatalf("%s: %v", f, err)
@@ -143,5 +143,47 @@ func TestAppPayloadPolicyIntegration(t *testing.T) {
 	}
 	if rec := call(adminOnly(appHandleListPayloads(db, nil)), "GET", "/x"+rng, ""); rec.Code != http.StatusForbidden {
 		t.Fatalf("payloads are admin only: %d", rec.Code)
+	}
+	// 8. Paging, status filter and latency for the per-route page.
+	for i := 0; i < 5; i++ {
+		st := 200
+		if i%2 == 1 {
+			st = 500
+		}
+		raw.Exec(`INSERT INTO app_payloads (service_id, time, route, method, status, duration_ms, trace_id, params) VALUES ($1,$2,'/rest/products/search','GET',$3,$4,'abc','{"q":"x"}')`,
+			sid, now.Add(-time.Duration(i+2)*time.Minute), st, 10*(i+1))
+	}
+	type page struct {
+		Payloads []struct {
+			Status     int     `json:"status"`
+			DurationMs float64 `json:"duration_ms"`
+			TraceID    string  `json:"trace_id"`
+		} `json:"payloads"`
+		Total   int  `json:"total"`
+		HasMore bool `json:"has_more"`
+	}
+	get := func(extra string) page {
+		var pg page
+		rec := call(appHandleListPayloads(db, nil), "GET", "/x"+rng+extra, "")
+		if rec.Code != 200 {
+			t.Fatalf("list %s: %d %s", extra, rec.Code, rec.Body.String())
+		}
+		_ = json.Unmarshal(rec.Body.Bytes(), &pg)
+		return pg
+	}
+	if pg := get("&limit=2"); pg.Total != 6 || len(pg.Payloads) != 2 || !pg.HasMore {
+		t.Fatalf("first page: %+v", pg)
+	}
+	if pg := get("&limit=2&offset=4"); len(pg.Payloads) != 2 || pg.HasMore {
+		t.Fatalf("last page: %+v", pg)
+	}
+	if pg := get("&status=5xx"); pg.Total != 2 || pg.Payloads[0].Status != 500 || pg.Payloads[0].DurationMs == 0 || pg.Payloads[0].TraceID != "abc" {
+		t.Fatalf("5xx filter: %+v", pg)
+	}
+	if pg := get("&status=200"); pg.Total != 4 {
+		t.Fatalf("exact filter: %+v", pg)
+	}
+	if rec := call(appHandleListPayloads(db, nil), "GET", "/x"+rng+"&status=bogus", ""); rec.Code != http.StatusBadRequest {
+		t.Fatalf("bad status: %d", rec.Code)
 	}
 }

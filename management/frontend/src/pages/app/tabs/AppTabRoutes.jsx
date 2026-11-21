@@ -1,9 +1,10 @@
 import { useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { DataTable } from '../../../components/shared'
 import { appApi } from '../../../api/app'
 import useAppLoad from '../../../components/app/useAppLoad'
 import { appInt, appPct, appMs, appRel } from '../../../components/app/appFormat'
-import AppRoutePolicyPanel from '../../../components/app/AppRoutePolicyPanel'
+import { appReviewPath } from '../../../components/app/appFormat'
 
 const tag = (cls, t) => <span key={t} className={`ml-1 text-[10px] rounded border px-1 ${cls}`}>{t}</span>
 
@@ -11,9 +12,8 @@ const tag = (cls, t) => <span key={t} className={`ml-1 text-[10px] rounded borde
 export default function AppTabRoutes({ service, range, focus }) {
   const [q, setQ] = useState(focus || '')
   const [reviewOnly, setReviewOnly] = useState(false)
-  const [open, setOpen] = useState(null) // "METHOD route" of the route under review
-  const [rev, setRev] = useState(0)
-  const { data, loading, error } = useAppLoad(() => appApi.routes(service.id, range), [service.id, range.from, range.to, rev])
+  const [expanded, setExpanded] = useState({}) // routes whose full parameter list is shown
+  const { data, loading, error } = useAppLoad(() => appApi.routes(service.id, range), [service.id, range.from, range.to])
   const st = service.settings
   const rows = useMemo(() => {
     const base = new Date(service.first_seen).getTime() + 3600e3
@@ -33,15 +33,22 @@ export default function AppTabRoutes({ service, range, focus }) {
       </span>), sort: r => r.route },
     { key: 'params', label: 'Parameters', render: r => {
       const ps = r.params || []
-      if (!ps.length) return <span className="text-siem-muted text-xs">-</span>
+      const k = r.method + ' ' + r.route
+      if (!ps.length) {
+        return <span className="text-siem-muted text-xs" title="No query-string or body fields have been reported for this route. A route that takes only a path or no input shows nothing; a POST route with no fields usually means the app is not reporting request bodies (see the Node.js and Python setup guides).">no query or body fields seen</span>
+      }
+      const shown = expanded[k] ? ps : ps.slice(0, 5)
       return (
-        <span className="text-xs" title={ps.map(p => `${p.name} (${p.requests})`).join(', ')}>
-          {ps.slice(0, 5).map(p => <span key={p.name} className="mr-1 rounded border border-siem-border px-1 font-mono text-[10px]">{p.name}</span>)}
-          {ps.length > 5 && <span className="text-siem-muted">+{ps.length - 5}</span>}
+        <span className="text-xs">
+          {shown.map(p => <span key={p.name} title={`${p.name} (${p.requests} requests)`} className="mr-1 inline-block rounded border border-siem-border px-1 font-mono text-[10px]">{p.name}</span>)}
+          {ps.length > 5 && (
+            <button className="text-siem-accent hover:underline" onClick={() => setExpanded(e => ({ ...e, [k]: !e[k] }))}>
+              {expanded[k] ? 'show fewer' : `+${ps.length - 5} more`}
+            </button>)}
           {r.payload_review === 'needs_review' && tag('border-amber-500/40 text-amber-300', 'needs review')}
           {r.payload_review === 'new_fields' && tag('border-orange-500/40 text-orange-300', 'new fields')}
           {r.payload_review === 'reviewed' && tag('border-emerald-500/40 text-emerald-300', 'reviewed')}
-          <button className="ml-2 text-siem-accent hover:underline" onClick={() => setOpen(r.method + ' ' + r.route)}>Review</button>
+          <Link className="ml-2 text-siem-accent hover:underline" to={appReviewPath(service, r.method, r.route)}>Review</Link>
         </span>)
     }, sort: r => (r.params || []).length },
     { key: 'calls', label: 'Calls', align: 'right', render: r => appInt(r.stats.calls), sort: r => r.stats.calls },
@@ -60,9 +67,7 @@ export default function AppTabRoutes({ service, range, focus }) {
       </label>
       <div className="card"><DataTable columns={cols} rows={rows} loading={loading} error={error} rowKey={(r) => r.method + r.route}
         emptyText="No routes yet. Routes appear once this service sends OpenTelemetry server spans with http.route." initialSort={{ key: 'calls', dir: 'desc' }} /></div>
-      <div className="text-[11px] text-siem-muted">Parameter names come from the request query string and are shown without values. Values are never collected. Open Review on a route to choose what is masked. A route that shows "needs review" has not been reviewed; no parameter values are collected for it until it is.</div>
-      {open && (data?.routes || []).filter(r => r.method + ' ' + r.route === open).map(r => (
-        <AppRoutePolicyPanel key={open} service={service} route={r} range={range} onSaved={() => setRev(x => x + 1)} onClose={() => setOpen(null)} />))}
+      <div className="text-[11px] text-siem-muted">Parameter names come from the request query string and are shown without values. Open Review on a route to choose which fields are masked and to see the requests captured for it. A route that shows "needs review" has not been reviewed; no parameter values are collected for it until it is.</div>
       {service.attrs?.route_overflow > 0 && (
         <div className="text-[11px] text-amber-300">{appInt(service.attrs.route_overflow)} requests were counted under "other" because this service exceeded the per-service route limit. Check that http.route is a template, not a raw path.</div>
       )}

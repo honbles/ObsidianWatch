@@ -3,13 +3,13 @@ import { Link } from 'react-router-dom'
 import { DataTable } from '../../../components/shared'
 import { appApi } from '../../../api/app'
 import useAppLoad from '../../../components/app/useAppLoad'
-import { appTime } from '../../../components/app/appFormat'
+import { appTime, appReviewPath } from '../../../components/app/appFormat'
 
 const sel = 'bg-siem-surface2 border border-siem-border rounded-lg px-2.5 py-1.5 text-xs text-siem-text'
-const CATS = [['', 'All activity'], ['connection', 'Connections'], ['process', 'Processes'], ['file', 'Files'], ['lifecycle', 'Lifecycle'], ['alert', 'Alerts'], ['security', 'Security']]
+const CATS = [['', 'All activity'], ['connection', 'Connections'], ['process', 'Processes'], ['file', 'Files'], ['lifecycle', 'Lifecycle'], ['alert', 'Alerts'], ['security', 'Security'], ['request', 'Request samples']]
 const CAT_CLS = {
   connection: 'border-sky-500/40 text-sky-300', process: 'border-slate-500/40 text-slate-300', file: 'border-violet-500/40 text-violet-300',
-  lifecycle: 'border-emerald-500/40 text-emerald-300', alert: 'border-red-500/40 text-red-300', security: 'border-amber-500/40 text-amber-300',
+  lifecycle: 'border-emerald-500/40 text-emerald-300', alert: 'border-red-500/40 text-red-300', security: 'border-amber-500/40 text-amber-300', request: 'border-teal-500/40 text-teal-300',
 }
 
 // One timeline per service: host activity, lifecycle changes, alerts and security events together.
@@ -26,7 +26,7 @@ export default function AppTabEvents({ service, range }) {
     { key: 'host', label: 'Host', width: 120, render: e => e.host || <span className="text-siem-muted">-</span> },
     { key: 'title', label: 'Event', render: e => (
       <span>
-        {e.alert_id ? <Link className="text-siem-accent hover:underline" to={e.host ? `/alerts?host=${encodeURIComponent(e.host)}` : "/alerts"}>{e.title}</Link> : e.title}
+        {e.kind === 'request' ? <Link className="text-siem-accent hover:underline" to={appReviewPath(service, e.method, e.route)}>{e.title}</Link> : e.alert_id ? <Link className="text-siem-accent hover:underline" to={e.host ? `/alerts?host=${encodeURIComponent(e.host)}` : "/alerts"}>{e.title}</Link> : e.title}
         {e.first_seen && <span className="ml-1.5 rounded border border-orange-500/40 px-1 text-[10px] text-orange-300" title="Not contacted by this service in the 30 days before the range">first seen</span>}
       </span>) },
     { key: 'detail', label: 'Detail', render: e => <span className="font-mono text-xs break-all">{e.detail}</span> },

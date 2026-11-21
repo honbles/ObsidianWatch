@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { DataTable, StateBlock } from '../../../components/shared'
 import { appApi } from '../../../api/app'
 import useAppLoad from '../../../components/app/useAppLoad'
 import AppTraceWaterfall from '../../../components/app/AppTraceWaterfall'
-import { appMs, appTime } from '../../../components/app/appFormat'
+import { appMs, appTime, appReviewPath, appSplitRequest } from '../../../components/app/appFormat'
 
 const sel = 'bg-siem-surface2 border border-siem-border rounded-lg px-2.5 py-1.5 text-xs text-siem-text'
 
@@ -24,6 +25,10 @@ export default function AppTabTraces({ service, range, traceId, onSelect }) {
     { key: 'status', label: 'Status', render: t => <span className={t.status === 'error' ? 'text-red-300' : ''}>{t.status}</span> },
     { key: 'keep_reason', label: 'Kept because' },
     { key: 'span_count', label: 'Spans', align: 'right' },
+    { key: 'review', label: 'Route', align: 'right', render: t => {
+      const q = appSplitRequest(t.root_route)
+      return q ? <Link className="text-siem-accent hover:underline" to={appReviewPath(service, q.method, q.route)} onClick={e => e.stopPropagation()}>Review route</Link> : '-'
+    } },
   ]
   return (
     <div className="space-y-3">

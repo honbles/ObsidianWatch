@@ -331,7 +331,7 @@ func TestAppPayloadsStoredOnlyUnderPolicy(t *testing.T) {
 	if _, err := db.ExecContext(ctx, `INSERT INTO agents (id, hostname, os, version) VALUES ('a1','web-01','linux','1')`); err != nil {
 		t.Fatal(err)
 	}
-	for _, f := range []string{"migrations/032_app_route_params.sql", "migrations/033_app_payloads.sql"} {
+	for _, f := range []string{"migrations/032_app_route_params.sql", "migrations/033_app_payloads.sql", "migrations/034_app_payloads_latency.sql"} {
 		b, err := os.ReadFile(f)
 		if err != nil {
 			t.Fatal(err)

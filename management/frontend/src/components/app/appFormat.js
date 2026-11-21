@@ -36,3 +36,20 @@ export const appLearningText = (l) =>
 export const appIsAdmin = () => {
   try { return JSON.parse(localStorage.getItem('user'))?.role === 'admin' } catch { return false }
 }
+
+// Per-route review page: /applications/services/<name|env>/routes/<METHOD>/<route without the leading slash>
+export const appReviewPath = (service, method, route) =>
+  `/applications/services/${encodeURIComponent(`${service.name}|${service.environment}`)}/routes/${encodeURIComponent(method)}/${String(route).replace(/^\//, '').split('/').map(encodeURIComponent).join('/')}`
+// Route key of an alert or entity ("name|env|METHOD /route") to the review page of that route
+export const appReviewPathFromKey = (key) => {
+  const first = String(key || '').indexOf('|'), second = String(key || '').indexOf('|', first + 1)
+  if (first < 0 || second < 0) return null
+  const m = String(key).slice(second + 1).match(/^([A-Z*]+) (\/.*)$/)
+  if (!m || m[1] === '*') return null
+  return appReviewPath({ name: key.slice(0, first), environment: key.slice(first + 1, second) }, m[1], m[2])
+}
+// "GET /rest/products/search" (a trace's root request) to {method, route}
+export const appSplitRequest = (s) => {
+  const m = String(s || '').match(/^([A-Z]+) (\/\S*)/)
+  return m ? { method: m[1], route: m[2] } : null
+}

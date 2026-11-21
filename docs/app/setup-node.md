@@ -1,6 +1,6 @@
 # Application Monitoring - Node.js setup
 
-Send traces from a Node.js application to the local agent and, optionally, security events.
+Send traces from a Node.js application to the local agent and, optionally, security events. For the full path (agent, traces, request fields and masking, security events, console settings, troubleshooting) see `node-security-guide.md`.
 
 ## Before you start
 1. The host runs the ObsidianWatch agent built with the **app-server profile** (Agent Builder, "Enable the app-server profile"). The agent then listens on `127.0.0.1:4318` (OTLP over HTTP). gRPC is not supported.

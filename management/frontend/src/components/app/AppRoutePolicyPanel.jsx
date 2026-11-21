@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react'
 import { appApi } from '../../api/app'
 import { appIsAdmin } from './appFormat'
-import useAppLoad from './useAppLoad'
 import { appTime } from './appFormat'
 
 const STATE_LABEL = {
@@ -14,7 +13,7 @@ const STATE_LABEL = {
 
 // Review of one route's parameters: tick what to mask, save, and the agent starts forwarding the rest.
 // Until a review is saved the agent forwards no parameter values for the route.
-export default function AppRoutePolicyPanel({ service, route, range, onSaved, onClose }) {
+export default function AppRoutePolicyPanel({ service, route, onSaved }) {
   const admin = appIsAdmin()
   const params = route.params || []
   const [masked, setMasked] = useState({})
@@ -29,8 +28,6 @@ export default function AppRoutePolicyPanel({ service, route, range, onSaved, on
     setErr('')
   }, [route.route, route.method, route.policy?.reviewed_at, params.length]) // eslint-disable-line react-hooks/exhaustive-deps
   const reviewed = route.payload_review === 'reviewed' || route.payload_review === 'new_fields'
-  const samples = useAppLoad(() => (reviewed && admin ? appApi.payloads(service.id, range, { route: route.route, method: route.method, limit: 20 }) : Promise.resolve({ payloads: [] })),
-    [service.id, route.route, route.method, reviewed, range.from, range.to, route.policy?.reviewed_at])
 
   const save = async () => {
     setBusy(true); setErr('')
@@ -60,7 +57,6 @@ export default function AppRoutePolicyPanel({ service, route, range, onSaved, on
               : 'Not reviewed. The agent forwards no parameter values for this route until you save a review.'}
           </div>
         </div>
-        <button className="text-xs text-siem-muted hover:text-siem-text" onClick={onClose}>Close</button>
       </div>
       {!admin && <div className="text-[11px] text-amber-300">Read-only: reviewing parameters needs the admin role.</div>}
       <table className="w-full text-xs">
@@ -88,22 +84,6 @@ export default function AppRoutePolicyPanel({ service, route, range, onSaved, on
           <button className="btn-primary text-xs" disabled={busy} onClick={save}>{reviewed ? 'Save review' : 'Save review and start capture'}</button>
           {reviewed && <button className="text-xs text-red-300 hover:underline" disabled={busy} onClick={revoke}>Revoke review (stop capture)</button>}
           <span className="text-[11px] text-siem-muted">Saving marks every parameter listed here as reviewed. Parameters that appear later stay withheld until reviewed.</span>
-        </div>
-      )}
-      {reviewed && admin && (
-        <div>
-          <div className="text-xs text-siem-muted mb-1">Recent captured requests (admin only)</div>
-          {samples.loading ? <div className="text-xs text-siem-muted">Loading...</div> : (samples.data?.payloads || []).length === 0
-            ? <div className="text-xs text-siem-muted">None yet. Samples arrive after the agent next pulls the policy and the route receives traffic.</div>
-            : (
-              <div className="space-y-1">
-                {samples.data.payloads.map((s, i) => (
-                  <div key={i} className="rounded border border-siem-border px-2 py-1 text-[11px] font-mono break-all">
-                    <span className="text-siem-muted">{appTime(s.time)} {s.status || ''}</span>{' '}
-                    {Object.entries(s.params).map(([k, v]) => <span key={k} className="mr-2">{k}=<span className="text-siem-text">{v}</span></span>)}
-                    {s.withheld.length > 0 && <span className="text-siem-muted">withheld: {s.withheld.join(', ')}</span>}
-                  </div>))}
-              </div>)}
         </div>
       )}
     </div>

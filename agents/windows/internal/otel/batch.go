@@ -60,6 +60,7 @@ type BatchPayload struct {
 	Method      string            `json:"method"`
 	Time        time.Time         `json:"time"`
 	Status      int               `json:"status"`
+	DurationMs  float64           `json:"duration_ms,omitempty"`
 	TraceID     string            `json:"trace_id,omitempty"`
 	Params      map[string]string `json:"params"`
 	Withheld    []string          `json:"withheld,omitempty"`

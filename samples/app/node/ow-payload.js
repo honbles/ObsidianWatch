@@ -19,18 +19,25 @@ function requestHook(span, request) {
   try { if (request && request.headers) request[SPAN] = span } catch (_) { /* never affect the app */ }
 }
 
+// Record a parsed body for a request. Works for any framework: pass the raw Node request (Fastify:
+// request.raw, Koa: ctx.req) and its parsed body object.
+function record(req, body) {
+  try {
+    const span = (req && req[SPAN]) || trace.getActiveSpan()
+    const ct = String(req && req.headers && req.headers['content-type'] || '')
+    if (span && body && typeof body === 'object' && !/multipart|octet-stream/i.test(ct)) {
+      const s = JSON.stringify(body)
+      if (s && s.length <= MAX_BYTES) span.setAttribute('ow.request.body', s)
+    }
+  } catch (_) { /* observability must never break a request */ }
+}
+
+// Express (or anything that sets req.body): use after the body parser.
 function middleware() {
   return function owPayload(req, _res, next) {
-    try {
-      const span = req[SPAN] || trace.getActiveSpan()
-      const ct = String(req.headers && req.headers['content-type'] || '')
-      if (span && req.body && typeof req.body === 'object' && !/multipart|octet-stream/i.test(ct)) {
-        const s = JSON.stringify(req.body)
-        if (s && s.length <= MAX_BYTES) span.setAttribute('ow.request.body', s)
-      }
-    } catch (_) { /* observability must never break a request */ }
+    record(req, req.body)
     next()
   }
 }
 
-module.exports = { requestHook, middleware }
+module.exports = { requestHook, middleware, record }

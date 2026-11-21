@@ -374,6 +374,9 @@ func appSanitizeBatch(b *store.AppBatch, now time.Time) (dropped int) {
 		if p.Status < 0 || p.Status > 999 {
 			p.Status = 0
 		}
+		if !(p.DurationMs >= 0) || p.DurationMs > 3.6e6 { // also catches NaN
+			p.DurationMs = 0
+		}
 		p.TraceID = strings.ToLower(appClean(p.TraceID, 64))
 		clean := map[string]string{}
 		for n, v := range p.Params {

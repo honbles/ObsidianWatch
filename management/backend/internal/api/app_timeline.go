@@ -9,6 +9,8 @@ package api
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
+	"fmt"
 	"net/http"
 	"sort"
 	"strconv"
@@ -30,9 +32,12 @@ type appTimelineItem struct {
 	FirstSeen bool      `json:"first_seen,omitempty"` // a destination not seen before the range
 	AlertID   int64     `json:"alert_id,omitempty"`
 	Severity  int       `json:"severity,omitempty"`
+	TraceID   string    `json:"trace_id,omitempty"`
+	Route     string    `json:"route,omitempty"`
+	Method    string    `json:"method,omitempty"`
 }
 
-var appTimelineCategories = map[string]bool{"connection": true, "process": true, "file": true, "lifecycle": true, "alert": true, "security": true}
+var appTimelineCategories = map[string]bool{"connection": true, "process": true, "file": true, "lifecycle": true, "alert": true, "security": true, "request": true}
 
 func appHandleServiceTimeline(db, backendDB *store.DB) http.HandlerFunc {
 	idb := appIngestDB(db, backendDB)
@@ -49,7 +54,7 @@ func appHandleServiceTimeline(db, backendDB *store.DB) http.HandlerFunc {
 		}
 		cat := r.URL.Query().Get("category")
 		if cat != "" && !appTimelineCategories[cat] {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "category must be connection, process, file, lifecycle, alert or security"})
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "category must be connection, process, file, lifecycle, alert, security or request"})
 			return
 		}
 		host := strings.TrimSpace(r.URL.Query().Get("host"))
@@ -234,6 +239,34 @@ func appHandleServiceTimeline(db, backendDB *store.DB) http.HandlerFunc {
 					var ev, route string
 					if rows.Scan(&it.Time, &it.Host, &ev, &route) == nil && (host == "" || it.Host == host) {
 						it.Category, it.Kind, it.Title, it.Detail = "security", "security", "Security event: "+ev, route
+						items = append(items, it)
+					}
+				}
+				rows.Close()
+			}
+		}
+
+		if want("request") && host == "" { // samples are not tied to a host
+			// Sampled requests from reviewed routes: field names only here. Values stay on the review page (admin only).
+			rows, err := idb.QueryContext(ctx, `
+				SELECT time, method, route, status, trace_id, ARRAY(SELECT jsonb_object_keys(params)), withheld
+				FROM app_payloads WHERE service_id=$1 AND time >= $2 AND time < $3 ORDER BY time DESC LIMIT 100`, id, from, to)
+			if err == nil {
+				for rows.Next() {
+					var it appTimelineItem
+					var st int
+					var tr sql.NullString
+					var names pq.StringArray
+					var wj []byte
+					if rows.Scan(&it.Time, &it.Method, &it.Route, &st, &tr, &names, &wj) == nil {
+						var wh []string
+						_ = json.Unmarshal(wj, &wh)
+						it.Category, it.Kind, it.TraceID = "request", "request", tr.String
+						it.Title = fmt.Sprintf("Request sample: %s %s (%d)", it.Method, it.Route, st)
+						it.Detail = "captured: " + strings.Join(names, ", ")
+						if len(wh) > 0 {
+							it.Detail += "; withheld: " + strings.Join(wh, ", ")
+						}
 						items = append(items, it)
 					}
 				}

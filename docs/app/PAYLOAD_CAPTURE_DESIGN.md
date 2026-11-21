@@ -50,3 +50,10 @@ Payloads (request and response bodies, query strings) are captured in full by de
 - A hit is not stored as a value. It becomes the exception type of that request's per-client record (`param.sql-injection` and so on), so rule APP-A09 counts it by client and route and the trace is kept. A request that returned 200 still counts, because an attempt that worked is the worst case.
 - This works for any framework that gives the agent `url.query`, which closes the gap where Node produced no injection exceptions.
 - Limits: query strings only until body capture exists; a repeated parameter name is judged on its first value; patterns favour few false positives over catching everything, so treat a quiet A09 as not proof of no attack.
+
+## What step 4 does today (request bodies)
+
+- The language helper hands the **parsed** request body to the local agent as the span attribute `ow.request.body` (JSON object, at most 32 KB). Nested fields are flattened (`address.zip`), an array contributes the shape of its first element (`items[].sku`), depth is capped at 4 and 50 names per request. Multipart and binary bodies are skipped.
+- Helpers: Node (`samples/app/node/ow-payload.js`, plus a zero-edit preload for Juice Shop in `samples/app/juice-kit`), Python (`ow_payload.py`: Flask, Django, FastAPI). Java and .NET are not written yet.
+- Everything after the attribute is the same path as query strings: names for every route, values only for reviewed routes and unmasked fields, three enforcement points, injection signatures over every field.
+- Each captured request also carries its latency and trace id, so the per-route review page can list them (paged, filter by status) and link to the trace. Response bodies are not captured.

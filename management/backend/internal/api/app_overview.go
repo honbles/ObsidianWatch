@@ -250,7 +250,8 @@ func appHandleServiceAlerts(db, backendDB *store.DB) http.HandlerFunc {
 		}
 		openOnly := r.URL.Query().Get("state") != "all"
 		rows, err := db.QueryContext(r.Context(), `
-			SELECT a.id, a.created_at, a.title, a.severity, a.status, COALESCE(a.host,''), COALESCE(a.event_type,'')
+			SELECT a.id, a.created_at, a.title, a.severity, a.status, COALESCE(a.host,''), COALESCE(a.event_type,''),
+			  COALESCE((SELECT x.key FROM alert_entities x WHERE x.alert_id = a.id AND x.kind = 'route' LIMIT 1),'')
 			FROM alerts a JOIN alert_entities e ON e.alert_id = a.id
 			WHERE e.kind = 'service' AND e.key = $1 AND ($2 = false OR a.status <> 'closed')
 			ORDER BY a.id DESC LIMIT $3`, appServiceKey(name, env), openOnly, limit)
@@ -267,11 +268,12 @@ func appHandleServiceAlerts(db, backendDB *store.DB) http.HandlerFunc {
 			Status    string    `json:"status"`
 			Host      string    `json:"host"`
 			EventType string    `json:"event_type"`
+			RouteKey  string    `json:"route_key,omitempty"` // "name|env|METHOD /route" when the alert is about one route
 		}
 		list := []al{}
 		for rows.Next() {
 			var a al
-			if rows.Scan(&a.ID, &a.CreatedAt, &a.Title, &a.Severity, &a.Status, &a.Host, &a.EventType) == nil {
+			if rows.Scan(&a.ID, &a.CreatedAt, &a.Title, &a.Severity, &a.Status, &a.Host, &a.EventType, &a.RouteKey) == nil {
 				list = append(list, a)
 			}
 		}

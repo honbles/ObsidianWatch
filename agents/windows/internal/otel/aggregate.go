@@ -443,7 +443,7 @@ func (a *Aggregator) capturePayload(svc svcKey, route, method string, s Span, t 
 		return
 	}
 	p := BatchPayload{Service: svc.name, Environment: svc.env, Route: route, Method: method, Time: t.UTC(),
-		Status: s.HTTPStatus, TraceID: s.TraceID, Params: map[string]string{}}
+		Status: s.HTTPStatus, DurationMs: s.DurationMs(), TraceID: s.TraceID, Params: map[string]string{}}
 	for _, n := range s.ParamNames {
 		v, have := s.ParamValues[n]
 		if !allow[n] || PayloadNameDenied(n) || !have || PayloadValueMasked(v) {

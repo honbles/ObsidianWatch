@@ -149,6 +149,7 @@ type AppPayload struct {
 	Method      string            `json:"method"`
 	Time        time.Time         `json:"time"`
 	Status      int               `json:"status"`
+	DurationMs  float64           `json:"duration_ms"`
 	TraceID     string            `json:"trace_id"`
 	Params      map[string]string `json:"params"`
 	Withheld    []string          `json:"withheld"`
@@ -513,9 +514,9 @@ func (db *DB) AppIngestBatch(ctx context.Context, agentID, host string, b AppBat
 			pj, _ := json.Marshal(kept)
 			wj, _ := json.Marshal(withheld)
 			if _, err := tx.ExecContext(ctx, `
-				INSERT INTO app_payloads (service_id, agent_id, time, route, method, status, trace_id, params, withheld)
-				VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9::jsonb)`,
-				sid, agentID, p.Time, p.Route, p.Method, p.Status, p.TraceID, string(pj), string(wj)); err != nil {
+				INSERT INTO app_payloads (service_id, agent_id, time, route, method, status, duration_ms, trace_id, params, withheld)
+				VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10::jsonb)`,
+				sid, agentID, p.Time, p.Route, p.Method, p.Status, p.DurationMs, p.TraceID, string(pj), string(wj)); err != nil {
 				return res, fmt.Errorf("payload: %w", err)
 			}
 			res.Payloads++
