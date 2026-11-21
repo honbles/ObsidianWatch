@@ -65,3 +65,46 @@ func TestAppPurgeIntegration(t *testing.T) {
 		t.Fatalf("invalid values must fall back: %d %d", sd, td)
 	}
 }
+
+func TestAppPurgeRemovesOldPayloads(t *testing.T) {
+	dsn := os.Getenv("OW_TEST_PG_DSN")
+	if dsn == "" {
+		t.Skip("OW_TEST_PG_DSN not set")
+	}
+	raw, err := sql.Open("postgres", dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer raw.Close()
+	for _, f := range []string{"migrations/011_settings.sql", "../../../../backend/internal/store/migrations/030_app_services.sql", "../../../../backend/internal/store/migrations/031_app_edge_client_stats.sql", "../../../../backend/internal/store/migrations/033_app_payloads.sql"} {
+		b, err := os.ReadFile(f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := raw.Exec(string(b)); err != nil {
+			t.Fatalf("%s: %v", f, err)
+		}
+	}
+	_, _ = raw.Exec(`DELETE FROM app_payloads`)
+	_, _ = raw.Exec(`DELETE FROM services WHERE name='purge-test'`)
+	var sid int64
+	if err := raw.QueryRow(`INSERT INTO services (name, environment, source, first_seen, last_seen) VALUES ('purge-test','prod','otel',NOW(),NOW()) RETURNING id`).Scan(&sid); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC()
+	for _, age := range []time.Duration{time.Hour, 10 * 24 * time.Hour} {
+		if _, err := raw.Exec(`INSERT INTO app_payloads (service_id, time, route, method) VALUES ($1,$2,'/x','GET')`, sid, now.Add(-age)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	db := &DB{DB: raw}
+	res, err := db.AppPurge(context.Background(), now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var left int
+	_ = raw.QueryRow(`SELECT COUNT(*) FROM app_payloads`).Scan(&left)
+	if res.Payloads != 1 || left != 1 {
+		t.Fatalf("payloads purged=%d left=%d", res.Payloads, left)
+	}
+}

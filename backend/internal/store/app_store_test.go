@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"log/slog"
 	"os"
+	"strconv"
+	"strings"
 	"testing"
 	"time"
 )
@@ -24,7 +26,7 @@ func appTestDB(t *testing.T) *DB {
 	t.Cleanup(func() { raw.Close() })
 	// Scratch database: start clean so a schema change is always exercised.
 	if _, err := raw.Exec(`DROP TABLE IF EXISTS app_traces, app_route_stats, app_baselines, service_versions, service_routes,
-		service_edges, service_instances, services, service_settings, app_edge_stats, app_client_stats CASCADE`); err != nil {
+		service_edges, service_instances, services, service_settings, app_edge_stats, app_client_stats, service_route_params, app_payloads, app_route_payload_policy CASCADE`); err != nil {
 		t.Fatal(err)
 	}
 	for _, f := range []string{"migrations/002_agents.sql", "migrations/030_app_services.sql", "migrations/031_app_edge_client_stats.sql", "migrations/031_app_edge_client_stats.sql", "migrations/030_app_services.sql"} { // twice: idempotent
@@ -235,6 +237,26 @@ func TestAppMergeDiscoveredIntoInstrumented(t *testing.T) {
 	if samples != 300 || expo != "internet" {
 		t.Fatalf("baselines and settings move to the instrumented service: samples=%d exposure=%q", samples, expo)
 	}
+	// 2b. A sensor row for a process whose OpenTelemetry batch carries no start time is folded into the OpenTelemetry row, and the
+	// sensor's details (container, unit, tier, ports) survive the next OpenTelemetry batch.
+	if _, err := db.AppIngestBatch(ctx, "a1", "web-01", AppBatch{Instances: []AppInstance{{Service: "juice-bin", Environment: "default", Source: "discovered",
+		PID: 300, ProcStart: started.Add(2 * time.Second), Identity: "verified", Listen: json.RawMessage(`[3000]`), Exe: "/usr/bin/node", Sensor: "procevent",
+		Unit: "juice.service", ContainerName: "juice", Image: "bkimminich/juice-shop"}}}, t0); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 2; i++ { // the second batch must not erase what the first one folded in
+		if _, err := db.AppIngestBatch(ctx, "a1", "web-01", AppBatch{Instances: []AppInstance{{Service: "juice-shop", Environment: "test", Source: "otel",
+			PID: 300, Identity: "verified", Instrumented: true, InstanceRef: "j-1"}}}, t0.Add(time.Duration(i)*time.Minute)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var n int
+	var listen, unit, cname, img, tier string
+	_ = db.QueryRowContext(ctx, `SELECT COUNT(*), MAX(i.listen::text), MAX(i.attrs->>'unit'), MAX(i.attrs->>'container_name'), MAX(i.attrs->>'image'), MAX(i.attrs->>'sensor')
+		FROM service_instances i JOIN services s ON s.id = i.service_id WHERE s.name = 'juice-shop' AND i.pid = 300`).Scan(&n, &listen, &unit, &cname, &img, &tier)
+	if n != 1 || listen != "[3000]" || unit != "juice.service" || cname != "juice" || img != "bkimminich/juice-shop" || tier != "procevent" {
+		t.Fatalf("folded instance: n=%d listen=%s unit=%s container=%s image=%s tier=%s", n, listen, unit, cname, img, tier)
+	}
 	// 3. A discovered instance of an unrelated process is untouched, and merging works without the settings table.
 	if _, err := db.AppIngestBatch(ctx, "a1", "web-01", AppBatch{Instances: []AppInstance{{Service: "other-bin", Environment: "default", Source: "discovered", PID: 200, ProcStart: started, Identity: "verified"}}}, t0); err != nil {
 		t.Fatal(err)
@@ -244,7 +266,141 @@ func TestAppMergeDiscoveredIntoInstrumented(t *testing.T) {
 		t.Fatalf("a missing settings table must not fail the merge: %v", err)
 	}
 	_ = db.QueryRowContext(ctx, `SELECT COUNT(*) FROM services`).Scan(&svcCount)
-	if svcCount != 2 {
+	if svcCount != 3 { // checkout, juice-shop and other
 		t.Fatalf("services: %d", svcCount)
+	}
+}
+
+func TestAppRouteParamsAccumulateAndAreCapped(t *testing.T) {
+	db := appTestDB(t)
+	ctx := context.Background()
+	if _, err := db.ExecContext(ctx, `INSERT INTO agents (id, hostname, os, version) VALUES ('a1','web-01','linux','1')`); err != nil {
+		t.Fatal(err)
+	}
+	b, err := os.ReadFile("migrations/032_app_route_params.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.ExecContext(ctx, string(b)); err != nil {
+		t.Fatal(err)
+	}
+	t0 := time.Now().UTC()
+	send := func(ps ...AppRouteParam) {
+		t.Helper()
+		if _, err := db.AppIngestBatch(ctx, "a1", "web-01", AppBatch{Params: ps}, t0); err != nil {
+			t.Fatal(err)
+		}
+	}
+	p := func(name string, n int64) AppRouteParam {
+		return AppRouteParam{Service: "api", Environment: "prod", Route: "/rest/products/search", Method: "GET", Name: name, Count: n}
+	}
+	send(p("q", 2), p("sort", 1))
+	send(p("q", 3))
+	var q, sort int64
+	var routes int
+	_ = db.QueryRowContext(ctx, `SELECT requests FROM service_route_params WHERE name='q'`).Scan(&q)
+	_ = db.QueryRowContext(ctx, `SELECT requests FROM service_route_params WHERE name='sort'`).Scan(&sort)
+	_ = db.QueryRowContext(ctx, `SELECT COUNT(*) FROM service_routes WHERE route='/rest/products/search'`).Scan(&routes)
+	if q != 5 || sort != 1 || routes != 1 {
+		t.Fatalf("counts add up and the route exists: q=%d sort=%d routes=%d", q, sort, routes)
+	}
+	// The distinct names per route are capped; known names keep counting.
+	var many []AppRouteParam
+	for i := 0; i < AppMaxParamsPerRoute+50; i++ {
+		many = append(many, p("n"+strconv.Itoa(i), 1))
+	}
+	send(many...)
+	send(p("q", 1))
+	var names int
+	_ = db.QueryRowContext(ctx, `SELECT COUNT(*) FROM service_route_params`).Scan(&names)
+	_ = db.QueryRowContext(ctx, `SELECT requests FROM service_route_params WHERE name='q'`).Scan(&q)
+	if names != AppMaxParamsPerRoute || q != 6 {
+		t.Fatalf("cap: %d names (want %d), q=%d", names, AppMaxParamsPerRoute, q)
+	}
+	// Nothing in the table can hold a value: only the name column exists.
+	var cols int
+	_ = db.QueryRowContext(ctx, `SELECT COUNT(*) FROM information_schema.columns WHERE table_name='service_route_params' AND data_type='text'`).Scan(&cols)
+	if cols != 3 { // route, method, name
+		t.Fatalf("text columns: %d", cols)
+	}
+}
+
+func TestAppPayloadsStoredOnlyUnderPolicy(t *testing.T) {
+	db := appTestDB(t)
+	ctx := context.Background()
+	if _, err := db.ExecContext(ctx, `INSERT INTO agents (id, hostname, os, version) VALUES ('a1','web-01','linux','1')`); err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range []string{"migrations/032_app_route_params.sql", "migrations/033_app_payloads.sql"} {
+		b, err := os.ReadFile(f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := db.ExecContext(ctx, string(b)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	_, _ = db.ExecContext(ctx, `DROP TABLE IF EXISTS app_route_payload_policy`)
+	t0 := time.Now().UTC()
+	jwt := "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.abc123"
+	pl := AppPayload{Service: "api", Environment: "prod", Route: "/rest/products/search", Method: "GET", Time: t0, Status: 200,
+		Params: map[string]string{"q": "apple", "sort": "asc", "password": "hunter2", "ref": jwt}}
+	send := func() AppIngestResult {
+		t.Helper()
+		res, err := db.AppIngestBatch(ctx, "a1", "web-01", AppBatch{Payloads: []AppPayload{pl}}, t0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return res
+	}
+	count := func() (n int) {
+		_ = db.QueryRowContext(ctx, `SELECT COUNT(*) FROM app_payloads`).Scan(&n)
+		return
+	}
+	// 1. No policy table at all: nothing is stored.
+	if r := send(); r.Payloads != 0 || r.PayloadsRejected != 1 || count() != 0 {
+		t.Fatalf("no policy table: %+v rows=%d", r, count())
+	}
+	// 2. A policy table, but no row for the route: still nothing.
+	b, err := os.ReadFile("../../../management/backend/internal/store/migrations/063_app_route_payload_policy.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.ExecContext(ctx, string(b)); err != nil {
+		t.Fatal(err)
+	}
+	if r := send(); r.Payloads != 0 || r.PayloadsRejected != 1 || count() != 0 {
+		t.Fatalf("no policy row: %+v rows=%d", r, count())
+	}
+	// 3. The admin reviewed q, sort and password and masked sort: only q survives. password is always masked,
+	// ref was not reviewed, and a credential-looking value is never stored.
+	var sid int64
+	_ = db.QueryRowContext(ctx, `SELECT id FROM services WHERE name='api'`).Scan(&sid)
+	if _, err := db.ExecContext(ctx, `INSERT INTO app_route_payload_policy (service_id, route, method, reviewed_names, masked, reviewed_by)
+		VALUES ($1,'/rest/products/search','GET','["q","sort","password"]','["sort"]','admin')`, sid); err != nil {
+		t.Fatal(err)
+	}
+	if r := send(); r.Payloads != 1 || r.PayloadsRejected != 0 {
+		t.Fatalf("reviewed route: %+v", r)
+	}
+	var params, withheld string
+	_ = db.QueryRowContext(ctx, `SELECT params::text, withheld::text FROM app_payloads`).Scan(&params, &withheld)
+	if params != `{"q": "apple"}` || withheld != `["password", "ref", "sort"]` {
+		t.Fatalf("stored: params=%s withheld=%s", params, withheld)
+	}
+	var all string
+	_ = db.QueryRowContext(ctx, `SELECT string_agg(params::text || withheld::text, '') FROM app_payloads`).Scan(&all)
+	for _, leak := range []string{"hunter2", jwt, `"asc"`} {
+		if strings.Contains(all, leak) {
+			t.Fatalf("%q was stored", leak)
+		}
+	}
+	// 4. The policy reaches the agent as an allow list, also for a service without saved settings.
+	cfg, err := db.AppRemoteConfig(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cfg) != 1 || !cfg[0].PolicyOnly || len(cfg[0].Payload) != 1 || strings.Join(cfg[0].Payload[0].Allow, ",") != "q" {
+		t.Fatalf("remote config: %+v", cfg)
 	}
 }

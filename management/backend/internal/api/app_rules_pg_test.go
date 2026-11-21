@@ -31,7 +31,7 @@ func appPGSetup(t *testing.T) *appPGFx {
 	t.Cleanup(func() { raw.Close() })
 	if _, err := raw.Exec(`DROP TABLE IF EXISTS app_traces, app_route_stats, app_baselines, service_versions, service_routes, service_edges,
 		service_instances, services, service_settings, app_edge_stats, app_client_stats, app_service_merges, alert_entities, alerts,
-		rule_settings, events, agents CASCADE`); err != nil {
+		rule_settings, alert_related_events, events, agents CASCADE`); err != nil {
 		t.Fatal(err)
 	}
 	// The production events table needs TimescaleDB; this stand-in has the columns the rules read.
@@ -42,7 +42,7 @@ func appPGSetup(t *testing.T) *appPGFx {
 	for _, f := range []string{"../../../../backend/internal/store/migrations/002_agents.sql", "../../../../backend/internal/store/migrations/030_app_services.sql",
 		"../../../../backend/internal/store/migrations/031_app_edge_client_stats.sql", "../store/migrations/060_app_service_settings.sql",
 		"../store/migrations/004_alerts.sql", "../store/migrations/010_alert_source_event.sql", "../store/migrations/014_alerts_dedup.sql",
-		"../store/migrations/017_ai_analysis_cache.sql", "../store/migrations/027_alert_occurrences.sql", "../store/migrations/040_foundation_alert_entities.sql", "../store/migrations/041_foundation_rule_settings.sql"} {
+		"../store/migrations/017_ai_analysis_cache.sql", "../store/migrations/027_alert_occurrences.sql", "../store/migrations/040_foundation_alert_entities.sql", "../store/migrations/041_foundation_rule_settings.sql", "../store/migrations/062_alert_related_events.sql"} {
 		b, err := os.ReadFile(f)
 		if err != nil {
 			t.Fatal(err)
@@ -159,14 +159,15 @@ func TestAppRulesEndToEndOnPostgres(t *testing.T) {
 	appMustExec(t, fx.raw, `INSERT INTO rule_settings (rule_id, scope_kind, scope_id, enabled, observe) VALUES ('APP-H01','','',TRUE,FALSE)`)
 	fx.r.OnEvent(ctx, fx.event(501, "bash", `{`+appAncJava+`}`, "process"))
 	al = fx.alerts("APP-H01")
-	if len(al) != 2 || al[1].Severity != appSevCrit || !appContains(al[1].Desc, "internet-facing +1") {
+	// The 30-minute dedupe folds the repeat into the first alert and raises it to the weighted severity.
+	if len(al) != 1 || al[0].Severity != appSevCrit || !appContains(al[0].Desc, "internet-facing +1") {
 		t.Fatalf("promoted + weighted: %+v", al)
 	}
 
 	// 4. A per-service allowlist silences one pair without disabling the rule.
 	appMustExec(t, fx.raw, `INSERT INTO rule_settings (rule_id, scope_kind, scope_id, enabled, observe, allowlist) VALUES ('APP-H01','service','checkout|prod',TRUE,FALSE,'["java>bash"]')`)
 	fx.r.OnEvent(ctx, fx.event(502, "bash", `{`+appAncJava+`}`, "process"))
-	if n := len(fx.alerts("APP-H01")); n != 2 {
+	if n := len(fx.alerts("APP-H01")); n != 1 {
 		t.Fatalf("allowlist: %d", n)
 	}
 	appMustExec(t, fx.raw, `DELETE FROM rule_settings WHERE scope_kind='service'`)

@@ -19,6 +19,7 @@ export const appApi = {
   red: (id, range, extra = {}) => get(`/api/v1/app/services/${id}/red`, { ...r(range), ...extra }),
   routes: (id, range) => get(`/api/v1/app/services/${id}/routes`, r(range)),
   edges: (id, range) => get(`/api/v1/app/services/${id}/edges`, r(range)),
+  timeline: (id, range, extra = {}) => get(`/api/v1/app/services/${id}/timeline`, { ...r(range), ...extra }),
   runtime: (id, range, extra = {}) => get(`/api/v1/app/services/${id}/runtime`, { ...r(range), ...extra }),
   alerts: (id, state = 'open') => get(`/api/v1/app/services/${id}/alerts`, { state }),
   events: (id, range, extra = {}) => get(`/api/v1/app/services/${id}/events`, { ...r(range), ...extra }),
@@ -26,6 +27,9 @@ export const appApi = {
   trace: (traceId) => get(`/api/v1/app/traces/${encodeURIComponent(traceId)}`),
   instance: (id) => get(`/api/v1/app/instances/${id}`),
   saveSettings: (id, body) => api.put(`/api/v1/app/services/${id}/settings`, body).then(x => x.data),
+  savePayloadPolicy: (id, body) => api.put(`/api/v1/app/services/${id}/payload-policy`, body).then(x => x.data),
+  revokePayloadPolicy: (id, route, method) => api.delete(`/api/v1/app/services/${id}/payload-policy`, { params: { route, method } }).then(x => x.data),
+  payloads: (id, range, extra = {}) => get(`/api/v1/app/services/${id}/payloads`, { ...r(range), ...extra }),
   ruleMeta: () => get('/api/v1/rules/meta'),
   ruleStatus: () => get('/api/v1/app/rules/status'),
 }

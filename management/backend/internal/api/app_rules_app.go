@@ -56,7 +56,7 @@ func appIsInjectionExc(t string) bool {
 	if l == "" {
 		return false
 	}
-	if strings.Contains(l, "injection") || strings.Contains(l, "ognl") || strings.Contains(l, "spelevaluation") || strings.Contains(l, "spelparse") {
+	if strings.HasPrefix(l, "param.") || strings.Contains(l, "injection") || strings.Contains(l, "ognl") || strings.Contains(l, "spelevaluation") || strings.Contains(l, "spelparse") {
 		return true
 	}
 	return strings.Contains(l, "sql") && (strings.Contains(l, "syntax") || strings.Contains(l, "grammar") || strings.Contains(l, "parse"))

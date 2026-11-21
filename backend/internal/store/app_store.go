@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/lib/pq"
+	"sort"
 	"strconv"
 	"time"
 )
@@ -125,8 +126,36 @@ type AppBatch struct {
 	Edges     []AppEdge        `json:"edges"`
 	Traces    []AppTrace       `json:"traces"`
 	Clients   []AppClientStat  `json:"clients"`
+	Params    []AppRouteParam  `json:"params"`
+	Payloads  []AppPayload     `json:"payloads"`
 	Notes     []AppServiceNote `json:"notes"`
 }
+
+// AppRouteParam counts one request parameter NAME seen on a route since the agent's last flush.
+type AppRouteParam struct {
+	Service     string `json:"service"`
+	Environment string `json:"environment"`
+	Route       string `json:"route"`
+	Method      string `json:"method"`
+	Name        string `json:"name"`
+	Count       int64  `json:"count"`
+}
+
+// AppPayload is one sampled request's parameters from a route whose parameters were reviewed.
+type AppPayload struct {
+	Service     string            `json:"service"`
+	Environment string            `json:"environment"`
+	Route       string            `json:"route"`
+	Method      string            `json:"method"`
+	Time        time.Time         `json:"time"`
+	Status      int               `json:"status"`
+	TraceID     string            `json:"trace_id"`
+	Params      map[string]string `json:"params"`
+	Withheld    []string          `json:"withheld"`
+}
+
+// AppMaxParamsPerRoute bounds the distinct parameter names kept for one route.
+const AppMaxParamsPerRoute = 200
 
 // AppChange reports a first-seen service, instance, version or dependency so the
 // API layer can emit app.service_change / app.dependency_new events.
@@ -149,8 +178,8 @@ type AppChange struct {
 
 // AppIngestResult summarises what a batch wrote.
 type AppIngestResult struct {
-	Instances, Routes, Edges, Traces, Clients int
-	Changes                                   []AppChange
+	Instances, Routes, Edges, Traces, Clients, Params, Payloads, PayloadsRejected int
+	Changes                                                                       []AppChange
 }
 
 // AppAgentInfo returns the registered agent's hostname and OS. ok is false when
@@ -255,13 +284,19 @@ func (db *DB) AppIngestBatch(ctx context.Context, agentID, host string, b AppBat
 			  listen=CASE WHEN EXCLUDED.listen <> '[]'::jsonb THEN EXCLUDED.listen ELSE service_instances.listen END,
 			  instrumented = service_instances.instrumented OR EXCLUDED.instrumented,
 			  identity = CASE WHEN service_instances.identity = 'verified' THEN 'verified' ELSE EXCLUDED.identity END,
-			  attrs=EXCLUDED.attrs, last_seen=EXCLUDED.last_seen, stopped_at=NULL
+			  attrs = service_instances.attrs || COALESCE((SELECT jsonb_object_agg(e.k, e.v) FROM jsonb_each(EXCLUDED.attrs) e(k, v) WHERE e.v <> '""'::jsonb), '{}'::jsonb),
+			  last_seen=EXCLUDED.last_seen, stopped_at=NULL
 			RETURNING id, (xmax = 0)`,
 			sid, agentID, host, in.ContainerID, in.PID, procStart, in.InstanceRef, in.Version,
 			appNonEmptyJSON(in.Listen, "[]"), in.Instrumented, identity, string(attrs), now).Scan(&iid, &inserted); err != nil {
 			return res, fmt.Errorf("instance: %w", err)
 		}
 		res.Instances++
+		if in.Source == "otel" && in.PID > 0 {
+			if err := appFoldDiscoveredRows(ctx, tx, sid, agentID, in.PID, iid); err != nil {
+				return res, fmt.Errorf("fold discovered: %w", err)
+			}
+		}
 		if inserted {
 			if in.InstanceRef != "" { // a restart replaces the previous process of the same instance
 				_, _ = tx.ExecContext(ctx, `UPDATE service_instances SET stopped_at=$1
@@ -408,6 +443,85 @@ func (db *DB) AppIngestBatch(ctx context.Context, agentID, host string, b AppBat
 		res.Clients++
 	}
 
+	for _, p := range b.Params {
+		sid, _, err := svc(p.Service, p.Environment, "otel", "")
+		if err != nil {
+			return res, fmt.Errorf("service: %w", err)
+		}
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO service_routes (service_id, route, method, first_seen, last_seen) VALUES ($1,$2,$3,$4,$4)
+			ON CONFLICT (service_id, route, method) DO UPDATE SET last_seen = GREATEST(service_routes.last_seen, EXCLUDED.last_seen)`,
+			sid, p.Route, p.Method, now); err != nil {
+			return res, fmt.Errorf("param route: %w", err)
+		}
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO service_route_params (service_id, route, method, name, requests, first_seen, last_seen)
+			SELECT $1,$2,$3,$4,$5,$6,$6
+			WHERE EXISTS (SELECT 1 FROM service_route_params WHERE service_id=$1 AND route=$2 AND method=$3 AND name=$4)
+			   OR (SELECT COUNT(*) FROM service_route_params WHERE service_id=$1 AND route=$2 AND method=$3) < $7
+			ON CONFLICT (service_id, route, method, name) DO UPDATE SET
+			  requests = service_route_params.requests + EXCLUDED.requests,
+			  last_seen = GREATEST(service_route_params.last_seen, EXCLUDED.last_seen)`,
+			sid, p.Route, p.Method, p.Name, p.Count, now, AppMaxParamsPerRoute); err != nil {
+			return res, fmt.Errorf("route params: %w", err)
+		}
+		res.Params++
+	}
+
+	if len(b.Payloads) > 0 {
+		var havePolicy bool
+		_ = tx.QueryRowContext(ctx, `SELECT to_regclass('app_route_payload_policy') IS NOT NULL`).Scan(&havePolicy)
+		type pk struct {
+			sid           int64
+			route, method string
+		}
+		allowOf := map[pk]map[string]bool{}
+		for _, p := range b.Payloads {
+			sid, _, err := svc(p.Service, p.Environment, "otel", "")
+			if err != nil {
+				return res, fmt.Errorf("service: %w", err)
+			}
+			k := pk{sid, p.Route, p.Method}
+			allow, loaded := allowOf[k]
+			if !loaded && havePolicy {
+				var reviewed, masked []byte
+				err := tx.QueryRowContext(ctx, `SELECT reviewed_names, masked FROM app_route_payload_policy WHERE service_id=$1 AND route=$2 AND method=$3`,
+					sid, p.Route, p.Method).Scan(&reviewed, &masked)
+				if err == nil {
+					allow = appPayloadAllow(reviewed, masked)
+				} else if err != sql.ErrNoRows {
+					return res, fmt.Errorf("payload policy: %w", err)
+				}
+				allowOf[k] = allow
+			}
+			if allow == nil { // no saved policy for this route: nothing is stored, whatever the agent sent
+				res.PayloadsRejected++
+				continue
+			}
+			kept, withheld := map[string]string{}, append([]string{}, p.Withheld...)
+			for n, v := range p.Params {
+				if allow[n] && !PayloadNameDenied(n) && !PayloadValueMasked(v) {
+					kept[n] = v
+				} else {
+					withheld = append(withheld, n)
+				}
+			}
+			if len(kept) == 0 && len(withheld) == 0 {
+				continue
+			}
+			sort.Strings(withheld)
+			pj, _ := json.Marshal(kept)
+			wj, _ := json.Marshal(withheld)
+			if _, err := tx.ExecContext(ctx, `
+				INSERT INTO app_payloads (service_id, agent_id, time, route, method, status, trace_id, params, withheld)
+				VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9::jsonb)`,
+				sid, agentID, p.Time, p.Route, p.Method, p.Status, p.TraceID, string(pj), string(wj)); err != nil {
+				return res, fmt.Errorf("payload: %w", err)
+			}
+			res.Payloads++
+		}
+	}
+
 	for _, n := range b.Notes {
 		sid, _, err := svc(n.Service, n.Environment, "otel", "")
 		if err != nil {
@@ -438,6 +552,36 @@ type AppRemoteService struct {
 	StoreClientIP   string `json:"store_client_ip"`
 	CleartextUsers  bool   `json:"cleartext_users"`
 	LatencyTargetMs int    `json:"latency_target_ms"`
+	// PolicyOnly marks an entry that exists only to carry payload routes: the service has no saved settings,
+	// so the agent must not treat the privacy fields above as an override.
+	PolicyOnly bool                    `json:"policy_only,omitempty"`
+	Payload    []AppRemotePayloadRoute `json:"payload_routes,omitempty"`
+}
+
+// AppRemotePayloadRoute is a route an admin has reviewed and the parameter names left unmasked.
+type AppRemotePayloadRoute struct {
+	Route  string   `json:"route"`
+	Method string   `json:"method"`
+	Allow  []string `json:"allow"`
+}
+
+// appPayloadAllow turns a saved policy (the names the admin saw, the names they masked) into the names that
+// may be forwarded: reviewed, not masked, not on the always-masked list.
+func appPayloadAllow(reviewedJSON, maskedJSON []byte) map[string]bool {
+	var reviewed, masked []string
+	_ = json.Unmarshal(reviewedJSON, &reviewed)
+	_ = json.Unmarshal(maskedJSON, &masked)
+	m := map[string]bool{}
+	for _, n := range masked {
+		m[n] = true
+	}
+	allow := map[string]bool{}
+	for _, n := range reviewed {
+		if !m[n] && !PayloadNameDenied(n) {
+			allow[n] = true
+		}
+	}
+	return allow
 }
 
 // AppRemoteConfig reads service_settings (created by the management migration; the two backends
@@ -449,7 +593,7 @@ func (db *DB) AppRemoteConfig(ctx context.Context) ([]AppRemoteService, error) {
 		ORDER BY s.name, s.environment LIMIT 5000`)
 	if err != nil {
 		if pe, ok := err.(*pq.Error); ok && pe.Code == "42P01" { // undefined_table
-			return []AppRemoteService{}, nil
+			return db.appAddPayloadRoutes(ctx, []AppRemoteService{})
 		}
 		return nil, err
 	}
@@ -461,6 +605,50 @@ func (db *DB) AppRemoteConfig(ctx context.Context) ([]AppRemoteService, error) {
 			return nil, err
 		}
 		out = append(out, r)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return db.appAddPayloadRoutes(ctx, out)
+}
+
+// appAddPayloadRoutes attaches each service's reviewed routes. A service with a policy but no saved settings
+// gets a PolicyOnly entry. A missing policy table means no route has been reviewed.
+func (db *DB) appAddPayloadRoutes(ctx context.Context, out []AppRemoteService) ([]AppRemoteService, error) {
+	var have bool
+	if err := db.QueryRowContext(ctx, `SELECT to_regclass('app_route_payload_policy') IS NOT NULL`).Scan(&have); err != nil || !have {
+		return out, nil
+	}
+	rows, err := db.QueryContext(ctx, `
+		SELECT s.name, s.environment, p.route, p.method, p.reviewed_names, p.masked
+		FROM app_route_payload_policy p JOIN services s ON s.id = p.service_id
+		ORDER BY s.name, s.environment, p.route LIMIT 20000`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	idx := map[string]int{}
+	for i, r := range out {
+		idx[r.Service+"|"+r.Environment] = i
+	}
+	for rows.Next() {
+		var name, env, route, method string
+		var reviewed, masked []byte
+		if err := rows.Scan(&name, &env, &route, &method, &reviewed, &masked); err != nil {
+			return nil, err
+		}
+		i, ok := idx[name+"|"+env]
+		if !ok {
+			out = append(out, AppRemoteService{Service: name, Environment: env, PolicyOnly: true})
+			i = len(out) - 1
+			idx[name+"|"+env] = i
+		}
+		allow := []string{}
+		for n := range appPayloadAllow(reviewed, masked) {
+			allow = append(allow, n)
+		}
+		sort.Strings(allow)
+		out[i].Payload = append(out[i].Payload, AppRemotePayloadRoute{Route: route, Method: method, Allow: allow})
 	}
 	return out, rows.Err()
 }
@@ -539,4 +727,23 @@ func appMergeDiscovered(ctx context.Context, tx *sql.Tx, newID int64, agentID st
 		}
 	}
 	return nil
+}
+
+// appFoldDiscoveredRows collapses the host sensor's row for a process into the instrumented row of the same
+// process (the two can differ slightly in process start time, which keeps them from matching exactly). The
+// instrumented row keeps its own values and gains what only the sensor knew: listening ports and any
+// attribute it lacks (unit, container name, image, host sensor tier, executable).
+func appFoldDiscoveredRows(ctx context.Context, tx *sql.Tx, serviceID int64, agentID string, pid int, keepID int64) error {
+	_, err := tx.ExecContext(ctx, `
+		WITH d AS (
+			DELETE FROM service_instances
+			WHERE service_id = $1 AND agent_id = $2 AND pid = $3 AND id <> $4 AND NOT instrumented AND stopped_at IS NULL
+			RETURNING listen, attrs, last_seen
+		), x AS (SELECT listen, attrs FROM d ORDER BY last_seen DESC LIMIT 1)
+		UPDATE service_instances o SET
+		  listen = CASE WHEN o.listen = '[]'::jsonb THEN x.listen ELSE o.listen END,
+		  attrs = o.attrs || COALESCE((SELECT jsonb_object_agg(e.k, e.v) FROM jsonb_each(x.attrs) e(k, v)
+		                               WHERE e.v <> '""'::jsonb AND COALESCE(o.attrs->>e.k, '') = ''), '{}'::jsonb)
+		FROM x WHERE o.id = $4`, serviceID, agentID, pid, keepID)
+	return err
 }

@@ -16,6 +16,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strings"
 	"sync"
 	"time"
 )
@@ -27,6 +28,18 @@ type RemoteService struct {
 	StoreClientIP   string `json:"store_client_ip"`
 	CleartextUsers  bool   `json:"cleartext_users"`
 	LatencyTargetMs int    `json:"latency_target_ms"`
+	// PolicyOnly marks an entry that only carries payload routes: the service has no saved settings, so the
+	// privacy fields of this entry are not an override and are ignored.
+	PolicyOnly bool `json:"policy_only,omitempty"`
+	// Payload lists the routes whose parameters an admin has reviewed, with the names left unmasked.
+	Payload []RemotePayloadRoute `json:"payload_routes,omitempty"`
+}
+
+// RemotePayloadRoute mirrors the backend's AppRemotePayloadRoute.
+type RemotePayloadRoute struct {
+	Route  string   `json:"route"`
+	Method string   `json:"method"`
+	Allow  []string `json:"allow"`
 }
 
 var modeRank = map[string]int{ClientIPFull: 0, ClientIPTruncated: 1, ClientIPOff: 2}
@@ -51,14 +64,27 @@ func stricterMode(a, b string) string {
 type liveSettings struct {
 	mu  sync.RWMutex
 	svc map[string]RemoteService
+	pay map[string]map[string]bool // service|env|METHOD|route -> allowed parameter names (present = reviewed)
 	at  time.Time
 }
 
-func newLiveSettings() *liveSettings { return &liveSettings{svc: map[string]RemoteService{}} }
+func newLiveSettings() *liveSettings {
+	return &liveSettings{svc: map[string]RemoteService{}, pay: map[string]map[string]bool{}}
+}
 
 func (l *liveSettings) set(list []RemoteService, now time.Time) {
 	m := make(map[string]RemoteService, len(list))
+	pay := map[string]map[string]bool{}
 	for _, r := range list {
+		for _, pr := range r.Payload {
+			allow := map[string]bool{}
+			for _, n := range pr.Allow {
+				if validParamName(n) && !PayloadNameDenied(n) { // the agent enforces the deny list itself
+					allow[n] = true
+				}
+			}
+			pay[r.Service+"|"+envOf(r.Environment)+"|"+strings.ToUpper(pr.Method)+"|"+pr.Route] = allow
+		}
 		if r.Service == "" {
 			continue
 		}
@@ -68,10 +94,13 @@ func (l *liveSettings) set(list []RemoteService, now time.Time) {
 		if r.LatencyTargetMs < 0 {
 			r.LatencyTargetMs = 0
 		}
+		if r.PolicyOnly {
+			continue
+		}
 		m[r.Service+"|"+envOf(r.Environment)] = r
 	}
 	l.mu.Lock()
-	l.svc, l.at = m, now
+	l.svc, l.pay, l.at = m, pay, now
 	l.mu.Unlock()
 }
 
@@ -80,6 +109,15 @@ func (l *liveSettings) get(svc, env string) (RemoteService, bool) {
 	defer l.mu.RUnlock()
 	r, ok := l.svc[svc+"|"+envOf(env)]
 	return r, ok
+}
+
+// payloadFor returns the reviewed, allowed parameter names of a route. reviewed is false for a route with no
+// saved policy: nothing is forwarded for it.
+func (l *liveSettings) payloadFor(svc, env, route, method string) (map[string]bool, bool) {
+	l.mu.RLock()
+	defer l.mu.RUnlock()
+	a, ok := l.pay[svc+"|"+envOf(env)+"|"+strings.ToUpper(method)+"|"+route]
+	return a, ok
 }
 
 // Loaded reports when settings were last pulled (zero before the first success).

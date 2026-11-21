@@ -100,6 +100,7 @@ func appHandleMap(db, backendDB *store.DB) http.HandlerFunc {
 			return
 		}
 		nodes := map[string]*appMapNode{}
+		localIx := appLoadLocalIndex(ctx, idb)
 		for _, s := range svcs {
 			n := s.node
 			nodes[n.ID] = &n
@@ -118,7 +119,14 @@ func appHandleMap(db, backendDB *store.DB) http.HandlerFunc {
 				continue
 			}
 			target := appMapID(kind, dst)
-			if kind == "service" { // peer.service names a service: resolve it, same environment first
+			if kind != "service" {
+				if t, ok := localIx.Resolve(src, dst); ok {
+					if ts, ok := svcs[t.ServiceID]; ok { // the service listening on that local port
+						kind, target = "service", ts.node.ID
+					}
+				}
+			}
+			if kind == "service" && target == appMapID(kind, dst) { // peer.service names a service: resolve it, same environment first
 				if cands := byName[dst]; len(cands) > 0 {
 					pick := cands[0]
 					for _, c := range cands {

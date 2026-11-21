@@ -34,6 +34,11 @@ const (
 	appMaxEdges         = 500
 	appMaxTraces        = 50
 	appMaxClients       = 3000
+	appMaxParams        = 5000
+	appMaxPayloads      = 500
+	appMaxPayloadParams = 50
+	appMaxPayloadValue  = 256
+	appMaxParamNameLen  = 64
 	appMaxNameRunes     = 128
 	appMaxEnvRunes      = 64
 	appMaxRouteRunes    = 256
@@ -175,6 +180,21 @@ func appEdgeTarget(s string) string {
 		s = s[:i]
 	}
 	return appClean(strings.ToLower(s), appMaxTargetRunes)
+}
+
+// appValidParamName accepts only names that look like a parameter name. The agent already filters, and the backend
+// does not trust it: anything else (spaces, long tokens, control characters) is dropped, never stored.
+func appValidParamName(n string) bool {
+	if n == "" || len(n) > appMaxParamNameLen {
+		return false
+	}
+	for i := 0; i < len(n); i++ {
+		c := n[i]
+		if !(c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '_' || c == '-' || c == '.' || c == '[' || c == ']') {
+			return false
+		}
+	}
+	return true
 }
 
 func appValidID(s string, max int) bool {
@@ -325,6 +345,59 @@ func appSanitizeBatch(b *store.AppBatch, now time.Time) (dropped int) {
 	}
 	b.Clients = cls
 
+	pms := b.Params[:0]
+	for _, p := range b.Params {
+		p.Service, p.Environment = appClean(p.Service, appMaxNameRunes), appEnv(p.Environment)
+		p.Method = strings.ToUpper(appClean(p.Method, 8))
+		if !appValidID(p.Service, appMaxNameRunes) || !appMethods[p.Method] || !appValidParamName(p.Name) || p.Count < 1 || p.Count > appMaxStatRequests {
+			dropped++
+			continue
+		}
+		p.Route = appRouteTemplate(p.Route)
+		pms = append(pms, p)
+	}
+	b.Params = pms
+
+	pls := b.Payloads[:0]
+	for _, p := range b.Payloads {
+		p.Service, p.Environment = appClean(p.Service, appMaxNameRunes), appEnv(p.Environment)
+		p.Method = strings.ToUpper(appClean(p.Method, 8))
+		if !appValidID(p.Service, appMaxNameRunes) || !appMethods[p.Method] {
+			dropped++
+			continue
+		}
+		p.Route = appRouteTemplate(p.Route)
+		p.Time = p.Time.UTC()
+		if p.Time.IsZero() || p.Time.After(now.Add(appMaxFutureSkew)) || p.Time.Before(now.Add(-appMaxStatAge)) {
+			p.Time = now
+		}
+		if p.Status < 0 || p.Status > 999 {
+			p.Status = 0
+		}
+		p.TraceID = strings.ToLower(appClean(p.TraceID, 64))
+		clean := map[string]string{}
+		for n, v := range p.Params {
+			if len(clean) >= appMaxPayloadParams || !appValidParamName(n) || store.PayloadNameDenied(n) {
+				continue
+			}
+			v = appClean(v, appMaxPayloadValue)
+			if store.PayloadValueMasked(v) {
+				continue
+			}
+			clean[n] = v
+		}
+		p.Params = clean
+		wh := p.Withheld[:0]
+		for _, n := range p.Withheld {
+			if len(wh) < appMaxPayloadParams && appValidParamName(n) {
+				wh = append(wh, n)
+			}
+		}
+		p.Withheld = wh
+		pls = append(pls, p)
+	}
+	b.Payloads = pls
+
 	nts := b.Notes[:0]
 	for _, n := range b.Notes {
 		n.Service, n.Environment = appClean(n.Service, appMaxNameRunes), appEnv(n.Environment)
@@ -431,7 +504,7 @@ func appHandleBatch(db appBatchStore, logger *slog.Logger) http.HandlerFunc {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "missing or invalid agent_id"})
 			return
 		}
-		if len(b.Instances) > appMaxInstances || len(b.Routes) > appMaxRoutes || len(b.Edges) > appMaxEdges || len(b.Traces) > appMaxTraces || len(b.Clients) > appMaxClients {
+		if len(b.Instances) > appMaxInstances || len(b.Routes) > appMaxRoutes || len(b.Edges) > appMaxEdges || len(b.Traces) > appMaxTraces || len(b.Clients) > appMaxClients || len(b.Params) > appMaxParams || len(b.Payloads) > appMaxPayloads {
 			writeJSON(w, http.StatusRequestEntityTooLarge, map[string]string{"error": "batch too large"})
 			return
 		}
@@ -455,7 +528,7 @@ func appHandleBatch(db appBatchStore, logger *slog.Logger) http.HandlerFunc {
 			return
 		}
 
-		items := len(b.Instances) + len(b.Routes) + len(b.Edges) + len(b.Traces) + len(b.Clients)
+		items := len(b.Instances) + len(b.Routes) + len(b.Edges) + len(b.Traces) + len(b.Clients) + len(b.Params) + len(b.Payloads)
 		if items == 0 {
 			writeJSON(w, http.StatusOK, map[string]any{"accepted": 0, "dropped": 0})
 			return
@@ -480,8 +553,8 @@ func appHandleBatch(db appBatchStore, logger *slog.Logger) http.HandlerFunc {
 			}
 		}
 		writeJSON(w, http.StatusOK, map[string]any{
-			"accepted": res.Instances + res.Routes + res.Edges + res.Traces + res.Clients, "dropped": dropped,
-			"instances": res.Instances, "routes": res.Routes, "edges": res.Edges, "traces": res.Traces, "clients": res.Clients,
+			"accepted": res.Instances + res.Routes + res.Edges + res.Traces + res.Clients + res.Params + res.Payloads, "dropped": dropped,
+			"instances": res.Instances, "routes": res.Routes, "edges": res.Edges, "traces": res.Traces, "clients": res.Clients, "params": res.Params, "payloads": res.Payloads, "payloads_rejected": res.PayloadsRejected,
 		})
 	}
 }

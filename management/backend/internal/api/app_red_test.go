@@ -100,10 +100,10 @@ func TestAppREADAPIsIntegration(t *testing.T) {
 	}
 	defer raw.Close()
 	if _, err := raw.Exec(`DROP TABLE IF EXISTS app_traces, app_route_stats, app_baselines, service_versions, service_routes,
-		service_edges, service_instances, services, service_settings, app_edge_stats, app_client_stats, app_service_merges CASCADE`); err != nil {
+		service_edges, service_instances, services, service_settings, app_edge_stats, app_client_stats, app_service_merges, service_route_params CASCADE`); err != nil {
 		t.Fatal(err)
 	}
-	for _, f := range []string{"../../../../backend/internal/store/migrations/030_app_services.sql", "../../../../backend/internal/store/migrations/031_app_edge_client_stats.sql", "../store/migrations/060_app_service_settings.sql"} {
+	for _, f := range []string{"../../../../backend/internal/store/migrations/030_app_services.sql", "../../../../backend/internal/store/migrations/031_app_edge_client_stats.sql", "../../../../backend/internal/store/migrations/032_app_route_params.sql", "../store/migrations/060_app_service_settings.sql"} {
 		b, _ := os.ReadFile(f)
 		if _, err := raw.Exec(string(b)); err != nil {
 			t.Fatalf("%s: %v", f, err)
@@ -170,6 +170,9 @@ func TestAppREADAPIsIntegration(t *testing.T) {
 		t.Fatalf("bad id: %d", rec.Code)
 	}
 
+	raw.Exec(`INSERT INTO service_route_params (service_id, route, method, name, requests, first_seen, last_seen) VALUES
+		($1,'/login','POST','user',7,$2,$2), ($1,'/login','POST','password_hint',2,$2,$2)`, sid, now.Add(-time.Minute))
+
 	// Routes table: includes a known route with no traffic in range.
 	rec = appGet(appHandleRoutes(db, nil), "/x"+rng, pv)
 	var rt struct {
@@ -187,6 +190,10 @@ func TestAppREADAPIsIntegration(t *testing.T) {
 		case "/never":
 			never = &rt.Routes[i]
 		}
+	}
+	if login == nil || login.PayloadReview != "needs_review" || len(login.Params) != 2 || login.Params[0].Name != "user" || login.Params[0].Requests != 7 ||
+		never == nil || never.PayloadReview != "" || len(never.Params) != 0 {
+		t.Fatalf("parameter names and review state: %+v %+v", login, never)
 	}
 	if login == nil || login.Stats.ErrorRate != 0.25 || !login.Stats.OverRange || never == nil || never.Active || never.Stats.Calls != 0 {
 		t.Fatalf("login/never: %+v %+v", login, never)

@@ -99,6 +99,7 @@ func New(opt Options) (*Service, error) {
 		},
 	}
 	opt.Agg.IPMode = ipMode
+	opt.Agg.PayloadFn = live.payloadFor
 	opt.Agg.SlowFn = func(svc, env string) int {
 		if rs, ok := live.get(svc, env); ok && rs.LatencyTargetMs > 0 {
 			return rs.LatencyTargetMs

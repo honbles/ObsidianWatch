@@ -18,6 +18,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/lib/pq"
+
 	"obsidianwatch/management/internal/auth"
 	"obsidianwatch/management/internal/store"
 )
@@ -230,6 +232,10 @@ type appServiceRow struct {
 	Routes        int                `json:"routes"`
 	Red           *appREDTotals      `json:"red,omitempty"`  // totals for the requested range (list only)
 	LearningCalls int64              `json:"learning_calls"` // requests since the learning period started
+	Containers    []string           `json:"containers"`     // container names of live instances (list only)
+	Images        []string           `json:"images"`
+	Units         []string           `json:"units"`
+	Hosts         []string           `json:"hosts"`
 	Settings      appServiceSettings `json:"settings"`
 }
 
@@ -280,8 +286,11 @@ func appHandleListServices(db, backendDB *store.DB) http.HandlerFunc {
 		appApplyExposure(r.Context(), idb, ids, settings)
 		totals := appServiceTotals(r.Context(), idb, ids, from, to)
 		learn := appLearningCalls(r.Context(), idb, ids, settings)
+		loc := appLocators(r.Context(), idb, ids, from)
 		for i := range list {
 			list[i].LearningCalls = learn[list[i].ID]
+			l := loc[list[i].ID]
+			list[i].Containers, list[i].Images, list[i].Units, list[i].Hosts = nonNil(l.containers), nonNil(l.images), nonNil(l.units), nonNil(l.hosts)
 			if t, ok := totals[list[i].ID]; ok {
 				t := t
 				list[i].Red = &t
@@ -369,19 +378,28 @@ func appHandleGetService(db, backendDB *store.DB) http.HandlerFunc {
 			rows.Close()
 		}
 		type edge struct {
-			DstKind   string    `json:"dst_kind"`
-			DstName   string    `json:"dst_name"`
-			Source    string    `json:"source"`
-			Calls     int64     `json:"calls"`
-			Errors    int64     `json:"errors"`
-			FirstSeen time.Time `json:"first_seen"`
-			LastSeen  time.Time `json:"last_seen"`
+			DstKind             string    `json:"dst_kind"`
+			DstName             string    `json:"dst_name"`
+			ResolvedServiceID   int64     `json:"resolved_service_id,omitempty"` // local port linked to a discovered service
+			ResolvedServiceName string    `json:"resolved_service_name,omitempty"`
+			Source              string    `json:"source"`
+			Calls               int64     `json:"calls"`
+			Errors              int64     `json:"errors"`
+			FirstSeen           time.Time `json:"first_seen"`
+			LastSeen            time.Time `json:"last_seen"`
 		}
 		edges := []edge{}
+		var localIx *appLocalIndex
 		if rows, err := idb.QueryContext(r.Context(), `SELECT dst_kind, dst_name, source, calls, errors, first_seen, last_seen FROM service_edges WHERE src_service = $1 ORDER BY calls DESC LIMIT 500`, id); err == nil {
 			for rows.Next() {
 				var e edge
 				if rows.Scan(&e.DstKind, &e.DstName, &e.Source, &e.Calls, &e.Errors, &e.FirstSeen, &e.LastSeen) == nil {
+					if localIx == nil {
+						localIx = appLoadLocalIndex(r.Context(), idb)
+					}
+					if t, ok := localIx.Resolve(id, e.DstName); ok && e.DstKind != "service" {
+						e.ResolvedServiceID, e.ResolvedServiceName = t.ServiceID, t.Name
+					}
 					edges = append(edges, e)
 				}
 			}
@@ -470,4 +488,41 @@ func appHandlePutServiceSettings(db, backendDB *store.DB) http.HandlerFunc {
 		body.UpdatedBy, body.ResetLearning = by, false
 		writeJSON(w, http.StatusOK, map[string]any{"key": appServiceKey(name, env), "settings": body})
 	}
+}
+
+type appLocator struct{ containers, images, units, hosts []string }
+
+func nonNil(v []string) []string {
+	if v == nil {
+		return []string{}
+	}
+	return v
+}
+
+// appLocators lists where each service runs: the container names, images and systemd units of its live
+// instances, and the hosts they are on (spec B2: the host alone is not enough to find a workload).
+func appLocators(ctx context.Context, idb *store.DB, ids []int64, since time.Time) map[int64]appLocator {
+	out := map[int64]appLocator{}
+	if len(ids) == 0 {
+		return out
+	}
+	rows, err := idb.QueryContext(ctx, `
+		SELECT service_id,
+		  array_remove(array_agg(DISTINCT NULLIF(attrs->>'container_name','')), NULL),
+		  array_remove(array_agg(DISTINCT NULLIF(attrs->>'image','')), NULL),
+		  array_remove(array_agg(DISTINCT NULLIF(attrs->>'unit','')), NULL),
+		  array_remove(array_agg(DISTINCT NULLIF(host,'')), NULL)
+		FROM service_instances WHERE service_id = ANY($1) AND stopped_at IS NULL AND last_seen >= $2 GROUP BY service_id`, pq.Array(ids), since)
+	if err != nil {
+		return out
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id int64
+		var c, i, u, h pq.StringArray
+		if rows.Scan(&id, &c, &i, &u, &h) == nil {
+			out[id] = appLocator{containers: c, images: i, units: u, hosts: h}
+		}
+	}
+	return out
 }

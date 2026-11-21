@@ -93,8 +93,8 @@ func main() {
 				logger.Warn("app retention purge failed", "err", err)
 				return
 			}
-			if res.Stats+res.Traces+res.EdgeStats+res.ClientStats > 0 {
-				logger.Info("app retention purge", "route_stats", res.Stats, "edge_stats", res.EdgeStats, "traces", res.Traces, "client_stats", res.ClientStats)
+			if res.Stats+res.Traces+res.EdgeStats+res.ClientStats+res.Payloads > 0 {
+				logger.Info("app retention purge", "route_stats", res.Stats, "edge_stats", res.EdgeStats, "traces", res.Traces, "client_stats", res.ClientStats, "payloads", res.Payloads)
 			}
 		}
 		select {

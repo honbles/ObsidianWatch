@@ -27,6 +27,9 @@ type AggOptions struct {
 	MaxClientKeys int            // distinct (route, client) failure keys per service per minute
 	// IPMode returns the client-address storage mode for a service (full | truncated | off).
 	IPMode func(service, env string) string
+	// PayloadFn returns, for a route, the parameter names an admin has reviewed and left unmasked. reviewed is
+	// false when the route has not been reviewed, and then no parameter value is forwarded for it.
+	PayloadFn func(service, env, route, method string) (allow map[string]bool, reviewed bool)
 	// SlowFn returns a per-service slow-trace threshold in ms; <= 0 means use SlowMs.
 	SlowFn func(service, env string) int
 }
@@ -93,6 +96,16 @@ type clientKey struct {
 	exc           string
 }
 
+type paramKey struct {
+	svc                 svcKey
+	route, method, name string
+}
+
+type routeKey struct {
+	svc           svcKey
+	route, method string
+}
+
 type clientVal struct{ failures, s4013, s429, s4o, s5 int64 }
 
 type svcMinute struct {
@@ -136,7 +149,7 @@ type openTrace struct {
 
 // AggStats are counters for health reporting.
 type AggStats struct {
-	Spans, ServerSpans, ClientSpans, NoService, ClockSkew, StatDrops, TracesKept, TracesDropped int64
+	Spans, ServerSpans, ClientSpans, NoService, ClockSkew, StatDrops, TracesKept, TracesDropped, ParamDrops, PayloadHeld, PayloadSent int64
 }
 
 // Aggregator is safe for concurrent use.
@@ -153,6 +166,10 @@ type Aggregator struct {
 	cl   map[clientKey]*clientVal
 	clN  map[svcMinute]int
 	clOv map[svcKey]int64
+	pm   map[paramKey]int64 // parameter name counts since the last flush
+	pmN  map[routeKey]int   // distinct names held per route since the last flush
+	pl   []BatchPayload     // sampled allowed parameters since the last flush
+	plN  map[routeKey]int   // payload samples per route since the last flush
 
 	traces map[string]*openTrace
 	order  []string
@@ -169,7 +186,7 @@ func NewAggregator(opt AggOptions, now func() time.Time) *Aggregator {
 	return &Aggregator{opt: opt, now: now,
 		st: map[statKey]*statVal{}, ed: map[edgeKey]*[2]int64{}, in: map[instKey]*instVal{},
 		seen: map[svcKey]map[[2]string]bool{}, ovf: map[svcKey]int64{}, drp: map[svcKey]int64{},
-		cl: map[clientKey]*clientVal{}, clN: map[svcMinute]int{}, clOv: map[svcKey]int64{},
+		cl: map[clientKey]*clientVal{}, clN: map[svcMinute]int{}, clOv: map[svcKey]int64{}, pm: map[paramKey]int64{}, pmN: map[routeKey]int{}, plN: map[routeKey]int{},
 		traces: map[string]*openTrace{}, sec: map[string]time.Time{}}
 }
 
@@ -224,7 +241,12 @@ func (a *Aggregator) Ingest(s Span, peer Peer, identity string) {
 	switch s.Kind {
 	case kindServer:
 		a.Stats.ServerSpans++
+		s.Signature = paramInjection(s)
+		if s.Signature != "" && s.TraceID != "" {
+			a.sec[s.TraceID] = now // keep the trace of an attack attempt
+		}
 		a.addRED(svc, s, now)
+		s.ParamValues = nil // values never outlive the aggregation of the request
 	case kindClient, kindProducer:
 		a.Stats.ClientSpans++
 		a.addEdge(svc, s)
@@ -391,6 +413,74 @@ func (a *Aggregator) addRED(svc svcKey, s Span, now time.Time) {
 		v.errors++
 	}
 	a.addClientFailure(svc, route, method, s, key.minute)
+	a.addParams(svc, route, method, s.ParamNames)
+	a.capturePayload(svc, route, method, s, t)
+}
+
+// Payload samples per route per flush interval, and in total per flush.
+const (
+	maxPayloadsPerRoute = 5
+	maxPayloadsPerFlush = 500
+)
+
+// capturePayload forwards the allowed parameters of a sampled request, and only from a route an admin has
+// reviewed. A route that has not been reviewed forwards nothing: the request is only counted.
+func (a *Aggregator) capturePayload(svc svcKey, route, method string, s Span, t time.Time) {
+	if len(s.ParamNames) == 0 || route == unmatched || route == otherRoute {
+		return
+	}
+	var allow map[string]bool
+	reviewed := false
+	if a.opt.PayloadFn != nil {
+		allow, reviewed = a.opt.PayloadFn(svc.name, svc.env, route, method)
+	}
+	if !reviewed {
+		a.Stats.PayloadHeld++
+		return
+	}
+	rk := routeKey{svc, route, method}
+	if a.plN[rk] >= maxPayloadsPerRoute || len(a.pl) >= maxPayloadsPerFlush {
+		return
+	}
+	p := BatchPayload{Service: svc.name, Environment: svc.env, Route: route, Method: method, Time: t.UTC(),
+		Status: s.HTTPStatus, TraceID: s.TraceID, Params: map[string]string{}}
+	for _, n := range s.ParamNames {
+		v, have := s.ParamValues[n]
+		if !allow[n] || PayloadNameDenied(n) || !have || PayloadValueMasked(v) {
+			p.Withheld = append(p.Withheld, n)
+			continue
+		}
+		p.Params[n] = v
+	}
+	a.plN[rk]++
+	a.pl = append(a.pl, p)
+	a.Stats.PayloadSent++
+}
+
+// Bounds on parameter-name tracking: distinct names per route per flush, and keys held in memory.
+const (
+	maxParamsPerRoute = 100
+	maxParamKeys      = 5000
+)
+
+// addParams counts the parameter names of one request against its route template. Requests that matched
+// no template, or fell into the overflow route, are not tracked: their names say nothing about a route.
+func (a *Aggregator) addParams(svc svcKey, route, method string, names []string) {
+	if len(names) == 0 || route == unmatched || route == otherRoute {
+		return
+	}
+	rk := routeKey{svc, route, method}
+	for _, n := range names {
+		k := paramKey{svc, route, method, n}
+		if _, ok := a.pm[k]; !ok {
+			if a.pmN[rk] >= maxParamsPerRoute || len(a.pm) >= maxParamKeys {
+				a.Stats.ParamDrops++
+				continue
+			}
+			a.pmN[rk]++
+		}
+		a.pm[k]++
+	}
 }
 
 // addClientFailure records a failed request against the client address, for the source-based
@@ -398,7 +488,7 @@ func (a *Aggregator) addRED(svc svcKey, s Span, now time.Time) {
 // of distinct keys per service per minute is capped (the overflow is counted, not hidden).
 func (a *Aggregator) addClientFailure(svc svcKey, route, method string, s Span, minute time.Time) {
 	code := s.HTTPStatus
-	failed := code == 401 || code == 403 || code == 429 || (code >= 400 && code < 600) || s.ExcType != ""
+	failed := code == 401 || code == 403 || code == 429 || (code >= 400 && code < 600) || s.ExcType != "" || s.Signature != ""
 	if !failed {
 		return
 	}
@@ -413,6 +503,9 @@ func (a *Aggregator) addClientFailure(svc svcKey, route, method string, s Span, 
 		return
 	}
 	exc := s.ExcType
+	if s.Signature != "" {
+		exc = s.Signature // an attack signature outranks a generic exception
+	}
 	if len(exc) > 128 {
 		exc = exc[:128]
 	}
@@ -734,6 +827,18 @@ func (a *Aggregator) Flush(agentID string, final bool) *Batch {
 			Status429: v.s429, Status5xx: v.s5xx, DurBuckets: h})
 		delete(a.st, k)
 	}
+	for k, n := range a.pm {
+		b.Params = append(b.Params, BatchParam{Service: k.svc.name, Environment: k.svc.env, Route: k.route, Method: k.method, Name: k.name, Count: n})
+	}
+	a.pm, a.pmN = map[paramKey]int64{}, map[routeKey]int{}
+	b.Payloads, a.pl, a.plN = a.pl, nil, map[routeKey]int{}
+	sort.Slice(b.Params, func(i, j int) bool {
+		x, y := b.Params[i], b.Params[j]
+		if x.Service != y.Service || x.Route != y.Route || x.Method != y.Method {
+			return x.Service+x.Route+x.Method < y.Service+y.Route+y.Method
+		}
+		return x.Name < y.Name
+	})
 	for k, v := range a.cl {
 		if !final && !k.minute.Before(cur) {
 			continue
@@ -813,6 +918,23 @@ func (a *Aggregator) Requeue(b *Batch) {
 		for i := 0; i < histLen && i < len(r.DurBuckets); i++ {
 			v.hist[i] += r.DurBuckets[i]
 		}
+	}
+	for _, p := range b.Payloads {
+		if len(a.pl) < maxPayloadsPerFlush {
+			a.pl = append(a.pl, p)
+		}
+	}
+	for _, p := range b.Params {
+		sv, rk := svcKey{p.Service, p.Environment}, routeKey{svcKey{p.Service, p.Environment}, p.Route, p.Method}
+		k := paramKey{sv, p.Route, p.Method, p.Name}
+		if _, ok := a.pm[k]; !ok {
+			if a.pmN[rk] >= maxParamsPerRoute || len(a.pm) >= maxParamKeys {
+				a.Stats.ParamDrops++
+				continue
+			}
+			a.pmN[rk]++
+		}
+		a.pm[k] += p.Count
 	}
 	for _, c := range b.Clients {
 		k := clientKey{c.Minute, svcKey{c.Service, c.Environment}, c.Route, c.Method, c.ClientIP, c.PeerIP, c.ExcType}

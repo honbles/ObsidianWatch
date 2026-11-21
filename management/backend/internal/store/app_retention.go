@@ -14,9 +14,10 @@ import (
 )
 
 const (
-	AppDefaultStatsDays  = 90
-	AppDefaultTraceDays  = 7
-	AppDefaultClientDays = 7
+	AppDefaultStatsDays   = 90
+	AppDefaultTraceDays   = 7
+	AppDefaultClientDays  = 7
+	AppDefaultPayloadDays = 7
 )
 
 // AppRetentionDays reads the configured retention, falling back to the defaults
@@ -39,7 +40,7 @@ func (db *DB) AppRetentionDays(ctx context.Context) (statsDays, traceDays int) {
 
 // AppPurgeResult counts the rows AppPurge removed from each table.
 type AppPurgeResult struct {
-	Stats, Traces, EdgeStats, ClientStats int64
+	Stats, Traces, EdgeStats, ClientStats, Payloads int64
 }
 
 // AppPurge deletes data older than the configured retention: route and dependency statistics
@@ -68,6 +69,15 @@ func (db *DB) AppPurge(ctx context.Context, now time.Time) (AppPurgeResult, erro
 	}
 	if err := exec(&out.ClientStats, `DELETE FROM app_client_stats WHERE minute < $1`, now.AddDate(0, 0, -cd)); err != nil {
 		return out, err
+	}
+	// Sampled request parameters (payload capture) are short-lived; the table exists only once the ingest
+	// migration that creates it has run.
+	var have bool
+	if err := db.QueryRowContext(ctx, `SELECT to_regclass('app_payloads') IS NOT NULL`).Scan(&have); err == nil && have {
+		pd := db.appSettingDays(ctx, "app.retention_payload_days", AppDefaultPayloadDays)
+		if err := exec(&out.Payloads, `DELETE FROM app_payloads WHERE time < $1`, now.AddDate(0, 0, -pd)); err != nil {
+			return out, err
+		}
 	}
 	return out, nil
 }

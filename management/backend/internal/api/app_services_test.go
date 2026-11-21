@@ -92,7 +92,8 @@ func TestAppServicesAPIIntegration(t *testing.T) {
 	if err := raw.QueryRow(`INSERT INTO services (name, environment, source, first_seen, last_seen, attrs) VALUES ('api','prod','otel',$1,$1,'{"language":"java"}') RETURNING id`, now).Scan(&id); err != nil {
 		t.Fatal(err)
 	}
-	raw.Exec(`INSERT INTO service_instances (service_id, agent_id, host, pid, instance_ref, version, identity, first_seen, last_seen) VALUES ($1,'a1','web-01',100,'i1','1.0','verified',$2,$2)`, id, now)
+	raw.Exec(`INSERT INTO service_instances (service_id, agent_id, host, pid, instance_ref, version, identity, attrs, first_seen, last_seen)
+		VALUES ($1,'a1','web-01',100,'i1','1.0','verified','{"container_name":"api-1","image":"registry/acme/api:1.0","unit":""}',$2,$2)`, id, now)
 	raw.Exec(`INSERT INTO service_edges (src_service, dst_kind, dst_name, source, calls, first_seen, last_seen) VALUES ($1,'database','pg:5432','otel',9,$2,$2)`, id, now)
 	db := &store.DB{DB: raw}
 
@@ -105,6 +106,10 @@ func TestAppServicesAPIIntegration(t *testing.T) {
 	if rec.Code != 200 || len(list.Services) != 1 || list.Services[0].Instances != 1 || list.Services[0].Tier != 1 ||
 		list.Services[0].Settings.Exposure != "unknown" || list.Services[0].Edges != 1 {
 		t.Fatalf("list: %d %s", rec.Code, rec.Body.String())
+	}
+
+	if l := list.Services[0]; len(l.Containers) != 1 || l.Containers[0] != "api-1" || len(l.Images) != 1 || len(l.Units) != 0 || len(l.Hosts) != 1 || l.Hosts[0] != "web-01" {
+		t.Fatalf("where the service runs: %+v %+v %+v %+v", l.Containers, l.Images, l.Units, l.Hosts)
 	}
 
 	put := func(body string) *httptest.ResponseRecorder {

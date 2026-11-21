@@ -216,3 +216,24 @@ func TestAppAgentConfigEndpoint(t *testing.T) {
 		t.Fatalf("missing agent_id: %d", rec.Code)
 	}
 }
+
+func TestAppBatchParamNamesAreValidatedNotTrusted(t *testing.T) {
+	now := time.Now().UTC()
+	b := &store.AppBatch{Params: []store.AppRouteParam{
+		{Service: "api", Route: "/search?q=SECRET", Method: "get", Name: "q", Count: 3},
+		{Service: "api", Route: "/search", Method: "GET", Name: "has space", Count: 1},
+		{Service: "api", Route: "/search", Method: "GET", Name: "a=b", Count: 1},
+		{Service: "api", Route: "/search", Method: "GET", Name: "", Count: 1},
+		{Service: "api", Route: "/search", Method: "GET", Name: "user[name]", Count: 2},
+		{Service: "api", Route: "/search", Method: "GET", Name: "ok", Count: 0},
+		{Service: "api", Route: "/search", Method: "NOPE", Name: "ok", Count: 1},
+		{Service: "api", Route: "/search", Method: "GET", Name: "3f9a8c1b2d4e5f60718293a4b5c6d7e8f9a0b1c2d3e4f5061728394a5b6c7d8e9", Count: 1},
+	}}
+	dropped := appSanitizeBatch(b, now)
+	if len(b.Params) != 2 || dropped != 6 {
+		t.Fatalf("kept %+v dropped %d", b.Params, dropped)
+	}
+	if b.Params[0].Route != "/search" || b.Params[0].Method != "GET" || b.Params[0].Name != "q" || b.Params[1].Name != "user[name]" {
+		t.Fatalf("%+v", b.Params)
+	}
+}

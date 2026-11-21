@@ -250,6 +250,20 @@ type appRouteRow struct {
 	LastSeen  time.Time    `json:"last_seen"`
 	Active    bool         `json:"active"` // traffic inside the requested range
 	Stats     appREDTotals `json:"stats"`
+	// Parameter NAMES seen on the route (never values), most used first. Until a masking policy is saved for
+	// the route (payload design, step 2) a route with parameters is reported as needing review, and no payload
+	// leaves the agent for it.
+	Params        []appRouteParam   `json:"params"`
+	PayloadReview string            `json:"payload_review"` // "" (no parameters) | needs_review | new_fields | reviewed
+	Policy        *appPayloadPolicy `json:"policy,omitempty"`
+}
+
+type appRouteParam struct {
+	Name      string    `json:"name"`
+	State     string    `json:"state"` // always_masked | pending | new | masked | captured
+	Requests  int64     `json:"requests"`
+	FirstSeen time.Time `json:"first_seen"`
+	LastSeen  time.Time `json:"last_seen"`
 }
 
 func appHandleRoutes(db, backendDB *store.DB) http.HandlerFunc {
@@ -291,6 +305,7 @@ func appHandleRoutes(db, backendDB *store.DB) http.HandlerFunc {
 				return
 			}
 			x.Active = x.Stats.Calls > 0
+			x.Params = []appRouteParam{}
 			if x.Stats.Calls > 0 {
 				x.Stats.ErrorRate = float64(x.Stats.Errors) / float64(x.Stats.Calls)
 			}
@@ -324,6 +339,42 @@ func appHandleRoutes(db, backendDB *store.DB) http.HandlerFunc {
 					var p appREDPoint
 					appFinishPoint(&p, h)
 					list[j].Stats.P50, list[j].Stats.P95, list[j].Stats.P99, list[j].Stats.OverRange = p.P50, p.P95, p.P99, p.OverRange
+				}
+			}
+		}
+		policies := appLoadPayloadPolicies(r, db, id)
+		if prows, err := idb.QueryContext(r.Context(), `
+			SELECT route, method, name, requests, first_seen, last_seen FROM service_route_params
+			WHERE service_id = $1 ORDER BY requests DESC LIMIT 5000`, id); err == nil {
+			for prows.Next() {
+				var route, method string
+				var p appRouteParam
+				if prows.Scan(&route, &method, &p.Name, &p.Requests, &p.FirstSeen, &p.LastSeen) == nil {
+					if j, ok := idx[method+" "+route]; ok {
+						var pol *appPayloadPolicy
+						if v, has := policies[method+" "+route]; has {
+							pol = &v
+						}
+						p.State = appParamState(p.Name, pol)
+						list[j].Params = append(list[j].Params, p)
+					}
+				}
+			}
+			prows.Close()
+		}
+		for i := range list {
+			if len(list[i].Params) == 0 {
+				continue
+			}
+			list[i].PayloadReview = "needs_review"
+			if pol, ok := policies[list[i].Method+" "+list[i].Route]; ok {
+				pol := pol
+				list[i].Policy = &pol
+				list[i].PayloadReview = "reviewed"
+				for _, p := range list[i].Params {
+					if p.State == "new" {
+						list[i].PayloadReview = "new_fields"
+					}
 				}
 			}
 		}

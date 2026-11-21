@@ -249,6 +249,14 @@ func (e appPGEmitter) Emit(ctx context.Context, f appFinding) (int64, bool, erro
 	if inserted {
 		appLinkEntities(ctx, e.db, id, f)
 	}
+	// A repeat folded into an existing alert by the 30-minute window is still a new finding for the follow-on
+	// rules (X02 and the H01 watch), so it reports true; an exact repeat of the same finding key does not.
+	if !inserted && id > 0 {
+		var evID string
+		if e.db.QueryRowContext(ctx, `SELECT COALESCE(event_id,'') FROM alerts WHERE id=$1`, id).Scan(&evID) == nil && evID != alert.EventID {
+			return id, true, nil
+		}
+	}
 	return id, inserted, nil
 }
 

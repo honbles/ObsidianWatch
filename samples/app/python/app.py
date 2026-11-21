@@ -19,6 +19,7 @@ from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 
+import ow_payload
 import ow_security
 
 if os.environ.get("OW_ALLOW_VULN_DEMO") != "1":
@@ -37,6 +38,7 @@ ow_security.init(resource, ENDPOINT + "/v1/logs")
 
 app = Flask(__name__)
 FlaskInstrumentor().instrument_app(app)
+ow_payload.flask_install(app)
 USERS = {"alice": "correct-horse"}
 
 

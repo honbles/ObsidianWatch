@@ -50,6 +50,12 @@ export default function AppServices() {
       <input type="checkbox" checked={!!picked[s.id]} onClick={e => e.stopPropagation()} onChange={e => setPicked(p => ({ ...p, [s.id]: e.target.checked }))} />) }] : []),
     { key: 'name', label: 'Service', render: s => <span className="text-siem-text font-medium">{s.name}</span>, sort: s => s.name },
     { key: 'environment', label: 'Env', sort: s => s.environment },
+    { key: 'runs_on', label: 'Runs on', render: s => {
+      const c = s.containers || [], im = s.images || [], u = s.units || [], h = s.hosts || []
+      if (c.length) return <span className="text-xs" title={im.join(', ')}><span className="font-mono">{c.slice(0, 2).join(', ')}{c.length > 2 ? ` +${c.length - 2}` : ''}</span>{im.length ? <span className="text-siem-muted"> {im[0].split('/').pop()}</span> : null}</span>
+      if (u.length) return <span className="text-xs font-mono" title={h.join(', ')}>{u.slice(0, 2).join(', ')}</span>
+      return <span className="text-xs text-siem-muted">{h.length ? `host ${h.slice(0, 2).join(', ')}` : '-'}</span>
+    }, sort: s => (s.containers || [])[0] || (s.units || [])[0] || '' },
     { key: 'tier', label: 'Tier', render: s => <AppTierBadge tier={s.tier} />, sort: s => s.tier, width: 60 },
     { key: 'exposure', label: 'Exposure', render: s => <AppExposureBadge exposure={s.settings.exposure} settings={s.settings} />, sort: s => s.settings.exposure },
     { key: 'criticality', label: 'Criticality', render: s => <AppCriticalityBadge criticality={s.settings.criticality} />, sort: s => s.settings.criticality },

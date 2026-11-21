@@ -34,6 +34,9 @@ In JavaScript the exception type recorded is the error's `name`, which defaults 
 ## 4. Security helper
 Copy `samples/app/node/ow-security.js`, call `init(resource, 'http://127.0.0.1:4318/v1/logs')` once, then for example `security.login('failure', { user, client: req.socket.remoteAddress, route: '/login' })`.
 
+## 5. Request fields (optional)
+Copy `samples/app/node/ow-payload.js`. Pass `requestHook: payload.requestHook` to `HttpInstrumentation` and add `app.use(payload.middleware())` after `express.json()`. The helper gives the agent the parsed body as one span attribute; nested fields arrive as `address.zip`, arrays as `items[].sku`. The agent forwards field names for every route, and values only after an admin reviews that route (Routes tab, Review). Fields on the deny list, and values that look like credentials, are never forwarded. Multipart and binary bodies are skipped. This needs the agent from this build or later.
+
 ## Run the sample
 ```
 cd samples/app/node && npm install
@@ -45,7 +48,7 @@ python3 ../attack_sim.py --base http://127.0.0.1:5002
 In the console open **Applications, Services**. Within about a minute you should see the service, its environment, and each route as a **template** (for example `/orders/{id}`), never the raw URL. The instance should say **verified** with the process executable. If it says **asserted**, the agent could not match the sender to a local process (container with its own network namespace, or an agent without the required privilege): use the Unix socket or run the agent in the host pid namespace.
 
 ## What is never sent
-Request and response bodies, query strings, headers and parameter values. Only route templates, status codes, timings, exception type names and the security-event fields below. Identifiers you pass to the helper (user, object id) are hashed by the agent before they leave the host.
+Headers, response bodies, and parameter or body-field values from any route an admin has not reviewed. Only the parameter and field names are kept, so the console can show which parameters a route takes. Only route templates, status codes, timings, exception type names and the security-event fields below. Identifiers you pass to the helper (user, object id) are hashed by the agent before they leave the host.
 
 ## Security helper (optional)
 The helper emits events the rules read: `auth.login`, `auth.mfa`, `authz.deny`, `input.rejected`, `ratelimit.hit`, `data.access`, `data.export`, `admin.action`, `session.anomaly`. Call it where your code already makes the decision (login result, validation rejection, rate limiter). It never sends bodies or parameter values. Without it you still get traces, route health and exception-based rules; with it you get login-failure and rejection signals that do not depend on framework error types.

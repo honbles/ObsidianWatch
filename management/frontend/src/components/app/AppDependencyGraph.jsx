@@ -13,7 +13,8 @@ export default function AppDependencyGraph({ service, edges, loading, error }) {
     const ls = []
     for (const e of edges || []) {
       const id = `${e.dst_kind}:${e.dst_name}`
-      if (!ns.find(n => n.id === id)) ns.push({ id, label: e.dst_name, kind: e.dst_kind, isNew: e.new })
+      const linked = e.resolved_service_name // a local port that a discovered service listens on
+      if (!ns.find(n => n.id === id)) ns.push({ id, label: linked ? `${linked} (${e.dst_name})` : e.dst_name, kind: linked ? 'service' : e.dst_kind, isNew: e.new })
       const c = e.range_calls ?? e.calls, er = e.range_errors ?? e.errors
       ls.push({ source: centre, target: id, weight: c, error: c > 0 && er / c > 0.05 })
     }
@@ -23,7 +24,7 @@ export default function AppDependencyGraph({ service, edges, loading, error }) {
 
   const cols = [
     { key: 'dst_kind', label: 'Kind', width: 90 },
-    { key: 'dst_name', label: 'Destination', render: e => <span className="font-mono text-xs">{e.dst_name}</span> },
+    { key: 'dst_name', label: 'Destination', render: e => <span className="font-mono text-xs">{e.resolved_service_name ? <><span className="text-siem-accent">{e.resolved_service_name}</span> <span className="text-siem-muted">{e.dst_name}</span></> : e.dst_name}</span> },
     { key: 'range_calls', label: 'Calls (range)', align: 'right', render: e => appInt(e.range_calls), sort: e => e.range_calls },
     { key: 'range_errors', label: 'Errors (range)', align: 'right', render: e => <span className={e.range_errors ? 'text-red-300' : ''}>{appInt(e.range_errors)}</span>, sort: e => e.range_errors },
     { key: 'calls', label: 'Total calls', align: 'right', render: e => <span className="text-siem-muted">{appInt(e.calls)}</span>, sort: e => e.calls },

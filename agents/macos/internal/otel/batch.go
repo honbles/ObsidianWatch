@@ -41,6 +41,30 @@ type BatchRoute struct {
 	DurBuckets  []int64   `json:"duration_buckets"`
 }
 
+// BatchParam counts one parameter NAME seen on a route since the last flush. Values are never sent.
+type BatchParam struct {
+	Service     string `json:"service"`
+	Environment string `json:"environment"`
+	Route       string `json:"route"`
+	Method      string `json:"method"`
+	Name        string `json:"name"`
+	Count       int64  `json:"count"`
+}
+
+// BatchPayload is one sampled request's allowed parameters from a route whose parameters were reviewed.
+// Only parameters the admin left unmasked appear in Params; every other name is listed in Withheld.
+type BatchPayload struct {
+	Service     string            `json:"service"`
+	Environment string            `json:"environment"`
+	Route       string            `json:"route"`
+	Method      string            `json:"method"`
+	Time        time.Time         `json:"time"`
+	Status      int               `json:"status"`
+	TraceID     string            `json:"trace_id,omitempty"`
+	Params      map[string]string `json:"params"`
+	Withheld    []string          `json:"withheld,omitempty"`
+}
+
 type BatchEdge struct {
 	Service     string `json:"service"`
 	Environment string `json:"environment"`
@@ -98,12 +122,14 @@ type Batch struct {
 	Edges     []BatchEdge     `json:"edges"`
 	Traces    []BatchTrace    `json:"traces"`
 	Clients   []BatchClient   `json:"clients"`
+	Params    []BatchParam    `json:"params,omitempty"`
+	Payloads  []BatchPayload  `json:"payloads,omitempty"`
 	Notes     []BatchNote     `json:"notes"`
 }
 
 // Empty reports whether the batch carries nothing.
 func (b *Batch) Empty() bool {
-	return len(b.Instances)+len(b.Routes)+len(b.Edges)+len(b.Traces)+len(b.Clients)+len(b.Notes) == 0
+	return len(b.Instances)+len(b.Routes)+len(b.Edges)+len(b.Traces)+len(b.Clients)+len(b.Params)+len(b.Payloads)+len(b.Notes) == 0
 }
 
 // Limits the backend enforces per batch (keep in step with app_batch.go).
@@ -113,6 +139,8 @@ const (
 	BatchMaxEdges     = 500
 	BatchMaxTraces    = 50
 	BatchMaxClients   = 3000
+	BatchMaxParams    = 5000
+	BatchMaxPayloads  = 500
 )
 
 // Split cuts a batch into pieces that each respect the backend's per-batch caps.
@@ -155,6 +183,18 @@ func (b *Batch) Split() []*Batch {
 			fresh()
 		}
 		cur().Clients = append(cur().Clients, v)
+	}
+	for _, v := range b.Params {
+		if c := cur(); len(c.Params) >= BatchMaxParams {
+			fresh()
+		}
+		cur().Params = append(cur().Params, v)
+	}
+	for _, v := range b.Payloads {
+		if c := cur(); len(c.Payloads) >= BatchMaxPayloads {
+			fresh()
+		}
+		cur().Payloads = append(cur().Payloads, v)
 	}
 	if len(b.Notes) > 0 {
 		cur().Notes = append(cur().Notes, b.Notes...)

@@ -416,8 +416,8 @@ func appHandleServiceRuntime(db, backendDB *store.DB) http.HandlerFunc {
 		}
 		ctx := r.Context()
 		irows, err := idb.QueryContext(ctx, `
-			SELECT id, agent_id, host, pid, container_id, listen, instrumented, identity, attrs->>'sensor', attrs->>'exe', attrs->>'unit', attrs->>'container_name', attrs->>'image', last_seen, stopped_at IS NOT NULL
-			FROM service_instances WHERE service_id = $1 AND last_seen > $2 ORDER BY last_seen DESC LIMIT 200`, id, from.Add(-7*24*time.Hour))
+			SELECT id, agent_id, host, pid, container_id, listen, instrumented, identity, COALESCE(NULLIF(i.attrs->>'sensor',''), (SELECT x.attrs->>'sensor' FROM service_instances x WHERE x.agent_id = i.agent_id AND COALESCE(x.attrs->>'sensor','') <> '' ORDER BY x.last_seen DESC LIMIT 1)), attrs->>'exe', attrs->>'unit', attrs->>'container_name', attrs->>'image', last_seen, stopped_at IS NOT NULL
+			FROM service_instances i WHERE service_id = $1 AND last_seen > $2 ORDER BY last_seen DESC LIMIT 200`, id, from.Add(-7*24*time.Hour))
 		if err != nil {
 			appQueryFailed(w, "runtime instances", id, err)
 			return
@@ -487,6 +487,7 @@ func appHandleServiceRuntime(db, backendDB *store.DB) http.HandlerFunc {
 				FROM events
 				WHERE agent_id = ANY($1) AND time >= $2 AND time < $3 AND event_type IN ('process','network','file')
 				  AND ($4 = '' OR event_type = $4)
+				  AND NOT (event_type = 'network' AND dst_port IN (4317, 4318) AND split_part(dst_ip::text, '/', 1) IN ('127.0.0.1', '::1')) 
 				  AND (pid = ANY($5) OR ppid = ANY($5)
 				       OR EXISTS (SELECT 1 FROM unnest($5::bigint[]) p WHERE raw->'proc'->'ancestors' @> jsonb_build_array(jsonb_build_object('pid', p))))
 				ORDER BY time DESC LIMIT $6`, pq.Array(agentList), from, to, typ, pq.Array(pids), limit)

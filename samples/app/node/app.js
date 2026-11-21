@@ -14,6 +14,7 @@ const { ExpressInstrumentation } = require('@opentelemetry/instrumentation-expre
 const { Resource } = require('@opentelemetry/resources')
 const { trace } = require('@opentelemetry/api')
 const security = require('./ow-security')
+const payload = require('./ow-payload')
 
 const ENDPOINT = process.env.OTEL_EXPORTER_OTLP_ENDPOINT || 'http://127.0.0.1:4318'
 const resource = new Resource({
@@ -24,7 +25,7 @@ const resource = new Resource({
 const sdk = new NodeSDK({
   resource,
   traceExporter: new OTLPTraceExporter({ url: ENDPOINT + '/v1/traces' }),
-  instrumentations: [new HttpInstrumentation(), new ExpressInstrumentation()],
+  instrumentations: [new HttpInstrumentation({ requestHook: payload.requestHook }), new ExpressInstrumentation()],
 })
 sdk.start()
 security.init(resource, ENDPOINT + '/v1/logs')
@@ -33,6 +34,7 @@ const express = require('express')
 const { execFile } = require('child_process')
 const app = express()
 app.use(express.json())
+app.use(payload.middleware())
 const USERS = { alice: 'correct-horse' }
 
 class SqlSyntaxError extends Error { constructor(m) { super(m); this.name = 'SqlSyntaxError' } } // JS records err.name as the exception type, so set it
