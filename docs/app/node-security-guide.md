@@ -428,7 +428,7 @@ Not captured today: response bodies, and request headers.
 | APP-H01..H11 host rules | level 0 | shell from a service process, outbound tools, new web-directory scripts, new destinations, credential reads |
 | APP-X02 | levels 0 and 1 | a shell from the service within 15 minutes of an injection alert or 5xx spike: Critical |
 
-All rules start in **observe** mode: alerts are raised at Info until an administrator promotes the rule. Severity then rises with exposure and criticality, and is capped at Medium while the telemetry identity is only **asserted**. Rules and allowlists are tuned per service. See `rules.md`.
+All rules start in **observe** mode: alerts are raised at Info until an administrator promotes the rule. Severity then rises with exposure and criticality, and is capped at Medium while the telemetry identity is only **asserted**. Rules and allowlists are tuned per service. See the platform guide (`platform-guide.md`), section 5.
 
 ## 9. Other frameworks
 
@@ -454,6 +454,10 @@ The application and the agent share a loopback only when they share a network na
 | Query-string and body field **names** | yes |
 | Field **values** | only for reviewed routes and unmasked fields, never credential-like names or values |
 | Injection signature class (`param.sql-injection`) | yes, as a label; the value does not |
+| Where a route's time goes: per route, the slowest downstream calls as a kind (database, HTTP, queue), a target (`postgresql`, `payments`) and a span-name template with ids and numbers replaced by `?` | yes, at most 20 per route per flush |
+| Database calls: system, operation (`SELECT`) and table names, with counts, errors and timings | yes, at most 200 distinct per service per flush |
+| Database statement | **never raw**. Off by default. When an admin sets the service to "statement fingerprints", the agent strips every literal first (strings, numbers, `IN` lists, comments) and sends only that shape, up to 512 bytes, such as `select * from users where id = ?` |
+| Span self time and the N+1 flag | yes, numbers and a flag |
 | Request headers, response bodies, raw URLs | never |
 | User, session, object identifiers from the security helper | hashed by the agent first |
 | Client address | per the service's storage mode |

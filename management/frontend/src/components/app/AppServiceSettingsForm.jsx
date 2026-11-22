@@ -29,7 +29,7 @@ export default function AppServiceSettingsForm({ service, requests, onSaved, com
     export_routes: lines(s0.export_routes), public_routes: lines(s0.public_routes),
     latency_target_ms: s0.latency_target_ms ?? '', error_budget_pct: s0.error_budget_pct ?? '',
     maintenance: (s0.maintenance || []).map(m => ({ start: toLocal(m.start), end: toLocal(m.end), reason: m.reason || '' })),
-    store_client_ip: s0.store_client_ip, cleartext_users: !!s0.cleartext_users, reset_learning: false,
+    store_client_ip: s0.store_client_ip, cleartext_users: !!s0.cleartext_users, db_statement_mode: s0.db_statement_mode || 'off', reset_learning: false,
   }))
   const [state, setState] = useState({ saving: false, error: '', ok: false })
   const set = (k) => (e) => setF(v => ({ ...v, [k]: e.target.type === 'checkbox' ? e.target.checked : e.target.value }))
@@ -46,7 +46,7 @@ export default function AppServiceSettingsForm({ service, requests, onSaved, com
         latency_target_ms: f.latency_target_ms === '' ? null : Number(f.latency_target_ms),
         error_budget_pct: f.error_budget_pct === '' ? null : Number(f.error_budget_pct),
         maintenance: f.maintenance.filter(m => m.start && m.end).map(m => ({ start: new Date(m.start).toISOString(), end: new Date(m.end).toISOString(), reason: m.reason })),
-        store_client_ip: f.store_client_ip, cleartext_users: f.cleartext_users,
+        store_client_ip: f.store_client_ip, cleartext_users: f.cleartext_users, db_statement_mode: f.db_statement_mode,
         learning_started: s0.learning_started || null, reset_learning: f.reset_learning,
       }
       const res = await appApi.saveSettings(service.id, body)
@@ -100,6 +100,14 @@ export default function AppServiceSettingsForm({ service, requests, onSaved, com
       <label className="flex items-start gap-2 text-xs text-siem-muted">
         <input type="checkbox" checked={f.cleartext_users} onChange={set('cleartext_users')} disabled={dis} />
         <span><b className="text-siem-text">Show user identifiers in clear text</b> - off by default (identifiers are hashed). Applied by agents from their build configuration.</span>
+      </label>
+
+      <label className="flex items-start gap-2 text-xs text-siem-muted">
+        <select className="bg-siem-surface2 border border-siem-border rounded px-1.5 py-1 text-siem-text" value={f.db_statement_mode} onChange={set('db_statement_mode')} disabled={dis}>
+          <option value="off">Database: names only</option>
+          <option value="fingerprint">Database: statement fingerprints</option>
+        </select>
+        <span>Names only sends the operation and table (SELECT, users). Fingerprints also send the statement with every value removed on the host, so <span className="font-mono">WHERE id = 5</span> becomes <span className="font-mono">where id = ?</span>, which lets slow queries be told apart. The agent applies the change within 5 minutes.</span>
       </label>
 
       <div className="rounded-lg border border-siem-border p-3 text-xs flex items-center justify-between gap-3 flex-wrap">

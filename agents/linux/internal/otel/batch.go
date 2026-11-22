@@ -128,12 +128,17 @@ type Batch struct {
 	Clients   []BatchClient   `json:"clients"`
 	Params    []BatchParam    `json:"params,omitempty"`
 	Payloads  []BatchPayload  `json:"payloads,omitempty"`
+	Children  []BatchChild    `json:"children,omitempty"`
+	Queries   []BatchQuery    `json:"queries,omitempty"`
+	NPlusOne  []BatchNPlusOne `json:"n_plus_one,omitempty"`
+	// SchemaVersion is 2 from the release that adds children, queries and n_plus_one. An older agent omits it.
+	SchemaVersion int `json:"schema_version,omitempty"`
 	Notes     []BatchNote     `json:"notes"`
 }
 
 // Empty reports whether the batch carries nothing.
 func (b *Batch) Empty() bool {
-	return len(b.Instances)+len(b.Routes)+len(b.Edges)+len(b.Traces)+len(b.Clients)+len(b.Params)+len(b.Payloads)+len(b.Notes) == 0
+	return len(b.Instances)+len(b.Routes)+len(b.Edges)+len(b.Traces)+len(b.Clients)+len(b.Params)+len(b.Payloads)+len(b.Children)+len(b.Queries)+len(b.NPlusOne)+len(b.Notes) == 0
 }
 
 // Limits the backend enforces per batch (keep in step with app_batch.go).

@@ -36,6 +36,10 @@ const (
 	appMaxClients       = 3000
 	appMaxParams        = 5000
 	appMaxPayloads      = 500
+	appMaxChildren      = 5000
+	appMaxQueries       = 3000
+	appMaxNPlusOne      = 500
+	appMaxQueryText     = 512
 	appMaxPayloadParams = 50
 	appMaxPayloadValue  = 256
 	appMaxParamNameLen  = 64
@@ -401,6 +405,64 @@ func appSanitizeBatch(b *store.AppBatch, now time.Time) (dropped int) {
 	}
 	b.Payloads = pls
 
+	chs := b.Children[:0]
+	for _, c := range b.Children {
+		c.Service, c.Environment = appClean(c.Service, appMaxNameRunes), appEnv(c.Environment)
+		c.Method = strings.ToUpper(appClean(c.Method, 8))
+		c.Kind = appClean(c.Kind, 16)
+		c.Minute = c.Minute.UTC().Truncate(time.Minute)
+		if !appValidID(c.Service, appMaxNameRunes) || !appMethods[c.Method] || !appChildKinds[c.Kind] ||
+			c.Minute.IsZero() || c.Minute.After(now.Add(appMaxFutureSkew)) || c.Minute.Before(now.Add(-appMaxStatAge)) ||
+			c.Calls < 0 || c.Calls > appMaxStatRequests || c.TotalMs < 0 || c.TotalMs > 1e12 || c.TotalMs != c.TotalMs {
+			dropped++
+			continue
+		}
+		c.Route = appRouteTemplate(c.Route)
+		c.Target, c.Name = appClean(c.Target, 128), appClean(c.Name, 80)
+		chs = append(chs, c)
+	}
+	b.Children = chs
+
+	qs := b.Queries[:0]
+	for _, q := range b.Queries {
+		q.Service, q.Environment = appClean(q.Service, appMaxNameRunes), appEnv(q.Environment)
+		q.Minute = q.Minute.UTC().Truncate(time.Minute)
+		if !appValidID(q.Service, appMaxNameRunes) || q.Minute.IsZero() || q.Minute.After(now.Add(appMaxFutureSkew)) ||
+			q.Minute.Before(now.Add(-appMaxStatAge)) || q.Calls < 0 || q.Calls > appMaxStatRequests || q.Errors < 0 ||
+			q.TotalMs < 0 || q.TotalMs > 1e12 || q.TotalMs != q.TotalMs {
+			dropped++
+			continue
+		}
+		q.System, q.Operation, q.Table = appClean(q.System, 64), appClean(q.Operation, 32), appClean(q.Table, 64)
+		if q.System == "" {
+			dropped++
+			continue
+		}
+		q.Fingerprint = appClean(q.Fingerprint, 32)
+		q.Text = appClean(q.Text, appMaxQueryText)
+		if q.Fingerprint == "" || appLooksLikeLiteral(q.Text) { // text without a fingerprint, or with a literal left in, is never stored
+			q.Text = ""
+		}
+		if len(q.DurBuckets) > 12 {
+			q.DurBuckets = q.DurBuckets[:12]
+		}
+		qs = append(qs, q)
+	}
+	b.Queries = qs
+
+	n1s := b.NPlusOne[:0]
+	for _, n := range b.NPlusOne {
+		n.Service, n.Environment = appClean(n.Service, appMaxNameRunes), appEnv(n.Environment)
+		n.Method = strings.ToUpper(appClean(n.Method, 8))
+		if !appValidID(n.Service, appMaxNameRunes) || !appMethods[n.Method] || n.Count < 0 || n.Count > appMaxStatRequests {
+			dropped++
+			continue
+		}
+		n.Route = appRouteTemplate(n.Route)
+		n1s = append(n1s, n)
+	}
+	b.NPlusOne = n1s
+
 	nts := b.Notes[:0]
 	for _, n := range b.Notes {
 		n.Service, n.Environment = appClean(n.Service, appMaxNameRunes), appEnv(n.Environment)
@@ -507,7 +569,7 @@ func appHandleBatch(db appBatchStore, logger *slog.Logger) http.HandlerFunc {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "missing or invalid agent_id"})
 			return
 		}
-		if len(b.Instances) > appMaxInstances || len(b.Routes) > appMaxRoutes || len(b.Edges) > appMaxEdges || len(b.Traces) > appMaxTraces || len(b.Clients) > appMaxClients || len(b.Params) > appMaxParams || len(b.Payloads) > appMaxPayloads {
+		if len(b.Instances) > appMaxInstances || len(b.Routes) > appMaxRoutes || len(b.Edges) > appMaxEdges || len(b.Traces) > appMaxTraces || len(b.Clients) > appMaxClients || len(b.Params) > appMaxParams || len(b.Payloads) > appMaxPayloads || len(b.Children) > appMaxChildren || len(b.Queries) > appMaxQueries || len(b.NPlusOne) > appMaxNPlusOne {
 			writeJSON(w, http.StatusRequestEntityTooLarge, map[string]string{"error": "batch too large"})
 			return
 		}
@@ -531,7 +593,7 @@ func appHandleBatch(db appBatchStore, logger *slog.Logger) http.HandlerFunc {
 			return
 		}
 
-		items := len(b.Instances) + len(b.Routes) + len(b.Edges) + len(b.Traces) + len(b.Clients) + len(b.Params) + len(b.Payloads)
+		items := len(b.Instances) + len(b.Routes) + len(b.Edges) + len(b.Traces) + len(b.Clients) + len(b.Params) + len(b.Payloads) + len(b.Children) + len(b.Queries) + len(b.NPlusOne)
 		if items == 0 {
 			writeJSON(w, http.StatusOK, map[string]any{"accepted": 0, "dropped": 0})
 			return
@@ -560,4 +622,25 @@ func appHandleBatch(db appBatchStore, logger *slog.Logger) http.HandlerFunc {
 			"instances": res.Instances, "routes": res.Routes, "edges": res.Edges, "traces": res.Traces, "clients": res.Clients, "params": res.Params, "payloads": res.Payloads, "payloads_rejected": res.PayloadsRejected,
 		})
 	}
+}
+
+var appChildKinds = map[string]bool{"db": true, "http": true, "queue": true, "client": true}
+
+// appLooksLikeLiteral reports text that still holds a quoted string or a long number, so a fingerprint that
+// the agent failed to clean is dropped here rather than stored.
+func appLooksLikeLiteral(t string) bool {
+	if strings.Contains(t, "'") {
+		return true
+	}
+	run := 0
+	for _, r := range t {
+		if r >= '0' && r <= '9' {
+			if run++; run >= 6 {
+				return true
+			}
+		} else {
+			run = 0
+		}
+	}
+	return false
 }

@@ -259,6 +259,9 @@ type appRouteRow struct {
 	Params        []appRouteParam   `json:"params"`
 	PayloadReview string            `json:"payload_review"` // "" (no parameters) | needs_review | new_fields | reviewed
 	Policy        *appPayloadPolicy `json:"policy,omitempty"`
+	// Slowest downstream calls (top 3 by total time in the range) and the N+1 patterns the agent found.
+	TopChildren   []appChildRow `json:"top_children,omitempty"`
+	NPlusOneCount int64         `json:"n_plus_one_count,omitempty"`
 }
 
 type appRouteParam struct {
@@ -452,6 +455,7 @@ func appHandleRoutes(db, backendDB *store.DB) http.HandlerFunc {
 				}
 			}
 		}
+		appAttachDiagnosis(r.Context(), idb, id, from, to, list, idx)
 		sort.SliceStable(list, func(i, j int) bool { return list[i].Stats.Calls > list[j].Stats.Calls })
 		writeJSON(w, http.StatusOK, map[string]any{"from": from, "to": to, "routes": list})
 	}

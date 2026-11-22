@@ -13,6 +13,7 @@ import { AppTierBadge, AppExposureBadge, AppCriticalityBadge } from '../../compo
 import { appInt, appPct, appMs, appRel, appLearning, appLearningText, APP_LEARN_REQUESTS } from '../../components/app/appFormat'
 import AppTabRoutes from './tabs/AppTabRoutes'
 import AppTabInstances from './tabs/AppTabInstances'
+import AppTabDatabase from './tabs/AppTabDatabase'
 import AppTabRuntime from './tabs/AppTabRuntime'
 import AppTabEvents from './tabs/AppTabEvents'
 import AppTabSecurity from './tabs/AppTabSecurity'
@@ -22,7 +23,7 @@ import AppTabAlerts from './tabs/AppTabAlerts'
 export const appPath = '/applications/services/:key'
 
 const TABS = [
-  ['overview', 'Overview'], ['routes', 'Routes'], ['dependencies', 'Dependencies'], ['instances', 'Instances and hosts'],
+  ['overview', 'Overview'], ['routes', 'Routes'], ['dependencies', 'Dependencies'], ['database', 'Database'], ['instances', 'Instances and hosts'],
   ['events', 'Events'], ['runtime', 'Runtime'], ['security', 'Security'], ['traces', 'Traces'], ['alerts', 'Alerts'], ['settings', 'Settings'],
 ]
 
@@ -134,6 +135,7 @@ export default function AppServiceDetail() {
 
           {tab === 'routes' && <AppTabRoutes service={full} range={range} focus={sp.get('route') || ''} />}
           {tab === 'dependencies' && <AppDependencyGraph service={full} edges={edges.data?.edges} loading={edges.loading} error={edges.error} />}
+          {tab === 'database' && <AppTabDatabase service={full} range={range} />}
           {tab === 'instances' && <AppTabInstances detail={detail.data} loading={detail.loading} error={detail.error} highlight={sp.get('instance')} />}
           {tab === 'events' && <AppTabEvents service={full} range={range} />}
           {tab === 'runtime' && <AppTabRuntime service={full} range={range} />}

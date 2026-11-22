@@ -76,8 +76,8 @@ func TestAppServicesAPIIntegration(t *testing.T) {
 	for _, f := range []string{
 		"../../../../backend/internal/store/migrations/002_agents.sql",
 		"../../../../backend/internal/store/migrations/030_app_services.sql", "../../../../backend/internal/store/migrations/031_app_edge_client_stats.sql",
-		"../store/migrations/060_app_service_settings.sql",
-		"../store/migrations/060_app_service_settings.sql", // twice: idempotent
+		"../store/migrations/060_app_service_settings.sql", "../store/migrations/064_app_db_statement_mode.sql",
+		"../store/migrations/060_app_service_settings.sql", "../store/migrations/064_app_db_statement_mode.sql", // twice: idempotent
 	} {
 		b, err := os.ReadFile(f)
 		if err != nil {

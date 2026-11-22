@@ -28,6 +28,8 @@ type RemoteService struct {
 	StoreClientIP   string `json:"store_client_ip"`
 	CleartextUsers  bool   `json:"cleartext_users"`
 	LatencyTargetMs int    `json:"latency_target_ms"`
+	// DBStatementMode is "off" (default) or "fingerprint": whether a literal-free statement fingerprint is forwarded.
+	DBStatementMode string `json:"db_statement_mode,omitempty"`
 	// PolicyOnly marks an entry that only carries payload routes: the service has no saved settings, so the
 	// privacy fields of this entry are not an override and are ignored.
 	PolicyOnly bool `json:"policy_only,omitempty"`
@@ -93,6 +95,9 @@ func (l *liveSettings) set(list []RemoteService, now time.Time) {
 		}
 		if r.LatencyTargetMs < 0 {
 			r.LatencyTargetMs = 0
+		}
+		if r.DBStatementMode != "fingerprint" {
+			r.DBStatementMode = "off"
 		}
 		if r.PolicyOnly {
 			continue

@@ -32,6 +32,8 @@ type AggOptions struct {
 	PayloadFn func(service, env, route, method string) (allow map[string]bool, reviewed bool)
 	// SlowFn returns a per-service slow-trace threshold in ms; <= 0 means use SlowMs.
 	SlowFn func(service, env string) int
+	// DBStmtFn returns a service's db_statement_mode: "off" (default) or "fingerprint".
+	DBStmtFn func(service, env string) string
 }
 
 func (o *AggOptions) defaults() {
@@ -175,6 +177,7 @@ type Aggregator struct {
 	order  []string
 	sec    map[string]time.Time
 	kept   []BatchTrace
+	dg     *diagState
 	Stats  AggStats
 }
 
@@ -637,6 +640,8 @@ func (a *Aggregator) slowMs(svc svcKey) int {
 	return a.opt.SlowMs
 }
 
+func round1(v float64) float64 { return float64(int64(v*10+0.5)) / 10 }
+
 func baselineHit(id string, pct float64) bool {
 	h := fnv.New32a()
 	h.Write([]byte(id))
@@ -658,6 +663,10 @@ type traceSpanOut struct {
 	DB       string  `json:"db,omitempty"`
 	Peer     string  `json:"peer,omitempty"`
 	Exc      string  `json:"exception,omitempty"`
+	SelfMs   float64 `json:"self_ms"`
+	DBOp     string  `json:"db_op,omitempty"`
+	DBTable  string  `json:"db_table,omitempty"`
+	N1       bool    `json:"n1,omitempty"` // part of an N+1 pattern
 }
 
 // finishTrace decides whether a completed trace is kept and builds its record.
@@ -666,6 +675,7 @@ func (a *Aggregator) finishTrace(t *openTrace) {
 		return
 	}
 	sort.Slice(t.spans, func(i, j int) bool { return t.spans[i].StartNano < t.spans[j].StartNano })
+	self, n1 := a.diagnoseTrace(t, a.now())
 	first := t.spans[0]
 	minStart, maxEnd := first.StartNano, uint64(0)
 	var root *Span
@@ -715,7 +725,8 @@ func (a *Aggregator) finishTrace(t *openTrace) {
 	for _, s := range t.spans {
 		o := traceSpanOut{SpanID: s.SpanID, ParentID: s.ParentID, Name: s.Name, Kind: s.Kind, Service: s.Res.Service,
 			StartMs: float64(s.StartNano-minStart) / 1e6, DurMs: s.DurationMs(), Route: s.Route, Method: s.Method,
-			Code: s.HTTPStatus, DB: s.DBSystem, Peer: s.PeerService, Exc: s.ExcType}
+			Code: s.HTTPStatus, DB: s.DBSystem, Peer: s.PeerService, Exc: s.ExcType,
+			SelfMs: round1(self[s.SpanID]), DBOp: s.DBOp, DBTable: s.DBTable, N1: n1[s.SpanID]}
 		if s.IsError() {
 			o.Status = "error"
 		}
@@ -862,6 +873,8 @@ func (a *Aggregator) Flush(agentID string, final bool) *Batch {
 		delete(a.ed, k)
 	}
 	b.Traces, a.kept = a.kept, nil
+	a.drainDiag(b)
+	b.SchemaVersion = 2
 
 	notes := map[svcKey]*BatchNote{}
 	note := func(s svcKey) *BatchNote {

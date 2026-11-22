@@ -81,7 +81,7 @@ func TestRegistry(t *testing.T) {
 	}
 }
 
-// The raw.proc JSON is a contract with the backend rules (docs/app/rules.md): the key names must not drift.
+// The raw.proc JSON is a contract with the backend rules (docs/app/platform-guide.md): the key names must not drift.
 func TestRawProcContract(t *testing.T) {
 	o := &Options{AgentID: "a1", Hostname: "web-01"}
 	o.defaults()

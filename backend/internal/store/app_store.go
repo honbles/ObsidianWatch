@@ -129,7 +129,51 @@ type AppBatch struct {
 	Clients   []AppClientStat  `json:"clients"`
 	Params    []AppRouteParam  `json:"params"`
 	Payloads  []AppPayload     `json:"payloads"`
+	Children  []AppChild       `json:"children"`
+	Queries   []AppQuery       `json:"queries"`
+	NPlusOne  []AppNPlusOne    `json:"n_plus_one"`
 	Notes     []AppServiceNote `json:"notes"`
+	// SchemaVersion is 2 when the agent sends children, queries and n_plus_one; an older agent omits it.
+	SchemaVersion int `json:"schema_version"`
+}
+
+// AppChild is one slow-downstream aggregate for a route in a minute.
+type AppChild struct {
+	Service     string    `json:"service"`
+	Environment string    `json:"environment"`
+	Route       string    `json:"route"`
+	Method      string    `json:"method"`
+	Minute      time.Time `json:"minute"`
+	Kind        string    `json:"kind"`
+	Target      string    `json:"target"`
+	Name        string    `json:"name"`
+	Calls       int64     `json:"calls"`
+	TotalMs     float64   `json:"total_ms"`
+}
+
+// AppQuery is database calls grouped by operation, table and fingerprint for a minute.
+type AppQuery struct {
+	Service     string    `json:"service"`
+	Environment string    `json:"environment"`
+	Minute      time.Time `json:"minute"`
+	System      string    `json:"system"`
+	Operation   string    `json:"operation"`
+	Table       string    `json:"table"`
+	Fingerprint string    `json:"fingerprint"`
+	Text        string    `json:"text"`
+	Calls       int64     `json:"calls"`
+	Errors      int64     `json:"errors"`
+	TotalMs     float64   `json:"total_ms"`
+	DurBuckets  []int64   `json:"duration_buckets"`
+}
+
+// AppNPlusOne counts the N+1 patterns the agent found under a route.
+type AppNPlusOne struct {
+	Service     string `json:"service"`
+	Environment string `json:"environment"`
+	Route       string `json:"route"`
+	Method      string `json:"method"`
+	Count       int64  `json:"count"`
 }
 
 // AppRouteParam counts one request parameter NAME seen on a route since the agent's last flush.
@@ -180,7 +224,7 @@ type AppChange struct {
 
 // AppIngestResult summarises what a batch wrote.
 type AppIngestResult struct {
-	Instances, Routes, Edges, Traces, Clients, Params, Payloads, PayloadsRejected int
+	Instances, Routes, Edges, Traces, Clients, Params, Payloads, PayloadsRejected, Children, Queries int
 	Changes                                                                       []AppChange
 }
 
@@ -472,6 +516,55 @@ func (db *DB) AppIngestBatch(ctx context.Context, agentID, host string, b AppBat
 		res.Params++
 	}
 
+	for _, c := range b.Children {
+		sid, _, err := svc(c.Service, c.Environment, "otel", "")
+		if err != nil {
+			return res, fmt.Errorf("service: %w", err)
+		}
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO app_route_children (minute, service_id, route, method, kind, target, name, calls, total_ms)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+			ON CONFLICT (service_id, route, method, minute, kind, target, name) DO UPDATE SET
+			  calls = app_route_children.calls + EXCLUDED.calls, total_ms = app_route_children.total_ms + EXCLUDED.total_ms`,
+			c.Minute, sid, c.Route, c.Method, c.Kind, c.Target, c.Name, c.Calls, c.TotalMs); err != nil {
+			return res, fmt.Errorf("route children: %w", err)
+		}
+		res.Children++
+	}
+	for _, q := range b.Queries {
+		sid, _, err := svc(q.Service, q.Environment, "otel", "")
+		if err != nil {
+			return res, fmt.Errorf("service: %w", err)
+		}
+		hist, _ := json.Marshal(appPadHist(q.DurBuckets))
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO app_db_stats (minute, service_id, system, operation, tbl, fingerprint, text, calls, errors, total_ms, duration_buckets)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb)
+			ON CONFLICT (service_id, minute, system, operation, tbl, fingerprint) DO UPDATE SET
+			  calls = app_db_stats.calls + EXCLUDED.calls, errors = app_db_stats.errors + EXCLUDED.errors,
+			  total_ms = app_db_stats.total_ms + EXCLUDED.total_ms,
+			  text = CASE WHEN app_db_stats.text = '' THEN EXCLUDED.text ELSE app_db_stats.text END,
+			  duration_buckets = (SELECT COALESCE(jsonb_agg(
+			      COALESCE((app_db_stats.duration_buckets->>g.i)::bigint,0) + COALESCE((EXCLUDED.duration_buckets->>g.i)::bigint,0)
+			      ORDER BY g.i), '[]'::jsonb) FROM generate_series(0, 11) AS g(i))`,
+			q.Minute, sid, q.System, q.Operation, q.Table, q.Fingerprint, q.Text, q.Calls, q.Errors, q.TotalMs, string(hist)); err != nil {
+			return res, fmt.Errorf("db stats: %w", err)
+		}
+		res.Queries++
+	}
+	for _, n := range b.NPlusOne {
+		sid, _, err := svc(n.Service, n.Environment, "otel", "")
+		if err != nil {
+			return res, fmt.Errorf("service: %w", err)
+		}
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO app_route_n1 (minute, service_id, route, method, count) VALUES ($1,$2,$3,$4,$5)
+			ON CONFLICT (service_id, route, method, minute) DO UPDATE SET count = app_route_n1.count + EXCLUDED.count`,
+			now.Truncate(time.Minute), sid, n.Route, n.Method, n.Count); err != nil {
+			return res, fmt.Errorf("n+1: %w", err)
+		}
+	}
+
 	if len(b.Payloads) > 0 {
 		var havePolicy bool
 		_ = tx.QueryRowContext(ctx, `SELECT to_regclass('app_route_payload_policy') IS NOT NULL`).Scan(&havePolicy)
@@ -556,6 +649,7 @@ type AppRemoteService struct {
 	StoreClientIP   string `json:"store_client_ip"`
 	CleartextUsers  bool   `json:"cleartext_users"`
 	LatencyTargetMs int    `json:"latency_target_ms"`
+	DBStatementMode string `json:"db_statement_mode,omitempty"` // off | fingerprint
 	// PolicyOnly marks an entry that exists only to carry payload routes: the service has no saved settings,
 	// so the agent must not treat the privacy fields above as an override.
 	PolicyOnly bool                    `json:"policy_only,omitempty"`
@@ -591,10 +685,14 @@ func appPayloadAllow(reviewedJSON, maskedJSON []byte) map[string]bool {
 // AppRemoteConfig reads service_settings (created by the management migration; the two backends
 // share one database). A missing table means no settings yet, not an error.
 func (db *DB) AppRemoteConfig(ctx context.Context) ([]AppRemoteService, error) {
-	rows, err := db.QueryContext(ctx, `
-		SELECT s.name, s.environment, st.store_client_ip, st.cleartext_users, COALESCE(st.latency_target_ms, 0)
+	const q = `
+		SELECT s.name, s.environment, st.store_client_ip, st.cleartext_users, COALESCE(st.latency_target_ms, 0), %s
 		FROM service_settings st JOIN services s ON s.id = st.service_id
-		ORDER BY s.name, s.environment LIMIT 5000`)
+		ORDER BY s.name, s.environment LIMIT 5000`
+	rows, err := db.QueryContext(ctx, fmt.Sprintf(q, "COALESCE(st.db_statement_mode, 'off')"))
+	if pe, ok := err.(*pq.Error); ok && pe.Code == "42703" { // management migration 064 not applied yet
+		rows, err = db.QueryContext(ctx, fmt.Sprintf(q, "'off'"))
+	}
 	if err != nil {
 		if pe, ok := err.(*pq.Error); ok && pe.Code == "42P01" { // undefined_table
 			return db.appAddPayloadRoutes(ctx, []AppRemoteService{})
@@ -605,7 +703,7 @@ func (db *DB) AppRemoteConfig(ctx context.Context) ([]AppRemoteService, error) {
 	out := []AppRemoteService{}
 	for rows.Next() {
 		var r AppRemoteService
-		if err := rows.Scan(&r.Service, &r.Environment, &r.StoreClientIP, &r.CleartextUsers, &r.LatencyTargetMs); err != nil {
+		if err := rows.Scan(&r.Service, &r.Environment, &r.StoreClientIP, &r.CleartextUsers, &r.LatencyTargetMs, &r.DBStatementMode); err != nil {
 			return nil, err
 		}
 		out = append(out, r)
@@ -782,4 +880,11 @@ func appRouteOtherStyle(route string) string {
 		return route
 	}
 	return strings.Join(parts, "/")
+}
+
+// appPadHist returns exactly 12 histogram buckets.
+func appPadHist(h []int64) []int64 {
+	out := make([]int64, 12)
+	copy(out, h)
+	return out
 }

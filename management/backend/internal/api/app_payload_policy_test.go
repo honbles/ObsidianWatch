@@ -35,7 +35,7 @@ func TestAppPayloadPolicyIntegration(t *testing.T) {
 			t.Fatalf("%s: %v", f, err)
 		}
 	}
-	for _, f := range []string{"060_app_service_settings.sql", "063_app_route_payload_policy.sql"} {
+	for _, f := range []string{"060_app_service_settings.sql", "063_app_route_payload_policy.sql", "064_app_db_statement_mode.sql"} {
 		b, _ := os.ReadFile("../store/migrations/" + f)
 		if _, err := raw.Exec(string(b)); err != nil {
 			t.Fatalf("%s: %v", f, err)

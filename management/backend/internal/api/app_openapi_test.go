@@ -57,7 +57,7 @@ func TestAppOpenAPIDeclaredRoutesIntegration(t *testing.T) {
 		b, _ := os.ReadFile("../../../../backend/internal/store/migrations/" + f)
 		appMustExec(t, raw, string(b))
 	}
-	for _, f := range []string{"060_app_service_settings.sql", "063_app_route_payload_policy.sql"} {
+	for _, f := range []string{"060_app_service_settings.sql", "063_app_route_payload_policy.sql", "064_app_db_statement_mode.sql"} {
 		b, _ := os.ReadFile("../store/migrations/" + f)
 		appMustExec(t, raw, string(b))
 	}

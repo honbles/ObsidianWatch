@@ -56,6 +56,11 @@ type Span struct {
 	ClientAddr  string // client.address
 	PeerAddr    string // network.peer.address
 	DBSystem    string
+	DBOp        string // db.operation.name: a name such as SELECT, never a statement
+	DBTable     string // db.collection.name or db.sql.table: a name
+	// DBStmt is read only to build a literal-free fingerprint when the service allows it. It is held in memory with
+	// the open trace and never serialised, logged or forwarded.
+	DBStmt string
 	ServerAddr  string // server.address
 	ServerPort  int
 	PeerService string
@@ -111,6 +116,9 @@ var spanAllow = map[string]bool{
 	"http.client_ip": true, "net.peer.ip": true, "net.sock.peer.addr": true, "client.socket.address": true,
 	"db.system": true, "server.address": true, "server.port": true, "peer.service": true,
 	"messaging.system": true, "enduser.id": true, "exception.type": true,
+	// Names only (APM spec item 2). The statement attributes are read to fingerprint, never forwarded raw.
+	"db.operation.name": true, "db.operation": true, "db.collection.name": true, "db.sql.table": true,
+	"db.mongodb.collection": true, "db.statement": true, "db.query.text": true,
 	// Read only to extract parameter names; the value of these attributes is never stored or forwarded.
 	"url.query": true, "http.target": true, "http.url": true, "ow.request.body": true,
 }
@@ -203,6 +211,12 @@ func (s *Span) set(k string, v attrValue) {
 		}
 	case "db.system":
 		s.DBSystem = v.str()
+	case "db.operation.name", "db.operation":
+		s.DBOp = clipN(v.str(), 64)
+	case "db.collection.name", "db.sql.table", "db.mongodb.collection":
+		s.DBTable = clipN(v.str(), 64)
+	case "db.statement", "db.query.text":
+		s.DBStmt = clipN(v.str(), 4096)
 	case "server.address":
 		s.ServerAddr = v.str()
 	case "server.port":

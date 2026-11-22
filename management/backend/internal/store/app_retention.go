@@ -70,6 +70,17 @@ func (db *DB) AppPurge(ctx context.Context, now time.Time) (AppPurgeResult, erro
 	if err := exec(&out.ClientStats, `DELETE FROM app_client_stats WHERE minute < $1`, now.AddDate(0, 0, -cd)); err != nil {
 		return out, err
 	}
+	// Diagnosis aggregates (slowest children, database calls, N+1) are short-lived; the tables exist once the
+	// ingest migration that creates them has run.
+	var haveDiag bool
+	if err := db.QueryRowContext(ctx, `SELECT to_regclass('app_db_stats') IS NOT NULL`).Scan(&haveDiag); err == nil && haveDiag {
+		for _, t := range []string{"app_route_children", "app_db_stats", "app_route_n1"} {
+			var n int64
+			if err := exec(&n, `DELETE FROM `+t+` WHERE minute < $1`, now.AddDate(0, 0, -sd)); err != nil {
+				return out, err
+			}
+		}
+	}
 	// Sampled request parameters (payload capture) are short-lived; the table exists only once the ingest
 	// migration that creates it has run.
 	var have bool

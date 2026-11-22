@@ -237,3 +237,37 @@ func TestAppBatchParamNamesAreValidatedNotTrusted(t *testing.T) {
 		t.Fatalf("%+v", b.Params)
 	}
 }
+
+func TestAppSanitizeDiagnosis(t *testing.T) {
+	now := time.Now().UTC()
+	b := &store.AppBatch{
+		Children: []store.AppChild{
+			{Service: "api", Method: "get", Route: "/x", Minute: now, Kind: "db", Target: "pg", Name: "SELECT", Calls: 1, TotalMs: 5},
+			{Service: "api", Method: "GET", Route: "/x", Minute: now, Kind: "weird", Calls: 1},
+			{Service: "api", Method: "GET", Route: "/x", Minute: now, Kind: "db", Calls: -1},
+		},
+		Queries: []store.AppQuery{
+			{Service: "api", Minute: now, System: "pg", Operation: "SELECT", Table: "t", Fingerprint: "f", Text: "select * from t where id = ?", Calls: 1},
+			{Service: "api", Minute: now, System: "pg", Operation: "SELECT", Table: "t", Fingerprint: "g", Text: "select * from t where name = 'bob'", Calls: 1},
+			{Service: "api", Minute: now, System: "pg", Operation: "SELECT", Table: "t", Fingerprint: "h", Text: "select * from t where id = 1234567", Calls: 1},
+			{Service: "api", Minute: now, System: "pg", Operation: "SELECT", Table: "t", Text: "text without a fingerprint", Calls: 1},
+			{Service: "api", Minute: now, System: "", Calls: 1},
+		},
+		NPlusOne: []store.AppNPlusOne{{Service: "api", Method: "GET", Route: "/x", Count: 2}, {Service: "api", Method: "NOPE", Route: "/x", Count: 2}},
+	}
+	dropped := appSanitizeBatch(b, now)
+	if len(b.Children) != 1 || b.Children[0].Method != "GET" {
+		t.Fatalf("children: %+v", b.Children)
+	}
+	if len(b.Queries) != 4 || b.Queries[0].Text == "" {
+		t.Fatalf("queries: %+v", b.Queries)
+	}
+	for _, q := range b.Queries[1:] {
+		if q.Text != "" {
+			t.Fatalf("a statement with a literal, or without a fingerprint, was kept: %q", q.Text)
+		}
+	}
+	if len(b.NPlusOne) != 1 || dropped != 4 {
+		t.Fatalf("n+1 %d, dropped %d", len(b.NPlusOne), dropped)
+	}
+}

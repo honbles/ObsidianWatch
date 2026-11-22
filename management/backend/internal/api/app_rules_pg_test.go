@@ -40,7 +40,7 @@ func appPGSetup(t *testing.T) *appPGFx {
 		t.Fatal(err)
 	}
 	for _, f := range []string{"../../../../backend/internal/store/migrations/002_agents.sql", "../../../../backend/internal/store/migrations/030_app_services.sql",
-		"../../../../backend/internal/store/migrations/031_app_edge_client_stats.sql", "../store/migrations/060_app_service_settings.sql",
+		"../../../../backend/internal/store/migrations/031_app_edge_client_stats.sql", "../store/migrations/060_app_service_settings.sql", "../store/migrations/064_app_db_statement_mode.sql",
 		"../store/migrations/004_alerts.sql", "../store/migrations/010_alert_source_event.sql", "../store/migrations/014_alerts_dedup.sql",
 		"../store/migrations/017_ai_analysis_cache.sql", "../store/migrations/027_alert_occurrences.sql", "../store/migrations/040_foundation_alert_entities.sql", "../store/migrations/041_foundation_rule_settings.sql", "../store/migrations/062_alert_related_events.sql"} {
 		b, err := os.ReadFile(f)

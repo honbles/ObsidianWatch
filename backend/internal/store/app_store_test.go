@@ -467,3 +467,66 @@ func TestAppObservedParamMergesWithDeclared(t *testing.T) {
 		t.Fatalf("sources: %v", src)
 	}
 }
+
+func TestAppDiagnosisIngestAccumulates(t *testing.T) {
+	db := appTestDB(t)
+	ctx := context.Background()
+	if _, err := db.ExecContext(ctx, `INSERT INTO agents (id, hostname, os, version) VALUES ('a1','web-01','linux','1')`); err != nil {
+		t.Fatal(err)
+	}
+	b, err := os.ReadFile("migrations/036_app_diagnosis.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.ExecContext(ctx, string(b)); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC()
+	min := now.Truncate(time.Minute)
+	send := func() {
+		t.Helper()
+		_, err := db.AppIngestBatch(ctx, "a1", "web-01", AppBatch{
+			Children: []AppChild{{Service: "api", Environment: "prod", Route: "/x", Method: "GET", Minute: min, Kind: "db", Target: "postgresql", Name: "SELECT x", Calls: 2, TotalMs: 30}},
+			Queries: []AppQuery{{Service: "api", Environment: "prod", Minute: min, System: "postgresql", Operation: "SELECT", Table: "x", Fingerprint: "f1",
+				Text: "select * from x where id = ?", Calls: 2, Errors: 1, TotalMs: 30, DurBuckets: []int64{0, 0, 2}}},
+			NPlusOne: []AppNPlusOne{{Service: "api", Environment: "prod", Route: "/x", Method: "GET", Count: 1}},
+		}, now)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	send()
+	send()
+	var calls int64
+	var ms float64
+	_ = db.QueryRowContext(ctx, `SELECT calls, total_ms FROM app_route_children`).Scan(&calls, &ms)
+	if calls != 4 || ms != 60 {
+		t.Fatalf("children add up: %d %v", calls, ms)
+	}
+	var qc, qe int64
+	var hist, text string
+	_ = db.QueryRowContext(ctx, `SELECT calls, errors, duration_buckets::text, text FROM app_db_stats`).Scan(&qc, &qe, &hist, &text)
+	if qc != 4 || qe != 2 || hist != "[0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0]" || text == "" {
+		t.Fatalf("queries add up: %d %d %s %q", qc, qe, hist, text)
+	}
+	var n int64
+	_ = db.QueryRowContext(ctx, `SELECT count FROM app_route_n1`).Scan(&n)
+	if n != 2 {
+		t.Fatalf("n+1: %d", n)
+	}
+	// The management setting reaches the agent.
+	if _, err := db.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS service_settings (service_id BIGINT PRIMARY KEY, store_client_ip TEXT NOT NULL DEFAULT 'full', cleartext_users BOOLEAN NOT NULL DEFAULT FALSE, latency_target_ms INT)`); err != nil {
+		t.Fatal(err)
+	}
+	_, _ = db.ExecContext(ctx, `INSERT INTO service_settings (service_id) SELECT id FROM services WHERE name='api'`)
+	cfg, err := db.AppRemoteConfig(ctx) // column missing (migration 064 not applied): falls back, mode off
+	if err != nil || len(cfg) != 1 || cfg[0].DBStatementMode != "off" {
+		t.Fatalf("fallback config: %+v %v", cfg, err)
+	}
+	if _, err := db.ExecContext(ctx, `ALTER TABLE service_settings ADD COLUMN db_statement_mode TEXT NOT NULL DEFAULT 'off'; UPDATE service_settings SET db_statement_mode='fingerprint'`); err != nil {
+		t.Fatal(err)
+	}
+	if cfg, err = db.AppRemoteConfig(ctx); err != nil || len(cfg) != 1 || cfg[0].DBStatementMode != "fingerprint" {
+		t.Fatalf("config: %+v %v", cfg, err)
+	}
+}

@@ -37,6 +37,8 @@ type appTraceRow struct {
 	KeepReason  string          `json:"keep_reason"`
 	SpanCount   int             `json:"span_count"`
 	Spans       json.RawMessage `json:"spans,omitempty"`
+	// CriticalPath lists the span ids, root first, that decided when the trace ended.
+	CriticalPath []string `json:"critical_path,omitempty"`
 }
 
 func appHandleListTraces(db, backendDB *store.DB) http.HandlerFunc {
@@ -124,7 +126,9 @@ func appHandleGetTrace(db, backendDB *store.DB) http.HandlerFunc {
 			appQueryFailed(w, r.URL.Path, 0, err)
 			return
 		}
-		t.Spans = json.RawMessage(spans)
+		sp, path := appEnrichSpans(json.RawMessage(spans))
+		t.Spans = sp
+		t.CriticalPath = path
 		writeJSON(w, http.StatusOK, t)
 	}
 }

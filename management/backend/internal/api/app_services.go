@@ -55,6 +55,7 @@ type appServiceSettings struct {
 	Maintenance       []appMaintenance `json:"maintenance"`
 	StoreClientIP     string           `json:"store_client_ip"`
 	CleartextUsers    bool             `json:"cleartext_users"`
+	DBStatementMode   string           `json:"db_statement_mode"` // off | fingerprint
 	LearningStarted   *time.Time       `json:"learning_started"`
 	ResetLearning     bool             `json:"reset_learning,omitempty"` // input only
 	UpdatedBy         string           `json:"updated_by,omitempty"`
@@ -63,7 +64,7 @@ type appServiceSettings struct {
 
 func appDefaultSettings() appServiceSettings {
 	return appServiceSettings{
-		Exposure: "unknown", Criticality: "normal", DataSensitivity: "normal", StoreClientIP: "full",
+		Exposure: "unknown", Criticality: "normal", DataSensitivity: "normal", StoreClientIP: "full", DBStatementMode: "off",
 		TrustedProxies: []string{}, LoginRoutes: []string{}, ExportRoutes: []string{}, PublicRoutes: []string{}, Maintenance: []appMaintenance{},
 	}
 }
@@ -94,6 +95,8 @@ func appValidateSettings(s appServiceSettings) string {
 		return "data_sensitivity must be normal, sensitive or regulated"
 	case !appClientIPModes[s.StoreClientIP]:
 		return "store_client_ip must be full, truncated or off"
+	case s.DBStatementMode != "" && s.DBStatementMode != "off" && s.DBStatementMode != "fingerprint":
+		return "db_statement_mode must be off or fingerprint"
 	case len(s.Owner) > 128 || len(s.NotifyRoute) > 256:
 		return "owner or notify_route too long"
 	case s.LatencyTargetMs != nil && (*s.LatencyTargetMs < 0 || *s.LatencyTargetMs > 600000):
@@ -140,7 +143,7 @@ func appSettingsByID(ctx context.Context, db *store.DB, ids []int64) map[int64]a
 	}
 	rows, err := db.QueryContext(ctx, `SELECT service_id, exposure, criticality, data_sensitivity, owner, notify_route,
 		trusted_proxies, login_routes, export_routes, public_routes, latency_target_ms, error_budget_pct, maintenance,
-		store_client_ip, cleartext_users, learning_started, updated_by, updated_at FROM service_settings`)
+		store_client_ip, cleartext_users, learning_started, updated_by, updated_at, db_statement_mode FROM service_settings`)
 	if err != nil {
 		return out
 	}
@@ -154,7 +157,7 @@ func appSettingsByID(ctx context.Context, db *store.DB, ids []int64) map[int64]a
 		var learn sql.NullTime
 		var at time.Time
 		if err := rows.Scan(&id, &s.Exposure, &s.Criticality, &s.DataSensitivity, &s.Owner, &s.NotifyRoute,
-			&tp, &lr, &er, &pr, &lat, &bud, &mt, &s.StoreClientIP, &s.CleartextUsers, &learn, &s.UpdatedBy, &at); err != nil {
+			&tp, &lr, &er, &pr, &lat, &bud, &mt, &s.StoreClientIP, &s.CleartextUsers, &learn, &s.UpdatedBy, &at, &s.DBStatementMode); err != nil {
 			continue
 		}
 		_ = json.Unmarshal(tp, &s.TrustedProxies)
@@ -461,6 +464,11 @@ func appHandlePutServiceSettings(db, backendDB *store.DB) http.HandlerFunc {
 		if c := auth.GetClaims(r); c != nil {
 			by = c.Username
 		}
+		dbMode := body.DBStatementMode
+		if dbMode == "" {
+			dbMode = "off"
+		}
+		body.DBStatementMode = dbMode
 		// learning_started: keep what is stored unless the analyst asks to restart learning.
 		var learn any
 		if body.ResetLearning {
@@ -471,8 +479,8 @@ func appHandlePutServiceSettings(db, backendDB *store.DB) http.HandlerFunc {
 		if _, err := db.ExecContext(r.Context(), `
 			INSERT INTO service_settings (service_id, exposure, criticality, data_sensitivity, owner, notify_route,
 			  trusted_proxies, login_routes, export_routes, public_routes, latency_target_ms, error_budget_pct, maintenance,
-			  store_client_ip, cleartext_users, learning_started, updated_by, updated_at)
-			VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8::jsonb,$9::jsonb,$10::jsonb,$11,$12,$13::jsonb,$14,$15,$16,$17,NOW())
+			  store_client_ip, cleartext_users, learning_started, updated_by, updated_at, db_statement_mode)
+			VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8::jsonb,$9::jsonb,$10::jsonb,$11,$12,$13::jsonb,$14,$15,$16,$17,NOW(),$18)
 			ON CONFLICT (service_id) DO UPDATE SET exposure=EXCLUDED.exposure, criticality=EXCLUDED.criticality,
 			  data_sensitivity=EXCLUDED.data_sensitivity, owner=EXCLUDED.owner, notify_route=EXCLUDED.notify_route,
 			  trusted_proxies=EXCLUDED.trusted_proxies, login_routes=EXCLUDED.login_routes, export_routes=EXCLUDED.export_routes,
@@ -480,11 +488,11 @@ func appHandlePutServiceSettings(db, backendDB *store.DB) http.HandlerFunc {
 			  error_budget_pct=EXCLUDED.error_budget_pct, maintenance=EXCLUDED.maintenance,
 			  store_client_ip=EXCLUDED.store_client_ip, cleartext_users=EXCLUDED.cleartext_users,
 			  learning_started=COALESCE(EXCLUDED.learning_started, service_settings.learning_started),
-			  updated_by=EXCLUDED.updated_by, updated_at=NOW()`,
+			  updated_by=EXCLUDED.updated_by, updated_at=NOW(), db_statement_mode=EXCLUDED.db_statement_mode`,
 			id, body.Exposure, body.Criticality, body.DataSensitivity, body.Owner, body.NotifyRoute,
 			appJSON(body.TrustedProxies, "[]"), appJSON(body.LoginRoutes, "[]"), appJSON(body.ExportRoutes, "[]"), appJSON(body.PublicRoutes, "[]"),
 			body.LatencyTargetMs, body.ErrorBudgetPct, appJSON(body.Maintenance, "[]"),
-			body.StoreClientIP, body.CleartextUsers, learn, by); err != nil {
+			body.StoreClientIP, body.CleartextUsers, learn, by, dbMode); err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "save failed"})
 			return
 		}

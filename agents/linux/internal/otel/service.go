@@ -106,6 +106,12 @@ func New(opt Options) (*Service, error) {
 		}
 		return 0
 	}
+	opt.Agg.DBStmtFn = func(svc, env string) string {
+		if rs, ok := live.get(svc, env); ok && !rs.PolicyOnly {
+			return rs.DBStatementMode
+		}
+		return "off"
+	}
 	agg := NewAggregator(opt.Agg, nil)
 	snd, err := NewSender(opt.Sender, agg.Requeue, opt.Logger)
 	if err != nil {

@@ -4,11 +4,11 @@ Send traces from a Java application to the local agent and, optionally, security
 
 ## Before you start
 1. The host runs the ObsidianWatch agent built with the **app-server profile** (Agent Builder, "Enable the app-server profile"). The agent then listens on `127.0.0.1:4318` (OTLP over HTTP). gRPC is not supported.
-2. The application and the agent run on the same host (or the application uses the agent's Unix socket from a container, see `agent-otlp.md`).
+2. The application and the agent run on the same host (or the application uses the agent's Unix socket from a container, see the Node.js guide).
 3. You change **no** host or deployment attribute. The agent works out which host, process and container are sending, and discards any `host.*`, `container.*` and `k8s.*` you set.
 
 ## What the sample shows
-`samples/app/java` is a small application with the routes `/health`, `POST /login`, `/orders/{id}`, `/search` and `/debug/exec`. It is **intentionally vulnerable**: it refuses to start unless `OW_ALLOW_VULN_DEMO=1`, binds `127.0.0.1` only, and must never be deployed. `samples/app/attack_sim.py` drives it through normal traffic, a login brute force, injection attempts, a request burst and a command-execution request, so you can watch the rules fire (`rules.md`: A01, A09, A13, H01, X02). Rules are observe-only until you switch a service to enforce.
+`samples/app/java` is a small application with the routes `/health`, `POST /login`, `/orders/{id}`, `/search` and `/debug/exec`. It is **intentionally vulnerable**: it refuses to start unless `OW_ALLOW_VULN_DEMO=1`, binds `127.0.0.1` only, and must never be deployed. `samples/app/attack_sim.py` drives it through normal traffic, a login brute force, injection attempts, a request burst and a command-execution request, so you can watch the rules fire (`platform-guide.md`: A01, A09, A13, H01, X02). Rules are observe-only until you switch a service to enforce.
 
 ## 1. Get the agent
 Download `opentelemetry-javaagent.jar` from the OpenTelemetry Java instrumentation releases. No code changes are needed for traces.
