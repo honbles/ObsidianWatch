@@ -78,6 +78,7 @@ func appHandleOverview(db, backendDB *store.DB) http.HandlerFunc {
 		exposure := map[string]int{"internet": 0, "internal": 0, "unknown": 0}
 		criticality := map[string]int{"low": 0, "normal": 0, "high": 0, "critical": 0}
 		tiers := map[string]int{"0": 0, "1": 0, "2": 0}
+		helpers := appHelperServices(r.Context(), idb)
 		var degraded []map[string]any
 		keyToSvc := map[string]appOverviewService{}
 		for _, s := range svcs {
@@ -87,7 +88,7 @@ func appHandleOverview(db, backendDB *store.DB) http.HandlerFunc {
 			}
 			exposure[st.EffectiveExposure()]++
 			criticality[st.Criticality]++
-			tiers[strconv.Itoa(appTier(s.Source))]++
+			tiers[strconv.Itoa(appTierWithHelper(s.Source, s.Key, helpers))]++
 			keyToSvc[s.Key] = s.appOverviewService
 			var reasons []string
 			if s.Asserted > 0 {

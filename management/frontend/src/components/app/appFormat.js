@@ -28,8 +28,9 @@ export function appLearning(firstSeenIso, learningStartedIso, requests) {
   else if (daysOk && !reqOk) state = 'low_traffic'
   return { days, requests: reqs, state, daysOk, reqOk }
 }
-export const appLearningText = (l) =>
-  l.state === 'ready' ? 'Baseline ready'
+export const appLearningText = (l, tier) =>
+  tier === 0 ? 'Host only: no request telemetry, so no request baseline. Host rules learn from connections.'
+    : l.state === 'ready' ? 'Baseline ready'
     : l.state === 'low_traffic' ? `Learning, low traffic (${appInt(l.requests)} of ${appInt(APP_LEARN_REQUESTS)} requests)`
       : `Learning: day ${Math.min(l.days + 1, APP_LEARN_DAYS)} of ${APP_LEARN_DAYS}, ${appInt(l.requests)} of ${appInt(APP_LEARN_REQUESTS)} requests`
 

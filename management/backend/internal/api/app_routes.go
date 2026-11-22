@@ -28,6 +28,9 @@ func registerAppRoutes(protected *http.ServeMux, db *store.DB, backendDB *store.
 	protected.HandleFunc("GET /api/v1/app/traces/{trace_id}", appHandleGetTrace(db, backendDB))
 	protected.HandleFunc("PUT /api/v1/app/services/{id}/payload-policy", adminOnly(appHandlePutPayloadPolicy(db, backendDB)))
 	protected.HandleFunc("DELETE /api/v1/app/services/{id}/payload-policy", adminOnly(appHandleDeletePayloadPolicy(db, backendDB)))
+	protected.HandleFunc("GET /api/v1/app/services/{id}/openapi", adminOnly(appHandleGetOpenAPI(db, backendDB)))
+	protected.HandleFunc("POST /api/v1/app/services/{id}/openapi", adminOnly(appHandleLoadOpenAPI(db, backendDB)))
+	protected.HandleFunc("DELETE /api/v1/app/services/{id}/openapi", adminOnly(appHandleDeleteOpenAPI(db, backendDB)))
 	protected.HandleFunc("GET /api/v1/app/services/{id}/payloads", adminOnly(appHandleListPayloads(db, backendDB)))
 	protected.HandleFunc("PUT /api/v1/app/services/{id}/settings", adminOnly(appHandlePutServiceSettings(db, backendDB)))
 }

@@ -277,12 +277,14 @@ func TestAppRouteParamsAccumulateAndAreCapped(t *testing.T) {
 	if _, err := db.ExecContext(ctx, `INSERT INTO agents (id, hostname, os, version) VALUES ('a1','web-01','linux','1')`); err != nil {
 		t.Fatal(err)
 	}
-	b, err := os.ReadFile("migrations/032_app_route_params.sql")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := db.ExecContext(ctx, string(b)); err != nil {
-		t.Fatal(err)
+	for _, f := range []string{"migrations/032_app_route_params.sql", "migrations/035_app_declared_api.sql"} {
+		b, err := os.ReadFile(f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := db.ExecContext(ctx, string(b)); err != nil {
+			t.Fatal(err)
+		}
 	}
 	t0 := time.Now().UTC()
 	send := func(ps ...AppRouteParam) {
@@ -320,7 +322,7 @@ func TestAppRouteParamsAccumulateAndAreCapped(t *testing.T) {
 	// Nothing in the table can hold a value: only the name column exists.
 	var cols int
 	_ = db.QueryRowContext(ctx, `SELECT COUNT(*) FROM information_schema.columns WHERE table_name='service_route_params' AND data_type='text'`).Scan(&cols)
-	if cols != 3 { // route, method, name
+	if cols != 5 { // route, method, name, source, location: still no column that could hold a value
 		t.Fatalf("text columns: %d", cols)
 	}
 }
@@ -331,7 +333,7 @@ func TestAppPayloadsStoredOnlyUnderPolicy(t *testing.T) {
 	if _, err := db.ExecContext(ctx, `INSERT INTO agents (id, hostname, os, version) VALUES ('a1','web-01','linux','1')`); err != nil {
 		t.Fatal(err)
 	}
-	for _, f := range []string{"migrations/032_app_route_params.sql", "migrations/033_app_payloads.sql", "migrations/034_app_payloads_latency.sql"} {
+	for _, f := range []string{"migrations/032_app_route_params.sql", "migrations/033_app_payloads.sql", "migrations/034_app_payloads_latency.sql", "migrations/035_app_declared_api.sql"} {
 		b, err := os.ReadFile(f)
 		if err != nil {
 			t.Fatal(err)
@@ -402,5 +404,66 @@ func TestAppPayloadsStoredOnlyUnderPolicy(t *testing.T) {
 	}
 	if len(cfg) != 1 || !cfg[0].PolicyOnly || len(cfg[0].Payload) != 1 || strings.Join(cfg[0].Payload[0].Allow, ",") != "q" {
 		t.Fatalf("remote config: %+v", cfg)
+	}
+}
+
+func TestAppRouteOtherStyle(t *testing.T) {
+	for in, want := range map[string]string{
+		"/users/{id}":             "/users/:id",
+		"/users/:id/orders/:oid":  "/users/{id}/orders/{oid}",
+		"/users/{id}/orders/:oid": "/users/:id/orders/:oid",
+		"/plain/path":             "/plain/path",
+		"/a/{b:int}":              "/a/{b:int}",
+	} {
+		if got := appRouteOtherStyle(in); got != want {
+			t.Errorf("%s: got %s want %s", in, got, want)
+		}
+	}
+}
+
+func TestAppObservedParamMergesWithDeclared(t *testing.T) {
+	db := appTestDB(t)
+	ctx := context.Background()
+	if _, err := db.ExecContext(ctx, `INSERT INTO agents (id, hostname, os, version) VALUES ('a1','web-01','linux','1')`); err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range []string{"migrations/032_app_route_params.sql", "migrations/035_app_declared_api.sql"} {
+		b, _ := os.ReadFile(f)
+		if _, err := db.ExecContext(ctx, string(b)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t0 := time.Now().UTC()
+	p := func(name string) AppRouteParam {
+		return AppRouteParam{Service: "api", Environment: "prod", Route: "/Users", Method: "POST", Name: name, Count: 2}
+	}
+	if _, err := db.AppIngestBatch(ctx, "a1", "web-01", AppBatch{Params: []AppRouteParam{p("email")}}, t0); err != nil {
+		t.Fatal(err)
+	}
+	var sid int64
+	_ = db.QueryRowContext(ctx, `SELECT id FROM services WHERE name='api'`).Scan(&sid)
+	// the spec declares email and password; email already has traffic
+	for _, n := range []string{"email", "password"} {
+		if _, err := db.ExecContext(ctx, `
+			INSERT INTO service_route_params (service_id, route, method, name, requests, first_seen, last_seen, source, location)
+			VALUES ($1,'/Users','POST',$2,0,NOW(),NOW(),'declared','body')
+			ON CONFLICT (service_id, route, method, name) DO UPDATE SET source = CASE WHEN service_route_params.source='observed' THEN 'both' ELSE service_route_params.source END`, sid, n); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// traffic now arrives for password (declared) and role (not declared)
+	if _, err := db.AppIngestBatch(ctx, "a1", "web-01", AppBatch{Params: []AppRouteParam{p("password"), p("role")}}, t0); err != nil {
+		t.Fatal(err)
+	}
+	src := map[string]string{}
+	rows, _ := db.QueryContext(ctx, `SELECT name, source FROM service_route_params WHERE service_id=$1`, sid)
+	for rows.Next() {
+		var n, s string
+		_ = rows.Scan(&n, &s)
+		src[n] = s
+	}
+	rows.Close()
+	if src["email"] != "both" || src["password"] != "both" || src["role"] != "observed" {
+		t.Fatalf("sources: %v", src)
 	}
 }

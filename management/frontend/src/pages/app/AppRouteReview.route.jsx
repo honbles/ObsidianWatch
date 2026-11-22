@@ -48,6 +48,8 @@ export default function AppRouteReview() {
             {!r && !routes.loading && <div className="card p-4 text-xs text-siem-muted">This route has no traffic recorded in the selected range. Widen the range above to see it.</div>}
             {r && (
               <>
+                {r.declared && !r.observed && <div className="card p-3 text-xs text-teal-300">Declared by the API spec, no traffic yet. You can review and mask its fields now; the agent applies the review as soon as requests arrive.</div>}
+                {r.not_in_spec && <div className="card p-3 text-xs text-amber-300">This route is receiving traffic but is not in the loaded API spec.</div>}
                 <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
                   <AppStatCard label="Calls" value={appInt(r.stats.calls)} />
                   <AppStatCard label="Error rate" value={appPct(r.stats.error_rate)} />

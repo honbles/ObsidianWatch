@@ -63,6 +63,7 @@ func appHandleMap(db, backendDB *store.DB) http.HandlerFunc {
 		}
 		svcs := map[int64]*svcRow{}
 		var ids []int64
+		helpers := appHelperServices(r.Context(), idb)
 		byName := map[string][]int64{}
 		for srows.Next() {
 			var id int64
@@ -72,7 +73,7 @@ func appHandleMap(db, backendDB *store.DB) http.HandlerFunc {
 				continue
 			}
 			svcs[id] = &svcRow{node: appMapNode{ID: appMapID("service", appServiceKey(n, env)), Type: "service", Name: n, ServiceID: id,
-				Environment: env, Key: appServiceKey(n, env), Tier: appTier(src)}, first: first}
+				Environment: env, Key: appServiceKey(n, env), Tier: appTierWithHelper(src, appServiceKey(n, env), helpers)}, first: first}
 			ids = append(ids, id)
 			byName[n] = append(byName[n], id)
 		}

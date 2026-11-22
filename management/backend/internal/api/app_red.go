@@ -248,7 +248,10 @@ type appRouteRow struct {
 	Method    string       `json:"method"`
 	FirstSeen time.Time    `json:"first_seen"`
 	LastSeen  time.Time    `json:"last_seen"`
-	Active    bool         `json:"active"` // traffic inside the requested range
+	Active    bool         `json:"active"`      // traffic inside the requested range
+	Observed  bool         `json:"observed"`    // reported by the service at some time (false: only declared by an API spec)
+	Declared  bool         `json:"declared"`    // listed in the service's loaded API spec
+	NotInSpec bool         `json:"not_in_spec"` // observed, a spec is loaded, and the spec does not list it
 	Stats     appREDTotals `json:"stats"`
 	// Parameter NAMES seen on the route (never values), most used first. Until a masking policy is saved for
 	// the route (payload design, step 2) a route with parameters is reported as needing review, and no payload
@@ -264,6 +267,12 @@ type appRouteParam struct {
 	Requests  int64     `json:"requests"`
 	FirstSeen time.Time `json:"first_seen"`
 	LastSeen  time.Time `json:"last_seen"`
+	// Source is where the name comes from: observed (seen in traffic), declared (API spec only, no traffic yet)
+	// or both. Location is query, path, header or body when the spec says. Undocumented marks a field seen in
+	// traffic that the loaded spec does not list for a route it does list (mass-assignment candidates).
+	Source       string `json:"source"`
+	Location     string `json:"location,omitempty"`
+	Undocumented bool   `json:"undocumented,omitempty"`
 }
 
 func appHandleRoutes(db, backendDB *store.DB) http.HandlerFunc {
@@ -305,6 +314,7 @@ func appHandleRoutes(db, backendDB *store.DB) http.HandlerFunc {
 				return
 			}
 			x.Active = x.Stats.Calls > 0
+			x.Observed = true
 			x.Params = []appRouteParam{}
 			if x.Stats.Calls > 0 {
 				x.Stats.ErrorRate = float64(x.Stats.Errors) / float64(x.Stats.Calls)
@@ -343,24 +353,88 @@ func appHandleRoutes(db, backendDB *store.DB) http.HandlerFunc {
 			}
 		}
 		policies := appLoadPayloadPolicies(r, db, id)
+
+		// Routes declared by an API spec: they join an observed route of the same shape, or are listed on their
+		// own as "declared, no traffic yet".
+		alias := map[string]int{} // "METHOD declared-route" -> row, when the declared template differs from the observed one
+		specLoaded := appLoadOpenAPIInfo(r.Context(), idb, id).Loaded
+		if specLoaded {
+			shapes := map[string]int{}
+			for j, x := range list {
+				shapes[x.Method+" "+appRouteShape(x.Route)] = j
+			}
+			if drows, err := idb.QueryContext(r.Context(), `SELECT route, method, declared_at FROM service_declared_routes WHERE service_id = $1 LIMIT 2000`, id); err == nil {
+				for drows.Next() {
+					var route, method string
+					var at time.Time
+					if drows.Scan(&route, &method, &at) != nil {
+						continue
+					}
+					if j, ok := idx[method+" "+route]; ok {
+						list[j].Declared = true
+						continue
+					}
+					if j, ok := shapes[method+" "+appRouteShape(route)]; ok {
+						list[j].Declared = true
+						alias[method+" "+route] = j
+						continue
+					}
+					list = append(list, appRouteRow{Route: route, Method: method, FirstSeen: at, LastSeen: at, Declared: true, Params: []appRouteParam{}})
+					idx[method+" "+route] = len(list) - 1
+				}
+				drows.Close()
+			}
+			for j := range list {
+				list[j].NotInSpec = list[j].Observed && !list[j].Declared
+			}
+		}
 		if prows, err := idb.QueryContext(r.Context(), `
-			SELECT route, method, name, requests, first_seen, last_seen FROM service_route_params
+			SELECT route, method, name, requests, first_seen, last_seen, source, location FROM service_route_params
 			WHERE service_id = $1 ORDER BY requests DESC LIMIT 5000`, id); err == nil {
+			byName := map[int]map[string]int{} // route row -> name -> index in its Params
 			for prows.Next() {
 				var route, method string
 				var p appRouteParam
-				if prows.Scan(&route, &method, &p.Name, &p.Requests, &p.FirstSeen, &p.LastSeen) == nil {
-					if j, ok := idx[method+" "+route]; ok {
-						var pol *appPayloadPolicy
-						if v, has := policies[method+" "+route]; has {
-							pol = &v
-						}
-						p.State = appParamState(p.Name, pol)
-						list[j].Params = append(list[j].Params, p)
+				if prows.Scan(&route, &method, &p.Name, &p.Requests, &p.FirstSeen, &p.LastSeen, &p.Source, &p.Location) != nil {
+					continue
+				}
+				j, ok := idx[method+" "+route]
+				if !ok {
+					if j, ok = alias[method+" "+route]; !ok {
+						continue
 					}
 				}
+				if byName[j] == nil {
+					byName[j] = map[string]int{}
+				}
+				if k, dup := byName[j][p.Name]; dup { // the same name on the declared and the observed template
+					q := &list[j].Params[k]
+					q.Requests += p.Requests
+					if q.Source != p.Source {
+						q.Source = "both"
+					}
+					if q.Location == "" {
+						q.Location = p.Location
+					}
+					continue
+				}
+				var pol *appPayloadPolicy
+				if v, has := policies[list[j].Method+" "+list[j].Route]; has {
+					pol = &v
+				}
+				p.State = appParamState(p.Name, pol)
+				byName[j][p.Name] = len(list[j].Params)
+				list[j].Params = append(list[j].Params, p)
 			}
 			prows.Close()
+		}
+		for j := range list {
+			if !list[j].Declared {
+				continue
+			}
+			for k := range list[j].Params {
+				list[j].Params[k].Undocumented = list[j].Params[k].Source == "observed"
+			}
 		}
 		for i := range list {
 			if len(list[i].Params) == 0 {

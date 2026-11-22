@@ -126,7 +126,7 @@ export default function AppServiceDetail() {
             </div>
 
             <div className="card p-3 text-xs flex items-center justify-between gap-3 flex-wrap">
-              <div><span className="text-siem-muted">Learning: </span>{appLearningText(learn)}</div>
+              <div><span className="text-siem-muted">Learning: </span>{appLearningText(learn, full.tier)}</div>
               <div className="w-48 h-1.5 rounded bg-white/10 overflow-hidden"><div className="h-full bg-siem-accent" style={{ width: `${Math.min(100, Math.round(Math.min(learn.requests / APP_LEARN_REQUESTS, 1) * 50 + Math.min(learn.days / 7, 1) * 50))}%` }} /></div>
             </div>
             <AppSetupHint tier={full.tier} name={full.name} environment={full.environment} />

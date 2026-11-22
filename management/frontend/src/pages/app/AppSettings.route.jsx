@@ -21,7 +21,7 @@ export default function AppSettings() {
     { key: 'exposure', label: 'Exposure', render: s => <AppExposureBadge exposure={s.settings.exposure} settings={s.settings} />, sort: s => s.settings.exposure },
     { key: 'criticality', label: 'Criticality', render: s => <AppCriticalityBadge criticality={s.settings.criticality} />, sort: s => s.settings.criticality },
     { key: 'owner', label: 'Owner', render: s => s.settings.owner || <span className="text-siem-muted">-</span> },
-    { key: 'learn', label: 'Learning', render: s => <span className={s.learn.state === 'ready' ? 'text-emerald-300' : 'text-amber-300'}>{appLearningText(s.learn)}</span>, sort: s => s.learn.state },
+    { key: 'learn', label: 'Learning', render: s => <span className={s.tier === 0 ? 'text-siem-muted' : s.learn.state === 'ready' ? 'text-emerald-300' : 'text-amber-300'}>{appLearningText(s.learn, s.tier)}</span>, sort: s => s.learn.state },
     { key: 'maint', label: 'Maintenance', render: s => (s.settings.maintenance?.length ? `${s.settings.maintenance.length} window${s.settings.maintenance.length > 1 ? 's' : ''}` : '-') },
   ]
   const ruleCols = [

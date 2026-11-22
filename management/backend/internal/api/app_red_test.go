@@ -99,11 +99,11 @@ func TestAppREADAPIsIntegration(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer raw.Close()
-	if _, err := raw.Exec(`DROP TABLE IF EXISTS app_traces, app_route_stats, app_baselines, service_versions, service_routes,
+	if _, err := raw.Exec(`DROP TABLE IF EXISTS service_declared_routes, service_openapi, app_traces, app_route_stats, app_baselines, service_versions, service_routes,
 		service_edges, service_instances, services, service_settings, app_edge_stats, app_client_stats, app_service_merges, service_route_params CASCADE`); err != nil {
 		t.Fatal(err)
 	}
-	for _, f := range []string{"../../../../backend/internal/store/migrations/030_app_services.sql", "../../../../backend/internal/store/migrations/031_app_edge_client_stats.sql", "../../../../backend/internal/store/migrations/032_app_route_params.sql", "../store/migrations/060_app_service_settings.sql"} {
+	for _, f := range []string{"../../../../backend/internal/store/migrations/030_app_services.sql", "../../../../backend/internal/store/migrations/031_app_edge_client_stats.sql", "../../../../backend/internal/store/migrations/032_app_route_params.sql", "../../../../backend/internal/store/migrations/035_app_declared_api.sql", "../store/migrations/060_app_service_settings.sql"} {
 		b, _ := os.ReadFile(f)
 		if _, err := raw.Exec(string(b)); err != nil {
 			t.Fatalf("%s: %v", f, err)

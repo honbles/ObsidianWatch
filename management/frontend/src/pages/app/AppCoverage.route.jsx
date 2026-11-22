@@ -14,7 +14,7 @@ const ISSUE = {
   asserted_identity: 'asserted identity', route_overflow: 'route overflow', trace_drops: 'trace drops', not_reporting: 'not reporting',
 }
 const yes = <span className="text-emerald-300">yes</span>
-const no = <span className="text-amber-300">missing</span>
+const no = <span className="text-amber-300" title="Not set up for this service yet. See the setup guide for its language.">not set up</span>
 
 // Coverage: where are we blind? (spec 11.3)
 export default function AppCoverage() {
@@ -52,7 +52,7 @@ export default function AppCoverage() {
   ]
   return (
     <div className="p-6 space-y-5">
-      <AppPageHeader title="Coverage" range={range} subtitle="What each service tells us today, and what is missing for the next tier." />
+      <AppPageHeader title="Coverage" range={range} subtitle="What each service tells us today. T0 is host discovery only, T1 adds OpenTelemetry, T2 adds security-helper events. Anything not set up is what to add for the next tier." />
       <div className="card"><DataTable columns={cols} rows={rows} loading={svcs.loading} error={svcs.error} rowKey={s => s.id}
         emptyText="No services in this range." initialSort={{ key: 'tier', dir: 'asc' }} /></div>
 

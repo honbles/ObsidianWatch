@@ -103,7 +103,7 @@ export default function AppServiceSettingsForm({ service, requests, onSaved, com
       </label>
 
       <div className="rounded-lg border border-siem-border p-3 text-xs flex items-center justify-between gap-3 flex-wrap">
-        <div><span className="text-siem-muted">Learning: </span>{appLearningText(learn)}</div>
+        <div><span className="text-siem-muted">Learning: </span>{appLearningText(learn, service.tier)}</div>
         <label className="flex items-center gap-2 text-siem-muted"><input type="checkbox" checked={f.reset_learning} onChange={set('reset_learning')} disabled={dis} /> Restart learning on save</label>
       </div>
 

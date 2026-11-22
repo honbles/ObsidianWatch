@@ -153,8 +153,11 @@ func appHandlePutPayloadPolicy(db, backendDB *store.DB) http.HandlerFunc {
 		// The route must exist: a policy for a route the service never reported is a mistake.
 		var one int
 		if err := idb.QueryRowContext(r.Context(), `SELECT 1 FROM service_routes WHERE service_id=$1 AND route=$2 AND method=$3`, id, body.Route, body.Method).Scan(&one); err != nil {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "route not found for this service"})
-			return
+			// not seen in traffic: a route declared by an API spec can be reviewed before it is
+			if err2 := idb.QueryRowContext(r.Context(), `SELECT 1 FROM service_declared_routes WHERE service_id=$1 AND route=$2 AND method=$3`, id, body.Route, body.Method).Scan(&one); err2 != nil {
+				writeJSON(w, http.StatusNotFound, map[string]string{"error": "route not found for this service"})
+				return
+			}
 		}
 		by := ""
 		if c := auth.GetClaims(r); c != nil {

@@ -5,6 +5,7 @@ import { appApi } from '../../../api/app'
 import useAppLoad from '../../../components/app/useAppLoad'
 import { appInt, appPct, appMs, appRel } from '../../../components/app/appFormat'
 import { appReviewPath } from '../../../components/app/appFormat'
+import AppSpecPanel from '../../../components/app/AppSpecPanel'
 
 const tag = (cls, t) => <span key={t} className={`ml-1 text-[10px] rounded border px-1 ${cls}`}>{t}</span>
 
@@ -13,7 +14,8 @@ export default function AppTabRoutes({ service, range, focus }) {
   const [q, setQ] = useState(focus || '')
   const [reviewOnly, setReviewOnly] = useState(false)
   const [expanded, setExpanded] = useState({}) // routes whose full parameter list is shown
-  const { data, loading, error } = useAppLoad(() => appApi.routes(service.id, range), [service.id, range.from, range.to])
+  const [rev, setRev] = useState(0)
+  const { data, loading, error } = useAppLoad(() => appApi.routes(service.id, range), [service.id, range.from, range.to, rev])
   const st = service.settings
   const rows = useMemo(() => {
     const base = new Date(service.first_seen).getTime() + 3600e3
@@ -29,7 +31,9 @@ export default function AppTabRoutes({ service, range, focus }) {
         {st.login_routes?.includes(r.route) && tag('border-sky-500/40 text-sky-300', 'login')}
         {st.export_routes?.includes(r.route) && tag('border-purple-500/40 text-purple-300', 'export')}
         {st.public_routes?.includes(r.route) && tag('border-slate-500/40 text-slate-300', 'public')}
-        {!r.active && <span className="ml-1 text-[10px] text-siem-muted">no traffic in range</span>}
+        {r.declared && !r.observed && tag('border-teal-500/40 text-teal-300', 'declared, no traffic yet')}
+        {r.not_in_spec && tag('border-amber-500/40 text-amber-300', 'not in spec')}
+        {r.observed && !r.active && <span className="ml-1 text-[10px] text-siem-muted">no traffic in range</span>}
       </span>), sort: r => r.route },
     { key: 'params', label: 'Parameters', render: r => {
       const ps = r.params || []
@@ -40,7 +44,8 @@ export default function AppTabRoutes({ service, range, focus }) {
       const shown = expanded[k] ? ps : ps.slice(0, 5)
       return (
         <span className="text-xs">
-          {shown.map(p => <span key={p.name} title={`${p.name} (${p.requests} requests)`} className="mr-1 inline-block rounded border border-siem-border px-1 font-mono text-[10px]">{p.name}</span>)}
+          {shown.map(p => <span key={p.name} title={`${p.name}: ${p.requests} requests${p.location ? `, ${p.location}` : ''}${p.undocumented ? '. Seen in traffic but not in the API spec.' : p.source === 'declared' ? '. Declared in the API spec, not seen yet.' : ''}`}
+            className={`mr-1 inline-block rounded border px-1 font-mono text-[10px] ${p.undocumented ? 'border-amber-500/60 text-amber-300' : p.source === 'declared' ? 'border-dashed border-siem-border text-siem-muted' : 'border-siem-border'}`}>{p.name}</span>)}
           {ps.length > 5 && (
             <button className="text-siem-accent hover:underline" onClick={() => setExpanded(e => ({ ...e, [k]: !e[k] }))}>
               {expanded[k] ? 'show fewer' : `+${ps.length - 5} more`}
@@ -56,10 +61,11 @@ export default function AppTabRoutes({ service, range, focus }) {
     { key: 'auth', label: '401/403', align: 'right', render: r => appInt(r.stats.status_401_403), sort: r => r.stats.status_401_403 },
     { key: 'rl', label: '429', align: 'right', render: r => appInt(r.stats.status_429), sort: r => r.stats.status_429 },
     { key: 'p95', label: 'p95', align: 'right', render: r => appMs(r.stats.p95_ms, r.stats.over_range), sort: r => r.stats.p95_ms },
-    { key: 'last_seen', label: 'Last seen', render: r => appRel(r.last_seen), sort: r => r.last_seen },
+    { key: 'last_seen', label: 'Last seen', render: r => (r.observed ? appRel(r.last_seen) : '-'), sort: r => r.last_seen },
   ]
   return (
     <div className="space-y-2">
+      <AppSpecPanel service={service} onChanged={() => setRev(x => x + 1)} />
       <input value={q} onChange={e => setQ(e.target.value)} placeholder="Filter routes…"
         className="bg-siem-surface2 border border-siem-border rounded-lg px-2.5 py-1.5 text-xs text-siem-text w-64" />
       <label className="ml-3 inline-flex items-center gap-1.5 text-xs text-siem-muted">
@@ -67,7 +73,7 @@ export default function AppTabRoutes({ service, range, focus }) {
       </label>
       <div className="card"><DataTable columns={cols} rows={rows} loading={loading} error={error} rowKey={(r) => r.method + r.route}
         emptyText="No routes yet. Routes appear once this service sends OpenTelemetry server spans with http.route." initialSort={{ key: 'calls', dir: 'desc' }} /></div>
-      <div className="text-[11px] text-siem-muted">Parameter names come from the request query string and are shown without values. Open Review on a route to choose which fields are masked and to see the requests captured for it. A route that shows "needs review" has not been reviewed; no parameter values are collected for it until it is.</div>
+      <div className="text-[11px] text-siem-muted">Parameter names come from the request query string and are shown without values. Open Review on a route to choose which fields are masked and to see the requests captured for it. Dashed names are declared in the API spec and not seen yet; amber names were seen in traffic but are not in the spec (undocumented, a common sign of mass assignment). A route that shows "needs review" has not been reviewed; no parameter values are collected for it until it is.</div>
       {service.attrs?.route_overflow > 0 && (
         <div className="text-[11px] text-amber-300">{appInt(service.attrs.route_overflow)} requests were counted under "other" because this service exceeded the per-service route limit. Check that http.route is a template, not a raw path.</div>
       )}

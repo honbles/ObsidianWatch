@@ -19,3 +19,6 @@ after 7 days with fewer requests it shows "Learning, low traffic".
 
 Components for other pages: `components/app/AppHostApplications.jsx` takes `{agentId}` (mount on the host page).
 Time range, tables and states use the shared `useTimeRange`, `DataTable`, `StateBlock`.
+
+## Tiers and Coverage
+T0: discovered from the host only (listening ports, connections, process starts). T1: OpenTelemetry received. T2: OpenTelemetry plus security-helper events received in the last 14 days. There is no T3. A service shows "not set up" on Coverage for whatever it lacks, and a T0 service has no request baseline, so its Learning column reads "Host only" instead of a request count.

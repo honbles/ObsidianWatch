@@ -50,8 +50,8 @@ func TestAppTimelineIntegration(t *testing.T) {
 	ev("c2", 4*time.Minute, "network", 100, "203.0.113.9", 443) // new destination
 	ev("c3", 3*time.Minute, "network", 100, "203.0.113.9", 443) // same destination again: only the earliest is flagged
 	ev("p1", 2*time.Minute, "process", 100, "", 0)
-	ev("o1", 2*time.Minute, "network", 100, "127.0.0.1", 4318) // the app's own telemetry export: hidden
-	ev("l1", 2*time.Minute, "network", 100, "127.0.0.1", 5432) // a local database connection: kept
+	ev("o1", 2*time.Minute, "network", 100, "127.0.0.1", 4318)  // the app's own telemetry export: hidden
+	ev("l1", 2*time.Minute, "network", 100, "127.0.0.1", 5432)  // a local database connection: kept
 	ev("u1", 2*time.Minute, "network", 999, "198.51.100.1", 80) // unrelated pid
 
 	appMustExec(t, raw, `INSERT INTO app_payloads (service_id, time, route, method, status, duration_ms, trace_id, params, withheld) VALUES (1,$1,'/search','GET',200,12,'t1','{"q":"apple"}','["sort"]')`, now.Add(-time.Minute))

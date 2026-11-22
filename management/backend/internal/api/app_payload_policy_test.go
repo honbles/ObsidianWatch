@@ -26,10 +26,10 @@ func TestAppPayloadPolicyIntegration(t *testing.T) {
 	defer raw.Close()
 	if _, err := raw.Exec(`DROP TABLE IF EXISTS app_traces, app_route_stats, app_baselines, service_versions, service_routes,
 		service_edges, service_instances, services, service_settings, app_edge_stats, app_client_stats, app_service_merges,
-		service_route_params, app_payloads, app_route_payload_policy, app_route_payload_policy_log CASCADE`); err != nil {
+		service_route_params, service_declared_routes, service_openapi, app_payloads, app_route_payload_policy, app_route_payload_policy_log CASCADE`); err != nil {
 		t.Fatal(err)
 	}
-	for _, f := range []string{"030_app_services.sql", "031_app_edge_client_stats.sql", "032_app_route_params.sql", "033_app_payloads.sql", "034_app_payloads_latency.sql"} {
+	for _, f := range []string{"030_app_services.sql", "031_app_edge_client_stats.sql", "032_app_route_params.sql", "033_app_payloads.sql", "034_app_payloads_latency.sql", "035_app_declared_api.sql"} {
 		b, _ := os.ReadFile("../../../../backend/internal/store/migrations/" + f)
 		if _, err := raw.Exec(string(b)); err != nil {
 			t.Fatalf("%s: %v", f, err)

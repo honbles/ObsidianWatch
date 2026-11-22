@@ -207,8 +207,8 @@ func appIngestDB(db, backendDB *store.DB) *store.DB {
 }
 
 // appTier reports the telemetry tier a service has reached from what is known today:
-// 0 = discovered only, 1 = OpenTelemetry received. Tier 2 (helper events) is set by the
-// security-event work later.
+// 0 = discovered only, 1 = OpenTelemetry received. Tier 2 (the service also sent security-helper
+// events) is added by appTierWithHelper.
 func appTier(source string) int {
 	if source == "otel" {
 		return 1
@@ -267,6 +267,7 @@ func appHandleListServices(db, backendDB *store.DB) http.HandlerFunc {
 			return
 		}
 		defer rows.Close()
+		helpers := appHelperServices(r.Context(), idb)
 		list := []appServiceRow{}
 		ids := []int64{}
 		for rows.Next() {
@@ -278,7 +279,8 @@ func appHandleListServices(db, backendDB *store.DB) http.HandlerFunc {
 				return
 			}
 			s.Attrs = json.RawMessage(attrs)
-			s.Key, s.Tier = appServiceKey(s.Name, s.Environment), appTier(s.Source)
+			s.Key = appServiceKey(s.Name, s.Environment)
+			s.Tier = appTierWithHelper(s.Source, s.Key, helpers)
 			ids = append(ids, s.ID)
 			list = append(list, s)
 		}
@@ -323,7 +325,8 @@ func appHandleGetService(db, backendDB *store.DB) http.HandlerFunc {
 			return
 		}
 		s.Attrs = json.RawMessage(attrs)
-		s.Key, s.Tier = appServiceKey(s.Name, s.Environment), appTier(s.Source)
+		s.Key = appServiceKey(s.Name, s.Environment)
+		s.Tier = appTierWithHelper(s.Source, s.Key, appHelperServices(r.Context(), idb))
 
 		type inst struct {
 			ID           int64           `json:"id"`

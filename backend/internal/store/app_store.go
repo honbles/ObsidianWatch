@@ -12,6 +12,7 @@ import (
 	"github.com/lib/pq"
 	"sort"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -459,9 +460,11 @@ func (db *DB) AppIngestBatch(ctx context.Context, agentID, host string, b AppBat
 			INSERT INTO service_route_params (service_id, route, method, name, requests, first_seen, last_seen)
 			SELECT $1,$2,$3,$4,$5,$6,$6
 			WHERE EXISTS (SELECT 1 FROM service_route_params WHERE service_id=$1 AND route=$2 AND method=$3 AND name=$4)
-			   OR (SELECT COUNT(*) FROM service_route_params WHERE service_id=$1 AND route=$2 AND method=$3) < $7
+			   OR (SELECT COUNT(*) FROM service_route_params WHERE service_id=$1 AND route=$2 AND method=$3 AND source <> 'declared') < $7
 			ON CONFLICT (service_id, route, method, name) DO UPDATE SET
 			  requests = service_route_params.requests + EXCLUDED.requests,
+			  source = CASE WHEN service_route_params.source = 'declared' THEN 'both' ELSE service_route_params.source END,
+			  first_seen = CASE WHEN service_route_params.source = 'declared' THEN EXCLUDED.first_seen ELSE service_route_params.first_seen END,
 			  last_seen = GREATEST(service_route_params.last_seen, EXCLUDED.last_seen)`,
 			sid, p.Route, p.Method, p.Name, p.Count, now, AppMaxParamsPerRoute); err != nil {
 			return res, fmt.Errorf("route params: %w", err)
@@ -650,6 +653,11 @@ func (db *DB) appAddPayloadRoutes(ctx context.Context, out []AppRemoteService) (
 		}
 		sort.Strings(allow)
 		out[i].Payload = append(out[i].Payload, AppRemotePayloadRoute{Route: route, Method: method, Allow: allow})
+		// A route reviewed from an API spec may be written in the other template style than the framework
+		// reports ("/users/{id}" or "/users/:id"). Send both; the agent matches on the route it actually sees.
+		if alt := appRouteOtherStyle(route); alt != route {
+			out[i].Payload = append(out[i].Payload, AppRemotePayloadRoute{Route: alt, Method: method, Allow: allow})
+		}
 	}
 	return out, rows.Err()
 }
@@ -747,4 +755,31 @@ func appFoldDiscoveredRows(ctx context.Context, tx *sql.Tx, serviceID int64, age
 		                               WHERE e.v <> '""'::jsonb AND COALESCE(o.attrs->>e.k, '') = ''), '{}'::jsonb)
 		FROM x WHERE o.id = $4`, serviceID, agentID, pid, keepID)
 	return err
+}
+
+// appRouteOtherStyle rewrites path parameters to the other common template style: a route written with "{id}"
+// becomes ":id" and the reverse (a mixed route is made all ":id"). A route that uses neither is returned unchanged.
+func appRouteOtherStyle(route string) string {
+	parts := strings.Split(route, "/")
+	braces := false
+	for _, p := range parts {
+		if len(p) > 2 && p[0] == '{' && p[len(p)-1] == '}' && !strings.ContainsAny(p[1:len(p)-1], "{}:/") {
+			braces = true
+		}
+	}
+	changed := false
+	for i, p := range parts {
+		switch {
+		case braces && len(p) > 2 && p[0] == '{' && p[len(p)-1] == '}' && !strings.ContainsAny(p[1:len(p)-1], "{}:/"):
+			parts[i], changed = ":"+p[1:len(p)-1], true
+		case !braces && len(p) > 1 && p[0] == ':' && !strings.ContainsAny(p[1:], "{}:/"):
+			parts[i], changed = "{"+p[1:]+"}", true
+		case braces && len(p) > 1 && p[0] == ':':
+			changed = true // already the colon style; keep as is
+		}
+	}
+	if !changed {
+		return route
+	}
+	return strings.Join(parts, "/")
 }

@@ -388,6 +388,17 @@ Open the service, **Settings**:
 
 Changes reach the agent within 5 minutes.
 
+## 6a. Declare your API before traffic (OpenAPI)
+
+You do not have to wait for traffic to learn a route's fields. If the application has an OpenAPI or Swagger document, load it: **Applications, Services, the service, Routes, API spec, Load a spec**. Upload the `.json` or `.yaml` file, or give a URL.
+
+- **Getting a document.** Many frameworks generate one: `@nestjs/swagger` (served at `/api-json`), `swagger-jsdoc` or `express-oas-generator` for Express, FastAPI (`/openapi.json`), Spring springdoc (`/v3/api-docs`), ASP.NET Swashbuckle (`/swagger/v1/swagger.json`), flask-smorest. Open the URL in your browser and save the file if the management server cannot reach the application.
+- **URL fetch.** The management server fetches the URL itself, so it must be reachable from that server, not from your browser. Loopback and link-local addresses are refused.
+- **What is read.** Each path and method, the path, query and header parameter names, and the request-body fields, with nested names such as `securityQuestion.id` and arrays as `items[].sku`. Never examples or defaults. Cookie parameters are skipped. The server path (`/api/v1`) is added in front of each path; use the **Path prefix** box if the application serves a different prefix.
+- **What you see.** Declared routes appear as "declared, no traffic yet" and can be reviewed and masked straight away; the agent applies the review as soon as requests arrive. Declared fields not yet seen are shown dashed. When traffic arrives the two are merged (a route written `/users/{id}` joins the observed `/users/:id`).
+- **Undocumented fields.** A field seen in traffic that the spec does not list for a route it does list is marked **undocumented** (amber). That is a common sign of mass assignment, for example `role` on a registration route. Routes seen in traffic that the spec does not list are marked **not in spec**.
+- **Limits.** Path parameter names that differ between the spec and the framework (`{productId}` against `:id`) still merge, because routes are compared by shape, but a review saved before traffic is applied by the agent only when the route template matches in name too; review again after traffic if the agent keeps withholding. External `$ref` files are not followed. Header and path fields are listed for completeness; the agent does not capture header values.
+
 ## 7. Review and masking of request fields
 
 Capture is off by default for values. The lifecycle of a route:

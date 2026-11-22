@@ -60,7 +60,7 @@ export default function AppRoutePolicyPanel({ service, route, onSaved }) {
       </div>
       {!admin && <div className="text-[11px] text-amber-300">Read-only: reviewing parameters needs the admin role.</div>}
       <table className="w-full text-xs">
-        <thead><tr className="text-left text-siem-muted"><th className="py-1 pr-3 font-normal">Parameter</th><th className="font-normal">Requests</th><th className="font-normal">Status</th><th className="font-normal text-right">Mask</th></tr></thead>
+        <thead><tr className="text-left text-siem-muted"><th className="py-1 pr-3 font-normal">Parameter</th><th className="font-normal">Requests</th><th className="font-normal">Where</th><th className="font-normal">Status</th><th className="font-normal text-right">Mask</th></tr></thead>
         <tbody>
           {params.map(p => {
             const [label, cls, title] = STATE_LABEL[p.state] || STATE_LABEL.pending
@@ -69,6 +69,7 @@ export default function AppRoutePolicyPanel({ service, route, onSaved }) {
               <tr key={p.name} className="border-t border-siem-border">
                 <td className="py-1.5 pr-3 font-mono">{p.name}</td>
                 <td>{p.requests}</td>
+                <td className="text-[11px]">{p.location || '-'}{p.source === 'declared' && <span className="ml-1 rounded border border-dashed border-siem-border px-1 text-siem-muted" title="In the API spec, not seen in traffic yet">spec only</span>}{p.undocumented && <span className="ml-1 rounded border border-amber-500/60 px-1 text-amber-300" title="Seen in traffic but not in the API spec">undocumented</span>}</td>
                 <td><span title={title} className={`rounded border px-1 text-[10px] ${cls}`}>{label}</span></td>
                 <td className="text-right">
                   <input type="checkbox" checked={!!masked[p.name] || locked} disabled={!admin || locked || busy}
