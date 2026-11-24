@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { safeHref } from '../utils/safeHref'
+import CodeOverview from './code/CodeOverview'
 import { GitBranch, GitCommit, Code, Bell, Activity, Search,
          RefreshCw, Plus, Trash2, ChevronRight, AlertTriangle,
          CheckCircle, XCircle, Eye, EyeOff, Clock, User,
@@ -13,7 +14,7 @@ import { EventPanel, devopsFields } from './Events.jsx'
 const PROVIDERS = {
   github: {
     label: 'GitHub',
-    color: 'text-white',
+    color: 'text-siem-text',
     border: 'border-gray-700',
     bg: 'bg-gray-900/40',
     fields: [
@@ -1234,7 +1235,7 @@ function ConnectorDetail({ conn, onSync, onDisconnect, syncing }) {
 }
 
 // ── Main DevOps page ──────────────────────────────────────────────────────────
-export default function DevOps() {
+function DevOpsConnectors() {
   const [connectors, setConnectors] = useState([])
   const [selected, setSelected]     = useState(null)
   const [adding, setAdding]         = useState(null)
@@ -1273,7 +1274,7 @@ export default function DevOps() {
   const selectedConn = connectors.find(c => c.id === selected)
 
   return (
-    <div className="flex h-screen bg-siem-bg text-siem-text overflow-hidden">
+    <div className="flex bg-siem-bg text-siem-text overflow-hidden" style={{ height: 'calc(100vh - var(--topbar-h) - 108px)', minHeight: 520 }}>
 
       {/* Sidebar */}
       <div className="w-72 flex-shrink-0 flex flex-col border-r border-siem-border">
@@ -1396,4 +1397,9 @@ export default function DevOps() {
       </div>
     </div>
   )
+}
+
+// Code section: org-wide repositories and findings, with the per-connector workspace as a tab.
+export default function DevOps() {
+  return <CodeOverview connectorsView={<DevOpsConnectors/>}/>
 }

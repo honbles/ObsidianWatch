@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useRef } from 'react'
+import { useEffect, useState, useCallback, useRef, useMemo } from 'react'
 import { Search, Wifi, Download, X, ChevronRight, Cloud, Monitor, Terminal,
          Shield, Globe, FileText, Key, Activity, AlertTriangle, Cpu,
          GitBranch, GitCommit, Trash2, User } from 'lucide-react'
@@ -6,6 +6,7 @@ import { format, formatDistanceToNow } from 'date-fns'
 import api from '../api/client'
 import { useLiveFeed } from '../api/useLiveFeed'
 import { SeverityBadge } from '../components/SeverityBadge'
+import { PageHeader, Histogram, SEV_STACKS, SEV_WORD, SevPill, fmtCompact } from '../components/ui'
 import { IPLink } from '../components/IPLookup'
 
 // ── Event type metadata ───────────────────────────────────────────────────────
@@ -767,10 +768,16 @@ const KQL_HELP = [
 ]
 
 const PRESETS = [
-  { label: '15m',  ms: 15*60000 },
-  { label: '1h',   ms: 3600000 },
-  { label: '24h',  ms: 86400000 },
-  { label: '7d',   ms: 7*86400000 },
+  { label: '15m',  ms: 15*60000, name: 'Last 15 minutes' },
+  { label: '1h',   ms: 3600000, name: 'Last hour' },
+  { label: '24h',  ms: 86400000, name: 'Last 24 hours' },
+  { label: '7d',   ms: 7*86400000, name: 'Last 7 days' },
+  { label: '30d',  ms: 30*86400000, name: 'Last 30 days' },
+]
+// <input type="datetime-local"> wants local wall-clock time, not UTC.
+const toLocalInput = (d) => { const x = new Date(d); x.setMinutes(x.getMinutes() - x.getTimezoneOffset()); return x.toISOString().slice(0, 16) }
+const FACET_FIELDS = [
+  ['event_type', 'Event type'], ['host', 'Host'], ['source', 'Source'], ['user_name', 'User'], ['process_name', 'Process'],
 ]
 
 export default function Events() {
@@ -787,8 +794,15 @@ export default function Events() {
   const [inputVal, setInputVal] = useState('')
   const [queryErr, setQueryErr] = useState('')
   const [showHelp, setShowHelp] = useState(false)
-  const [since, setSince]   = useState('')
+  // A search always has a time range (rolling preset or custom). Default: last 24 hours.
+  const [preset, setPreset] = useState('24h')
+  const [since, setSince]   = useState(() => toLocalInput(Date.now() - 86400000))
   const [until, setUntil]   = useState('')
+  const [summary, setSummary] = useState(null)   // server-side counts for the whole query
+  const [summaryOK, setSummaryOK] = useState(true)
+  const [showCustom, setShowCustom] = useState(false)
+  const [showNL, setShowNL] = useState(false)
+  const [exportOpen, setExportOpen] = useState(false)
   const inputRef = useRef(null)
   const debounceRef = useRef(null)
 
@@ -808,7 +822,7 @@ export default function Events() {
     const terms = nlResult.q.match(/-?"[^"]*"|\S+/g) || []
     setTags(terms.map(raw => ({ id: Date.now() + Math.random(), ...classifyTerm(raw.replace(/^"|"$/g, '')) })).filter(t => t.field))
     const ms = { '15m': 9e5, '1h': 36e5, '6h': 216e5, '24h': 864e5, '7d': 6048e5, '30d': 2592e6 }[nlResult.since] || 864e5
-    setSince(new Date(Date.now() - ms).toISOString().slice(0, 16)); setUntil('')
+    setSince(toLocalInput(Date.now() - ms)); setUntil(''); setPreset(Object.entries({ '15m': 9e5, '1h': 36e5, '24h': 864e5, '7d': 6048e5, '30d': 2592e6 }).find(([, v]) => v === ms)?.[0] || '')
   }
 
   const limit = 100
@@ -941,6 +955,13 @@ export default function Events() {
       const allTokens = [...kqlTokens, ...searchTokens, ...liveTokens]
       setQueryErr('')
 
+      // Timeline and facet counts over the whole query (not just this page), when the server offers them.
+      const sumParams = { ...params }
+      delete sumParams.limit; delete sumParams.offset
+      if (allTokens.length > 0) { sumParams.q = allTokens.join(' '); delete sumParams.search }
+      if (p === 0) api.get('/api/v1/events/summary', { params: sumParams })
+        .then(r => { setSummary(r.data?.summary || null); setSummaryOK(!!r.data?.summary) })
+        .catch(() => { setSummary(null); setSummaryOK(false) })
       if (allTokens.length > 0) {
         const searchParams = { ...params, q: allTokens.join(' ') }
         delete searchParams.search
@@ -1014,332 +1035,263 @@ export default function Events() {
     URL.revokeObjectURL(url)
   }
 
-  const clearAll = () => { setTags([]); setSince(''); setUntil(''); setInputVal('') }
+  const clearAll = () => { setTags([]); setInputVal('') }
   const displayed = live ? liveEvents : events
 
-  // Quick hints - includes cloud types
-  const HINTS = ['process','network','dns','logon','file','cloud','cloud.cloudtrail',
-                 'cloud.guardduty','cloud.azure_activity','cloud.entra_signin','cloud.gcp_audit',
-                 'windows','linux','darwin','critical','high','aws','azure','gcp']
+  // Quick hints: one click adds the term as a filter
+  const HINTS = ['process', 'network', 'dns', 'logon', 'file', 'cloud', 'windows', 'linux', 'darwin', 'critical', 'high']
+
+  const applyPreset = (key) => {
+    const p = PRESETS.find(x => x.label === key)
+    if (!p) return
+    setPreset(key); setShowCustom(false)
+    setSince(toLocalInput(Date.now() - p.ms)); setUntil('')
+  }
+  const refresh = () => { if (preset) applyPreset(preset); else fetchEvents(page, inputVal) }
+  const rangeName = preset ? PRESETS.find(p => p.label === preset)?.name
+    : `${since ? new Date(since).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'start'} – ${until ? new Date(until).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'now'}`
+
+  // Facet click → a real filter (server-side), so the counts and the list always agree with the query.
+  const addFacet = (field, v) => {
+    if (field === 'event_type') setTags(t => [...t, { id: Date.now() + Math.random(), field: 'event_type', label: 'Type: ' + v, value: v }])
+    else if (field === 'host') setTags(t => [...t, { id: Date.now() + Math.random(), field: 'host', label: 'Host: ' + v, value: v }])
+    else if (field === 'source') setTags(t => [...t, { id: Date.now() + Math.random(), field: 'source', label: 'Source: ' + v, value: v }])
+    else if (field === 'severity') setTags(t => [...t.filter(x => x.field !== 'severity'), { id: Date.now() + Math.random(), field: 'severity', label: `Severity ≥ ${SEV_WORD[v]}`, value: String(v) }])
+    else {
+      const k = field === 'user_name' ? 'user' : 'proc'
+      const q = `${k}="${String(v).replace(/"/g, '')}"`
+      setTags(t => [...t, { id: Date.now() + Math.random(), field: 'kql', label: q, value: q }])
+    }
+  }
+
+  // Facets: from the server summary when available (whole query), else from the page shown (labelled as such).
+  const facetData = useMemo(() => {
+    if (summary) {
+      const sev = [5, 4, 3, 2, 1].map(k => ({ v: k, n: (summary.buckets || []).reduce((a, b) => a + (b.by_sev?.[k] || 0), 0) })).filter(x => x.n)
+      return { scope: 'all', sev, fields: summary.facets || {} }
+    }
+    const count = (get) => { const m = new Map(); events.forEach(e => { const v = get(e); if (v) m.set(v, (m.get(v) || 0) + 1) }); return [...m].map(([v, n]) => ({ v, n })).sort((a, b) => b.n - a.n).slice(0, 10) }
+    return {
+      scope: 'page',
+      sev: [5, 4, 3, 2, 1].map(k => ({ v: k, n: events.filter(e => (e.severity || 1) === k).length })).filter(x => x.n),
+      fields: { event_type: count(e => e.event_type), host: count(e => e.host), source: count(e => e.source), user_name: count(e => e.user_name), process_name: count(e => e.process_name) },
+    }
+  }, [summary, events])
+
+  const histItems = useMemo(() => {
+    if (summary) return null
+    return events.map(e => ({ t: e.time, k: Math.min(5, Math.max(1, e.severity || 1)) }))
+  }, [summary, events])
+
+  const summaryTotal = summary ? (summary.buckets || []).reduce((a, b) => a + b.n, 0) : null
+  const fromMs = since ? new Date(since).getTime() : Date.now() - 86400000
+  const toMs = until ? new Date(until + ':59').getTime() : Date.now()
+
+  const summaryOf = (ev) => {
+    const raw = ev.raw ? (typeof ev.raw === 'string' ? (() => { try { return JSON.parse(ev.raw) } catch { return {} } })() : ev.raw) : {}
+    const parts = []
+    if (ev.user_name) parts.push(ev.user_name)
+    if (ev.process_name) parts.push(ev.process_name)
+    if (ev.command_line) parts.push(ev.command_line.slice(0, 160))
+    if (ev.src_ip) parts.push(`${ev.src_ip}${ev.src_port ? ':' + ev.src_port : ''}`)
+    if (ev.dst_ip) parts.push(`→ ${ev.dst_ip}${ev.dst_port ? ':' + ev.dst_port : ''}`)
+    if (ev.file_path) parts.push(ev.file_path)
+    if (ev.reg_key) parts.push(ev.reg_key)
+    if (!parts.length) {
+      const c = raw?.event_name || raw?.operation_name || raw?.method_name || raw?.repo || raw?.message || raw?.action || raw?.finding_type || raw?.commit_sha?.slice(0, 8)
+      if (c) parts.push(String(c))
+    }
+    return parts.join('  ·  ') || ev.source || ev.event_type
+  }
+
+  const shownTotal = live ? displayed.length : total
+  const tpl = '150px 88px minmax(120px, 0.9fr) 128px minmax(240px, 3fr)'
 
   return (
-    <div className="p-6 space-y-4">
+    <div>
       {selected && <EventPanel event={selected} onClose={() => setSelected(null)} />}
-
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-bold text-siem-text">Events</h1>
-          <p className="text-[10px] text-siem-muted mt-0.5">
-            Search endpoint and cloud events - type to filter, or use saved searches
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
+      <PageHeader
+        title="Events"
+        sub={live ? (connected ? 'Live tail: newest events as they arrive (last 200).' : 'Live tail: reconnecting…')
+          : <>{loading ? 'Searching…' : <><span className="t1 mono">{total.toLocaleString()}</span> events</>} · {rangeName}{tags.length > 0 && ` · ${tags.length} filter${tags.length > 1 ? 's' : ''}`}</>}
+        actions={<>
+          <button className={`ow-btn ${showSaved ? 'primary' : ''}`} onClick={() => setShowSaved(s => !s)}>Saved searches</button>
           {!live && (
-            <div className="flex items-center gap-1">
-              <button onClick={() => exportEvents('csv')}
-                className="flex items-center gap-1 text-xs border border-siem-border text-siem-muted hover:text-siem-text rounded-lg px-2.5 py-1.5">
-                <Download size={12}/> CSV
-              </button>
-              <button onClick={() => exportEvents('json')}
-                className="flex items-center gap-1 text-xs border border-siem-border text-siem-muted hover:text-siem-text rounded-lg px-2.5 py-1.5">
-                <Download size={12}/> JSON
-              </button>
-            </div>
-          )}
-          <button onClick={() => setLive(l => !l)}
-            className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border transition-colors ${
-              live ? 'bg-siem-green/10 border-siem-green text-siem-green' : 'border-siem-border text-siem-muted hover:text-siem-text'
-            }`}>
-            <Wifi size={13}/>
-            {live ? (connected ? 'Live' : 'Reconnecting') : 'Historical'}
-          </button>
-        </div>
-      </div>
-
-      {/* Search Bar */}
-      {!live && (
-        <div className="bg-siem-surface border border-siem-border rounded-xl p-4 space-y-3">
-
-          {/* Tag input */}
-          <div className="min-h-[42px] flex flex-wrap gap-1.5 items-center bg-siem-bg border border-siem-border rounded-xl px-3 py-2 cursor-text focus-within:border-siem-accent transition-colors"
-               onClick={() => inputRef.current?.focus()}>
-            <Search size={14} className="text-siem-muted shrink-0"/>
-            {tags.map(tag => (
-              <span key={tag.id}
-                className={`inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full border font-medium ${TAG_COLORS[tag.field] || TAG_COLORS.search}`}>
-                {tag.label}
-                <button onClick={e => { e.stopPropagation(); removeTag(tag.id) }}
-                  className="hover:opacity-70 ml-0.5 leading-none">×</button>
-              </span>
-            ))}
-            <input ref={inputRef}
-              className="flex-1 min-w-[140px] bg-transparent text-sm text-siem-text outline-none placeholder:text-siem-muted/50"
-              placeholder={tags.length === 0 ? 'Type anything - hostname, IP, process, username, error message…' : 'Add more terms to narrow down…'}
-              value={inputVal}
-              onChange={e => setInputVal(e.target.value)}
-              onKeyDown={handleKeyDown}
-            />
-            {(tags.length > 0 || since || until) && (
-              <button onClick={clearAll} className="text-[10px] text-siem-muted hover:text-red-400 ml-1 shrink-0">Clear all</button>
-            )}
-          </div>
-
-          {queryErr && (
-            <div className="text-[11px] text-red-300 bg-red-950/30 border border-red-900/50 rounded-lg px-3 py-1.5">
-              Query problem: {queryErr}
-            </div>
-          )}
-
-          {/* Saved searches button + hints */}
-          <div className="flex items-center gap-2 flex-wrap">
-            <button onClick={() => setShowSaved(s => !s)}
-              className={`flex items-center gap-1 text-[10px] px-2.5 py-1 rounded-full border transition-colors ${
-                showSaved
-                  ? 'bg-siem-accent/10 border-siem-accent text-siem-accent'
-                  : 'border-siem-border text-siem-muted hover:border-siem-accent hover:text-siem-accent'
-              }`}>
-              <Search size={9}/> Saved Searches
-            </button>
-            <button onClick={() => setShowHelp(h => !h)}
-              className={`text-[10px] px-2.5 py-1 rounded-full border transition-colors ${showHelp ? 'bg-violet-900/30 border-violet-600 text-violet-300' : 'border-siem-border text-siem-muted hover:border-violet-500 hover:text-violet-300'}`}>
-              Query syntax
-            </button>
-            <span className="text-siem-border text-xs">|</span>
-            {HINTS.map(hint => (
-              <button key={hint} onClick={() => addTag(hint)}
-                className={`text-[10px] px-2 py-0.5 rounded-full border transition-colors ${
-                  hint.startsWith('cloud')
-                    ? 'border-orange-800/50 text-orange-400/70 hover:border-orange-500 hover:text-orange-400'
-                    : 'border-siem-border text-siem-muted hover:border-siem-accent hover:text-siem-accent'
-                }`}>
-                {hint}
-              </button>
-            ))}
-          </div>
-
-          {showHelp && (
-            <div className="rounded-lg border border-siem-border bg-siem-bg p-3 space-y-1.5">
-              <div className="text-[10px] uppercase tracking-wider text-siem-muted">Query language - press Enter to add it as a filter</div>
-              {KQL_HELP.map(([q, d]) => (
-                <div key={q} className="flex items-baseline gap-3 text-[11px]">
-                  <button onClick={() => addTag(q)} className="font-mono text-violet-300 hover:underline text-left shrink-0">{q}</button>
-                  <span className="text-siem-muted">{d}</span>
+            <div style={{ position: 'relative' }}>
+              <button className="ow-btn" onClick={() => setExportOpen(o => !o)} aria-haspopup="menu" aria-expanded={exportOpen}><Download size={13}/>Export</button>
+              {exportOpen && (
+                <div className="dropdown" role="menu" style={{ right: 0, left: 'auto', minWidth: 190 }} onMouseLeave={() => setExportOpen(false)}>
+                  <div className="dropdown-item" role="menuitem" onClick={() => { setExportOpen(false); exportEvents('csv') }}>CSV, up to 10,000 rows</div>
+                  <div className="dropdown-item" role="menuitem" onClick={() => { setExportOpen(false); exportEvents('json') }}>JSON, up to 10,000 rows</div>
                 </div>
-              ))}
-              <div className="text-[10px] text-siem-muted pt-1">Fields: host os user proc cmd image file hash reg domain channel source proto src dst ip port pid ppid eid sev type time</div>
+              )}
             </div>
           )}
+          <button className={`ow-btn ${live ? 'primary' : ''}`} onClick={() => setLive(l => !l)} aria-pressed={live}>
+            <Wifi size={13}/>{live ? (connected ? 'Live tail on' : 'Reconnecting') : 'Live tail'}
+          </button>
+        </>}
+      />
 
-          {/* Saved searches panel */}
-          {showSaved && (
-            <SavedSearchPanel
-              onSelect={applySearch}
-              onClose={() => setShowSaved(false)}
-            />
-          )}
-
-          {/* Ask in plain English (P-14): AI proposes a query, user reviews/edits, then applies */}
-          <div className="space-y-1.5">
-            <div className="flex items-center gap-2">
-              <input className="flex-1 bg-siem-bg border border-siem-border rounded-lg px-3 py-1.5 text-xs text-siem-text focus:outline-none focus:border-siem-accent"
-                placeholder='Ask in plain English, e.g. "PowerShell spawned by Word in the last 7 days"'
-                maxLength={300} value={nlQuestion} onChange={e => setNlQuestion(e.target.value)}
-                onKeyDown={e => { if (e.key === 'Enter') askNL() }} />
-              <button onClick={askNL} disabled={nlBusy || !nlQuestion.trim()}
-                className="text-xs border border-siem-border rounded-lg px-3 py-1.5 text-siem-muted hover:text-siem-text disabled:opacity-40">{nlBusy ? 'Thinking…' : 'Ask'}</button>
+      <div className="ow-body" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        {!live && (
+          <div className="ow-card" style={{ padding: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {/* Query + time range, one line, like a log explorer */}
+            <div style={{ display: 'flex', gap: 8, alignItems: 'stretch', flexWrap: 'wrap' }}>
+              <div className="ow-field" style={{ flex: '1 1 480px', height: 'auto', minHeight: 34, flexWrap: 'wrap', padding: '3px 10px', cursor: 'text' }} onClick={() => inputRef.current?.focus()}>
+                <Search size={14} style={{ color: 'var(--t3)' }}/>
+                {tags.map(tag => (
+                  <span key={tag.id} className="tag mono" style={{ background: tag.field === 'kql' ? 'var(--abg)' : 'var(--s3)', color: tag.field === 'kql' ? 'var(--acc)' : 'var(--t1)' }}>
+                    {tag.label}
+                    <button onClick={e => { e.stopPropagation(); removeTag(tag.id) }} aria-label={`Remove ${tag.label}`} style={{ background: 'none', border: 0, color: 'inherit', cursor: 'pointer', padding: 0, marginLeft: 2 }}>×</button>
+                  </span>
+                ))}
+                <input ref={inputRef} className="mono" style={{ minWidth: 200, fontSize: 12.5 }}
+                  placeholder={tags.length === 0 ? 'host:web* and proc:powershell, an IP, a user, or any text. Enter adds a filter.' : 'Add a filter…'}
+                  value={inputVal} onChange={e => setInputVal(e.target.value)} onKeyDown={handleKeyDown} aria-label="Event query"/>
+                {(tags.length > 0 || inputVal) && <button className="ow-btn quiet" style={{ height: 22, padding: '0 4px' }} onClick={() => { setTags([]); setInputVal('') }}>Clear</button>}
+              </div>
+              <div style={{ display: 'flex', border: '1px solid var(--line2)', borderRadius: 6, overflow: 'hidden', alignSelf: 'flex-start', height: 34 }} role="group" aria-label="Time range">
+                {PRESETS.map(p => (
+                  <button key={p.label} onClick={() => applyPreset(p.label)} title={p.name}
+                    style={{ padding: '0 10px', border: 0, borderRight: '1px solid var(--line)', background: preset === p.label ? 'var(--abg)' : 'transparent', color: preset === p.label ? 'var(--acc)' : 'var(--t2)', font: '500 12px var(--font-ui)', cursor: 'pointer' }}>{p.label}</button>
+                ))}
+                <button onClick={() => setShowCustom(c => !c)} style={{ padding: '0 10px', border: 0, background: !preset ? 'var(--abg)' : 'transparent', color: !preset ? 'var(--acc)' : 'var(--t2)', font: '500 12px var(--font-ui)', cursor: 'pointer' }}>Custom</button>
+              </div>
+              <button className="ow-btn" style={{ height: 34 }} onClick={refresh} title="Run again (rolling ranges move to now)">Refresh</button>
             </div>
-            {nlErr && <div className="text-xs text-red-400">{nlErr}</div>}
-            {nlResult && (
-              <div className="flex items-center gap-2 text-xs">
-                <span className="text-siem-muted">Proposed query (review before applying):</span>
-                <input className="flex-1 font-mono bg-siem-bg border border-siem-border rounded-lg px-2 py-1 text-siem-text"
-                  value={nlResult.q} onChange={e => setNlResult(r => ({ ...r, q: e.target.value }))} />
-                <span className="text-siem-muted">last {nlResult.since}</span>
-                <button onClick={applyNL} className="border border-siem-accent text-siem-accent rounded-lg px-3 py-1">Apply</button>
+
+            {showCustom && (
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', fontSize: 12 }}>
+                <span className="t2">From</span>
+                <input type="datetime-local" className="input" style={{ width: 200 }} value={since} onChange={e => { setPreset(''); setSince(e.target.value) }}/>
+                <span className="t2">to</span>
+                <input type="datetime-local" className="input" style={{ width: 200 }} value={until} onChange={e => { setPreset(''); setUntil(e.target.value) }}/>
+                <span className="t3">Leave "to" empty for now.</span>
               </div>
             )}
-          </div>
 
-          {/* Time range */}
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-[10px] text-siem-muted uppercase tracking-wider">Time range</span>
-            <div className="flex items-center gap-1.5">
-              <input type="datetime-local"
-                className="bg-siem-bg border border-siem-border rounded-lg px-2 py-1.5 text-xs text-siem-text focus:outline-none focus:border-siem-accent"
-                value={since} onChange={e => setSince(e.target.value)}/>
-              <span className="text-siem-muted text-xs">to</span>
-              <input type="datetime-local"
-                className="bg-siem-bg border border-siem-border rounded-lg px-2 py-1.5 text-xs text-siem-text focus:outline-none focus:border-siem-accent"
-                value={until} onChange={e => setUntil(e.target.value)}/>
-              {(since || until) && (
-                <button onClick={() => { setSince(''); setUntil('') }}
-                  className="text-[10px] text-siem-muted hover:text-red-400"><X size={11}/></button>
-              )}
-            </div>
-            <div className="flex gap-1 ml-1">
-              {PRESETS.map(p => (
-                <button key={p.label}
-                  onClick={() => {
-                    const now = new Date()
-                    setSince(new Date(now - p.ms).toISOString().slice(0, 16))
-                    setUntil(now.toISOString().slice(0, 16))
-                  }}
-                  className="text-[10px] px-2 py-0.5 rounded-full border border-siem-border text-siem-muted hover:border-siem-accent hover:text-siem-accent transition-colors">
-                  {p.label}
-                </button>
-              ))}
-            </div>
-          </div>
+            {queryErr && <div className="c-crit" style={{ fontSize: 12.5 }}>Query problem: {queryErr}</div>}
 
-          <div className="flex items-center justify-between gap-2 flex-wrap">
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-siem-muted">
-                {loading ? 'Searching…' : `${total.toLocaleString()} events`}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+              <button className={`ow-btn quiet ${showHelp ? 'c-acc' : ''}`} style={{ height: 24, padding: '0 6px' }} onClick={() => setShowHelp(h => !h)}>Query syntax</button>
+              <button className={`ow-btn quiet ${showNL ? 'c-acc' : ''}`} style={{ height: 24, padding: '0 6px' }} onClick={() => setShowNL(v => !v)}>Ask in plain English</button>
+              <span style={{ width: 1, height: 16, background: 'var(--line2)', margin: '0 4px' }}/>
+              {HINTS.map(h => <button key={h} className="tag" style={{ cursor: 'pointer', border: 0 }} onClick={() => addTag(h)}>{h}</button>)}
+              <span style={{ marginLeft: 'auto', display: 'flex', gap: 6, alignItems: 'center' }}>
+                {savedQueries.map(sq => (
+                  <span key={sq.id} className="tag" style={{ paddingRight: 4 }}>
+                    <button style={{ background: 'none', border: 0, color: 'var(--t1)', cursor: 'pointer', font: 'inherit', padding: 0 }} title={sq.query}
+                      onClick={() => { const nt = sq.query.split(' ').filter(Boolean).map(t => { const c = classifyTerm(t); return c ? { id: Date.now() + Math.random(), ...c } : null }).filter(Boolean); if (nt.length) setTags(nt) }}>{sq.name}</button>
+                    <button onClick={() => deleteSavedQuery(sq.id)} aria-label={`Delete saved query ${sq.name}`} style={{ background: 'none', border: 0, color: 'var(--t3)', cursor: 'pointer', padding: 0 }}><X size={10}/></button>
+                  </span>
+                ))}
+                {tags.length > 0 && (showSaveDialog ? (
+                  <span style={{ display: 'flex', gap: 6 }}>
+                    <input className="input" style={{ width: 160, height: 26 }} autoFocus placeholder="Name this query" value={saveQueryName}
+                      onChange={e => setSaveQueryName(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') saveQuery(); if (e.key === 'Escape') setShowSaveDialog(false) }}/>
+                    <button className="ow-btn primary" style={{ height: 26 }} onClick={saveQuery}>Save</button>
+                  </span>
+                ) : <button className="ow-btn" style={{ height: 26 }} onClick={() => setShowSaveDialog(true)}>Save query</button>)}
               </span>
-              {tags.length > 0 && (
-                <span className="text-[10px] text-siem-muted">· {tags.length} filter{tags.length > 1 ? 's' : ''} active</span>
-              )}
             </div>
-            {/* Save current query */}
-            {tags.length > 0 && (
-              <div className="flex items-center gap-2">
-                {showSaveDialog ? (
-                  <div className="flex items-center gap-2">
-                    <input
-                      value={saveQueryName}
-                      onChange={e => setSaveQueryName(e.target.value)}
-                      onKeyDown={e => { if (e.key === 'Enter') saveQuery(); if (e.key === 'Escape') setShowSaveDialog(false) }}
-                      placeholder="Query name…"
-                      autoFocus
-                      className="bg-siem-bg border border-siem-accent/50 rounded-lg px-2 py-1 text-xs text-siem-text outline-none w-40"
-                    />
-                    <button onClick={saveQuery}
-                      className="text-[10px] px-2.5 py-1 bg-siem-accent text-white rounded-lg">Save</button>
-                    <button onClick={() => setShowSaveDialog(false)}
-                      className="text-[10px] text-siem-muted hover:text-red-400"><X size={11}/></button>
+
+            {showHelp && (
+              <div className="ow-card" style={{ padding: 12, background: 'var(--s2)', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <div className="ow-lbl">Query language · click an example to add it</div>
+                {KQL_HELP.map(([q, d]) => (
+                  <div key={q} style={{ display: 'flex', gap: 14, fontSize: 12.5 }}>
+                    <button onClick={() => addTag(q)} className="mono c-acc" style={{ background: 'none', border: 0, cursor: 'pointer', textAlign: 'left', minWidth: 300, padding: 0 }}>{q}</button>
+                    <span className="t2">{d}</span>
                   </div>
-                ) : (
-                  <button onClick={() => setShowSaveDialog(true)}
-                    className="text-[10px] px-2.5 py-1 border border-siem-border text-siem-muted hover:border-siem-accent hover:text-siem-accent rounded-lg transition-colors">
-                    + Save query
-                  </button>
+                ))}
+                <div className="t3" style={{ fontSize: 12 }}>Fields: <span className="mono">host os user proc cmd image file hash reg domain channel source proto src dst ip port pid ppid eid sev type time</span></div>
+              </div>
+            )}
+
+            {showNL && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <input className="input" style={{ flex: 1 }} maxLength={300} autoFocus value={nlQuestion} onChange={e => setNlQuestion(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') askNL() }}
+                    placeholder='e.g. "PowerShell started by Word in the last 7 days"'/>
+                  <button className="ow-btn" onClick={askNL} disabled={nlBusy || !nlQuestion.trim()}>{nlBusy ? 'Thinking…' : 'Propose query'}</button>
+                </div>
+                {nlErr && <div className="c-crit" style={{ fontSize: 12.5 }}>{nlErr}</div>}
+                {nlResult && (
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 12.5 }}>
+                    <span className="t2">Review, then apply:</span>
+                    <input className="input mono" style={{ flex: 1 }} value={nlResult.q} onChange={e => setNlResult(r => ({ ...r, q: e.target.value }))}/>
+                    <span className="t3">last {nlResult.since}</span>
+                    <button className="ow-btn primary" onClick={applyNL}>Apply</button>
+                  </div>
                 )}
               </div>
             )}
           </div>
+        )}
 
-          {/* User-saved queries */}
-          {savedQueries.length > 0 && (
-            <div className="flex items-center gap-2 flex-wrap pt-1">
-              <span className="text-[10px] text-siem-muted uppercase tracking-wider shrink-0">Saved:</span>
-              {savedQueries.map(sq => (
-                <div key={sq.id} className="flex items-center gap-1">
-                  <button
-                    onClick={() => {
-                      const newTags = sq.query.split(' ').filter(Boolean).map(t => {
-                        const classified = classifyTerm(t)
-                        return classified ? { id: Date.now() + Math.random(), ...classified } : null
-                      }).filter(Boolean)
-                      if (newTags.length) setTags(newTags)
-                    }}
-                    className="text-[10px] px-2.5 py-0.5 rounded-full border border-siem-border text-siem-muted hover:border-siem-accent hover:text-siem-accent transition-colors">
-                    {sq.name}
-                  </button>
-                  <button onClick={() => deleteSavedQuery(sq.id)}
-                    className="text-siem-muted/30 hover:text-red-400 transition-colors">
-                    <X size={9}/>
-                  </button>
+        {showSaved && <SavedSearchPanel onSelect={applySearch} onClose={() => setShowSaved(false)} />}
+
+        {!live && (
+          <div className="ow-card" style={{ padding: '12px 16px' }}>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 8 }}>
+              <span style={{ fontWeight: 500 }}>{summary ? <><span className="mono">{fmtCompact(summaryTotal)}</span> events</> : 'Events'} over time</span>
+              <span className="t3" style={{ fontSize: 12 }}>{summary ? `${summary.step} buckets · click a bar to zoom` : summaryOK ? 'Loading…' : `of the ${events.length} on this page (the server has no summary endpoint)`}</span>
+              <span style={{ marginLeft: 'auto', display: 'flex', gap: 12, fontSize: 11.5, color: 'var(--t3)' }}>
+                {SEV_STACKS.slice().reverse().map(x => <span key={x.k} style={{ display: 'flex', alignItems: 'center', gap: 5 }}><span style={{ width: 8, height: 8, borderRadius: 2, background: x.color }}/>{x.label}</span>)}
+              </span>
+            </div>
+            <Histogram
+              items={summary ? (summary.buckets || []).flatMap(b => [1, 2, 3, 4, 5].filter(k => b.by_sev?.[k]).map(k => ({ t: b.t, k, n: b.by_sev[k] }))) : histItems}
+              stacks={SEV_STACKS} from={fromMs} to={toMs} label="events"
+              onRange={(a, b) => { setPreset(''); setSince(toLocalInput(a)); setUntil(toLocalInput(b)) }}/>
+          </div>
+        )}
+
+        <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }}>
+          {!live && (
+            <aside className="ow-facets" aria-label="Facets">
+              <div className="t3" style={{ fontSize: 11.5 }}>{facetData.scope === 'all' ? 'Counts over the whole query. Click to filter.' : `Counts in the ${events.length} shown. Click to filter.`}</div>
+              {facetData.sev.length > 0 && (
+                <div><div className="ow-lbl" style={{ marginBottom: 6 }}>Severity</div>
+                  {facetData.sev.map(x => <button key={x.v} className="ow-fc" onClick={() => addFacet('severity', x.v)} title={`Severity ${SEV_WORD[x.v]} or worse`}><span>{SEV_WORD[x.v]}</span><b>{fmtCompact(x.n)}</b></button>)}
+                </div>)}
+              {FACET_FIELDS.map(([f, label]) => (facetData.fields[f] || []).length > 0 && (
+                <div key={f}><div className="ow-lbl" style={{ marginBottom: 6 }}>{label}</div>
+                  {facetData.fields[f].slice(0, 8).map(x => <button key={x.v} className="ow-fc" onClick={() => addFacet(f, x.v)} title={x.v}><span className={f === 'event_type' ? '' : 'mono'}>{x.v}</span><b>{fmtCompact(x.n)}</b></button>)}
                 </div>
               ))}
-            </div>
+            </aside>
           )}
-        </div>
-      )}
 
-      {/* Event List - simple clickable rows */}
-      <div className="bg-siem-surface border border-siem-border rounded-xl overflow-hidden">
-        {loading ? (
-          <div className="flex items-center justify-center py-16 text-siem-muted text-sm gap-2">
-            <Search size={14} className="animate-pulse"/> Searching…
-          </div>
-        ) : displayed.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-16 text-siem-muted gap-2">
-            <Search size={24} className="opacity-30"/>
-            <span className="text-sm">{tags.length > 0 || since || until ? 'No events match your filters' : 'No events - try a different time range'}</span>
-          </div>
-        ) : (
-          <div className="divide-y divide-siem-border/30">
-            {displayed.map((ev, i) => {
-              const raw = ev.raw
-                ? (typeof ev.raw === 'string' ? (() => { try { return JSON.parse(ev.raw) } catch { return {} } })() : ev.raw)
-                : {}
-              // Build a single summary line from the most relevant fields
-              const summaryParts = []
-              if (ev.user_name)    summaryParts.push(ev.user_name)
-              if (ev.process_name) summaryParts.push(ev.process_name)
-              if (ev.command_line) summaryParts.push(ev.command_line.slice(0, 80))
-              if (ev.src_ip)       summaryParts.push(`${ev.src_ip}${ev.src_port ? ':'+ev.src_port : ''}`)
-              if (ev.dst_ip)       summaryParts.push(`→ ${ev.dst_ip}${ev.dst_port ? ':'+ev.dst_port : ''}`)
-              if (ev.file_path)    summaryParts.push(ev.file_path)
-              if (ev.reg_key)      summaryParts.push(ev.reg_key)
-              // Cloud/DevOps fields from raw
-              if (!summaryParts.length) {
-                const r = raw
-                const cloudSummary = r?.event_name || r?.operation_name || r?.method_name ||
-                  r?.repo || r?.message || r?.action || r?.finding_type ||
-                  r?.commit_sha?.slice(0,8)
-                if (cloudSummary) summaryParts.push(String(cloudSummary))
-              }
-              const summary = summaryParts.join('  ·  ')
-
-              return (
-                <div key={ev.id || i}
-                  className="flex items-center gap-3 px-4 py-2.5 hover:bg-white/[0.03] cursor-pointer transition-colors group"
-                  onClick={() => setSelected(ev)}>
-                  {/* Time */}
-                  <span className="text-[11px] text-siem-muted/70 font-mono whitespace-nowrap w-[120px] shrink-0">
-                    {format(new Date(ev.time), 'MM/dd HH:mm:ss')}
-                  </span>
-                  {/* Severity */}
-                  <SeverityBadge severity={ev.severity}/>
-                  {/* Host */}
-                  <span className="text-xs font-medium text-siem-text w-[100px] shrink-0 truncate">
-                    {ev.host || '-'}
-                  </span>
-                  {/* Type badge */}
-                  <EventTypeBadge type={ev.event_type}/>
-                  {/* Summary - everything else */}
-                  <span className="text-[11px] text-siem-muted/80 truncate flex-1 font-mono">
-                    {summary || ev.source || ev.event_type}
-                  </span>
-                  {/* Chevron */}
-                  <ChevronRight size={13} className="text-siem-muted/30 group-hover:text-siem-muted shrink-0"/>
+          <div className="ow-card" style={{ flex: 1, minWidth: 0, overflow: 'hidden' }}>
+            <div className="ow-grid h" style={{ gridTemplateColumns: tpl }}><div>Time</div><div>Severity</div><div>Host</div><div>Type</div><div>Summary</div></div>
+            {loading && !live ? <div className="t3" style={{ padding: '40px 14px', textAlign: 'center' }}>Searching…</div>
+              : displayed.length === 0 ? (
+                <div className="t3" style={{ padding: '40px 14px', textAlign: 'center' }}>
+                  {live ? 'Waiting for events…' : tags.length ? 'No events match this query in this time range.' : 'No events in this time range. Try a longer range.'}
                 </div>
-              )
-            })}
+              ) : displayed.map((ev, i) => (
+                <div key={ev.id || i} className={`ow-grid click ${(ev.severity || 1) >= 5 ? 's-crit' : (ev.severity || 1) >= 4 ? 's-warn' : ''}`} role="row" tabIndex={0}
+                  style={{ gridTemplateColumns: tpl, minHeight: 34 }} onClick={() => setSelected(ev)} onKeyDown={e => { if (e.key === 'Enter') setSelected(ev) }}>
+                  <span className="mono t2" style={{ fontSize: 12 }} title={new Date(ev.time).toISOString()}>{format(new Date(ev.time), 'MMM dd HH:mm:ss')}</span>
+                  <span>{(ev.severity || 1) >= 3 ? <SevPill sev={ev.severity}/> : <span className="t3" style={{ fontSize: 12 }}>{SEV_WORD[ev.severity || 1]}</span>}</span>
+                  <span className="mono t1" title={ev.host}>{ev.host || '—'}</span>
+                  <span><EventTypeBadge type={ev.event_type}/></span>
+                  <span className="mono t2" style={{ fontSize: 12 }} title={summaryOf(ev)}>{summaryOf(ev)}</span>
+                </div>
+              ))}
+            {!live && total > limit && (
+              <div className="ow-card-foot">
+                <span>Showing {(page * limit + 1).toLocaleString()}–{Math.min(total, (page + 1) * limit).toLocaleString()} of {shownTotal.toLocaleString()}</span>
+                <span style={{ display: 'flex', gap: 4 }}>
+                  <button className="ow-btn quiet" style={{ height: 24 }} disabled={page === 0} onClick={() => { const p = page - 1; setPage(p); fetchEvents(p, inputVal) }}>‹ Newer</button>
+                  <button className="ow-btn quiet" style={{ height: 24 }} disabled={(page + 1) * limit >= total} onClick={() => { const p = page + 1; setPage(p); fetchEvents(p, inputVal) }}>Older ›</button>
+                </span>
+              </div>
+            )}
           </div>
-        )}
-
-        {!live && total > limit && (
-          <div className="flex items-center justify-between px-4 py-3 border-t border-siem-border">
-            <span className="text-xs text-siem-muted">
-              Page {page + 1} of {Math.ceil(total / limit)} · {total.toLocaleString()} total
-            </span>
-            <div className="flex gap-2">
-              <button disabled={page === 0}
-                onClick={() => { const p = page - 1; setPage(p); fetchEvents(p) }}
-                className="text-xs px-3 py-1.5 border border-siem-border rounded-lg text-siem-muted hover:text-siem-text disabled:opacity-40">
-                Previous
-              </button>
-              <button disabled={(page + 1) * limit >= total}
-                onClick={() => { const p = page + 1; setPage(p); fetchEvents(p) }}
-                className="text-xs px-3 py-1.5 border border-siem-border rounded-lg text-siem-muted hover:text-siem-text disabled:opacity-40">
-                Next
-              </button>
-            </div>
-          </div>
-        )}
+        </div>
       </div>
     </div>
   )

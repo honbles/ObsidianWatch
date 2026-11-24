@@ -26,6 +26,9 @@ import (
 // only servers online right now, usually a handful).
 const feodoURL = "https://feodotracker.abuse.ch/downloads/ipblocklist_aggressive.txt"
 
+// The recommended list holds only currently-active C2 servers (confidence 90).
+const feodoRecommendedURL = "https://feodotracker.abuse.ch/downloads/ipblocklist_recommended.txt"
+
 // feedMaxBytes bounds a feed download (a BCL is ~2,000 lines).
 const feedMaxBytes = 8 << 20
 
@@ -118,7 +121,14 @@ func (e *ThreatIntelEngine) syncIPFeed(ctx context.Context, source, rawURL, malw
 }
 
 func (e *ThreatIntelEngine) syncFeodo(ctx context.Context) (int, error) {
-	return e.syncIPFeed(ctx, "feodo", feodoURL, "Feodo/Emotet/QakBot family C2", 90)
+	// Aggressive list (1-year C2 history) at 65 first, then the recommended
+	// (currently active) list at 90 so overlapping IPs end up at 90.
+	n1, err := e.syncIPFeed(ctx, "feodo", feodoURL, "Feodo/Emotet/QakBot family C2 (historical)", 65)
+	if err != nil {
+		return n1, err
+	}
+	n2, err := e.syncIPFeed(ctx, "feodo", feodoRecommendedURL, "Feodo/Emotet/QakBot family C2", 90)
+	return n1 + n2, err
 }
 
 func (e *ThreatIntelEngine) syncSpamhausBCL(ctx context.Context, feedURL *string) (int, error) {

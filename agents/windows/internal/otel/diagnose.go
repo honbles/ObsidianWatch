@@ -60,12 +60,13 @@ type queryVal struct {
 }
 
 type diagState struct {
-	ch   map[childKey]*childVal
-	chN  map[routeKey]int
-	q    map[queryKey]*queryVal
-	qN   map[svcKey]int
-	n1   map[routeKey]int64
-	n1Mu struct{}
+	ch  map[childKey]*childVal
+	chN map[routeKey]int
+	q   map[queryKey]*queryVal
+	qN  map[svcKey]int
+	n1  map[routeKey]int64
+	er  map[errKey]*errVal
+	erN map[svcKey]int
 }
 
 // BatchChild is one slow-downstream aggregate: calls made from a route to one kind of target in a minute.
@@ -153,7 +154,7 @@ func fingerprintSQL(stmt string) (id, text string) {
 func (a *Aggregator) diag() *diagState {
 	if a.dg == nil {
 		a.dg = &diagState{ch: map[childKey]*childVal{}, chN: map[routeKey]int{}, q: map[queryKey]*queryVal{},
-			qN: map[svcKey]int{}, n1: map[routeKey]int64{}}
+			qN: map[svcKey]int{}, n1: map[routeKey]int64{}, er: map[errKey]*errVal{}, erN: map[svcKey]int{}}
 	}
 	return a.dg
 }
@@ -212,6 +213,13 @@ func (a *Aggregator) diagnoseTrace(t *openTrace, now time.Time) (self map[string
 	reps := map[repKey][]*Span{}
 	for i := range t.spans {
 		s := &t.spans[i]
+		if s.ExcType != "" {
+			er, em := "", ""
+			if rs := routeOf(s); rs != nil {
+				er, em = rs.Route, rs.Method
+			}
+			a.noteError(s, er, em, now)
+		}
 		if s.Kind != kindClient && s.Kind != kindProducer {
 			continue
 		}
@@ -333,6 +341,11 @@ func (a *Aggregator) drainDiag(b *Batch) {
 	}
 	for k, n := range d.n1 {
 		b.NPlusOne = append(b.NPlusOne, BatchNPlusOne{Service: k.svc.name, Environment: k.svc.env, Route: k.route, Method: k.method, Count: n})
+	}
+	for k, v := range d.er {
+		b.Errors = append(b.Errors, BatchError{Service: k.svc.name, Environment: k.svc.env, Route: v.route, Method: v.method,
+			Fingerprint: k.fp, Type: v.typ, Frame: v.frame, Frames: v.frames, Message: v.msg, Version: v.version, TraceID: v.trace,
+			Count: v.count, Time: v.at.UTC()})
 	}
 	a.dg = nil
 }

@@ -71,4 +71,12 @@ type appData interface {
 	AgentSeen(ctx context.Context, agentID string) (time.Time, error)
 	ProcessAlive(ctx context.Context, agentID string, pid int, since time.Time) (bool, error)
 	LastRequestMinute(ctx context.Context, svcID int64) (time.Time, error)
+	ErrorGroups(ctx context.Context, svcID int64, since time.Time) ([]appErrGroupRef, error)
+	Deploys(ctx context.Context, svcID int64, since time.Time) ([]appDeploy, error)
+	WindowTotals(ctx context.Context, svcID int64, from, to time.Time) (appWindowTotals, error)
+	OperationWindow(ctx context.Context, svcID int64, from, to time.Time) ([]appOpAgg, error)
+	JobHistory(ctx context.Context, svcID int64, since time.Time) ([]appJobHistory, error)
+	SLICounts(ctx context.Context, svcID int64, from, to time.Time, targetMs int) (appSLICounts, error)
+	QueryWindow(ctx context.Context, svcID int64, from, to time.Time) ([]appQueryAgg, error)
+	MetricWindow(ctx context.Context, svcID int64, from, to time.Time) ([]appMetricAgg, error)
 }

@@ -2,7 +2,7 @@
 
 This guide takes a Node.js developer from nothing to every capability the platform offers for an application: routes and health, dependencies, injection detection, login and abuse detection, request fields with masking, and the host-level view. Each step says what you get, what to change and how to check it. Do the steps in order; each one works without the next.
 
-Contents: 1 What you get, 2 Agent, 3 Level 1 traces (path A manual SDK or path B auto-instrumentation), 4 Level 2 request fields, 5 Level 3 security events, 6 Console setup, 7 Review and masking, 8 Detections, 9 Other frameworks, 10 Containers, 11 What leaves the host, 12 Verify, 13 Troubleshooting, 14 Checklist.
+Contents: 1 What you get, 2 Agent, 3 Level 1 traces (path A manual SDK or path B auto-instrumentation), 4 Level 2 request fields, 5 Level 3 security events, 5b Jobs and consumers, 6 Console setup, 7 Review and masking, 8 Detections, 9 Other frameworks, 10 Containers, 11 What leaves the host, 12 Verify, 13 Troubleshooting, 14 Checklist.
 
 ## 1. What you get at each level
 
@@ -114,6 +114,8 @@ OTEL_METRICS_EXPORTER=none
 OTEL_LOGS_EXPORTER=none
 OTEL_NODE_ENABLED_INSTRUMENTATIONS=http,express
 ```
+
+**Optional: runtime metrics.** To see event loop delay, heap, CPU and connection pools on the service's Metrics tab and get the saturation alert (APM-O07), set `OTEL_METRICS_EXPORTER=otlp` instead of `none` and add `@opentelemetry/instrumentation-runtime-node` (and the database instrumentation, which reports pool usage). The agent keeps only an allowlist of runtime and pool metrics (names starting `process.`, `nodejs.`, `v8js.`, `jvm.`, `dotnet.`, `db.client.connection`), at most 100 series per instance, with attributes limited to states and pool names; everything else is dropped and counted. Exponential histograms are not accepted: use explicit-bucket histograms.
 
 `http/protobuf` matters: the agent does not accept gRPC. `OTEL_NODE_ENABLED_INSTRUMENTATIONS=http,express` keeps the traces focused; leave it out to instrument everything (databases, Redis and so on), which also gives you more dependency data.
 
@@ -375,6 +377,21 @@ Set `OW_SECURITY_CONSOLE=1` in the app's environment to echo each event to the a
 
 **Check.** Log in wrongly a few times. Within a minute or two the service's **Security** tab shows the events, and 20 or more failures from one client in 5 minutes raise APP-A01.
 
+## 5b. Jobs and message consumers (optional)
+
+What it adds: scheduled jobs and queue consumers appear on the service's **Jobs and queues** tab with runs, failures, duration and last run. A job that ran on a steady cadence and then stops raises APM-O10; a job that fails often raises APM-O11 (both start in observe mode).
+
+- **Queue consumers** need nothing from you: instrumentations for Kafka, RabbitMQ, SQS and similar report consumer spans, and the agent groups them by messaging system, queue or topic and operation (ids in names become `?`).
+- **Scheduled jobs:** copy `ow-jobs.js` (also at `samples/app/node/ow-jobs.js`) next to `package.json` and wrap the function. It needs only `@opentelemetry/api`.
+
+```js
+const { job } = require('./ow-jobs')
+const nightly = job('nightly-report', async () => { /* the work */ })
+setInterval(nightly, 10 * 60 * 1000)   // or your cron library: cron.schedule('*/10 * * * *', nightly)
+```
+
+Use a stable name without ids. A job needs five runs before its cadence is learned, and an alert needs it to be three usual intervals late (and at least five minutes). Only the name leaves the host.
+
 ## 6. Console setup for the service
 
 Open the service, **Settings**:
@@ -454,9 +471,15 @@ The application and the agent share a loopback only when they share a network na
 | Query-string and body field **names** | yes |
 | Field **values** | only for reviewed routes and unmasked fields, never credential-like names or values |
 | Injection signature class (`param.sql-injection`) | yes, as a label; the value does not |
+| Latency distribution per route per minute: a compact sketch of bin numbers and counts, no request data | yes |
 | Where a route's time goes: per route, the slowest downstream calls as a kind (database, HTTP, queue), a target (`postgresql`, `payments`) and a span-name template with ids and numbers replaced by `?` | yes, at most 20 per route per flush |
 | Database calls: system, operation (`SELECT`) and table names, with counts, errors and timings | yes, at most 200 distinct per service per flush |
 | Database statement | **never raw**. Off by default. When an admin sets the service to "statement fingerprints", the agent strips every literal first (strings, numbers, `IN` lists, comments) and sends only that shape, up to 512 bytes, such as `select * from users where id = ?` |
+| Errors: exception type, route, and up to 30 stack frames (function plus a short file path and line; no column, no arguments), grouped by a fingerprint, with a count per 30-second flush and one sample | yes, at most 100 groups per service per flush |
+| Error message | **off by default**. If an admin sets the service to "masked message", the agent replaces numbers, quoted text, emails, uuids and long tokens with `?` first |
+| Runtime and pool metrics: CPU, memory, event loop delay, heap, garbage collection, connection pool use, per instance per minute (last, min, max, average) | yes, allowlisted names only, at most 100 series per instance; attributes are limited to states and pool names |
+| Trace sampling counters: per service and reason, how many traces were completed and how many were kept | yes, two numbers per reason |
+| Jobs and consumers: name (job name, or messaging system, queue or topic and operation, ids replaced by `?`), runs, failures, duration sketch, last run | yes, at most 100 names per service; no message content or arguments |
 | Span self time and the N+1 flag | yes, numbers and a flag |
 | Request headers, response bodies, raw URLs | never |
 | User, session, object identifiers from the security helper | hashed by the agent first |
@@ -489,6 +512,8 @@ Or run Juice Shop with the kit in `samples/app/juice-kit` (README there): `setup
 | A field shows **new fields** after review | it appeared after the review. Open Review and save again |
 | APP-A01 or APP-A09 never fires | rules start in observe mode (Info); few requests; the service has no login route configured and none looks like one; a proxy hides the client (add trusted proxies) |
 | Injection alerts but no exception names | expected in Node: errors are named `Error`. The agent detects injection from the parameter values themselves |
+| Errors tab empty or every error is one group | the app is not recording exceptions on spans (set the span status and call `span.recordException(err)` for errors you catch yourself). Unnamed classes all report `Error`, so groups are told apart by the stack frames; an error with no stack groups by type and route only, so throw real `Error` objects |
+| Error stack frames are all library code | the app's own frames are filtered out only by path (`node_modules` and Node internals are treated as libraries); bundlers that put your code into one file under `node_modules` or a minified path will look like library frames |
 | Security tab empty | level 3 not wired, or the logs exporter is pointed at the wrong path (`/v1/logs`) |
 | Client address is the load balancer | add it to Trusted proxies |
 

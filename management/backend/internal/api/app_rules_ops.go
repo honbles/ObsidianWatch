@@ -106,6 +106,14 @@ func (r *appRules) o03(ctx context.Context, svc appSvc, now time.Time) {
 		return
 	}
 	perWindow := float64(sum(base)) / (24 * 60 / win.Minutes())
+	usual := "usual"
+	if hist := r.seasonalTotals(ctx, svc, to.Add(-win), to, 1); hist != nil { // enough history: follow the weekly pattern
+		var cs []float64
+		for _, h := range hist {
+			cs = append(cs, float64(h.Calls))
+		}
+		perWindow, usual = appMedian(cs), "usual for this time of the week"
+	}
 	if perWindow < g.Param("min_baseline", 100) {
 		appSkip("APM-O03", "baseline too small")
 		return
@@ -114,8 +122,8 @@ func (r *appRules) o03(ctx context.Context, svc appSvc, now time.Time) {
 	drop := g.Param("drop_pct", 80)
 	if curN <= perWindow*(1-drop/100) {
 		r.fire(ctx, appFinding{RuleID: "APM-O03", Svc: svc, BaseSev: appSevHigh, Summary: "Traffic dropped sharply",
-			Detail: fmt.Sprintf("%d requests in the last %d minutes against a usual %.0f (down %.0f%%).%s",
-				int64(curN), int(win.Minutes()), perWindow, (1-curN/perWindow)*100, appNotifyLine(svc)),
+			Detail: fmt.Sprintf("%d requests in the last %d minutes against a %s %.0f (down %.0f%%).%s",
+				int64(curN), int(win.Minutes()), usual, perWindow, (1-curN/perWindow)*100, appNotifyLine(svc)),
 			EventType: "app.alert", Time: now, DedupKey: fmt.Sprintf("%d:%s", svc.ID, now.UTC().Format("2006010215"))})
 	}
 }
@@ -277,6 +285,15 @@ func (r *appRules) Scan(ctx context.Context) {
 		r.o01(ctx, svc, now)
 		r.o03(ctx, svc, now)
 		r.o05(ctx, svc, now)
+		r.o06(ctx, svc, now)
+		r.o07(ctx, svc, now)
+		r.o08(ctx, svc, now)
+		r.o09(ctx, svc, now)
+		r.o10(ctx, svc, now)
+		r.o11(ctx, svc, now)
+		r.o12(ctx, svc, now)
+		r.o13(ctx, svc, now)
+		r.o14(ctx, svc, now)
 		r.x06(ctx, svc, now)
 	}
 }

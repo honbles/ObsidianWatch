@@ -4,6 +4,7 @@ import { Settings as SettingsIcon, Mail, CheckCircle, AlertCircle, Send,
          Zap, Cloud, Save, Eye, EyeOff, Plus, X, ChevronRight,
          Key, Shield, Database, Brain, Search, ExternalLink, RefreshCw } from 'lucide-react'
 import api from '../api/client'
+import { PageHeader, Tabs } from '../components/ui'
 
 // ── Shared UI helpers ─────────────────────────────────────────────────────────
 const inputCls = "w-full bg-siem-bg border border-siem-border rounded-lg px-3 py-2 text-sm text-siem-text focus:outline-none focus:border-siem-accent"
@@ -613,24 +614,13 @@ export default function Settings() {
   const Active = COMPONENTS[tab] || APIKeysSettings
 
   return (
-    <div className="p-6 space-y-6">
-      <div className="flex items-center gap-2">
-        <SettingsIcon className="text-siem-accent" size={20}/>
-        <h1 className="text-xl font-bold text-siem-text">Settings</h1>
+    <div>
+      <PageHeader title="Platform settings" sub="AI providers and integrations, email notifications, cloud connector defaults and detection engine options. Changes apply to the whole platform and are audited."
+        tabs={<Tabs value={tab} onChange={id => setSearchParams({ tab: id })} tabs={TABS.map(t => ({ id: t.id, label: t.label }))}/>}/>
+      <div className="ow-body" style={{ maxWidth: 1100 }}>
+        <Active/>
       </div>
-
-      <div className="flex gap-1 bg-siem-surface border border-siem-border rounded-xl p-1 w-fit flex-wrap">
-        {TABS.map(({ id, label, icon: Icon }) => (
-          <button key={id} onClick={() => setSearchParams({ tab: id })}
-            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-medium transition-colors ${
-              tab === id ? 'bg-siem-accent text-white' : 'text-siem-muted hover:text-siem-text'
-            }`}>
-            <Icon size={13}/>{label}
-          </button>
-        ))}
-      </div>
-
-      <Active/>
     </div>
   )
 }
+

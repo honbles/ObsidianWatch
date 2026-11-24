@@ -4,9 +4,10 @@ import { Cloud as CloudIcon, RefreshCw, ChevronRight, Plus } from 'lucide-react'
 import api from '../api/client'
 import { ConnectorDetail, ConnectorForm } from './cloud/connectors.jsx'
 import { PROVIDERS, PROVIDER_COLORS } from './cloud/shared.jsx'
+import PostureOverview from './cloud/PostureOverview.jsx'
 
 // ── Main Cloud page ────────────────────────────────────────────────────────────
-export default function CloudPage() {
+function CloudConnectors({ initialSelected }) {
   const [searchParams] = useSearchParams()
   const [connectors, setConnectors] = useState([])
   const [selected, setSelected]     = useState(null)
@@ -20,7 +21,9 @@ export default function CloudPage() {
       const list = Array.isArray(data?.connectors) ? data.connectors : []
       setConnectors(list)
       const provider = searchParams.get('provider')
-      if (provider) {
+      if (initialSelected && list.some(c => c.id === initialSelected)) {
+        setSelected(initialSelected)
+      } else if (provider) {
         const match = list.find(c => c.provider === provider)
         if (match) setSelected(match.id)
       } else if (!selected && list.length > 0) {
@@ -47,7 +50,7 @@ export default function CloudPage() {
   const selectedConn = connectors.find(c => c.id === selected)
 
   return (
-    <div className="flex h-screen bg-siem-bg text-siem-text overflow-hidden">
+    <div className="flex bg-siem-bg text-siem-text overflow-hidden" style={{ height: 'calc(100vh - var(--topbar-h) - 108px)', minHeight: 520 }}>
       {/* Sidebar */}
       <div className="w-64 flex-shrink-0 flex flex-col border-r border-siem-border">
         <div className="flex-shrink-0 px-4 py-3 border-b border-siem-border bg-siem-surface">
@@ -154,3 +157,9 @@ export default function CloudPage() {
   )
 }
 
+
+// Cloud section: posture across all accounts, with the per-account workspace as a tab.
+export default function CloudPage() {
+  const [acct, setAcct] = useState(null)
+  return <PostureOverview onOpenAccount={setAcct} connectorsView={<CloudConnectors key={acct || 'all'} initialSelected={acct}/>}/>
+}

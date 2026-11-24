@@ -38,6 +38,11 @@ export const appIsAdmin = () => {
   try { return JSON.parse(localStorage.getItem('user'))?.role === 'admin' } catch { return false }
 }
 
+// Admins and analysts can triage (resolve, ignore, assign); viewers are read-only.
+export const appCanTriage = () => {
+  try { const r = JSON.parse(localStorage.getItem('user'))?.role; return r === 'admin' || r === 'analyst' } catch { return false }
+}
+
 // Per-route review page: /applications/services/<name|env>/routes/<METHOD>/<route without the leading slash>
 export const appReviewPath = (service, method, route) =>
   `/applications/services/${encodeURIComponent(`${service.name}|${service.environment}`)}/routes/${encodeURIComponent(method)}/${String(route).replace(/^\//, '').split('/').map(encodeURIComponent).join('/')}`

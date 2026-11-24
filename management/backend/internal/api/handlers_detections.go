@@ -47,6 +47,7 @@ func handleListDetections(db *store.DB) http.HandlerFunc {
 		allSigs = append(allSigs, cloudSignaturesExtended...)
 		allSigs = append(allSigs, cloudReconSignatures...)
 		allSigs = append(allSigs, cloudNetworkSignatures...)
+		allSigs = append(allSigs, imdsSignatures...)
 		allSigs = append(allSigs, cloudLateralSignatures...)
 		allSigs = append(allSigs, cloudComputeAbuseSignatures...)
 		allSigs = append(allSigs, awsExtraSignatures...)

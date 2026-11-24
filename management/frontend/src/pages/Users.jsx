@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Users as UsersIcon, Plus, Trash2, ShieldCheck, User } from 'lucide-react'
 import { format } from 'date-fns'
 import api from '../api/client'
+import { PageHeader, Num, DenseTable, StatePill, Dialog, Field } from '../components/ui'
 
 export default function Users() {
   const [users, setUsers] = useState([])
@@ -39,91 +40,48 @@ export default function Users() {
     load()
   }
 
+  const dormant = (u) => !u.last_login || Date.now() - new Date(u.last_login) > 90 * 86400e3
+  const userState = (u) => !u.password_changed ? 'warn' : dormant(u) ? 'none' : 'ok'
   return (
-    <div className="p-6 space-y-5">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <UsersIcon className="text-siem-accent" size={20} />
-          <h1 className="text-xl font-bold text-siem-text">User Management</h1>
+    <div>
+      <PageHeader title="Users and access"
+        state={loading ? undefined : users.some(u => !u.password_changed) ? 'warn' : 'ok'}
+        stateText={users.filter(u => !u.password_changed).length ? `${users.filter(u => !u.password_changed).length} still on the initial password` : 'All passwords changed'}
+        sub="Admins manage the platform, analysts triage and respond, viewers read only. Every change is in the audit log."
+        actions={<button className="ow-btn primary" onClick={() => setShowCreate(true)}><Plus size={13}/>New user</button>}
+        nums={<>
+          <Num k="Users" v={users.length}/>
+          <Num k="Admins" v={users.filter(u => u.role === 'admin').length}/>
+          <Num k="Initial password" v={users.filter(u => !u.password_changed).length} tone={users.some(u => !u.password_changed) ? 'warn' : undefined}/>
+          <Num k="No login in 90 days" v={users.filter(dormant).length} title="Never signed in, or not for 90 days"/>
+        </>}/>
+      <div className="ow-body">
+        <div className="ow-card" style={{ overflow: 'hidden' }}>
+          <DenseTable rows={loading ? [] : users} rowKey={u => u.id} rowState={u => userState(u) === 'ok' ? null : userState(u)} empty={loading ? 'Loading…' : 'No users.'} cols={[
+            { key: 'u', label: 'User', width: 'minmax(160px, 1.4fr)', render: u => <span className="t1" style={{ display: 'flex', alignItems: 'center', gap: 8 }}><span className="tb-avatar">{u.username[0]?.toUpperCase()}</span>{u.username}</span> },
+            { key: 'r', label: 'Role', width: '110px', render: u => <StatePill state={u.role === 'admin' ? 'info' : 'none'} dot={false}>{u.role[0].toUpperCase() + u.role.slice(1)}</StatePill> },
+            { key: 'p', label: 'Password', width: '130px', render: u => u.password_changed ? <span className="t2">Changed</span> : <StatePill state="warn">Initial</StatePill> },
+            { key: 'l', label: 'Last login', width: '160px', render: u => u.last_login ? <span className={dormant(u) ? 'c-warn' : 't2'}>{format(new Date(u.last_login), 'dd MMM yyyy HH:mm')}</span> : <span className="t3">Never</span> },
+            { key: 'c', label: 'Created', width: '120px', render: u => <span className="t2">{format(new Date(u.created_at), 'dd MMM yyyy')}</span> },
+            { key: 'x', label: '', width: '80px', render: u => u.username !== 'admin' && <button className="ow-btn quiet" style={{ height: 24, color: 'var(--crit)' }} onClick={() => del(u.id, u.username)}><Trash2 size={13}/>Delete</button> },
+          ]}/>
         </div>
-        <button onClick={() => setShowCreate(s => !s)}
-          className="flex items-center gap-1.5 text-xs bg-siem-accent hover:bg-siem-accent/90 text-white px-3 py-2 rounded-lg">
-          <Plus size={13} /> New user
-        </button>
       </div>
-
       {showCreate && (
-        <div className="bg-siem-surface border border-siem-border rounded-xl p-4">
-          <div className="text-sm font-medium text-siem-text mb-3">Create user</div>
-          <form onSubmit={create} className="grid grid-cols-3 gap-3">
-            <input className="bg-siem-bg border border-siem-border rounded-lg px-3 py-2 text-sm text-siem-text focus:outline-none focus:border-siem-accent"
-              placeholder="Username" value={form.username} onChange={e => setForm(f => ({ ...f, username: e.target.value }))} required />
-            <input type="password" className="bg-siem-bg border border-siem-border rounded-lg px-3 py-2 text-sm text-siem-text focus:outline-none focus:border-siem-accent"
-              placeholder="Password (min 10 chars)" value={form.password} onChange={e => setForm(f => ({ ...f, password: e.target.value }))} required minLength={10} />
-            <select className="bg-siem-bg border border-siem-border rounded-lg px-3 py-2 text-sm text-siem-text focus:outline-none"
-              value={form.role} onChange={e => setForm(f => ({ ...f, role: e.target.value }))}>
-              <option value="analyst">Analyst</option>
-              <option value="viewer">Viewer (read-only)</option>
-              <option value="admin">Admin</option>
-            </select>
-            {error && <div className="col-span-3 text-siem-red text-xs">{error}</div>}
-            <div className="col-span-3 flex gap-2">
-              <button type="submit" className="text-xs bg-siem-accent hover:bg-siem-accent/90 text-white px-4 py-2 rounded-lg">Create</button>
-              <button type="button" onClick={() => setShowCreate(false)} className="text-xs text-siem-muted hover:text-siem-text border border-siem-border rounded-lg px-4 py-2">Cancel</button>
+        <Dialog title="New user" onClose={() => setShowCreate(false)}>
+          <form onSubmit={create} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <Field label="Username"><input className="input" autoFocus required value={form.username} onChange={e => setForm(f => ({ ...f, username: e.target.value }))}/></Field>
+            <Field label="Password" hint="At least 10 characters. They will be asked to change it."><input className="input" type="password" required minLength={10} value={form.password} onChange={e => setForm(f => ({ ...f, password: e.target.value }))}/></Field>
+            <Field label="Role"><select className="input" value={form.role} onChange={e => setForm(f => ({ ...f, role: e.target.value }))}>
+              <option value="analyst">Analyst</option><option value="viewer">Viewer (read only)</option><option value="admin">Admin</option></select></Field>
+            {error && <div className="c-crit" style={{ fontSize: 12.5 }}>{error}</div>}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+              <button type="button" className="ow-btn quiet" onClick={() => setShowCreate(false)}>Cancel</button>
+              <button type="submit" className="ow-btn primary">Create user</button>
             </div>
           </form>
-        </div>
+        </Dialog>
       )}
-
-      <div className="bg-siem-surface border border-siem-border rounded-xl overflow-hidden">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-siem-border text-siem-muted text-xs">
-              <th className="text-left px-4 py-3">User</th>
-              <th className="text-left px-4 py-3">Role</th>
-              <th className="text-left px-4 py-3">Created</th>
-              <th className="text-left px-4 py-3">Last login</th>
-              <th className="text-left px-4 py-3">Password</th>
-              <th className="px-4 py-3"></th>
-            </tr>
-          </thead>
-          <tbody>
-            {loading ? (
-              <tr><td colSpan={6} className="text-center py-10 text-siem-muted">Loading...</td></tr>
-            ) : users.map(u => (
-              <tr key={u.id} className="border-b border-siem-border/40">
-                <td className="px-4 py-3">
-                  <div className="flex items-center gap-2">
-                    <div className="bg-siem-accent/10 rounded-full p-1.5">
-                      {u.role === 'admin' ? <ShieldCheck size={12} className="text-siem-accent" /> : <User size={12} className="text-siem-muted" />}
-                    </div>
-                    <span className="text-siem-text font-medium">{u.username}</span>
-                  </div>
-                </td>
-                <td className="px-4 py-3">
-                  <span className={`text-xs px-2 py-0.5 rounded-full border capitalize ${
-                    u.role === 'admin' ? 'bg-siem-accent/10 border-siem-accent/30 text-siem-accent' : 'bg-siem-border/30 border-siem-border text-siem-muted'
-                  }`}>{u.role}</span>
-                </td>
-                <td className="px-4 py-3 text-siem-muted text-xs">{format(new Date(u.created_at), 'dd MMM yyyy')}</td>
-                <td className="px-4 py-3 text-siem-muted text-xs">{u.last_login ? format(new Date(u.last_login), 'dd MMM yyyy HH:mm') : 'Never'}</td>
-                <td className="px-4 py-3">
-                  {u.password_changed
-                    ? <span className="text-xs text-siem-green">Changed</span>
-                    : <span className="text-xs text-yellow-400">Default</span>}
-                </td>
-                <td className="px-4 py-3">
-                  {u.username !== 'admin' && (
-                    <button onClick={() => del(u.id, u.username)} className="text-siem-muted hover:text-siem-red transition-colors">
-                      <Trash2 size={14} />
-                    </button>
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
     </div>
   )
 }

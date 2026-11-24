@@ -28,7 +28,7 @@ func TestAppTimelineIntegration(t *testing.T) {
 		pid INT, ppid INT, process_name TEXT, command_line TEXT, user_name TEXT, dst_ip TEXT, dst_port INT, file_path TEXT, raw JSONB)`); err != nil {
 		t.Fatal(err) // dst_ip is TEXT in production (migration 004)
 	}
-	for _, f := range []string{"../../../../backend/internal/store/migrations/030_app_services.sql", "../../../../backend/internal/store/migrations/031_app_edge_client_stats.sql", "../../../../backend/internal/store/migrations/033_app_payloads.sql", "../../../../backend/internal/store/migrations/034_app_payloads_latency.sql", "../store/migrations/060_app_service_settings.sql", "../store/migrations/064_app_db_statement_mode.sql"} {
+	for _, f := range []string{"../../../../backend/internal/store/migrations/030_app_services.sql", "../../../../backend/internal/store/migrations/031_app_edge_client_stats.sql", "../../../../backend/internal/store/migrations/033_app_payloads.sql", "../../../../backend/internal/store/migrations/034_app_payloads_latency.sql", "../store/migrations/060_app_service_settings.sql", "../store/migrations/066_app_db_statement_mode.sql", "../store/migrations/067_app_error_message_mode.sql", "../store/migrations/068_app_sampling.sql", "../store/migrations/069_app_slo.sql"} {
 		b, _ := os.ReadFile(f)
 		if _, err := raw.Exec(string(b)); err != nil {
 			t.Fatalf("%s: %v", f, err)

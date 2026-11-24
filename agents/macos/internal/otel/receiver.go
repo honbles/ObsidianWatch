@@ -37,7 +37,7 @@ type ReceiverOptions struct {
 
 // RecvStats are counters for health reporting.
 type RecvStats struct {
-	Requests, BadRequests, Spans, Logs, SecurityEvents, Asserted, Unresolved, EmitDropped atomic.Int64
+	Requests, BadRequests, Spans, Logs, SecurityEvents, Asserted, Unresolved, EmitDropped, MetricPoints, MetricsDropped, MetricsRejected atomic.Int64
 }
 
 type Receiver struct {
@@ -230,10 +230,10 @@ func (r *Receiver) handle(kind string) http.HandlerFunc {
 		}
 		lp, _ := req.Context().Value(connKeyT{}).(*lazyPeer)
 		var peer Peer
-		if lp != nil && kind != "metrics" {
+		if lp != nil {
 			peer = lp.get()
 		}
-		if !peer.Resolved && kind != "metrics" {
+		if !peer.Resolved {
 			r.Stats.Unresolved.Add(1)
 		}
 		now := time.Now()
@@ -267,6 +267,31 @@ func (r *Receiver) handle(kind string) http.HandlerFunc {
 				r.agg.Ingest(s, peer, id)
 			}
 			r.Stats.Spans.Add(int64(len(spans)))
+		case "metrics":
+			var md *MetricsDecoded
+			if isJSON {
+				md, err = DecodeMetricsJSON(body)
+			} else {
+				md, err = DecodeMetricsPB(body)
+			}
+			if err != nil {
+				r.Stats.BadRequests.Add(1)
+				http.Error(w, "invalid OTLP metrics", http.StatusBadRequest)
+				return
+			}
+			ids := map[svcKey]string{}
+			for _, p := range md.Points {
+				k := svcKey{p.Res.Service, envOf(p.Res.Environment)}
+				id, ok := ids[k]
+				if !ok {
+					id = r.binder.Bind(k.name, k.env, peer)
+					ids[k] = id
+				}
+				r.agg.IngestMetrics(p, peer, id)
+			}
+			r.Stats.MetricPoints.Add(int64(len(md.Points)))
+			r.Stats.MetricsDropped.Add(md.Dropped)
+			r.Stats.MetricsRejected.Add(md.Rejected)
 		case "logs":
 			var logs []Log
 			if isJSON {

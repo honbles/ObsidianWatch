@@ -29,7 +29,7 @@ Which services call which databases, queues and external hosts, from client span
 What each service tells us today and what to add for the next tier. Also lists services that never sent telemetry, the rule catalogue with activity since the backend started, and how to unlock routes, dependencies and request-based detections.
 
 ### Settings (`/applications/settings`)
-Per-service tuning and learning status (click a service to edit it), the rule catalogue, and data retention (request statistics 90 days, sampled traces 7 days, changeable by an admin).
+Per-service tuning (including trace sampling: ordinary-trace share, error cap per minute, traces per flush) and learning status (click a service to edit it), the rule catalogue, and data retention (request statistics 90 days, sampled traces 7 days, changeable by an admin).
 
 ## 3. Service detail (`/applications/services/:id`)
 
@@ -41,13 +41,18 @@ The top of the page shows the service's tier, exposure, criticality and owner, f
 | **Routes** | Every route (`http.route` template, never the raw path) with calls, error rate, 401/403, 429, p95, last seen, and the field names seen on it. Tags: new, login, export, public, needs review, reviewed, new fields, and (with a spec) declared with no traffic yet, or not in spec. Each route also shows its slowest downstream calls (per request) and an N+1 tag when the same query ran 10 or more times under one parent. Holds the API spec panel and the bulk approve bar (section 4). |
 | **Dependencies** | What this service calls, with calls and errors in the range and a `new` mark for edges first seen inside it. |
 | **Database** | What the service asks its databases: calls, errors, average, p95 and total time by operation and table, sortable. With "statement fingerprints" on (Settings), each row also shows the query shape with every value replaced by `?`, so `WHERE id = 5` and `WHERE id = 9` are one query. Names only by default. |
+| **Errors** | Error groups: the same failure counted once, however many requests hit it. Open one for its stack (function and file, no values), the versions it appeared in, sample traces and occurrences. Resolve it when you ship the fix, ignore expected failures, or assign it. A resolved group that fails again in a different version reopens as "regressed". Admins and analysts can triage; viewers read. |
+| **Metrics** | Runtime and pool metrics the service reports (CPU, memory, event loop delay, heap, connection pools): latest, average and max per series, with a chart per row and an instance filter. Empty until the application turns on the OpenTelemetry metrics exporter. |
+| **Jobs and queues** | Scheduled jobs and message consumers: runs, failures, p50 and p95, how often a job usually runs and when it last ran. |
+| **SLO** | The objective (availability, and latency when a latency target is set), what was achieved over its 7 or 28 day window, the error budget left, burn rates over 1 h and 6 h, and when the budget would run out at the last day's pace. Defaults: 100 minus the error budget (99.9 % when none), 95 % of requests under the latency target, 28 days. |
+| **Compare** | Two versions side by side: calls, error rate, p50 and p95, per-route changes, and what is new in the later version (routes, error groups, dependencies). A version's window runs from first seen to the next version's first seen. |
 | **Instances and hosts** | Each running instance: host, process, version, whether it is instrumented, identity (verified or asserted), last seen. |
 | **Events** | Everything that happened under the service: connections, process starts, file access (from the host sensor) and lifecycle entries (instance, version, route and dependency changes). Connections to destinations not contacted in the previous 30 days are marked. Admins also see the requests captured for reviewed routes. |
 | **Runtime** | The host sensor per instance (kernel programs, kernel notifications plus polling, or polling only) and the host activity under the service. Empty until the agent has the app-server profile. |
 | **Security** | Events from the security helper: sign-in success and failure, authorization denied, export, with hashed user identifiers (hover shows the hash, never a name). Needs T2. |
 | **Traces** | Sampled traces: all errors, slow requests (over the latency target) and requests touched by a security event, plus 1 % of the rest. Filter by route, status, reason and minimum duration. Open one for the span waterfall: each bar shows the span's own time (children excluded) and the critical path, the chain of spans that decided when the request finished, is highlighted; repeated queries are tagged N+1. Kept 7 days, up to 64 KB each. |
 | **Alerts** | The alerts linked to this service (the count shows beside the tab). Application detections start in observe mode, so a quiet list while baselines learn is normal. |
-| **Settings** | Exposure, criticality, data sensitivity, owner, trusted proxies, login, export and public routes, latency target, error budget, maintenance windows, client address storage mode, database statement mode (names only or fingerprints), and "restart learning". Admin only to save. |
+| **Settings** | Exposure, criticality, data sensitivity, owner, trusted proxies, login, export and public routes, latency target, error budget, maintenance windows, client address storage mode, database statement mode (names only or fingerprints), error message mode (none or masked), and "restart learning". Admin only to save. |
 
 ### Route review page
 Review on any route opens `/applications/services/:id/review?route=...&method=...`: the route's calls, error rate, 401/403, p95, every field with its state, the masking choices, and the captured requests (paged, with status filter, latency and trace link). Captured samples are kept 7 days and are admin only.
@@ -75,7 +80,7 @@ Upload or fetch an OpenAPI 3.x or Swagger 2.0 document (JSON or YAML, up to 5 MB
 
 ## 5. Detection rules
 
-Eighteen rules, all in **observe mode** by default: the alert is created but shown as Info until an admin promotes the rule. Each rule can be disabled, tuned and allowlisted per service.
+Twenty rules, all in **observe mode** by default: the alert is created but shown as Info until an admin promotes the rule. Each rule can be disabled, tuned and allowlisted per service.
 
 | Rule | Tier | Fires when |
 |---|---|---|
@@ -95,8 +100,17 @@ Eighteen rules, all in **observe mode** by default: the alert is created but sho
 | APP-X02 | cross | H01 or H02 within 15 min of an A09 alert or a 5xx spike on the same service (Critical) |
 | APP-X06 | cross | no telemetry for 10 min after real traffic while the process is still active |
 | APM-O01 | T1 | error rate above the error budget (default 5 %) over 10 min |
-| APM-O03 | T1 | traffic 80 % below the usual rate |
+| APM-O03 | T1 | traffic 80 % below the usual rate: the previous day, or the same time of the week once three weeks of history exist |
 | APM-O05 | T1 | an instance stopped reporting while the host is up and others report |
+| APM-O10 | T1 | a job with a learned cadence (5 runs) has not run for 3 usual intervals (and at least 5 min) |
+| APM-O11 | T1 | a job or consumer fails 25 % or more of at least 5 runs in 30 min |
+| APM-O13 | T1 | the error budget burns at 14.4x over 1 h and 5 min (high), or 6x over 6 h and 30 min, for the availability or latency objective |
+| APM-O14 | T1 | error rate, p95 or traffic is far outside the median of the same window in the last 4 weeks (needs 3 weeks of history; error rate 3x and 2 points, p95 2x and 100 ms, traffic 4x) |
+| APM-O12 | T1 | within 30 min of a new version (after 5 min and 100 calls), the error rate is 2 points and 1.5x above the previous day, or p95 is 1.5x and 50 ms above it |
+| APM-O06 | T1 | a database call averages 2x or more of the previous day's time per call (at least 50 calls in each window and 20 ms slower; quiet during the first day of learning) |
+| APM-O07 | T1 | an instance stays saturated for 10 min: event loop delay p99 over 200 ms, heap over 90 % full, a connection pool over 95 % in use, or CPU over 90 % (needs 3 minutes of data) |
+| APM-O08 | T1 | a new error group reaches 3 occurrences within 30 min of first appearing (quiet during the first day of learning; ignored groups never alert) |
+| APM-O09 | T1 | a resolved error group fails again in a different version |
 
 **Severity:** base per rule, +1 if internet-facing, +1 if criticality is high or critical, -1 when an input was degraded, capped at Medium when telemetry is asserted. Operational (APM) rules are not weighted.
 **Learning:** first-seen rules (H04, H06, H08, A08) stay quiet until the service has learned for 7 days and 200 outbound connections or 1000 requests. A deploy window (default 30 min, opened by a new version or a restart during a package-manager run) suppresses H03, H04, A08, X06 and O05.
@@ -109,7 +123,7 @@ Eighteen rules, all in **observe mode** by default: the alert is created but sho
 - Command lines are redacted on the host (`--password=`, tokens, `KEY=`, `user:pw@`, bearer values).
 - User, session and object ids are HMAC-hashed with a key derived from the agent API key. With no key, ids are not sent.
 - Client addresses follow the service's mode: full, truncated (/24 or /48) or off.
-- Where time goes (slowest downstream calls per route, at most 20) and database operation and table names are sent as names and numbers. A database statement is never sent raw; if an admin turns on fingerprints for a service, only the statement with every value removed is sent (512 bytes at most).
+- Where time goes (slowest downstream calls per route, at most 20) and database operation and table names are sent as names and numbers. Error groups send the exception type, the route and stack frames (function and short file path with line, no arguments); the message is sent only when an admin turns on masked messages. A database statement is never sent raw; if an admin turns on fingerprints for a service, only the statement with every value removed is sent (512 bytes at most).
 - Every 30 s the agent sends per-minute statistics, edges, heartbeats and sampled traces. Raw spans stay on the host. At most 500 routes per service; the rest count as "other".
 - Every 5 min the agent pulls per-service settings (client address mode, cleartext ids, latency target); the build configuration is a floor, so the stricter setting wins.
 
@@ -131,12 +145,18 @@ Authenticated like the rest of `/api/v1`; viewers are read-only. `from` and `to`
 | `PUT/DELETE /services/{id}/payload-policy` | Admin. Review one route. |
 | `POST /services/{id}/payload-policy/bulk` | Admin. Approve many routes. |
 | `GET /services/{id}/payloads` | Admin. Captured requests of reviewed routes. |
+| `GET /services/{id}/slo` | Objectives with achieved percentage, budget left, burn rates and projected exhaustion. |
+| `GET /services/{id}/operations` | Jobs and consumers in the range: runs, failures, p50, p95, last run and (jobs) the learned interval. |
+| `GET /services/{id}/sampling` | Traces seen and kept per reason (security, error, slow, baseline) in the range. |
+| `GET /services/{id}/compare` | `a` and `b` (two versions) or `a_from`, `a_to`, `b_from`, `b_to`: totals, per-route changes, new routes, error groups and dependencies. |
+| `GET /services/{id}/metrics` | Runtime and pool series: without `name` the catalogue with latest, average, min and max; with `name` the points (`step` in minutes, optional `instance`). The service detail also returns a `runtime` summary per running instance. |
+| `GET /services/{id}/errors`, `GET /errors/{id}`, `PATCH /errors/{id}` | Error groups with counts in the range (`status` filter), one group's stack and sample traces, and triage (`status` open, resolved or ignored; `assignee`). Admin or analyst for the PATCH. |
 | `GET /services/{id}/queries` | Database calls by operation, table and fingerprint; `sort` is `total_ms`, `p95`, `calls` or `errors`. |
 | `GET /services/{id}/edges`, `/alerts`, `/events` | Dependencies, alerts and events of a service. |
 | `GET /map`, `GET /overview` | Estate graph and overview data. |
 | `GET /traces`, `GET /traces/{id}` | Sampled traces and one trace's spans, with `self_ms` per span and the `critical_path` span ids. |
 
-Percentiles are estimated from 12 histogram buckets (5 ms up to 10 s); a value in the open-ended bucket is returned as 10000 with `over_range: true`.
+Percentiles come from a mergeable latency sketch (1 % accuracy, no ceiling, max latency reported) when every agent in the range sends one and the range is 7 days or shorter. Otherwise they are estimated from 12 histogram buckets (5 ms to 10 s; a value past 10 s is returned as 10000 with `over_range: true`). Responses carry `percentile_method`: `sketch`, `histogram`, or `mixed` (some agents older). Apdex is shown when the service has a latency target: satisfied up to the target, tolerating up to 4 times it.
 
 ## 9. Planned, not built
 

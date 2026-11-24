@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"io"
 	"log/slog"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -269,5 +270,89 @@ func TestAppSanitizeDiagnosis(t *testing.T) {
 	}
 	if len(b.NPlusOne) != 1 || dropped != 4 {
 		t.Fatalf("n+1 %d, dropped %d", len(b.NPlusOne), dropped)
+	}
+}
+
+func TestAppSanitizeErrors(t *testing.T) {
+	now := time.Now().UTC()
+	ok := store.AppError{Service: "api", Method: "get", Route: "/x/1", Fingerprint: "0123456789abcdef", Type: "Error", Frame: "f a.js:1",
+		Frames: []string{"f a.js:1"}, Message: "order ? not found", TraceID: "0102030405060708090a0b0c0d0e0f10", Count: 2, Time: now}
+	leak := ok
+	leak.Message = "user 'bob' not found"
+	badFP := ok
+	badFP.Fingerprint = "xyz"
+	zero := ok
+	zero.Count = 0
+	many := ok
+	many.Frames = make([]string, 60)
+	for i := range many.Frames {
+		many.Frames[i] = "frame"
+	}
+	badTrace := ok
+	badTrace.TraceID = "../etc"
+	b := &store.AppBatch{Errors: []store.AppError{ok, leak, badFP, zero, many, badTrace}}
+	dropped := appSanitizeBatch(b, now)
+	if len(b.Errors) != 4 || dropped != 2 {
+		t.Fatalf("kept %d, dropped %d", len(b.Errors), dropped)
+	}
+	if b.Errors[1].Message != "" {
+		t.Fatalf("a message with a quoted value must be dropped: %q", b.Errors[1].Message)
+	}
+	if len(b.Errors[2].Frames) != 30 || b.Errors[3].TraceID != "" {
+		t.Fatalf("frames %d, trace %q", len(b.Errors[2].Frames), b.Errors[3].TraceID)
+	}
+}
+
+func TestAppSanitizeSketch(t *testing.T) {
+	now := time.Now().UTC()
+	good := store.NewSketch()
+	good.Add(12)
+	good.Add(80)
+	mk := func(calls int64, w *store.SketchWire) store.AppRouteStat {
+		return store.AppRouteStat{Service: "api", Method: "GET", Route: "/x", Minute: now, Calls: calls, DurBuckets: make([]int64, 12), Sketch: w}
+	}
+	b := &store.AppBatch{Routes: []store.AppRouteStat{mk(2, good.Wire()), mk(1, good.Wire()), mk(2, &store.SketchWire{B: []int64{1}})}}
+	appSanitizeBatch(b, now)
+	if len(b.Routes) != 3 || b.Routes[0].Sketch == nil || b.Routes[1].Sketch != nil || b.Routes[2].Sketch != nil {
+		t.Fatalf("sketch handling: %+v", b.Routes)
+	}
+}
+
+func TestAppSanitizeMetrics(t *testing.T) {
+	now := time.Now().UTC()
+	ok := store.AppMetric{Service: "api", Instance: "i-1", Name: "process.cpu.utilization", Attr: "state=user", Minute: now.Add(-time.Minute),
+		Last: 0.5, Min: 0.1, Max: 0.9, Sum: 2, Count: 4}
+	notAllowed := ok
+	notAllowed.Name = "http.client.duration"
+	nan := ok
+	nan.Last = math.NaN()
+	inverted := ok
+	inverted.Min, inverted.Max = 2, 1
+	noInst := ok
+	noInst.Instance = ""
+	old := ok
+	old.Minute = now.Add(-48 * time.Hour)
+	b := &store.AppBatch{Metrics: []store.AppMetric{ok, notAllowed, nan, inverted, noInst, old}}
+	dropped := appSanitizeBatch(b, now)
+	if len(b.Metrics) != 1 || dropped != 5 || b.Metrics[0].Identity != "asserted" {
+		t.Fatalf("kept %d, dropped %d", len(b.Metrics), dropped)
+	}
+}
+
+func TestAppSanitizeOperations(t *testing.T) {
+	now := time.Now().UTC()
+	ok := store.AppOperation{Service: "worker", Kind: "job", Name: "nightly", Minute: now.Add(-time.Minute), Runs: 3, Failures: 1, LastRun: now.Add(-time.Minute)}
+	badKind := ok
+	badKind.Kind = "http"
+	moreFail := ok
+	moreFail.Failures = 9
+	noName := ok
+	noName.Name = ""
+	old := ok
+	old.Minute = now.Add(-48 * time.Hour)
+	b := &store.AppBatch{Operations: []store.AppOperation{ok, badKind, moreFail, noName, old}}
+	dropped := appSanitizeBatch(b, now)
+	if len(b.Operations) != 1 || dropped != 4 || len(b.Operations[0].DurBuckets) != store.AppHistLen {
+		t.Fatalf("kept %d dropped %d", len(b.Operations), dropped)
 	}
 }

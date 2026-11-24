@@ -55,7 +55,7 @@ Return ONLY this JSON (no markdown):
         </div>
         <div style={{ flex:1, minWidth:0 }}>
           <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:3, flexWrap:'wrap' }}>
-            <span style={{ fontFamily:'DM Mono,monospace', fontSize:11, fontWeight:700, color:'var(--accent)', flexShrink:0 }}>
+            <span style={{ fontFamily:'var(--font-data)', fontSize:11, fontWeight:700, color:'var(--accent)', flexShrink:0 }}>
               CIS {control.id}
             </span>
             <span style={{ fontSize:12.5, fontWeight:600, color:'var(--text)' }}>{control.title}</span>
@@ -74,7 +74,7 @@ Return ONLY this JSON (no markdown):
           <div style={{ fontSize:11, color:'var(--text3)' }}>{control.evidence}</div>
         </div>
         <div style={{ display:'flex', alignItems:'center', gap:8, flexShrink:0 }}>
-          <span style={{ fontSize:11, fontWeight:700, color:col, fontFamily:'DM Mono,monospace' }}>{control.status}</span>
+          <span style={{ fontSize:11, fontWeight:700, color:col, fontFamily:'var(--font-data)' }}>{control.status}</span>
           <ChevronDown size={13} color="var(--text3)" style={{ transform: open ? 'rotate(180deg)' : 'none', transition:'transform 0.15s' }}/>
         </div>
       </div>
@@ -124,7 +124,7 @@ Return ONLY this JSON (no markdown):
                   <div style={{ fontSize:10, color:'#34d399', fontWeight:600, marginBottom:4 }}>Steps:</div>
                   {aiText.steps.map((s, i) => (
                     <div key={i} style={{ display:'flex', gap:6, marginBottom:4 }}>
-                      <span style={{ fontSize:10, color:'var(--accent)', fontFamily:'DM Mono,monospace', flexShrink:0 }}>{i+1}.</span>
+                      <span style={{ fontSize:10, color:'var(--accent)', fontFamily:'var(--font-data)', flexShrink:0 }}>{i+1}.</span>
                       <code style={{ fontSize:11, color:'var(--text2)', lineHeight:1.5, background:'var(--surface2)', padding:'1px 6px', borderRadius:4, display:'inline-block' }}>{s}</code>
                     </div>
                   ))}
@@ -199,7 +199,7 @@ Return ONLY this JSON (no markdown):
           <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:3, flexWrap:'wrap' }}>
             <span style={{ fontSize:11, fontWeight:700, color:fc.color, background:fc.bg,
               border:`1px solid ${fc.border}`, borderRadius:4, padding:'1px 7px',
-              fontFamily:'DM Mono,monospace', flexShrink:0 }}>
+              fontFamily:'var(--font-data)', flexShrink:0 }}>
               {ctrl.control_id}
             </span>
             <span style={{ fontSize:12.5, fontWeight:600, color:'var(--text)' }}>{ctrl.title}</span>
@@ -212,7 +212,7 @@ Return ONLY this JSON (no markdown):
           )}
         </div>
         <div style={{ display:'flex', alignItems:'center', gap:8, flexShrink:0 }}>
-          <span style={{ fontSize:11, fontWeight:700, color:statusColor, fontFamily:'DM Mono,monospace' }}>{ctrl.status}</span>
+          <span style={{ fontSize:11, fontWeight:700, color:statusColor, fontFamily:'var(--font-data)' }}>{ctrl.status}</span>
           <ChevronDown size={13} color="var(--text3)" style={{ transform: open ? 'rotate(180deg)' : 'none', transition:'transform 0.15s' }}/>
         </div>
       </div>
@@ -262,7 +262,7 @@ Return ONLY this JSON (no markdown):
                   <div style={{ fontSize:10, color:'#34d399', fontWeight:600, marginBottom:4 }}>Actions:</div>
                   {aiText.steps.map((s, i) => (
                     <div key={i} style={{ display:'flex', gap:6, marginBottom:3 }}>
-                      <span style={{ fontSize:10, color:'var(--accent)', fontFamily:'DM Mono,monospace', flexShrink:0 }}>{i+1}.</span>
+                      <span style={{ fontSize:10, color:'var(--accent)', fontFamily:'var(--font-data)', flexShrink:0 }}>{i+1}.</span>
                       <span style={{ fontSize:11, color:'var(--text2)', lineHeight:1.5 }}>{s}</span>
                     </div>
                   ))}
@@ -355,7 +355,7 @@ export function PanelCompliance({ connId, provider }) {
                     borderTop:`3px solid ${fc.color}`, borderRadius:10, cursor:'pointer', fontFamily:'inherit', textAlign:'left', transition:'all 0.15s' }}>
                   <div style={{ fontSize:10, fontWeight:700, color:'var(--text3)', textTransform:'uppercase', letterSpacing:'0.07em', marginBottom:6 }}>{s.framework}</div>
                   <div style={{ display:'flex', alignItems:'baseline', gap:4, marginBottom:6 }}>
-                    <span style={{ fontSize:26, fontWeight:800, color: pct>=80?'#34d399':pct>=60?'#fbbf24':'#f87171', fontFamily:'DM Mono,monospace' }}>{pct}%</span>
+                    <span style={{ fontSize:26, fontWeight:800, color: pct>=80?'#34d399':pct>=60?'#fbbf24':'#f87171', fontFamily:'var(--font-data)' }}>{pct}%</span>
                     <span style={{ fontSize:10.5, color:'var(--text3)' }}>compliant</span>
                   </div>
                   <div style={{ height:4, background:'var(--surface2)', borderRadius:3, overflow:'hidden', marginBottom:6 }}>
@@ -483,7 +483,7 @@ export function PanelCISBenchmark({ cis, loading, scanning, onRunScan, conn }) {
             {cis && (
               <div style={{ textAlign:'center', padding:'8px 16px', background:'var(--surface2)',
                 border:`2px solid ${scoreColor}`, borderRadius:10 }}>
-                <div style={{ fontSize:24, fontWeight:700, color:scoreColor, fontFamily:'DM Mono, monospace' }}>
+                <div style={{ fontSize:24, fontWeight:700, color:scoreColor, fontFamily:'var(--font-data)' }}>
                   {score}%
                 </div>
                 <div style={{ fontSize:9.5, color:'var(--text3)', textTransform:'uppercase', letterSpacing:'0.08em' }}>
@@ -516,7 +516,7 @@ export function PanelCISBenchmark({ cis, loading, scanning, onRunScan, conn }) {
                       border:`1px solid ${sectionFilter === sec ? col : 'var(--border)'}`,
                       borderRadius:8, padding:'10px 12px', cursor:'pointer', transition:'all 0.15s' }}>
                     <div style={{ fontSize:10, color:'var(--text3)', marginBottom:4 }}>{sec}</div>
-                    <div style={{ fontSize:16, fontWeight:700, color:col, fontFamily:'DM Mono, monospace' }}>{pct}%</div>
+                    <div style={{ fontSize:16, fontWeight:700, color:col, fontFamily:'var(--font-data)' }}>{pct}%</div>
                     <div style={{ fontSize:9.5, color:'var(--text3)', marginTop:2 }}>
                       {stats.pass}/{stats.total} passed
                     </div>
@@ -541,7 +541,7 @@ export function PanelCISBenchmark({ cis, loading, scanning, onRunScan, conn }) {
                       background: filter === f.id ? `color-mix(in srgb, ${f.color} 10%, transparent)` : 'transparent',
                       color: filter === f.id ? f.color : 'var(--text3)',
                       cursor:'pointer', fontSize:11.5, fontFamily:'inherit' }}>
-                    <span style={{ fontFamily:'DM Mono, monospace', fontWeight:700 }}>{count}</span>
+                    <span style={{ fontFamily:'var(--font-data)', fontWeight:700 }}>{count}</span>
                     {f.label}
                   </button>
                 )

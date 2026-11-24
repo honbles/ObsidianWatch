@@ -50,24 +50,34 @@ type Span struct {
 	EndNano    uint64
 	StatusCode int
 
-	Route       string // http.route (template)
-	Method      string // http.request.method / http.method
-	HTTPStatus  int    // http.response.status_code / http.status_code
-	ClientAddr  string // client.address
-	PeerAddr    string // network.peer.address
-	DBSystem    string
-	DBOp        string // db.operation.name: a name such as SELECT, never a statement
-	DBTable     string // db.collection.name or db.sql.table: a name
+	Route      string // http.route (template)
+	Method     string // http.request.method / http.method
+	HTTPStatus int    // http.response.status_code / http.status_code
+	ClientAddr string // client.address
+	PeerAddr   string // network.peer.address
+	DBSystem   string
+	DBOp       string // db.operation.name: a name such as SELECT, never a statement
+	DBTable    string // db.collection.name or db.sql.table: a name
 	// DBStmt is read only to build a literal-free fingerprint when the service allows it. It is held in memory with
 	// the open trace and never serialised, logged or forwarded.
-	DBStmt string
+	DBStmt      string
 	ServerAddr  string // server.address
 	ServerPort  int
 	PeerService string
 	Messaging   string // messaging.system
-	EndUser     string // enduser.id (hashed before leaving the receiver)
-	ExcType     string // exception.type, from an "exception" span event
-	Signature   string // injection class found in a parameter value ("param.sql-injection"), never the value
+	// Names for non-HTTP work (APM spec item 7): the destination (queue or topic) name, the messaging operation,
+	// the function name and the helper's job name. Names only.
+	MessagingDest string
+	MessagingOp   string
+	CodeFunc      string
+	JobName       string
+	EndUser       string // enduser.id (hashed before leaving the receiver)
+	ExcType       string // exception.type, from an "exception" span event
+	// ExcMsg and ExcStack are read to build an error group and a scrubbed sample. They are held in memory with the
+	// open trace and never serialised or forwarded as they are.
+	ExcMsg    string
+	ExcStack  string
+	Signature string // injection class found in a parameter value ("param.sql-injection"), never the value
 
 	// ParamNames are the query-string parameter NAMES of the request, never values. The raw query string
 	// is parsed where it is decoded and discarded; nothing but these names is kept (payload design, step 1).
@@ -115,7 +125,8 @@ var spanAllow = map[string]bool{
 	// older semantic conventions, still sent by many SDK versions (Node 0.5x, Java agent 1.x, .NET opt-out)
 	"http.client_ip": true, "net.peer.ip": true, "net.sock.peer.addr": true, "client.socket.address": true,
 	"db.system": true, "server.address": true, "server.port": true, "peer.service": true,
-	"messaging.system": true, "enduser.id": true, "exception.type": true,
+	"messaging.system": true, "messaging.destination.name": true, "messaging.operation": true, "messaging.operation.type": true,
+	"code.function": true, "code.function.name": true, "ow.job.name": true, "enduser.id": true, "exception.type": true,
 	// Names only (APM spec item 2). The statement attributes are read to fingerprint, never forwarded raw.
 	"db.operation.name": true, "db.operation": true, "db.collection.name": true, "db.sql.table": true,
 	"db.mongodb.collection": true, "db.statement": true, "db.query.text": true,
@@ -227,6 +238,14 @@ func (s *Span) set(k string, v attrValue) {
 		s.PeerService = v.str()
 	case "messaging.system":
 		s.Messaging = v.str()
+	case "messaging.destination.name":
+		s.MessagingDest = clipN(v.str(), 96)
+	case "messaging.operation", "messaging.operation.type":
+		s.MessagingOp = clipN(v.str(), 32)
+	case "code.function", "code.function.name":
+		s.CodeFunc = clipN(v.str(), 96)
+	case "ow.job.name":
+		s.JobName = clipN(v.str(), 96)
 	case "enduser.id":
 		s.EndUser = v.str()
 	case "exception.type":
@@ -461,4 +480,14 @@ func luhn(s string) bool {
 		alt = !alt
 	}
 	return sum%10 == 0
+}
+
+// setExc records an exception event's fields; the first exception on a span wins.
+func (s *Span) setExc(typ, msg, stack string) {
+	if s.ExcType != "" || typ == "" {
+		return
+	}
+	s.ExcType = clipN(typ, 128)
+	s.ExcMsg = clipN(msg, 1024)
+	s.ExcStack = clipN(stack, 16384)
 }

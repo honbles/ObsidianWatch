@@ -4,6 +4,7 @@ import { Radio, Activity, Bell, RefreshCw, ChevronRight,
          Wifi, Database, Clock, MapPin, Server } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
 import api from '../api/client'
+import { PageHeader } from '../components/ui'
 
 export default function NetworkProbes() {
   const [agents, setAgents] = useState([])
@@ -23,29 +24,14 @@ export default function NetworkProbes() {
   useEffect(() => { load() }, [])
 
   return (
-    <div className="p-6 space-y-5">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-bold text-siem-text tracking-tight flex items-center gap-2.5">
-            <Radio size={18} className="text-cyan-400"/>
-            Network Probes
-          </h1>
-          <p className="text-[11px] text-siem-muted mt-1">
-            Network intelligence sensors - collect syslog, NetFlow, SNMP from all network devices
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <button onClick={load}
-            className="flex items-center gap-1.5 text-xs text-siem-muted border border-siem-border rounded-lg px-3 py-1.5 hover:text-siem-text transition-colors">
-            <RefreshCw size={11} className={loading ? 'animate-spin' : ''}/> Refresh
-          </button>
-          <button onClick={() => navigate('/agent-builder')}
-            className="flex items-center gap-1.5 text-xs bg-cyan-600 hover:bg-cyan-500 text-white rounded-lg px-3 py-1.5 transition-colors">
-            Deploy Probe
-          </button>
-        </div>
-      </div>
-
+    <div>
+      <PageHeader title="Network" state="info" stateText="Beta"
+        sub="Network probes collect syslog, NetFlow and SNMP from network devices. Network monitoring is under development and not yet a supported feature."
+        actions={<>
+          <button className="ow-btn" onClick={load}><RefreshCw size={13} className={loading ? 'animate-spin' : ''}/>Refresh</button>
+          <button className="ow-btn primary" onClick={() => navigate('/agent-builder')}>Deploy probe</button>
+        </>}/>
+      <div className="ow-body" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       {/* Architecture explainer */}
       <div className="bg-cyan-950/20 border border-cyan-800/30 rounded-xl p-4">
         <div className="flex items-start gap-3">
@@ -157,6 +143,7 @@ export default function NetworkProbes() {
           ))}
         </div>
       )}
+      </div>
     </div>
   )
 }

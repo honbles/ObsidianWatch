@@ -10,7 +10,7 @@ func allSignatureSets() map[string][]ThreatSig {
 		// [APP-REGISTRY-BEGIN]
 		// [APP-REGISTRY-END]
 		"linux": linuxSignatures, "endpoint": endpointAgentSignatures, "dns": dnsCatSignatures,
-		"windows": windowsSignatures, "windowsTamper": windowsTamperSignatures, "dc": dcSignatures,
+		"imds": imdsSignatures, "windows": windowsSignatures, "windowsTamper": windowsTamperSignatures, "dc": dcSignatures,
 		"macos": macosSignatures, "devops": devopsSignatures,
 		"awsExt": cloudSignaturesExtended, "awsRecon": cloudReconSignatures, "cloudNet": cloudNetworkSignatures,
 		"cloudLateral": cloudLateralSignatures, "cloudCompute": cloudComputeAbuseSignatures, "awsExtra": awsExtraSignatures,

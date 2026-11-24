@@ -18,7 +18,7 @@ func init() {
 		{"M-T1548.004", fxProc("sudo", "sudo su"), fxProc("sudo", "sudo softwareupdate -l")},
 		{"M-T1553.001", fxProc("xattr", "xattr -d com.apple.quarantine /tmp/app"), fxProc("xattr", "xattr -l file.txt")},
 		{"M-T1562.001", fxProc("csrutil", "csrutil disable"), fxProc("csrutil", "csrutil status")},
-		{"M-T1555.001a", fxProc("security", "security find-generic-password -s Chrome"), fxProc("security", "security list-keychains")},
+		{"M-T1555.001a", fxProc("security", "security find-generic-password -s Chrome -w"), fxProc("security", "security list-keychains")},
 		{"M-T1555.001b", fxFile("/Users/a/Library/Keychains/login.keychain-db"), fxFile("/Users/a/Documents/x.txt")},
 		{"M-T1110.001", fxLogonMsg("Failed password for root from 1.2.3.4"), fxLogonMsg("Accepted publickey for deploy")},
 		{"M-T1552.004", fxProc("cat", "cat /Users/a/.ssh/id_rsa"), fxProc("cat", "cat /Users/a/notes.txt")},

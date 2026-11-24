@@ -10,9 +10,10 @@ import { TamperPanel } from './tamper.jsx'
 export function getOSCategory(os) {
   if (!os) return 'other'
   const l = os.toLowerCase()
-  if (l.includes('win')) return 'windows'
-  if (l.includes('linux') || l.includes('ubuntu') || l.includes('debian') || l.includes('centos') || l.includes('rhel')) return 'linux'
+  // macOS first: "darwin" contains "win"
   if (l.includes('mac') || l.includes('darwin')) return 'macos'
+  if (l.includes('win')) return 'windows'
+  if (l.includes('linux') || l.includes('ubuntu') || l.includes('debian') || l.includes('centos') || l.includes('rhel') || l.includes('red hat') || l.includes('fedora') || l.includes('suse') || l.includes('alpine') || l.includes('amazon')) return 'linux'
   return 'other'
 }
 

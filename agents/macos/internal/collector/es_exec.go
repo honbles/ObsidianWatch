@@ -126,6 +126,20 @@ func (c *ESExecCollector) emit(e esExecEvent) {
 		"username": username, "uid": e.UID, "exe": e.Exe,
 		"process_guid": fmt.Sprintf("%d-%d", e.PID, e.Time.UnixMicro()),
 	}
+	if len(e.Args) > 0 {
+		a := e.Args
+		if len(a) > 64 {
+			a = a[:64]
+		}
+		argv := make([]string, len(a))
+		for i, x := range a {
+			if len(x) > 512 {
+				x = x[:512]
+			}
+			argv[i] = x
+		}
+		detail["argv"] = argv // B2: original argv; "cmdline" loses quoting
+	}
 	if sha != "" {
 		detail["sha256"] = sha
 	}

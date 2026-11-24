@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Crosshair, Play, Loader2, Download, ChevronDown, ChevronRight, History, Radar, WifiOff, Search } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
 import api from '../api/client'
+import { PageHeader, Tabs } from '../components/ui'
 import { isAdminUser } from '../components/ResponseActions.jsx'
 
 // Threat hunting at scale.
@@ -218,38 +219,37 @@ function HistoryTab({ initial }) {
 export default function Hunt() {
   const [tab, setTab] = useState('history')
   const [lib, setLib] = useState([])
-  const [pick, setPick] = useState(null)
+  // ?q= seeds a history hunt (the global search hands queries over this way)
+  const [params] = useSearchParams()
+  const [pick, setPick] = useState(() => params.get('q') ? { mode: 'history', query: params.get('q'), n: Date.now() } : null)
+  useEffect(() => { const q = params.get('q'); if (q) { setPick({ mode: 'history', query: q, n: Date.now() }); setTab('history') } }, [params])
   useEffect(() => { api.get('/api/v1/hunt/library').then(r => setLib(r.data.hunts || [])).catch(() => {}) }, [])
   const choose = h => { setPick({ ...h, n: Date.now() }); setTab(h.mode) }
   const groups = useMemo(() => ({ history: lib.filter(h => h.mode === 'history'), live: lib.filter(h => h.mode === 'live') }), [lib])
   return (
-    <div className="p-5 space-y-4 overflow-y-auto h-full">
-      <div className="flex items-center gap-2">
-        <Crosshair size={18} className="text-siem-accent" />
-        <h1 className="text-lg font-bold text-siem-text">Threat Hunting</h1>
-        <div className="ml-4 flex border border-siem-border rounded-lg overflow-hidden">
-          {[['history', 'History hunt', History], ['live', 'Live fleet query', Radar]].map(([id, l, I]) => (
-            <button key={id} onClick={() => setTab(id)} className={`px-3 py-1.5 text-xs flex items-center gap-1.5 ${tab === id ? 'bg-siem-accent/15 text-siem-accent' : 'text-siem-muted hover:text-siem-text'}`}><I size={12} />{l}</button>
-          ))}
-        </div>
-      </div>
-      <div className="grid xl:grid-cols-[1fr_300px] gap-5 items-start">
+    <div>
+      <PageHeader title="Hunt"
+        sub="Ask a question of stored events across every host, or query the fleet live. Start from the library on the right, or write your own."
+        tabs={<Tabs value={tab} onChange={setTab} tabs={[{ id: 'history', label: 'Stored events' }, { id: 'live', label: 'Live fleet query' }]}/>}/>
+      <div className="ow-body">
+      <div className="grid xl:grid-cols-[1fr_320px] gap-4 items-start">
         <div>{tab === 'history' ? <HistoryTab initial={pick?.mode === 'history' ? pick : null} /> : <LiveTab initial={pick?.mode === 'live' ? pick : null} />}</div>
-        <div className="rounded-xl border border-siem-border bg-siem-surface/40 p-3 space-y-3">
-          <div className="text-[10px] uppercase tracking-wider text-siem-muted">Hunt library</div>
+        <div className="ow-card" style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div style={{ fontWeight: 600 }}>Hunt library</div>
           {[['history', 'On stored events'], ['live', 'Live on the fleet']].map(([m, l]) => (
             <div key={m}>
-              <div className="text-[10px] text-siem-muted mb-1">{l}</div>
+              <div className="ow-lbl" style={{ marginBottom: 4 }}>{l}</div>
               {groups[m].map(h => (
-                <button key={h.id} onClick={() => choose(h)} className="w-full text-left px-2 py-1.5 rounded hover:bg-white/[0.05]">
-                  <div className="text-xs text-siem-text flex items-center gap-1.5">{h.title}{h.attack && <span className="text-[9px] text-siem-muted font-mono">{h.attack}</span>}</div>
-                  <div className="text-[10px] text-siem-muted">{h.desc}</div>
+                <button key={h.id} onClick={() => choose(h)} className="ow-fc" style={{ height: 'auto', padding: '6px 8px', flexDirection: 'column', alignItems: 'flex-start', gap: 2 }}>
+                  <span className="t1" style={{ whiteSpace: 'normal' }}>{h.title || h.name}{h.attack && <span className="mono t3" style={{ marginLeft: 6, fontSize: 11 }}>{h.attack}</span>}</span>
+                  {h.desc && <span className="t3" style={{ fontSize: 11.5, whiteSpace: 'normal' }}>{h.desc}</span>}
                 </button>
               ))}
             </div>
           ))}
         </div>
       </div>
+    </div>
     </div>
   )
 }

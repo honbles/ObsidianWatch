@@ -13,6 +13,7 @@ export default function AppTabInstances({ detail, loading, error, highlight }) {
     { key: 'version', label: 'Version', sort: i => i.version },
     { key: 'identity', label: 'Identity', render: i => <AppIdentityBadge identity={i.identity} />, width: 90 },
     { key: 'instrumented', label: 'Telemetry', render: i => (i.instrumented ? 'OpenTelemetry' : 'host only'), width: 110 },
+    { key: 'runtime', label: 'Runtime', render: i => { const r = i.runtime; if (!r) return <span className="text-siem-muted">-</span>; const p = []; if (r.cpu_pct >= 0) p.push(`CPU ${r.cpu_pct.toFixed(0)}%`); if (r.eventloop_ms >= 0) p.push(`loop ${r.eventloop_ms.toFixed(0)} ms`); if (r.heap_pct >= 0) p.push(`heap ${r.heap_pct.toFixed(0)}%`); if (r.pool_pct >= 0) p.push(`pool ${r.pool_pct.toFixed(0)}%`); return <span className="text-xs">{p.join(' · ') || '-'}</span> } },
     { key: 'last_seen', label: 'Last seen', render: i => appRel(i.last_seen), sort: i => i.last_seen },
     { key: 'stopped_at', label: 'State', render: i => (i.stopped_at ? <span className="text-siem-muted">stopped {appRel(i.stopped_at)}</span> : <span className="text-emerald-300">running</span>), sort: i => (i.stopped_at ? 0 : 1) },
   ]

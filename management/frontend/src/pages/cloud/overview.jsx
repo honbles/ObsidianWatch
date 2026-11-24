@@ -182,12 +182,12 @@ export function PanelOverview({ conn, cspm, loading, onRunScan, scanning, onTabC
                   return (
                     <div key={i} style={{ padding:'10px 14px', borderBottom: i < cspm.errors.length-1 ? '1px solid var(--border)':'none' }}>
                       <div style={{ display:'flex', gap:8, alignItems:'center', marginBottom:3 }}>
-                        <code style={{ fontSize:10.5, background:'var(--surface2)', border:'1px solid var(--border)', borderRadius:4, padding:'1px 6px', color:'#fb923c', fontFamily:'DM Mono,monospace' }}>{name}</code>
+                        <code style={{ fontSize:10.5, background:'var(--surface2)', border:'1px solid var(--border)', borderRadius:4, padding:'1px 6px', color:'#fb923c', fontFamily:'var(--font-data)' }}>{name}</code>
                       </div>
-                      <div style={{ fontSize:10.5, color:'var(--text3)', fontFamily:'DM Mono,monospace', wordBreak:'break-all', marginBottom: requiredRoles[name] ? 5 : 0 }}>{msg.slice(0,180)}</div>
+                      <div style={{ fontSize:10.5, color:'var(--text3)', fontFamily:'var(--font-data)', wordBreak:'break-all', marginBottom: requiredRoles[name] ? 5 : 0 }}>{msg.slice(0,180)}</div>
                       {requiredRoles[name] && (
                         <div style={{ fontSize:10.5 }}><span style={{ color:'#34d399', fontWeight:600 }}>Fix: </span>
-                          <code style={{ color:'var(--text2)', fontFamily:'DM Mono,monospace', background:'var(--surface2)', padding:'1px 6px', borderRadius:4 }}>{requiredRoles[name]}</code>
+                          <code style={{ color:'var(--text2)', fontFamily:'var(--font-data)', background:'var(--surface2)', padding:'1px 6px', borderRadius:4 }}>{requiredRoles[name]}</code>
                         </div>
                       )}
                     </div>
@@ -239,7 +239,7 @@ export function PanelOverview({ conn, cspm, loading, onRunScan, scanning, onTabC
                 <div style={{ fontSize:9.5, color:'var(--text3)', fontWeight:700, textTransform:'uppercase', letterSpacing:'0.07em', marginBottom:5 }}>
                   {k.label}{k.tab && <span style={{ marginLeft:4, opacity:0.5 }}>↗</span>}
                 </div>
-                <div style={{ fontSize:24, fontWeight:800, color:k.color, fontFamily:'DM Mono,monospace', lineHeight:1 }}>{k.value||0}</div>
+                <div style={{ fontSize:24, fontWeight:800, color:k.color, fontFamily:'var(--font-data)', lineHeight:1 }}>{k.value||0}</div>
               </div>
             ))}
           </div>
@@ -298,7 +298,7 @@ export function PanelOverview({ conn, cspm, loading, onRunScan, scanning, onTabC
                       {CAT_META[cat]?.icon && (() => { const Icon = CAT_META[cat].icon; return <Icon size={11} color={CAT_META[cat].color}/>; })()}
                       {CAT_META[cat]?.label || cat}
                     </div>
-                    <span style={{ fontSize:11, fontFamily:'DM Mono,monospace', color:'var(--text3)' }}>{count} ↗</span>
+                    <span style={{ fontSize:11, fontFamily:'var(--font-data)', color:'var(--text3)' }}>{count} ↗</span>
                   </div>
                   <div style={{ height:5, background:'var(--surface2)', borderRadius:4, overflow:'hidden' }}>
                     <div style={{ height:'100%', borderRadius:4, width:`${(count/maxCat)*100}%`,
@@ -327,7 +327,7 @@ export function PanelOverview({ conn, cspm, loading, onRunScan, scanning, onTabC
                 >
                   <div style={{ display:'flex', justifyContent:'space-between', marginBottom:4 }}>
                     <span style={{ fontSize:11, color:'var(--text2)' }}>{name}</span>
-                    <span style={{ fontSize:11, fontFamily:'DM Mono,monospace', color }}>{pct}% ↗</span>
+                    <span style={{ fontSize:11, fontFamily:'var(--font-data)', color }}>{pct}% ↗</span>
                   </div>
                   <div style={{ height:5, background:'var(--surface2)', borderRadius:4, overflow:'hidden' }}>
                     <div style={{ height:'100%', borderRadius:4, width:`${pct}%`, background:color, transition:'width 0.6s ease' }}/>
@@ -539,7 +539,7 @@ export function PanelAssetGraph({ cspm, cmdbAssets, cmdbLoading, onRunCMDB, conn
                         borderRadius:8, cursor:'pointer', textAlign:'left', fontFamily:'inherit',
                         width:'100%', transition:'all 0.15s' }}>
                       <div style={{ flex:1, minWidth:0 }}>
-                        <div style={{ fontSize:11.5, color:'var(--text)', fontFamily:'DM Mono,monospace', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>
+                        <div style={{ fontSize:11.5, color:'var(--text)', fontFamily:'var(--font-data)', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>
                           {asset.shortName || asset.id}
                         </div>
                         <div style={{ fontSize:10, color:'var(--text3)', marginTop:2 }}>
@@ -555,7 +555,7 @@ export function PanelAssetGraph({ cspm, cmdbAssets, cmdbLoading, onRunCMDB, conn
                           const n = asset.findings.filter(f => f.severity===s).length
                           if (!n) return null
                           return <span key={s} style={{ fontSize:9.5, background:SEV_BG[s], color:SEV_COLOR[s],
-                            border:`1px solid ${SEV_BORDER[s]}`, borderRadius:10, padding:'1px 6px', fontFamily:'DM Mono,monospace' }}>{n}</span>
+                            border:`1px solid ${SEV_BORDER[s]}`, borderRadius:10, padding:'1px 6px', fontFamily:'var(--font-data)' }}>{n}</span>
                         })}
                         {asset.isClean && <span style={{ fontSize:9.5, color:'#34d399', opacity:0.6 }}>✓</span>}
                       </div>
@@ -574,7 +574,7 @@ export function PanelAssetGraph({ cspm, cmdbAssets, cmdbLoading, onRunCMDB, conn
         <div style={{ width:340, flexShrink:0, borderLeft:'1px solid var(--border)', overflow:'auto', padding:'20px 18px', background:'var(--surface)' }}>
           <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:14 }}>
             <div>
-              <div style={{ fontSize:11, color:'var(--text3)', marginBottom:4, fontFamily:'DM Mono,monospace', wordBreak:'break-all' }}>{selAsset.id}</div>
+              <div style={{ fontSize:11, color:'var(--text3)', marginBottom:4, fontFamily:'var(--font-data)', wordBreak:'break-all' }}>{selAsset.id}</div>
               <div style={{ fontSize:10, color:'var(--text3)' }}>{typeLabels[selAsset.type] || selAsset.type}</div>
             </div>
             <button onClick={() => setSelected(null)} style={{ background:'none', border:'none', color:'var(--text3)', cursor:'pointer', padding:0, flexShrink:0 }}>
@@ -674,7 +674,7 @@ export function PanelAttackSurface({ cspm, conn }) {
               <card.icon size={13} color={card.color}/>
               <span style={{ fontSize:10, fontWeight:700, color:'var(--text3)', textTransform:'uppercase', letterSpacing:'0.06em' }}>{card.label}</span>
             </div>
-            <div style={{ fontSize:26, fontWeight:800, color: card.count > 0 ? card.color : '#34d399', fontFamily:'DM Mono,monospace', marginBottom:4 }}>{card.count}</div>
+            <div style={{ fontSize:26, fontWeight:800, color: card.count > 0 ? card.color : '#34d399', fontFamily:'var(--font-data)', marginBottom:4 }}>{card.count}</div>
             <div style={{ fontSize:10.5, color:'var(--text3)', lineHeight:1.4 }}>{card.count > 0 ? card.desc : 'None detected'}</div>
           </button>
         ))}
@@ -857,7 +857,7 @@ export function PanelEventTimeline({ events, loading, conn }) {
                               {displayTitle}
                             </span>
                             {sourceTag && (
-                              <span style={{ fontSize:9, padding:'1px 5px', borderRadius:3, fontFamily:'DM Mono,monospace',
+                              <span style={{ fontSize:9, padding:'1px 5px', borderRadius:3, fontFamily:'var(--font-data)',
                                 background:`${sourceTag.color}18`, color:sourceTag.color, border:`1px solid ${sourceTag.color}40`, flexShrink:0 }}>
                                 {sourceTag.label}
                               </span>
@@ -867,7 +867,7 @@ export function PanelEventTimeline({ events, loading, conn }) {
                             </span>
                           </div>
                           <div style={{ display:'flex', gap:8, fontSize:10.5, color:'var(--text3)' }}>
-                            {principal && <span style={{ color:'var(--accent)', fontFamily:'DM Mono,monospace' }}>{principal}</span>}
+                            {principal && <span style={{ color:'var(--accent)', fontFamily:'var(--font-data)' }}>{principal}</span>}
                             {ev.src_ip && <span>{ev.src_ip}</span>}
                             <span style={{ color: sevColor }}>{SEV_NUM_LABEL[ev.severity] || ev.event_type}</span>
                           </div>

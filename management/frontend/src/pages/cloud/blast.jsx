@@ -123,7 +123,7 @@ export function BlastFocusGraph({ principal, allNodes, allEdges }) {
         // Relationship label
         const mx = (e.source.x + e.target.x) / 2
         const my = (e.source.y + e.target.y) / 2
-        ctx.font = '9px DM Mono,monospace'
+        ctx.font = '9px JetBrains Mono,monospace'
         ctx.fillStyle = isRisk ? 'rgba(248,113,113,0.8)' : 'rgba(148,163,184,0.65)'
         ctx.textAlign = 'center'
         ctx.fillText((e.relationship || '').replace(/_/g, ' '), mx, my - 4)
@@ -155,7 +155,7 @@ export function BlastFocusGraph({ principal, allNodes, allEdges }) {
         ctx.strokeStyle = 'rgba(0,0,0,0.5)'; ctx.lineWidth = 1; ctx.stroke()
 
         // Label below node
-        ctx.font = `${n.isCenter ? 11 : 9}px Sora,sans-serif`
+        ctx.font = `${n.isCenter ? 11 : 9}px Inter,sans-serif`
         ctx.fillStyle = n.isCenter ? '#e2eaf2' : '#94a3b8'
         ctx.textAlign = 'center'
         const label = (n.name || '').length > 20 ? (n.name||'').slice(0,19)+'…' : (n.name||'')
@@ -220,7 +220,7 @@ export function RiskBadge({ risk }) {
   return (
     <span style={{ fontSize:9.5, fontWeight:700, color:c, background:bg,
       border:`1px solid ${c}55`, borderRadius:5, padding:'1px 7px',
-      fontFamily:'DM Mono,monospace', textTransform:'uppercase' }}>
+      fontFamily:'var(--font-data)', textTransform:'uppercase' }}>
       {risk || 'none'}
     </span>
   )
@@ -305,7 +305,7 @@ export function PanelBlastRadius({ blast, loading, scanning, onRunScan, conn }) 
                 { label:'Public Exp.', value: blast.summary?.public_exposures, color:'#fbbf24' },
               ].map(k => (
                 <div key={k.label} style={{ flex:1, textAlign:'center' }}>
-                  <div style={{ fontSize:16, fontWeight:800, color:k.color, fontFamily:'DM Mono,monospace', lineHeight:1 }}>
+                  <div style={{ fontSize:16, fontWeight:800, color:k.color, fontFamily:'var(--font-data)', lineHeight:1 }}>
                     {k.value || 0}
                   </div>
                   <div style={{ fontSize:9, color:'var(--text3)', marginTop:2 }}>{k.label}</div>
@@ -481,7 +481,7 @@ export function PanelBlastRadius({ blast, loading, scanning, onRunScan, conn }) 
                   <div style={{ display:'flex', alignItems:'center', gap:4, flexWrap:'wrap' }}>
                     {p.path?.map((node, ni) => (
                       <span key={ni} style={{ display:'flex', alignItems:'center', gap:4 }}>
-                        <span style={{ fontSize:9.5, fontFamily:'DM Mono,monospace', color:'var(--text3)',
+                        <span style={{ fontSize:9.5, fontFamily:'var(--font-data)', color:'var(--text3)',
                           background:'var(--surface)', padding:'2px 6px', borderRadius:4, border:'1px solid var(--border)' }}>
                           {node.split(':').pop()?.slice(0,20)}
                         </span>

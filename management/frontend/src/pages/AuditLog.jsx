@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react'
 import { ClipboardList, RefreshCw } from 'lucide-react'
 import { format } from 'date-fns'
 import api from '../api/client'
+import { Download } from 'lucide-react'
+import { PageHeader, Facets, countBy, useFacetFilter, DenseTable, downloadCSV } from '../components/ui'
 
 const ACTION_COLORS = {
   login:              'text-siem-green',
@@ -16,6 +18,9 @@ const ACTION_COLORS = {
   delete_alert_rule:  'text-siem-red',
   assign_alert:       'text-yellow-400',
   close_alert_review: 'text-siem-muted',
+  create_suppression: 'text-yellow-400',
+  update_suppression: 'text-yellow-400',
+  delete_suppression: 'text-siem-red',
 }
 
 export default function AuditLog() {
@@ -36,62 +41,45 @@ export default function AuditLog() {
 
   useEffect(() => { load(0) }, [])
 
+  const [q, setQ] = useState('')
+  const [facets, setFacets] = useState({})
+  const G = { user: e => e.username, action: e => e.action }
+  const faceted = useFacetFilter(entries, G, facets)
+  const rows = faceted.filter(e => !q || `${e.username} ${e.action} ${e.target || ''} ${e.detail || ''} ${e.ip_address || ''}`.toLowerCase().includes(q.toLowerCase()))
+  const toggle = (k, v) => setFacets(f => { const n = { ...f }; const set = new Set(n[k] || []); set.has(v) ? set.delete(v) : set.add(v); n[k] = set; return n })
+  const tone = (a) => /^(delete|remove|bulk_close|disable)/.test(a) ? 'var(--crit)' : /^(create|add|enable)/.test(a) ? 'var(--ok)' : /^(update|edit|set|assign|bulk)/.test(a) ? 'var(--warn)' : 'var(--t2)'
   return (
-    <div className="p-6 space-y-5">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <ClipboardList className="text-siem-accent" size={20} />
-          <h1 className="text-xl font-bold text-siem-text">Audit Log</h1>
-          <span className="text-xs text-siem-muted">{total.toLocaleString()} entries</span>
-        </div>
-        <button onClick={() => load(page)}
-          className="flex items-center gap-1.5 text-xs text-siem-muted hover:text-siem-text border border-siem-border rounded-lg px-3 py-1.5">
-          <RefreshCw size={13} /> Refresh
-        </button>
-      </div>
-
-      <div className="bg-siem-surface border border-siem-border rounded-xl overflow-hidden">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-siem-border text-siem-muted text-xs">
-              <th className="text-left px-4 py-3">Time</th>
-              <th className="text-left px-4 py-3">User</th>
-              <th className="text-left px-4 py-3">Action</th>
-              <th className="text-left px-4 py-3">Target</th>
-              <th className="text-left px-4 py-3">Detail</th>
-              <th className="text-left px-4 py-3">IP</th>
-            </tr>
-          </thead>
-          <tbody>
-            {loading ? (
-              <tr><td colSpan={6} className="text-center py-12 text-siem-muted">Loading...</td></tr>
-            ) : entries.length === 0 ? (
-              <tr><td colSpan={6} className="text-center py-12 text-siem-muted">No audit entries</td></tr>
-            ) : entries.map(e => (
-              <tr key={e.id} className="border-b border-siem-border/40">
-                <td className="px-4 py-2.5 text-siem-muted text-xs whitespace-nowrap">
-                  {format(new Date(e.created_at), 'MM/dd HH:mm:ss')}
-                </td>
-                <td className="px-4 py-2.5 text-siem-text font-medium">{e.username}</td>
-                <td className={`px-4 py-2.5 text-xs font-mono ${ACTION_COLORS[e.action] || 'text-siem-muted'}`}>{e.action}</td>
-                <td className="px-4 py-2.5 text-siem-muted text-xs">{e.target || '-'}</td>
-                <td className="px-4 py-2.5 text-siem-muted text-xs truncate max-w-[200px]">{e.detail || '-'}</td>
-                <td className="px-4 py-2.5 text-siem-muted text-xs font-mono">{e.ip_address || '-'}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        {total > limit && (
-          <div className="flex items-center justify-between px-4 py-3 border-t border-siem-border">
-            <span className="text-xs text-siem-muted">Page {page + 1} of {Math.ceil(total / limit)}</span>
-            <div className="flex gap-2">
-              <button disabled={page === 0} onClick={() => { const p = page - 1; setPage(p); load(p) }}
-                className="text-xs px-3 py-1.5 border border-siem-border rounded-lg text-siem-muted hover:text-siem-text disabled:opacity-40">Previous</button>
-              <button disabled={(page + 1) * limit >= total} onClick={() => { const p = page + 1; setPage(p); load(p) }}
-                className="text-xs px-3 py-1.5 border border-siem-border rounded-lg text-siem-muted hover:text-siem-text disabled:opacity-40">Next</button>
-            </div>
+    <div>
+      <PageHeader title="Audit log" sub={`${total.toLocaleString()} recorded actions by people and integrations. Facets and filter apply to the ${entries.length} entries on this page.`}
+        actions={<>
+          <button className="ow-btn" disabled={!rows.length} onClick={() => downloadCSV(`audit-${new Date().toISOString().slice(0, 10)}.csv`, ['time', 'user', 'action', 'target', 'detail', 'ip'], rows.map(e => [e.created_at, e.username, e.action, e.target, e.detail, e.ip_address]))}><Download size={13}/>Export page</button>
+          <button className="ow-btn" onClick={() => load(page)}><RefreshCw size={13}/>Refresh</button>
+        </>}/>
+      <div className="ow-body" style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }}>
+        <Facets selected={facets} onToggle={toggle} onClear={() => setFacets({})} groups={[
+          { key: 'user', label: 'User', values: countBy(entries, G.user) },
+          { key: 'action', label: 'Action', values: countBy(entries, G.action).slice(0, 15) },
+        ]}/>
+        <div className="ow-card" style={{ flex: 1, minWidth: 0, overflow: 'hidden' }}>
+          <div className="ow-card-bar">
+            <label className="ow-field" style={{ flex: 1, maxWidth: 380, height: 28 }}><input value={q} onChange={e => setQ(e.target.value)} placeholder="Filter by user, action, target or IP" aria-label="Filter audit log"/></label>
+            <span className="t2" style={{ fontSize: 12 }}>{rows.length} of {entries.length} on this page</span>
           </div>
-        )}
+          <DenseTable rows={loading ? [] : rows} rowKey={e => e.id} empty={loading ? 'Loading…' : 'No audit entries.'} cols={[
+            { key: 't', label: 'Time', width: '150px', render: e => <span className="mono t2" style={{ fontSize: 12 }} title={new Date(e.created_at).toISOString()}>{format(new Date(e.created_at), 'MMM dd HH:mm:ss')}</span> },
+            { key: 'u', label: 'User', width: '120px', render: e => <span className="t1">{e.username}</span> },
+            { key: 'a', label: 'Action', width: 'minmax(160px, 1fr)', render: e => <span className="mono" style={{ color: tone(e.action) }}>{e.action}</span> },
+            { key: 'g', label: 'Target', width: 'minmax(140px, 1fr)', render: e => <span className="mono t2">{e.target || '—'}</span>, title: e => e.target },
+            { key: 'd', label: 'Detail', width: 'minmax(200px, 2fr)', render: e => <span className="t2">{e.detail || '—'}</span>, title: e => e.detail },
+            { key: 'i', label: 'Source IP', width: '120px', render: e => <span className="mono t3">{e.ip_address || '—'}</span> },
+          ]}/>
+          {total > limit && (
+            <div className="ow-card-foot"><span>Page {page + 1} of {Math.ceil(total / limit)}</span>
+              <span style={{ display: 'flex', gap: 4 }}>
+                <button className="ow-btn quiet" style={{ height: 24 }} disabled={page === 0} onClick={() => { const p = page - 1; setPage(p); load(p) }}>‹ Newer</button>
+                <button className="ow-btn quiet" style={{ height: 24 }} disabled={(page + 1) * limit >= total} onClick={() => { const p = page + 1; setPage(p); load(p) }}>Older ›</button>
+              </span></div>)}
+        </div>
       </div>
     </div>
   )

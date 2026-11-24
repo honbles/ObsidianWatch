@@ -7,11 +7,13 @@ const fmtT = (iso, step) => {
     : d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 }
 
-function Panel({ title, children }) {
+function Panel({ title, unit, children }) {
   return (
-    <div className="card p-3">
-      <div className="text-[11px] text-siem-muted mb-1">{title}</div>
-      <div style={{ height: 150 }}>{children}</div>
+    <div className="ow-card" style={{ padding: '14px 16px', minWidth: 0 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+        <span style={{ fontWeight: 500 }}>{title}</span><span className="mono t2" style={{ fontSize: 12 }}>{unit}</span>
+      </div>
+      <div style={{ height: 140 }}>{children}</div>
     </div>
   )
 }
@@ -25,32 +27,37 @@ export default function AppREDCharts({ series, deploys = [], step = 60 }) {
   }))
   const lo = data[0]?.t, hi = data[data.length - 1]?.t
   const marks = deploys.filter(d => { const t = new Date(d.first_seen).getTime(); return t >= lo && t <= hi })
-  const axis = { stroke: 'var(--text3)', fontSize: 10, tickLine: false, axisLine: false }
+  const axis = { stroke: 'var(--t3)', fontSize: 11, tickLine: false, axisLine: false }
   const x = <XAxis dataKey="t" type="number" scale="time" domain={['dataMin', 'dataMax']} tickFormatter={v => fmtT(v, step)} {...axis} />
-  const grid = <CartesianGrid stroke="var(--border)" strokeDasharray="3 3" vertical={false} />
+  const grid = <CartesianGrid stroke="var(--line)" strokeDasharray="2 4" vertical={false} />
   const tip = (fmt) => (
-    <Tooltip contentStyle={{ background: 'var(--surface2)', border: '1px solid var(--border)', fontSize: 11 }}
+    <Tooltip contentStyle={{ background: 'var(--s2)', border: '1px solid var(--line2)', borderRadius: 6, fontSize: 12, color: 'var(--t1)' }}
       labelFormatter={v => new Date(v).toLocaleString()} formatter={fmt} />
   )
-  const markers = marks.map(d => (
-    <ReferenceLine key={d.version + d.first_seen} x={new Date(d.first_seen).getTime()} stroke="var(--accent2)" strokeDasharray="4 3"
-      label={{ value: d.version, fill: 'var(--accent2)', fontSize: 9, position: 'insideTopLeft' }} />
-  ))
+  // label on the side with room: right of the line in the first 60% of the chart, left of it after
+  const markers = marks.map(d => {
+    const at = new Date(d.first_seen).getTime()
+    const right = hi > lo && (at - lo) / (hi - lo) > 0.6
+    return (
+      <ReferenceLine key={d.version + d.first_seen} x={at} stroke="var(--line2)" strokeDasharray="3 3"
+        label={{ value: `${d.version} deployed`, fill: 'var(--t2)', fontSize: 10, position: right ? 'insideTopRight' : 'insideTopLeft' }} />
+    )
+  })
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
-      <Panel title="Requests per minute">
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 12 }}>
+      <Panel title="Throughput" unit="req/min">
         <ResponsiveContainer><AreaChart data={data}>{grid}{x}<YAxis {...axis} width={34} />{tip(v => [Number(v).toFixed(1), 'req/min'])}
-          <Area dataKey="rpm" stroke="var(--accent)" fill="var(--accent)" fillOpacity={0.15} isAnimationActive={false} />{markers}</AreaChart></ResponsiveContainer>
+          <Area dataKey="rpm" stroke="var(--acc)" fill="var(--acc)" fillOpacity={0.08} strokeWidth={2} isAnimationActive={false} />{markers}</AreaChart></ResponsiveContainer>
       </Panel>
-      <Panel title="Error rate (5xx and failed spans)">
+      <Panel title="Error rate" unit="% · 5xx and failed spans">
         <ResponsiveContainer><AreaChart data={data}>{grid}{x}<YAxis {...axis} width={34} tickFormatter={v => `${v}%`} />{tip(v => [`${Number(v).toFixed(2)}%`, 'errors'])}
-          <Area dataKey="err" stroke="var(--red)" fill="var(--red)" fillOpacity={0.15} isAnimationActive={false} />{markers}</AreaChart></ResponsiveContainer>
+          <Area dataKey="err" stroke="var(--crit)" fill="var(--crit)" fillOpacity={0.06} strokeWidth={2} isAnimationActive={false} />{markers}</AreaChart></ResponsiveContainer>
       </Panel>
-      <Panel title="Latency (p50 / p95 / p99)">
-        <ResponsiveContainer><LineChart data={data}>{grid}{x}<YAxis {...axis} width={40} tickFormatter={v => appMs(v)} />{tip(v => [appMs(v), ''])}
-          <Line dataKey="p50" stroke="var(--green)" dot={false} strokeWidth={1.5} isAnimationActive={false} />
-          <Line dataKey="p95" stroke="var(--yellow)" dot={false} strokeWidth={1.5} isAnimationActive={false} />
-          <Line dataKey="p99" stroke="var(--orange)" dot={false} strokeWidth={1.5} isAnimationActive={false} />{markers}</LineChart></ResponsiveContainer>
+      <Panel title="Latency" unit="p50 · p95 · p99">
+        <ResponsiveContainer><LineChart data={data}>{grid}{x}<YAxis {...axis} width={52} tickFormatter={v => appMs(v).replace(' ', '')} />{tip((v, n) => [appMs(v), n])}
+          <Line dataKey="p50" name="p50" stroke="var(--t3)" dot={false} strokeWidth={1.5} isAnimationActive={false} />
+          <Line dataKey="p95" name="p95" stroke="var(--warn)" dot={false} strokeWidth={2} isAnimationActive={false} />
+          <Line dataKey="p99" name="p99" stroke="var(--t2)" strokeDasharray="4 3" dot={false} strokeWidth={1.5} isAnimationActive={false} />{markers}</LineChart></ResponsiveContainer>
       </Panel>
     </div>
   )

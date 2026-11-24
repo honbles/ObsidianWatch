@@ -22,10 +22,17 @@ export default {
           orange:  'var(--orange)',
           red:     'var(--red)',
         },
+        // design-system tokens (see src/index.css)
+        ow: {
+          bg: 'var(--bg)', s1: 'var(--s1)', s2: 'var(--s2)', s3: 'var(--s3)',
+          line: 'var(--line)', line2: 'var(--line2)',
+          t1: 'var(--t1)', t2: 'var(--t2)', t3: 'var(--t3)',
+          acc: 'var(--acc)', ok: 'var(--ok)', warn: 'var(--warn)', crit: 'var(--crit)',
+        },
       },
       fontFamily: {
-        sans: ['Sora', 'system-ui', 'sans-serif'],
-        mono: ['DM Mono', 'monospace'],
+        sans: ['Inter', 'system-ui', '-apple-system', 'Segoe UI', 'sans-serif'],
+        mono: ['JetBrains Mono', 'ui-monospace', 'SFMono-Regular', 'Menlo', 'monospace'],
       },
     },
   },

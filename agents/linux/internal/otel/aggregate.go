@@ -34,6 +34,10 @@ type AggOptions struct {
 	SlowFn func(service, env string) int
 	// DBStmtFn returns a service's db_statement_mode: "off" (default) or "fingerprint".
 	DBStmtFn func(service, env string) string
+	// ErrMsgFn returns a service's error_message_mode: "off" (default) or "masked".
+	ErrMsgFn func(service, env string) string
+	// SamplingFn returns a service's sampling policy; the zero value is the default behaviour.
+	SamplingFn func(service, env string) SamplePolicy
 }
 
 func (o *AggOptions) defaults() {
@@ -88,6 +92,7 @@ type statKey struct {
 type statVal struct {
 	calls, errors, s2xx, s4013, s429, s5xx int64
 	hist                                   [histLen]int64
+	sk                                     *Sketch
 }
 
 type clientKey struct {
@@ -151,7 +156,7 @@ type openTrace struct {
 
 // AggStats are counters for health reporting.
 type AggStats struct {
-	Spans, ServerSpans, ClientSpans, NoService, ClockSkew, StatDrops, TracesKept, TracesDropped, ParamDrops, PayloadHeld, PayloadSent int64
+	Spans, ServerSpans, ClientSpans, NoService, ClockSkew, StatDrops, TracesKept, TracesDropped, ParamDrops, PayloadHeld, PayloadSent, ErrorDrops, MetricPoints, MetricDrops, OperationRuns int64
 }
 
 // Aggregator is safe for concurrent use.
@@ -173,12 +178,19 @@ type Aggregator struct {
 	pl   []BatchPayload     // sampled allowed parameters since the last flush
 	plN  map[routeKey]int   // payload samples per route since the last flush
 
-	traces map[string]*openTrace
-	order  []string
-	sec    map[string]time.Time
-	kept   []BatchTrace
-	dg     *diagState
-	Stats  AggStats
+	traces   map[string]*openTrace
+	order    []string
+	sec      map[string]time.Time
+	kept     []BatchTrace
+	ops      map[opKey]*opVal
+	opSeen   map[svcKey]map[[2]string]bool
+	samp     map[sampKey]*[2]int64 // seen and kept per service and reason since the last flush
+	errMin   map[svcKey]int        // error traces kept in the current minute
+	errMinAt int64
+	dg       *diagState
+	mt       map[metricKey]*metricVal
+	mtN      map[string]int // series per instance since the last flush
+	Stats    AggStats
 }
 
 func NewAggregator(opt AggOptions, now func() time.Time) *Aggregator {
@@ -254,6 +266,7 @@ func (a *Aggregator) Ingest(s Span, peer Peer, identity string) {
 		a.Stats.ClientSpans++
 		a.addEdge(svc, s)
 	}
+	a.addOperation(svc, s, now)
 	a.bufferSpan(s, now)
 }
 
@@ -402,6 +415,10 @@ func (a *Aggregator) addRED(svc svcKey, s Span, now time.Time) {
 	}
 	v.calls++
 	v.hist[durBucket(s.DurationMs())]++
+	if v.sk == nil {
+		v.sk = NewSketch()
+	}
+	v.sk.Add(s.DurationMs())
 	switch {
 	case s.HTTPStatus >= 200 && s.HTTPStatus < 300:
 		v.s2xx++
@@ -640,6 +657,13 @@ func (a *Aggregator) slowMs(svc svcKey) int {
 	return a.opt.SlowMs
 }
 
+func sketchWire(s *Sketch) *SketchWire {
+	if s == nil || s.Count() == 0 {
+		return nil
+	}
+	return s.Wire()
+}
+
 func round1(v float64) float64 { return float64(int64(v*10+0.5)) / 10 }
 
 func baselineHit(id string, pct float64) bool {
@@ -703,23 +727,41 @@ func (a *Aggregator) finishTrace(t *openTrace) {
 	if maxEnd > minStart {
 		durMs = float64(maxEnd-minStart) / 1e6
 	}
-	reason := ""
+	pol := a.samplePolicy(svc)
+	basePct := a.opt.BaselinePct
+	if pol.BaselinePct != nil {
+		basePct = *pol.BaselinePct
+		if basePct < 0 {
+			basePct = 0
+		}
+	}
+	secFlag := a.sec[t.id] != (time.Time{})
+	class := "baseline"
 	switch {
+	case secFlag:
+		class = "security" // a security flag outranks the generic reasons
 	case isErr:
-		reason = "error"
+		class = "error"
 	case durMs >= float64(a.slowMs(svc)):
-		reason = "slow"
-	case a.sec[t.id] != (time.Time{}):
-		reason = "security"
-	case baselineHit(t.id, a.opt.BaselinePct):
-		reason = "baseline"
+		class = "slow"
+	}
+	a.sampSeen(svc, class)
+	reason := ""
+	switch class {
+	case "baseline":
+		if baselineHit(t.id, basePct) {
+			reason = "baseline"
+		}
+	default:
+		reason = class
 	}
 	if reason == "" {
 		return
 	}
-	if reason != "security" && a.sec[t.id] != (time.Time{}) {
-		reason = "security" // a security flag outranks the generic reasons
+	if !a.sampleAdmit(svc, reason, pol, a.now()) {
+		return
 	}
+	a.sampKept(svc, reason, 1)
 
 	outs := make([]traceSpanOut, 0, len(t.spans))
 	for _, s := range t.spans {
@@ -835,7 +877,7 @@ func (a *Aggregator) Flush(agentID string, final bool) *Batch {
 		copy(h, v.hist[:])
 		b.Routes = append(b.Routes, BatchRoute{Service: k.svc.name, Environment: k.svc.env, Route: k.route, Method: k.method,
 			Minute: k.minute, Calls: v.calls, Errors: v.errors, Status2xx: v.s2xx, Status40103: v.s4013,
-			Status429: v.s429, Status5xx: v.s5xx, DurBuckets: h})
+			Status429: v.s429, Status5xx: v.s5xx, DurBuckets: h, Sketch: sketchWire(v.sk)})
 		delete(a.st, k)
 	}
 	for k, n := range a.pm {
@@ -874,6 +916,9 @@ func (a *Aggregator) Flush(agentID string, final bool) *Batch {
 	}
 	b.Traces, a.kept = a.kept, nil
 	a.drainDiag(b)
+	a.drainMetrics(b, now)
+	a.drainSampling(b)
+	a.drainOperations(b, now, final)
 	b.SchemaVersion = 2
 
 	notes := map[svcKey]*BatchNote{}
@@ -930,6 +975,12 @@ func (a *Aggregator) Requeue(b *Batch) {
 		v.s5xx += r.Status5xx
 		for i := 0; i < histLen && i < len(r.DurBuckets); i++ {
 			v.hist[i] += r.DurBuckets[i]
+		}
+		if sk := SketchFromWire(r.Sketch); sk != nil {
+			if v.sk == nil {
+				v.sk = NewSketch()
+			}
+			v.sk.Merge(sk)
 		}
 	}
 	for _, p := range b.Payloads {

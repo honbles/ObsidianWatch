@@ -36,7 +36,7 @@ export default function AppRouteReview() {
   const svcPath = `/applications/services/${encodeURIComponent(key)}`
 
   return (
-    <div className="space-y-4">
+    <div className="p-6 space-y-4">
       <AppPageHeader title={svc ? svc.name : 'Route'} subtitle={svc ? svc.environment : undefined} range={range} />
       <StateBlock loading={svcQ.loading} error={svcQ.error || (!svcQ.loading && !svc ? 'Service not found' : null)}>
         {svc && (

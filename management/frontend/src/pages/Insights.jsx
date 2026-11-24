@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { Activity, Grid3x3, Fingerprint, UserSearch, Clock, RefreshCw, Siren, Boxes, Bug } from 'lucide-react'
 import { format } from 'date-fns'
 import api from '../api/client'
+import { PageHeader, Tabs } from '../components/ui'
 
 // Insights: operational views over the newer backend endpoints.
 //   Log sources (P-10), ATT&CK coverage (P-05), Prevalence (P-02),
@@ -522,16 +523,10 @@ function TabHelp({ id }) {
 export default function Insights() {
   const [tab, setTab] = useState('incidents')
   return (
-    <div className="p-6 space-y-5">
-      <div className="flex items-center gap-2"><Activity className="text-siem-accent" size={20} /><h1 className="text-xl font-bold text-siem-text">Insights</h1></div>
-      <div className="flex gap-2 flex-wrap">
-        {TABS.map(t => (
-          <button key={t.id} onClick={() => setTab(t.id)}
-            className={`flex items-center gap-1.5 text-xs rounded-lg px-3 py-1.5 border ${tab === t.id ? 'border-siem-accent text-siem-accent' : 'border-siem-border text-siem-muted hover:text-siem-text'}`}>
-            <t.icon size={13} />{t.label}
-          </button>
-        ))}
-      </div>
+    <div>
+      <PageHeader title="Insights" sub="Incidents grouped from related alerts, asset inventory, code findings, log-source health, ATT&CK coverage, prevalence, identity timelines and scheduled searches."
+        tabs={<Tabs value={tab} onChange={setTab} tabs={TABS.map(t => ({ id: t.id, label: t.label }))}/>}/>
+      <div className="ow-body" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       <TabHelp id={tab} />
       {tab === 'inventory' && <Inventory />}
       {tab === 'incidents' && <Incidents />}
@@ -541,6 +536,7 @@ export default function Insights() {
       {tab === 'prev' && <Prevalence />}
       {tab === 'identity' && <Identity />}
       {tab === 'sched' && <Scheduled />}
+      </div>
     </div>
   )
 }

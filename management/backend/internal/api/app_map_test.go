@@ -24,7 +24,7 @@ func TestAppMapIntegration(t *testing.T) {
 		service_edges, service_instances, services, service_settings, app_edge_stats, app_client_stats, app_service_merges CASCADE`); err != nil {
 		t.Fatal(err)
 	}
-	for _, f := range []string{"../../../../backend/internal/store/migrations/030_app_services.sql", "../../../../backend/internal/store/migrations/031_app_edge_client_stats.sql", "../store/migrations/060_app_service_settings.sql", "../store/migrations/064_app_db_statement_mode.sql"} {
+	for _, f := range []string{"../../../../backend/internal/store/migrations/030_app_services.sql", "../../../../backend/internal/store/migrations/031_app_edge_client_stats.sql", "../store/migrations/060_app_service_settings.sql", "../store/migrations/066_app_db_statement_mode.sql", "../store/migrations/067_app_error_message_mode.sql", "../store/migrations/068_app_sampling.sql", "../store/migrations/069_app_slo.sql"} {
 		b, _ := os.ReadFile(f)
 		if _, err := raw.Exec(string(b)); err != nil {
 			t.Fatalf("%s: %v", f, err)

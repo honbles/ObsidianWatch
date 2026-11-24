@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import api from '../api/client'
+import { PageHeader } from '../components/ui'
 
 const PLATFORMS = [
   {
@@ -266,24 +267,12 @@ export default function AgentBuilder() {
   const anyBuilding = Object.values(buildStatus).some(s => s?.building) || Object.values(building).some(Boolean)
 
   return (
-    <div className="p-6 max-w-5xl mx-auto">
-
-      {/* Header */}
-      <div className="mb-8">
-        <div className="flex items-center gap-3 mb-1">
-          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-cyan-500/20 to-blue-500/20 ring-1 ring-cyan-500/30 flex items-center justify-center text-cyan-400 font-bold text-sm">AB</div>
-          <h1 className="text-xl font-semibold text-siem-text">Agent Builder</h1>
-          {anyBuilding && <span className="text-xs text-amber-400 animate-pulse ml-2">● compiling</span>}
-          <a href="/setup?rerun=1"
-            className="ml-auto text-xs text-siem-muted hover:text-cyan-400 transition-colors border border-siem-border hover:border-cyan-500/30 rounded-lg px-3 py-1.5">
-            ⚙ Reconfigure setup
-          </a>
-        </div>
-        <p className="text-siem-muted text-sm ml-11">
-          Configure the agents once. The server compiles each platform with your settings baked into the binary - no config file needed at deployment.
-        </p>
-      </div>
-
+    <div>
+      <PageHeader title="Agent builder"
+        state={anyBuilding ? 'info' : undefined} stateText="Compiling"
+        sub="Configure the agents once. The server compiles each platform with these settings built in, so nothing needs configuring at install time."
+        actions={<a href="/setup?rerun=1" className="ow-btn" style={{ textDecoration: 'none' }}>Re-run setup</a>}/>
+      <div className="ow-body" style={{ maxWidth: 1180 }}>
       {/* Config form */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-8">
         {FIELD_GROUPS.map(group => (
@@ -430,6 +419,7 @@ export default function AgentBuilder() {
             <div>Click Rebuild any time to recompile with updated settings · Previous zip replaced</div>
           </div>
         </div>
+      </div>
       </div>
     </div>
   )

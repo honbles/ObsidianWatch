@@ -26,10 +26,10 @@ func appTestDB(t *testing.T) *DB {
 	t.Cleanup(func() { raw.Close() })
 	// Scratch database: start clean so a schema change is always exercised.
 	if _, err := raw.Exec(`DROP TABLE IF EXISTS app_traces, app_route_stats, app_baselines, service_versions, service_routes,
-		service_edges, service_instances, services, service_settings, app_edge_stats, app_client_stats, service_route_params, app_payloads, app_route_payload_policy CASCADE`); err != nil {
+		service_edges, service_instances, services, service_settings, app_edge_stats, app_client_stats, service_route_params, app_payloads, app_route_payload_policy, error_group_hours, error_groups, app_route_children, app_db_stats, app_route_n1, app_metrics, app_sampling_stats, app_operations CASCADE`); err != nil {
 		t.Fatal(err)
 	}
-	for _, f := range []string{"migrations/002_agents.sql", "migrations/030_app_services.sql", "migrations/031_app_edge_client_stats.sql", "migrations/031_app_edge_client_stats.sql", "migrations/030_app_services.sql"} { // twice: idempotent
+	for _, f := range []string{"migrations/002_agents.sql", "migrations/030_app_services.sql", "migrations/031_app_edge_client_stats.sql", "migrations/031_app_edge_client_stats.sql", "migrations/030_app_services.sql", "migrations/038_app_percentile_sketch.sql"} { // twice: idempotent
 		b, err := os.ReadFile(f)
 		if err != nil {
 			t.Fatal(err)
@@ -519,14 +519,249 @@ func TestAppDiagnosisIngestAccumulates(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, _ = db.ExecContext(ctx, `INSERT INTO service_settings (service_id) SELECT id FROM services WHERE name='api'`)
-	cfg, err := db.AppRemoteConfig(ctx) // column missing (migration 064 not applied): falls back, mode off
+	cfg, err := db.AppRemoteConfig(ctx) // column missing (migration 066 not applied): falls back, mode off
 	if err != nil || len(cfg) != 1 || cfg[0].DBStatementMode != "off" {
 		t.Fatalf("fallback config: %+v %v", cfg, err)
 	}
-	if _, err := db.ExecContext(ctx, `ALTER TABLE service_settings ADD COLUMN db_statement_mode TEXT NOT NULL DEFAULT 'off'; UPDATE service_settings SET db_statement_mode='fingerprint'`); err != nil {
+	if _, err := db.ExecContext(ctx, `ALTER TABLE service_settings ADD COLUMN db_statement_mode TEXT NOT NULL DEFAULT 'off'; ALTER TABLE service_settings ADD COLUMN error_message_mode TEXT NOT NULL DEFAULT 'off'; UPDATE service_settings SET db_statement_mode='fingerprint'`); err != nil {
 		t.Fatal(err)
 	}
 	if cfg, err = db.AppRemoteConfig(ctx); err != nil || len(cfg) != 1 || cfg[0].DBStatementMode != "fingerprint" {
 		t.Fatalf("config: %+v %v", cfg, err)
+	}
+}
+
+func TestAppErrorGroupsCountAndRegress(t *testing.T) {
+	db := appTestDB(t)
+	ctx := context.Background()
+	if _, err := db.ExecContext(ctx, `INSERT INTO agents (id, hostname, os, version) VALUES ('a1','web-01','linux','1')`); err != nil {
+		t.Fatal(err)
+	}
+	b, err := os.ReadFile("migrations/037_app_errors.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.ExecContext(ctx, string(b)); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC()
+	send := func(ver, trace string, n int64) {
+		t.Helper()
+		_, err := db.AppIngestBatch(ctx, "a1", "web-01", AppBatch{Errors: []AppError{{Service: "api", Environment: "prod", Route: "/orders/:id", Method: "GET",
+			Fingerprint: "0123456789abcdef", Type: "Error", Frame: "getOrder src/orders.js:42", Frames: []string{"getOrder src/orders.js:42"},
+			Message: "order ? not found", Version: ver, TraceID: trace, Count: n, Time: now}}}, now)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	row := func() (cnt int64, status string, regressed bool, fv, lv string, traces string) {
+		_ = db.QueryRowContext(ctx, `SELECT count, status, regressed, first_version, last_version, sample_traces::text FROM error_groups`).Scan(&cnt, &status, &regressed, &fv, &lv, &traces)
+		return
+	}
+	send("1.0.0", "aaaa", 1)
+	send("1.0.0", "bbbb", 1)
+	if c, st, rg, fv, lv, tr := row(); c != 2 || st != "open" || rg || fv != "1.0.0" || lv != "1.0.0" || tr != `["bbbb", "aaaa"]` {
+		t.Fatalf("two occurrences, one group: %d %s %v %s %s %s", c, st, rg, fv, lv, tr)
+	}
+	var hours int64
+	_ = db.QueryRowContext(ctx, `SELECT SUM(count) FROM error_group_hours`).Scan(&hours)
+	if hours != 2 {
+		t.Fatalf("hourly counts: %d", hours)
+	}
+	// Resolved in 1.0.0: the same failure in 1.0.0 stays resolved, in 1.1.0 it regresses.
+	if _, err := db.ExecContext(ctx, `UPDATE error_groups SET status='resolved', resolved_version='1.0.0'`); err != nil {
+		t.Fatal(err)
+	}
+	send("1.0.0", "cccc", 1)
+	if _, st, rg, _, _, _ := row(); st != "resolved" || rg {
+		t.Fatalf("same version must not reopen: %s %v", st, rg)
+	}
+	send("1.1.0", "dddd", 1)
+	if c, st, rg, _, lv, _ := row(); st != "open" || !rg || lv != "1.1.0" || c != 4 {
+		t.Fatalf("regression: %d %s %v %s", c, st, rg, lv)
+	}
+	// An ignored group stays ignored.
+	if _, err := db.ExecContext(ctx, `UPDATE error_groups SET status='ignored', regressed=FALSE`); err != nil {
+		t.Fatal(err)
+	}
+	send("2.0.0", "eeee", 1)
+	if _, st, rg, _, _, _ := row(); st != "ignored" || rg {
+		t.Fatalf("ignored: %s %v", st, rg)
+	}
+}
+
+func TestAppSketchMergesAndCoverage(t *testing.T) {
+	db := appTestDB(t)
+	ctx := context.Background()
+	if _, err := db.ExecContext(ctx, `INSERT INTO agents (id, hostname, os, version) VALUES ('a1','web-01','linux','1')`); err != nil {
+		t.Fatal(err)
+	}
+	b, err := os.ReadFile("migrations/038_app_percentile_sketch.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.ExecContext(ctx, string(b)); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC()
+	min := now.Truncate(time.Minute).Add(-time.Minute)
+	mk := func(vals ...float64) *SketchWire {
+		s := NewSketch()
+		for _, v := range vals {
+			s.Add(v)
+		}
+		return s.Wire()
+	}
+	send := func(calls int64, sk *SketchWire) {
+		t.Helper()
+		_, err := db.AppIngestBatch(ctx, "a1", "web-01", AppBatch{Routes: []AppRouteStat{{Service: "api", Environment: "prod", Route: "/x", Method: "GET",
+			Minute: min, Calls: calls, DurBuckets: make([]int64, 12), Sketch: sk}}}, now)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	row := func() (calls, skCalls int64, sk string) {
+		_ = db.QueryRowContext(ctx, `SELECT calls, sketch_calls, COALESCE(sketch::text,'') FROM app_route_stats`).Scan(&calls, &skCalls, &sk)
+		return
+	}
+	send(2, mk(10, 90000))
+	send(1, mk(30))
+	c, sc, js := row()
+	if c != 3 || sc != 3 {
+		t.Fatalf("complete: %d %d", c, sc)
+	}
+	var w SketchWire
+	if err := json.Unmarshal([]byte(js), &w); err != nil || SketchFromWire(&w).Count() != 3 || w.Max < 89000 {
+		t.Fatalf("merged sketch: %v %+v", err, w)
+	}
+	send(4, nil) // an agent without the feature: the row is no longer sketch-complete
+	c, sc, _ = row()
+	if c != 7 || sc != 3 {
+		t.Fatalf("incomplete: %d %d", c, sc)
+	}
+}
+
+func TestAppMetricsMerge(t *testing.T) {
+	db := appTestDB(t)
+	ctx := context.Background()
+	if _, err := db.ExecContext(ctx, `INSERT INTO agents (id, hostname, os, version) VALUES ('a1','web-01','linux','1')`); err != nil {
+		t.Fatal(err)
+	}
+	b, err := os.ReadFile("migrations/039_app_metrics.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 2; i++ { // idempotent
+		if _, err := db.ExecContext(ctx, string(b)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	now := time.Now().UTC()
+	min := now.Truncate(time.Minute)
+	send := func(last, mn, mx, sum float64, n int64) {
+		t.Helper()
+		res, err := db.AppIngestBatch(ctx, "a1", "web-01", AppBatch{Metrics: []AppMetric{{Service: "api", Environment: "prod", Instance: "i-1",
+			Name: "process.cpu.utilization", Attr: "state=user", Identity: "asserted", Minute: min, Last: last, Min: mn, Max: mx, Sum: sum, Count: n}}}, now)
+		if err != nil || res.Metrics != 1 {
+			t.Fatalf("%v %+v", err, res)
+		}
+	}
+	send(0.5, 0.2, 0.7, 1.0, 2)
+	send(0.9, 0.1, 0.6, 1.5, 3)
+	var last, mn, mx, sum float64
+	var cnt int64
+	if err := db.QueryRowContext(ctx, `SELECT last, min, max, sum, count FROM app_metrics`).Scan(&last, &mn, &mx, &sum, &cnt); err != nil {
+		t.Fatal(err)
+	}
+	if last != 0.9 || mn != 0.1 || mx != 0.7 || sum != 2.5 || cnt != 5 {
+		t.Fatalf("merge: %v %v %v %v %v", last, mn, mx, sum, cnt)
+	}
+}
+
+func TestAppSamplingStatsAndRemoteConfig(t *testing.T) {
+	db := appTestDB(t)
+	ctx := context.Background()
+	if _, err := db.ExecContext(ctx, `INSERT INTO agents (id, hostname, os, version) VALUES ('a1','web-01','linux','1')`); err != nil {
+		t.Fatal(err)
+	}
+	b, err := os.ReadFile("migrations/040_app_sampling.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.ExecContext(ctx, string(b)); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC()
+	for i := 0; i < 2; i++ {
+		if _, err := db.AppIngestBatch(ctx, "a1", "web-01", AppBatch{Sampling: []AppSampling{{Service: "api", Environment: "prod", Reason: "baseline", Seen: 10, Kept: 1}}}, now); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var seen, kept int64
+	if err := db.QueryRowContext(ctx, `SELECT seen, kept FROM app_sampling_stats`).Scan(&seen, &kept); err != nil || seen != 20 || kept != 2 {
+		t.Fatalf("%d %d %v", seen, kept, err)
+	}
+	// settings with a sampling policy reach the agent; without the column the pull still works
+	if _, err := db.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS service_settings (service_id BIGINT PRIMARY KEY, store_client_ip TEXT NOT NULL DEFAULT 'full', cleartext_users BOOLEAN NOT NULL DEFAULT FALSE, latency_target_ms INT)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.ExecContext(ctx, `ALTER TABLE service_settings ADD COLUMN IF NOT EXISTS error_message_mode TEXT NOT NULL DEFAULT 'off', ADD COLUMN IF NOT EXISTS db_statement_mode TEXT NOT NULL DEFAULT 'off'`); err != nil {
+		t.Fatal(err)
+	}
+	var sid int64
+	_ = db.QueryRowContext(ctx, `SELECT id FROM services WHERE name='api'`).Scan(&sid)
+	if _, err := db.ExecContext(ctx, `INSERT INTO service_settings (service_id) VALUES ($1)`, sid); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := db.AppRemoteConfig(ctx)
+	if err != nil || len(cfg) != 1 || cfg[0].Sampling != nil {
+		t.Fatalf("no column: %d %+v %v", len(cfg), cfg, err)
+	}
+	if _, err := db.ExecContext(ctx, `ALTER TABLE service_settings ADD COLUMN IF NOT EXISTS sampling JSONB NOT NULL DEFAULT '{}'`); err != nil {
+		t.Fatal(err)
+	}
+	if cfg, _ = db.AppRemoteConfig(ctx); cfg[0].Sampling != nil {
+		t.Fatalf("empty policy is the default: %+v", cfg[0].Sampling)
+	}
+	if _, err := db.ExecContext(ctx, `UPDATE service_settings SET sampling='{"baseline_pct":0,"error_max_per_min":20}'`); err != nil {
+		t.Fatal(err)
+	}
+	cfg, _ = db.AppRemoteConfig(ctx)
+	if cfg[0].Sampling == nil || cfg[0].Sampling.BaselinePct == nil || *cfg[0].Sampling.BaselinePct != 0 || cfg[0].Sampling.ErrorMaxPerMin != 20 {
+		t.Fatalf("%+v", cfg[0].Sampling)
+	}
+}
+
+func TestAppOperationsIngest(t *testing.T) {
+	db := appTestDB(t)
+	ctx := context.Background()
+	if _, err := db.ExecContext(ctx, `INSERT INTO agents (id, hostname, os, version) VALUES ('a1','web-01','linux','1')`); err != nil {
+		t.Fatal(err)
+	}
+	b, err := os.ReadFile("migrations/041_app_operations.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.ExecContext(ctx, string(b)); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC()
+	min := now.Truncate(time.Minute)
+	for i, last := range []time.Time{now.Add(-20 * time.Second), now} {
+		h := make([]int64, AppHistLen)
+		h[3] = 2
+		if _, err := db.AppIngestBatch(ctx, "a1", "web-01", AppBatch{Operations: []AppOperation{{Service: "worker", Environment: "prod", Kind: "job", Name: "nightly",
+			Minute: min, Runs: 2, Failures: int64(i), DurBuckets: h, LastRun: last}}}, now); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var runs, fails int64
+	var last time.Time
+	var hist string
+	if err := db.QueryRowContext(ctx, `SELECT runs, failures, last_run, duration_buckets::text FROM app_operations`).Scan(&runs, &fails, &last, &hist); err != nil {
+		t.Fatal(err)
+	}
+	if runs != 4 || fails != 1 || last.Before(now.Add(-time.Second)) || !strings.Contains(hist, "4") {
+		t.Fatalf("%d %d %v %s", runs, fails, last, hist)
 	}
 }

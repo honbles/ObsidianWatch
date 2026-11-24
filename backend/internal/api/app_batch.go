@@ -13,9 +13,11 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"log/slog"
+	"math"
 	"net"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -40,6 +42,10 @@ const (
 	appMaxQueries       = 3000
 	appMaxNPlusOne      = 500
 	appMaxQueryText     = 512
+	appMaxErrors        = 1500
+	appMaxMetrics       = 4000
+	appMaxSampling      = 200
+	appMaxOperations    = 1500
 	appMaxPayloadParams = 50
 	appMaxPayloadValue  = 256
 	appMaxParamNameLen  = 64
@@ -281,6 +287,11 @@ func appSanitizeBatch(b *store.AppBatch, now time.Time) (dropped int) {
 			dropped++
 			continue
 		}
+		if r.Sketch != nil { // a sketch that is malformed, or counts more than the row's calls, is dropped; the histogram still counts
+			if sk := store.SketchFromWire(r.Sketch); sk == nil || sk.Count() > r.Calls {
+				r.Sketch = nil
+			}
+		}
 		rts = append(rts, r)
 	}
 	b.Routes = rts
@@ -463,6 +474,108 @@ func appSanitizeBatch(b *store.AppBatch, now time.Time) (dropped int) {
 	}
 	b.NPlusOne = n1s
 
+	ers := b.Errors[:0]
+	for _, e := range b.Errors {
+		e.Service, e.Environment = appClean(e.Service, appMaxNameRunes), appEnv(e.Environment)
+		e.Method = strings.ToUpper(appClean(e.Method, 8))
+		e.Time = e.Time.UTC()
+		if !appValidID(e.Service, appMaxNameRunes) || !appFingerprintRe.MatchString(e.Fingerprint) || e.Count <= 0 || e.Count > appMaxStatRequests ||
+			(e.Method != "" && !appMethods[e.Method]) || e.Time.After(now.Add(appMaxFutureSkew)) {
+			dropped++
+			continue
+		}
+		if e.Route != "" {
+			e.Route = appRouteTemplate(e.Route)
+		}
+		e.Type, e.Frame, e.Version = appClean(e.Type, 128), appClean(e.Frame, 200), appClean(e.Version, 64)
+		e.Message = appClean(e.Message, 200)
+		if appLooksLikeLiteral(e.Message) { // a masked message has no quotes or long numbers; one that does was not masked
+			e.Message = ""
+		}
+		if !appTraceIDRe.MatchString(e.TraceID) {
+			e.TraceID = ""
+		}
+		if len(e.Frames) > 30 {
+			e.Frames = e.Frames[:30]
+		}
+		size := 0
+		fr := e.Frames[:0]
+		for _, f := range e.Frames {
+			f = appClean(f, 200)
+			if size += len(f); size > 4096 {
+				break
+			}
+			fr = append(fr, f)
+		}
+		e.Frames = fr
+		ers = append(ers, e)
+	}
+	b.Errors = ers
+
+	mts := b.Metrics[:0]
+	for _, m := range b.Metrics {
+		m.Service, m.Environment = appClean(m.Service, appMaxNameRunes), appEnv(m.Environment)
+		m.Name, m.Attr, m.Unit = appClean(m.Name, 96), appClean(m.Attr, 200), appClean(m.Unit, 16)
+		m.Instance = appClean(m.Instance, 128)
+		m.Minute = m.Minute.UTC().Truncate(time.Minute)
+		if m.Identity != "verified" {
+			m.Identity = "asserted"
+		}
+		if !appValidID(m.Service, appMaxNameRunes) || m.Instance == "" || !appMetricNameOK(m.Name) || m.Count <= 0 || m.Count > appMaxStatRequests ||
+			!appFinite(m.Last, m.Min, m.Max, m.Sum) || m.Min > m.Max || m.Minute.After(now.Add(appMaxFutureSkew)) || m.Minute.Before(now.Add(-appMaxStatAge)) {
+			dropped++
+			continue
+		}
+		mts = append(mts, m)
+	}
+	b.Metrics = mts
+
+	sps := b.Sampling[:0]
+	for _, sm := range b.Sampling {
+		sm.Service, sm.Environment = appClean(sm.Service, appMaxNameRunes), appEnv(sm.Environment)
+		if !appValidID(sm.Service, appMaxNameRunes) || (sm.Reason != "error" && sm.Reason != "slow" && sm.Reason != "security" && sm.Reason != "baseline") ||
+			sm.Seen < 0 || sm.Kept < 0 || sm.Kept > sm.Seen+appMaxStatRequests || sm.Seen > appMaxStatRequests*100 {
+			dropped++
+			continue
+		}
+		sps = append(sps, sm)
+	}
+	b.Sampling = sps
+
+	ops := b.Operations[:0]
+	for _, o := range b.Operations {
+		o.Service, o.Environment = appClean(o.Service, appMaxNameRunes), appEnv(o.Environment)
+		o.Name = appClean(o.Name, 96)
+		o.Minute, o.LastRun = o.Minute.UTC().Truncate(time.Minute), o.LastRun.UTC()
+		bad := !appValidID(o.Service, appMaxNameRunes) || (o.Kind != "job" && o.Kind != "consumer") || o.Name == "" ||
+			o.Runs <= 0 || o.Runs > appMaxStatRequests || o.Failures < 0 || o.Failures > o.Runs ||
+			o.Minute.After(now.Add(appMaxFutureSkew)) || o.Minute.Before(now.Add(-appMaxStatAge)) || o.LastRun.After(now.Add(appMaxFutureSkew))
+		if o.LastRun.IsZero() {
+			o.LastRun = o.Minute
+		}
+		if len(o.DurBuckets) != store.AppHistLen {
+			h := make([]int64, store.AppHistLen)
+			copy(h, o.DurBuckets)
+			o.DurBuckets = h
+		}
+		for _, v := range o.DurBuckets {
+			if v < 0 {
+				bad = true
+			}
+		}
+		if bad {
+			dropped++
+			continue
+		}
+		if o.Sketch != nil {
+			if sk := store.SketchFromWire(o.Sketch); sk == nil || sk.Count() > o.Runs {
+				o.Sketch = nil
+			}
+		}
+		ops = append(ops, o)
+	}
+	b.Operations = ops
+
 	nts := b.Notes[:0]
 	for _, n := range b.Notes {
 		n.Service, n.Environment = appClean(n.Service, appMaxNameRunes), appEnv(n.Environment)
@@ -569,7 +682,7 @@ func appHandleBatch(db appBatchStore, logger *slog.Logger) http.HandlerFunc {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "missing or invalid agent_id"})
 			return
 		}
-		if len(b.Instances) > appMaxInstances || len(b.Routes) > appMaxRoutes || len(b.Edges) > appMaxEdges || len(b.Traces) > appMaxTraces || len(b.Clients) > appMaxClients || len(b.Params) > appMaxParams || len(b.Payloads) > appMaxPayloads || len(b.Children) > appMaxChildren || len(b.Queries) > appMaxQueries || len(b.NPlusOne) > appMaxNPlusOne {
+		if len(b.Instances) > appMaxInstances || len(b.Routes) > appMaxRoutes || len(b.Edges) > appMaxEdges || len(b.Traces) > appMaxTraces || len(b.Clients) > appMaxClients || len(b.Params) > appMaxParams || len(b.Payloads) > appMaxPayloads || len(b.Children) > appMaxChildren || len(b.Queries) > appMaxQueries || len(b.NPlusOne) > appMaxNPlusOne || len(b.Errors) > appMaxErrors || len(b.Metrics) > appMaxMetrics || len(b.Sampling) > appMaxSampling || len(b.Operations) > appMaxOperations {
 			writeJSON(w, http.StatusRequestEntityTooLarge, map[string]string{"error": "batch too large"})
 			return
 		}
@@ -593,7 +706,7 @@ func appHandleBatch(db appBatchStore, logger *slog.Logger) http.HandlerFunc {
 			return
 		}
 
-		items := len(b.Instances) + len(b.Routes) + len(b.Edges) + len(b.Traces) + len(b.Clients) + len(b.Params) + len(b.Payloads) + len(b.Children) + len(b.Queries) + len(b.NPlusOne)
+		items := len(b.Instances) + len(b.Routes) + len(b.Edges) + len(b.Traces) + len(b.Clients) + len(b.Params) + len(b.Payloads) + len(b.Children) + len(b.Queries) + len(b.NPlusOne) + len(b.Errors) + len(b.Metrics) + len(b.Sampling) + len(b.Operations)
 		if items == 0 {
 			writeJSON(w, http.StatusOK, map[string]any{"accepted": 0, "dropped": 0})
 			return
@@ -643,4 +756,29 @@ func appLooksLikeLiteral(t string) bool {
 		}
 	}
 	return false
+}
+
+var appFingerprintRe = regexp.MustCompile(`^[0-9a-f]{16}$`)
+var appTraceIDRe = regexp.MustCompile(`^[0-9a-f]{32}$`)
+
+// appMetricPrefixes are the metric names the platform stores (keep in step with the agent allowlist).
+var appMetricPrefixes = []string{"process.cpu.", "process.memory.", "process.runtime.", "process.uptime", "v8js.", "nodejs.", "jvm.", "dotnet.",
+	"db.client.connections.", "db.client.connection.", "http.server.active_requests"}
+
+func appMetricNameOK(n string) bool {
+	for _, p := range appMetricPrefixes {
+		if strings.HasPrefix(n, p) {
+			return true
+		}
+	}
+	return false
+}
+
+func appFinite(vs ...float64) bool {
+	for _, v := range vs {
+		if math.IsNaN(v) || math.IsInf(v, 0) || math.Abs(v) > 1e18 {
+			return false
+		}
+	}
+	return true
 }

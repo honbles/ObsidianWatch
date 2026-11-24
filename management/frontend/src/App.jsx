@@ -12,6 +12,7 @@ import ThreatIntel from './pages/ThreatIntel'
 import AlertRules from './pages/AlertRules'
 import Users from './pages/Users'
 import AuditLog from './pages/AuditLog'
+import Suppressions from './pages/Suppressions'
 import ChangePassword from './pages/ChangePassword'
 import Settings from './pages/Settings'
 import Search from './pages/Search'
@@ -75,6 +76,7 @@ export default function App() {
         <Route path="/threat-intel" element={<Navigate to="/agents" replace />} />
         <Route path="/users"        element={<ProtectedRoute adminOnly><Users /></ProtectedRoute>} />
         <Route path="/audit-log"    element={<ProtectedRoute><AuditLog /></ProtectedRoute>} />
+        <Route path="/suppressions" element={<ProtectedRoute><Suppressions /></ProtectedRoute>} />
         <Route path="/settings"      element={<ProtectedRoute adminOnly><Settings /></ProtectedRoute>} />
         <Route path="/search"        element={<ProtectedRoute><Search /></ProtectedRoute>} />
         <Route path="/threat-graph" element={<Navigate to="/agents" replace />} />

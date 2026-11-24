@@ -222,7 +222,7 @@ func (e *ThreatIntelEngine) syncThreatFox(ctx context.Context, apiKey *string) (
 		if iocType == "ip" && strings.Contains(value, ":") {
 			value = value[:strings.LastIndex(value, ":")]
 		}
-		if value == "" {
+		if value == "" || !iocIngestOK(iocType, value) {
 			continue
 		}
 		var expiresAt *time.Time
@@ -266,20 +266,40 @@ func normalizeTFType(t string) string {
 
 func (e *ThreatIntelEngine) syncOTX(ctx context.Context, apiKey string) (int, error) {
 	syncSince := time.Now().AddDate(0, 0, -365)
-	if lastSync, err2 := e.db.GetSetting(ctx, "ti.otx_last_sync"); err2 == nil && lastSync != "" {
-		if t, err3 := time.Parse(time.RFC3339, lastSync); err3 == nil && time.Since(t) < 365*24*time.Hour {
-			syncSince = t.Add(-1 * time.Hour)
+	// Indicators now expire after 90 days, and an incremental sync never
+	// re-sees unchanged pulses, so do a full 365-day resync weekly to extend
+	// the expiry of pulses that are still valid.
+	fullResync := true
+	if lf, errF := e.db.GetSetting(ctx, "ti.otx_last_full_sync"); errF == nil && lf != "" {
+		if t, errT := time.Parse(time.RFC3339, lf); errT == nil && time.Since(t) < 7*24*time.Hour {
+			fullResync = false
+		}
+	}
+	if !fullResync {
+		if lastSync, err2 := e.db.GetSetting(ctx, "ti.otx_last_sync"); err2 == nil && lastSync != "" {
+			if t, err3 := time.Parse(time.RFC3339, lastSync); err3 == nil && time.Since(t) < 365*24*time.Hour {
+				syncSince = t.Add(-1 * time.Hour)
+			}
 		}
 	}
 	type otxResult struct {
 		Next    *string `json:"next"`
 		Results []struct {
-			Name       string   `json:"name"`
-			Tags       []string `json:"tags"`
-			Indicators []struct {
-				Type      string `json:"type"`
-				Indicator string `json:"indicator"`
-				Role      string `json:"role"`
+			ID              string          `json:"id"`
+			Name            string          `json:"name"`
+			Tags            []string        `json:"tags"`
+			Adversary       string          `json:"adversary"`
+			MalwareFamilies json.RawMessage `json:"malware_families"`
+			AttackIDs       json.RawMessage `json:"attack_ids"`
+			References      json.RawMessage `json:"references"`
+			Modified        string          `json:"modified"`
+			IndicatorCount  int             `json:"indicator_count"`
+			Indicators      []struct {
+				Type       string  `json:"type"`
+				Indicator  string  `json:"indicator"`
+				Role       string  `json:"role"`
+				IsActive   *int    `json:"is_active"`
+				Expiration *string `json:"expiration"`
 			} `json:"indicators"`
 		} `json:"results"`
 	}
@@ -317,19 +337,57 @@ func (e *ThreatIntelEngine) syncOTX(ctx context.Context, apiKey string) (int, er
 		resp.Body.Close()
 		for _, pulse := range result.Results {
 			tags := strings.Join(pulse.Tags, ",")
+			size := pulse.IndicatorCount
+			if len(pulse.Indicators) > size {
+				size = len(pulse.Indicators)
+			}
+			allHashes := len(pulse.Indicators) > 0
+			for _, ind := range pulse.Indicators {
+				if normalizeOTXType(ind.Type) != "hash" {
+					allHashes = false
+					break
+				}
+			}
+			meta := otxPulseMeta{
+				Adversary:   pulse.Adversary,
+				HasFamilies: nonEmptyJSON(pulse.MalwareFamilies),
+				HasAttack:   nonEmptyJSON(pulse.AttackIDs),
+				HasRefs:     nonEmptyJSON(pulse.References),
+				HasTags:     len(pulse.Tags) > 0,
+				Size:        size,
+				AllHashes:   allHashes,
+			}
+			if t, errM := time.Parse("2006-01-02T15:04:05.999999", pulse.Modified); errM == nil {
+				meta.Modified = t
+			} else if t, errM := time.Parse(time.RFC3339, pulse.Modified); errM == nil {
+				meta.Modified = t
+			}
+			conf := otxPulseScore(meta, time.Now())
 			for _, ind := range pulse.Indicators {
 				iocType := normalizeOTXType(ind.Type)
 				if iocType == "" {
 					continue
 				}
+				if ind.IsActive != nil && *ind.IsActive == 0 {
+					continue // OTX marks the indicator inactive
+				}
 				value := strings.ToLower(strings.TrimSpace(ind.Indicator))
-				if value == "" {
+				if value == "" || !iocIngestOK(iocType, value) {
 					continue
+				}
+				exp := time.Now().Add(otxDefaultTTL)
+				if ind.Expiration != nil && *ind.Expiration != "" {
+					if t, errE := time.Parse("2006-01-02T15:04:05", *ind.Expiration); errE == nil && t.After(time.Now()) {
+						exp = t
+					} else if errE == nil {
+						continue // already expired
+					}
 				}
 				iocs = append(iocs, store.IOCIndicator{
 					Source: "otx", IOCType: iocType, Value: value,
 					Malware: pulse.Name, ThreatType: ind.Role,
-					Confidence: 70, Severity: 4, Tags: tags,
+					Confidence: conf, Severity: confidenceToSeverity(conf), Tags: tags,
+					ExpiresAt: &exp, PulseID: pulse.ID, PulseName: pulse.Name, PulseSize: size,
 				})
 			}
 		}
@@ -344,6 +402,9 @@ func (e *ThreatIntelEngine) syncOTX(ctx context.Context, apiKey string) (int, er
 	count, err2 := e.db.UpsertIOCs(ctx, iocs)
 	if err2 == nil && count > 0 {
 		e.db.SetSetting(ctx, "ti.otx_last_sync", time.Now().Format(time.RFC3339))
+		if fullResync {
+			e.db.SetSetting(ctx, "ti.otx_last_full_sync", time.Now().Format(time.RFC3339))
+		}
 	}
 	return count, err2
 }

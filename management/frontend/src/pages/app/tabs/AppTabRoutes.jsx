@@ -82,6 +82,7 @@ export default function AppTabRoutes({ service, range, focus }) {
     { key: 'auth', label: '401/403', align: 'right', render: r => appInt(r.stats.status_401_403), sort: r => r.stats.status_401_403 },
     { key: 'rl', label: '429', align: 'right', render: r => appInt(r.stats.status_429), sort: r => r.stats.status_429 },
     { key: 'p95', label: 'p95', align: 'right', render: r => appMs(r.stats.p95_ms, r.stats.over_range), sort: r => r.stats.p95_ms },
+    { key: 'apdex', label: 'Apdex', align: 'right', render: r => (r.stats.apdex != null ? <span className={r.stats.apdex < 0.7 ? 'text-red-300' : r.stats.apdex < 0.85 ? 'text-amber-300' : ''} title="Satisfied up to the latency target, tolerating up to 4 times it">{r.stats.apdex.toFixed(2)}</span> : '-'), sort: r => r.stats.apdex ?? -1 },
     { key: 'last_seen', label: 'Last seen', render: r => (r.observed ? appRel(r.last_seen) : '-'), sort: r => r.last_seen },
   ]
   return (

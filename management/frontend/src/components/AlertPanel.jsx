@@ -2,6 +2,7 @@ import { IPLink } from './IPLookup'
 import AlertGraph from './AlertGraph'
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { createPortal } from 'react-dom'
+import { useNavigate } from 'react-router-dom'
 import { Bell, CheckCircle, XCircle, RefreshCw, X,
          User, MessageSquare, Clock, AlertTriangle, UserCheck, FileText,
          Shield, ExternalLink, ChevronRight, Hash, Zap, Target,
@@ -393,6 +394,7 @@ function AlertPanel({ alertId, users, onClose, onStatusChange, inline = false })
   const [chatLoading, setChatLoading] = useState(false)
   const [activeTab, setActiveTab]   = useState('analysis') // analysis | details | raw
   const chatEndRef = useRef(null)
+  const navigate = useNavigate()
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -751,6 +753,23 @@ function AlertPanel({ alertId, users, onClose, onStatusChange, inline = false })
                       className="flex items-center gap-1.5 text-xs text-siem-muted border border-siem-border hover:border-siem-accent/40 hover:text-siem-text rounded-lg px-3 py-2 transition-colors">
                       <XCircle size={12}/> Close with Review
                     </button>
+                    {/* Pre-fill a suppression from this alert's rule and source event. Only built-in
+                        signature alerts carry a rule ID in their dedup key (sig:<ID>:host:...). */}
+                    {/^sig:/.test(alert.event_id || '') && (
+                      <button onClick={() => {
+                          const rule = (alert.event_id.match(/^sig:(.+?):host:/) || [])[1] || ''
+                          const q = new URLSearchParams({ rule })
+                          if (alert.host) q.set('host', alert.host)
+                          if (ev?.process_name) q.set('process', ev.process_name)
+                          const parent = ev?.raw?.parent_exe || ev?.raw?.event_data?.ParentImage || ''
+                          if (parent) q.set('parent', parent.split(/[\\/]/).pop())
+                          if (ev?.user_name) q.set('user', ev.user_name)
+                          navigate('/suppressions?' + q.toString())
+                        }}
+                        className="flex items-center gap-1.5 text-xs text-siem-muted border border-siem-border hover:border-siem-accent/40 hover:text-siem-text rounded-lg px-3 py-2 transition-colors">
+                        <Eye size={12}/> Suppress this alert
+                      </button>
+                    )}
                   </div>
                 )}
               </div>

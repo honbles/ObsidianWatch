@@ -122,6 +122,7 @@ type appREDPoint struct {
 	P50        float64   `json:"p50_ms"`
 	P95        float64   `json:"p95_ms"`
 	P99        float64   `json:"p99_ms"`
+	MaxMs      float64   `json:"max_ms,omitempty"` // largest latency seen (sketch data only)
 	OverRange  bool      `json:"over_range,omitempty"`
 }
 
@@ -136,7 +137,10 @@ type appREDTotals struct {
 	P50        float64 `json:"p50_ms"`
 	P95        float64 `json:"p95_ms"`
 	P99        float64 `json:"p99_ms"`
+	MaxMs      float64 `json:"max_ms,omitempty"`
 	OverRange  bool    `json:"over_range,omitempty"`
+	// Apdex needs a latency target on the service; it is computed from the sketch.
+	Apdex *float64 `json:"apdex,omitempty"`
 }
 
 func appFinishPoint(p *appREDPoint, h []int64) {
@@ -227,19 +231,29 @@ func appHandleREDSeries(db, backendDB *store.DB) http.HandlerFunc {
 		}
 		hrows.Close()
 
+		sks, pmethod := appLoadSketches(r.Context(), idb, id, from, to, route, method, func(m time.Time, _, _ string) string {
+			return strconv.FormatInt(int64(m.Unix()/int64(step))*int64(step), 10)
+		})
 		series := make([]appREDPoint, 0, len(order))
 		for _, k := range order {
 			p := points[k]
 			appFinishPoint(p, hists[k])
+			if sk := sks[strconv.FormatInt(k, 10)]; sk != nil {
+				p.P50, p.P95, p.P99, p.MaxMs, p.OverRange = sk.Quantile(0.5), sk.Quantile(0.95), sk.Quantile(0.99), sk.Max(), false
+			}
 			series = append(series, *p)
 		}
 		var tp appREDPoint
 		appFinishPoint(&tp, all)
 		tot.P50, tot.P95, tot.P99, tot.OverRange = tp.P50, tp.P95, tp.P99, tp.OverRange
+		if sk := sks["all"]; sk != nil {
+			tot.P50, tot.P95, tot.P99, tot.MaxMs, tot.OverRange = sk.Quantile(0.5), sk.Quantile(0.95), sk.Quantile(0.99), sk.Max(), false
+			tot.Apdex = appApdex(sk, appSettingsByID(r.Context(), db, []int64{id})[id].latencyTarget())
+		}
 		if tot.Calls > 0 {
 			tot.ErrorRate = float64(tot.Errors) / float64(tot.Calls)
 		}
-		writeJSON(w, http.StatusOK, map[string]any{"from": from, "to": to, "step_seconds": step, "series": series, "totals": tot})
+		writeJSON(w, http.StatusOK, map[string]any{"from": from, "to": to, "step_seconds": step, "series": series, "totals": tot, "percentile_method": pmethod})
 	}
 }
 
@@ -355,6 +369,14 @@ func appHandleRoutes(db, backendDB *store.DB) http.HandlerFunc {
 				}
 			}
 		}
+		sks, pmethod := appLoadSketches(r.Context(), idb, id, from, to, "", "", func(_ time.Time, rt, mt string) string { return mt + " " + rt })
+		target := appSettingsByID(r.Context(), db, []int64{id})[id].latencyTarget()
+		for k, sk := range sks {
+			if j, ok := idx[k]; ok && k != "all" {
+				list[j].Stats.P50, list[j].Stats.P95, list[j].Stats.P99, list[j].Stats.MaxMs, list[j].Stats.OverRange = sk.Quantile(0.5), sk.Quantile(0.95), sk.Quantile(0.99), sk.Max(), false
+				list[j].Stats.Apdex = appApdex(sk, target)
+			}
+		}
 		policies := appLoadPayloadPolicies(r, db, id)
 
 		// Routes declared by an API spec: they join an observed route of the same shape, or are listed on their
@@ -457,7 +479,7 @@ func appHandleRoutes(db, backendDB *store.DB) http.HandlerFunc {
 		}
 		appAttachDiagnosis(r.Context(), idb, id, from, to, list, idx)
 		sort.SliceStable(list, func(i, j int) bool { return list[i].Stats.Calls > list[j].Stats.Calls })
-		writeJSON(w, http.StatusOK, map[string]any{"from": from, "to": to, "routes": list})
+		writeJSON(w, http.StatusOK, map[string]any{"from": from, "to": to, "routes": list, "percentile_method": pmethod})
 	}
 }
 

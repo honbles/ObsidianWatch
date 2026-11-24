@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Zap, Shield, ChevronDown, ChevronUp, ExternalLink, ToggleLeft, ToggleRight,
          RefreshCw, Globe, AlertCircle, CheckCircle, Clock, Monitor, Server, Apple, Cloud, GitBranch, Wifi, Code, Filter, Trash2 } from 'lucide-react'
 import api from '../api/client'
 import ManualIOCs from '../components/ManualIOCs'
+import { PageHeader, Num, Tabs, Facets, countBy, useFacetFilter, DenseTable, SevPill, StatePill, SelectionBar, useSelection, Drawer, Field } from '../components/ui'
 
 const SEV_LABEL = { 1:'Info', 2:'Low', 3:'Medium', 4:'High', 5:'Critical' }
 const SEV_COLOR = {
@@ -387,7 +388,7 @@ export default function Detections() {
   const [sigmaEnabled, setSigmaEnabled] = useState(true)
   const [sigmaCount, setSigmaCount] = useState(0)
   const [sigmaToggling, setSigmaToggling] = useState(false)
-  const [osTab, setOsTab] = useState('linux')
+  const [osTab, setOsTab] = useState('signatures')
   const navigate = useNavigate()
   // Suppression rules (GCP cloud tab)
   const [suppressRules, setSuppressRules] = useState([])
@@ -483,7 +484,7 @@ export default function Detections() {
     if (osTab === 'sast' && sastRules.length === 0) {
       api.get('/api/v1/sast-rules').then(r => setSastRules(r.data.rules || [])).catch(() => {})
     }
-    if (osTab === 'cloud') {
+    if (osTab === 'suppress') {
       loadSuppress()
     }
   }, [osTab])
@@ -510,391 +511,234 @@ export default function Detections() {
     return acc
   }, {})
 
+
+  // ── Signatures: one catalogue, platform as a facet ──
+  const PLATFORM = { linux: 'Linux', windows: 'Windows', macos: 'macOS', cloud: 'Cloud', dc: 'Domain controller', devops: 'Code', network: 'Network', all: 'Any platform' }
+  const [facets, setFacets] = useState({})
+  const [q, setQ] = useState('')
+  const [openSig, setOpenSig] = useState(null)
+  const [bulkBusy, setBulkBusy] = useState(false)
+  const selection = useSelection()
+  const G = useMemo(() => ({ platform: s => sigOS(s.id), status: s => s.enabled ? 'on' : 'off', severity: s => s.severity, category: s => s.category }), [])
+  const faceted = useFacetFilter(sigs, G, facets)
+  const rows = useMemo(() => {
+    const t = q.trim().toLowerCase()
+    return faceted.filter(s => !t || `${s.id} ${s.name} ${s.mitre} ${s.category} ${s.description || ''}`.toLowerCase().includes(t))
+      .sort((a, b) => b.severity - a.severity || a.name.localeCompare(b.name))
+  }, [faceted, q])
+  const toggleFacet = (k, v) => setFacets(f => { const n = { ...f }; const set = new Set(n[k] || []); set.has(v) ? set.delete(v) : set.add(v); n[k] = set; return n })
+  const setMany = async (enabled) => {
+    setBulkBusy(true)
+    const ids = [...selection.selected]
+    const done = []
+    for (const id of ids) {
+      try { await api.patch(`/api/v1/detections/${id}`, { enabled }); done.push(id) } catch { /* keep going; reported below */ }
+    }
+    setSigs(prev => prev.map(s => done.includes(s.id) ? { ...s, enabled } : s))
+    if (done.length < ids.length) window.alert(`${ids.length - done.length} of ${ids.length} rules could not be changed.`)
+    selection.clear(); setBulkBusy(false)
+  }
+  const enabledAll = sigs.filter(s => s.enabled).length
+  const critOff = sigs.filter(s => !s.enabled && s.severity >= 5).length
+  const sigFacetGroups = [
+    { key: 'status', label: 'Status', values: countBy(sigs, G.status, ['on', 'off'], { on: 'Enabled', off: 'Disabled' }) },
+    { key: 'platform', label: 'Platform', values: countBy(sigs, G.platform, Object.keys(PLATFORM), PLATFORM) },
+    { key: 'severity', label: 'Severity', values: countBy(sigs, G.severity, [5, 4, 3, 2, 1], SEV_LABEL) },
+    { key: 'category', label: 'Tactic', values: countBy(sigs, G.category) },
+  ]
+  const Switch = ({ on, busy, onClick, label }) => (
+    <button className={`ow-switch ${on ? 'on' : ''}`} role="switch" aria-checked={on} aria-label={label} disabled={busy}
+      onClick={e => { e.stopPropagation(); onClick(e) }}><span/></button>
+  )
+
+  // ── SAST rules: same table language ──
+  const [sastFacets, setSastFacets] = useState({})
+  const SG = useMemo(() => ({ severity: r => r.severity, lang: r => r.lang }), [])
+  const sastFaceted = useFacetFilter(sastRules, SG, sastFacets)
+  const sastRows = sastFaceted.filter(r => !sastSearch || `${r.id} ${r.title} ${r.cwe} ${r.detail}`.toLowerCase().includes(sastSearch.toLowerCase()))
+    .sort((a, b) => ({ critical: 0, high: 1, medium: 2, low: 3, info: 4 }[a.severity] ?? 5) - ({ critical: 0, high: 1, medium: 2, low: 3, info: 4 }[b.severity] ?? 5))
+  const [openSast, setOpenSast] = useState(null)
+  const SAST_SEV = { critical: 5, high: 4, medium: 3, low: 2, info: 1 }
+  const LANG = { javascript: 'JS / TS', csharp: 'C#', python: 'Python', go: 'Go', java: 'Java', php: 'PHP', c: 'C / C++', ruby: 'Ruby', rust: 'Rust', any: 'Any' }
+
+  const TABS = [
+    { id: 'signatures', label: 'Signatures', n: sigs.length || null },
+    { id: 'sigma', label: 'Sigma', n: sigmaCount || null },
+    { id: 'sast', label: 'Code (SAST)', n: sastRules.length || null },
+    { id: 'sources', label: 'Threat intelligence', n: sources.length || null },
+    { id: 'suppress', label: 'Cloud suppressions' },
+  ]
+
   return (
-    <div className="p-6 space-y-5">
+    <div>
+      <PageHeader
+        title="Rules"
+        state={loading ? undefined : critOff ? 'warn' : 'ok'}
+        stateText={critOff ? `${critOff} critical rule${critOff === 1 ? '' : 's'} disabled` : 'All critical rules enabled'}
+        sub={`${sigs.length.toLocaleString()} built-in signatures, ${sigmaCount.toLocaleString()} Sigma rules${sigmaEnabled ? '' : ' (off)'}, ${totalIOCs.toLocaleString()} indicators from ${enabledSources} intel source${enabledSources === 1 ? '' : 's'}.`}
+        nums={<>
+          <Num k="Signatures enabled" v={enabledAll.toLocaleString()} unit={`of ${sigs.length.toLocaleString()}`}/>
+          <Num k="Critical rules disabled" v={critOff} tone={critOff ? 'warn' : undefined}/>
+          <Num k="Sigma" v={sigmaEnabled ? sigmaCount.toLocaleString() : 'Off'} tone={sigmaEnabled ? undefined : 'warn'}/>
+          <Num k="Indicators loaded" v={totalIOCs.toLocaleString()}/>
+          <Num k="Intel sources on" v={enabledSources} unit={`of ${sources.length}`}/>
+        </>}
+        tabs={<Tabs value={osTab} onChange={t => { setOsTab(t); selection.clear() }} tabs={TABS}/>}
+      />
+      <div className="ow-body" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
 
-      {/* Header */}
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div className="flex items-center gap-2">
-          <Zap className="text-siem-accent" size={20} />
-          <h1 className="text-xl font-bold text-siem-text">Threat Detection</h1>
-        </div>
-        <div className="flex items-center gap-2 text-xs">
-          {totalIOCs > 0 && (
-            <span className="text-orange-400 bg-orange-900/20 border border-orange-700/30 rounded px-2 py-0.5">
-              {totalIOCs.toLocaleString()} IOCs loaded
-            </span>
-          )}
-          {enabledSources > 0 && (
-            <span className="text-blue-400 bg-blue-900/20 border border-blue-700/30 rounded px-2 py-0.5">
-              {enabledSources} intel source{enabledSources !== 1 ? 's' : ''}
-            </span>
-          )}
-        </div>
-      </div>
-
-      {/* OS Tabs */}
-      <div className="flex gap-1 bg-siem-surface border border-siem-border rounded-xl p-1 w-fit flex-wrap">
-        {OS_TABS.map(({ id, label, icon: Icon, color }) => {
-          const counts = osCounts[id]
-          return (
-            <button key={id} onClick={() => { setOsTab(id); setCatFilter(''); setSevFilter(0); setStatusFilter('all') }}
-              className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-                osTab === id ? 'bg-siem-accent text-white' : 'text-siem-muted hover:text-siem-text'
-              }`}>
-              <Icon size={12} className={osTab === id ? '' : color} />
-              {label}
-              {id === 'sigma' ? (
-                <span className={`text-[10px] ${osTab === id ? 'text-white/70' : 'text-siem-muted'}`}>{sigmaCount.toLocaleString()}</span>
-              ) : counts && (
-                <span className={`text-[10px] ${osTab === id ? 'text-white/70' : 'text-siem-muted'}`}>
-                  {counts.enabled}/{counts.total}
-                </span>
-              )}
-            </button>
-          )
-        })}
-      </div>
-
-      {/* Intel Sources Panel */}
-      {osTab === 'sources' && (
-        <div className="space-y-3">
-          <p className="text-xs text-siem-muted">
-            Enable sources to automatically pull IOCs (IPs, domains, hashes). Syncs daily.
-            Matched IOCs trigger alerts automatically on all platforms.
-          </p>
-          <div className="grid grid-cols-3 gap-4">
-            {sources.map(s => (
-              <SourceCard key={s.name} source={s} onUpdate={updateSource} onSync={syncSource} />
-            ))}
+      {osTab === 'signatures' && (
+        <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }}>
+          <Facets groups={sigFacetGroups} selected={facets} onToggle={toggleFacet} onClear={() => setFacets({})}/>
+          <div className="ow-card" style={{ flex: 1, minWidth: 0, overflow: 'hidden' }}>
+            {selection.selected.size > 0 ? (
+              <SelectionBar count={selection.selected.size} total={rows.length} allMatching={rows.every(r => selection.selected.has(r.id))}
+                onSelectAllMatching={() => selection.setAll(rows.map(r => r.id))} onClear={selection.clear}>
+                <button className="ow-btn" style={{ height: 26 }} disabled={bulkBusy} onClick={() => setMany(true)}>Enable</button>
+                <button className="ow-btn" style={{ height: 26 }} disabled={bulkBusy} onClick={() => setMany(false)}>Disable</button>
+              </SelectionBar>
+            ) : (
+              <div className="ow-card-bar">
+                <label className="ow-field" style={{ flex: 1, maxWidth: 420, height: 28 }}>
+                  <Filter size={13} style={{ color: 'var(--t3)' }}/>
+                  <input value={q} onChange={e => setQ(e.target.value)} placeholder="Filter by name, ID, MITRE technique or tactic" aria-label="Filter rules"/>
+                </label>
+                <span className="t2" style={{ fontSize: 12 }}>{rows.length.toLocaleString()} of {sigs.length.toLocaleString()}</span>
+              </div>
+            )}
+            <DenseTable rows={loading ? [] : rows} rowKey={s => s.id} onRow={s => setOpenSig(s)} current={openSig?.id}
+              selected={selection.selected} onSelect={selection.onSelect} onSelectAll={v => v ? selection.setAll(rows.map(r => r.id)) : selection.clear()}
+              empty={loading ? 'Loading rules…' : 'No rules match these filters.'}
+              cols={[
+                { key: 'on', label: 'On', width: '52px', render: s => <Switch on={s.enabled} busy={toggling[s.id]} onClick={e => toggle(s, e)} label={`${s.enabled ? 'Disable' : 'Enable'} ${s.name}`}/> },
+                { key: 'sev', label: 'Severity', width: '92px', render: s => <SevPill sev={s.severity}/> },
+                { key: 'name', label: 'Rule', width: 'minmax(240px, 2.4fr)', render: s => <span className={s.enabled ? 't1' : 't3'}>{s.name}</span>, title: s => s.description },
+                { key: 'cat', label: 'Tactic', width: 'minmax(120px, 1fr)', render: s => <span className="t2">{s.category}</span> },
+                { key: 'plat', label: 'Platform', width: '120px', render: s => <span className="t2">{PLATFORM[sigOS(s.id)]}</span> },
+                { key: 'mitre', label: 'MITRE', width: '96px', render: s => <span className="mono t2">{s.mitre || '—'}</span> },
+                { key: 'id', label: 'ID', width: '100px', render: s => <span className="mono t3">{s.id}</span> },
+              ]}/>
           </div>
-          <ManualIOCs />
         </div>
       )}
 
-      {/* Sigma Rules Panel */}
       {osTab === 'sigma' && (
-        <div className="space-y-4">
-          <div className="bg-siem-surface border border-siem-border rounded-xl p-6 flex items-center justify-between">
-            <div className="flex-1">
-              <div className="flex items-center gap-3 mb-2">
-                <span className="text-lg font-semibold text-siem-text">Sigma Rules</span>
-                <span className="text-xs px-2 py-0.5 bg-purple-950/30 border border-purple-800/30 text-purple-400 rounded-full">{sigmaCount.toLocaleString()} rules</span>
-              </div>
-              <p className="text-sm text-siem-muted">Community detection rules from SigmaHQ mapped to MITRE ATT&CK. Covers Windows, Linux and macOS threats. Rules are matched against process, file, network and registry events.</p>
-              <p className="text-xs text-siem-muted/60 mt-2">Rules are deduplicated per host per hour - same rule will not alert more than once per hour per host.</p>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div className="ow-card" style={{ padding: 16, display: 'flex', alignItems: 'center', gap: 16 }}>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontWeight: 600, marginBottom: 4 }}>SigmaHQ community rules · {sigmaCount.toLocaleString()} rules</div>
+              <div className="t2" style={{ fontSize: 12.5 }}>Mapped to MITRE ATT&CK and matched against process, file, network and registry events on Windows, Linux and macOS. A rule alerts at most once per host per hour.</div>
             </div>
-            <div className="ml-8 flex flex-col items-center gap-2">
-              <button
-                onClick={toggleSigma}
-                disabled={sigmaToggling}
-                className={`relative w-14 h-7 rounded-full transition-colors duration-200 focus:outline-none ${sigmaEnabled ? 'bg-siem-accent' : 'bg-siem-border'}`}
-              >
-                <span className={`absolute top-0.5 left-0.5 w-6 h-6 bg-white rounded-full shadow transition-transform duration-200 ${sigmaEnabled ? 'translate-x-7' : 'translate-x-0'}`}/>
-              </button>
-              <span className={`text-xs font-medium ${sigmaEnabled ? 'text-siem-accent' : 'text-siem-muted'}`}>
-                {sigmaToggling ? '...' : sigmaEnabled ? 'Enabled' : 'Disabled'}
-              </span>
-            </div>
+            <span className="t2" style={{ fontSize: 12.5 }}>{sigmaToggling ? 'Saving…' : sigmaEnabled ? 'Enabled' : 'Disabled'}</span>
+            <Switch on={sigmaEnabled} busy={sigmaToggling} onClick={toggleSigma} label="Sigma rules on or off"/>
           </div>
           <SigmaRuleList />
         </div>
       )}
 
-      {/* SAST Rules Panel */}
       {osTab === 'sast' && (
-        <div className="space-y-4">
-          <div className="bg-siem-surface border border-siem-border rounded-xl p-4">
-            <div className="flex items-center gap-2.5 mb-1">
-              <Code size={15} className="text-emerald-400"/>
-              <span className="text-sm font-semibold text-emerald-400">SAST Rule Library</span>
-              <span className="ml-auto text-[10px] text-siem-muted border border-siem-border rounded-full px-2 py-0.5">
-                {sastRules.length} rules
-              </span>
+        <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }}>
+          <Facets selected={sastFacets} onClear={() => setSastFacets({})}
+            onToggle={(k, v) => setSastFacets(f => { const n = { ...f }; const set = new Set(n[k] || []); set.has(v) ? set.delete(v) : set.add(v); n[k] = set; return n })}
+            groups={[
+              { key: 'severity', label: 'Severity', values: countBy(sastRules, SG.severity, ['critical', 'high', 'medium', 'low', 'info'], { critical: 'Critical', high: 'High', medium: 'Medium', low: 'Low', info: 'Info' }) },
+              { key: 'lang', label: 'Language', values: countBy(sastRules, SG.lang, null, LANG) },
+            ]}/>
+          <div className="ow-card" style={{ flex: 1, minWidth: 0, overflow: 'hidden' }}>
+            <div className="ow-card-bar">
+              <label className="ow-field" style={{ flex: 1, maxWidth: 420, height: 28 }}>
+                <Filter size={13} style={{ color: 'var(--t3)' }}/>
+                <input value={sastSearch} onChange={e => setSastSearch(e.target.value)} placeholder="Filter by title, CWE or ID" aria-label="Filter SAST rules"/>
+              </label>
+              <span className="t2" style={{ fontSize: 12 }}>{sastRows.length} of {sastRules.length}</span>
+              <span className="t3" style={{ marginLeft: 'auto', fontSize: 12 }}>Used when repositories are scanned (Code › Connectors and scans)</span>
             </div>
-            <p className="text-[11px] text-siem-muted">
-              Static analysis rules used when scanning DevOps connector repositories.
-              Covers OWASP Top 10 and CWE categories across Python, JavaScript/TypeScript, Go, Java, PHP, C/C++, Ruby, C#, Rust, and IaC.
-              Run scans from the DevOps → SAST tab.
-            </p>
-          </div>
-
-          {/* Filters */}
-          <div className="flex items-center gap-3 flex-wrap">
-            <div className="flex gap-1 flex-wrap">
-              {['all','python','javascript','go','java','php','c','ruby','csharp','rust','any'].map(lang => (
-                <button key={lang} onClick={() => setSastLangFilter(lang)}
-                  className={`text-[10px] px-2.5 py-1 rounded-full border transition-colors capitalize ${
-                    sastLangFilter === lang
-                      ? 'bg-siem-accent border-siem-accent text-white'
-                      : 'border-siem-border text-siem-muted hover:text-siem-text'
-                  }`}>
-                  {lang === 'javascript' ? 'JS/TS' : lang === 'csharp' ? 'C#' : lang}
-                </button>
-              ))}
-            </div>
-            <div className="flex gap-1">
-              {['all','critical','high','medium','low','info'].map(sev => (
-                <button key={sev} onClick={() => setSastSevFilter(sev)}
-                  className={`text-[10px] px-2.5 py-1 rounded-full border transition-colors capitalize ${
-                    sastSevFilter === sev
-                      ? 'bg-siem-accent border-siem-accent text-white'
-                      : 'border-siem-border text-siem-muted hover:text-siem-text'
-                  }`}>{sev}</button>
-              ))}
-            </div>
-            <input value={sastSearch} onChange={e => setSastSearch(e.target.value)}
-              placeholder="Search rules…"
-              className="ml-auto bg-siem-bg border border-siem-border rounded-lg px-3 py-1.5 text-xs text-siem-text placeholder-siem-muted/40 outline-none focus:border-siem-accent w-48"/>
-          </div>
-
-          {/* Stats */}
-          <div className="grid grid-cols-6 gap-2">
-            {[
-              ['Critical', sastRules.filter(r=>r.severity==='critical').length, 'text-red-400'],
-              ['High',     sastRules.filter(r=>r.severity==='high').length,     'text-orange-400'],
-              ['Medium',   sastRules.filter(r=>r.severity==='medium').length,   'text-yellow-400'],
-              ['Python',   sastRules.filter(r=>r.lang==='python').length,       'text-blue-400'],
-              ['JS/TS',    sastRules.filter(r=>r.lang==='javascript').length,   'text-yellow-300'],
-              ['Go',       sastRules.filter(r=>r.lang==='go').length,           'text-cyan-400'],
-            ].map(([label, count, color]) => (
-              <div key={label} className="bg-siem-surface border border-siem-border rounded-xl p-2.5 text-center">
-                <div className={`text-lg font-bold font-mono ${color}`}>{count}</div>
-                <div className="text-[9px] text-siem-muted uppercase tracking-wide">{label}</div>
-              </div>
-            ))}
-          </div>
-
-          {/* Rules table */}
-          <div className="bg-siem-surface border border-siem-border rounded-xl overflow-hidden">
-            <div className="px-4 py-2.5 border-b border-siem-border/40 flex items-center gap-2">
-              <Filter size={12} className="text-siem-muted"/>
-              <span className="text-[10px] uppercase tracking-wider text-siem-muted font-semibold">
-                {sastRules.filter(r =>
-                  (sastLangFilter === 'all' || r.lang === sastLangFilter) &&
-                  (sastSevFilter === 'all' || r.severity === sastSevFilter) &&
-                  (!sastSearch || r.title.toLowerCase().includes(sastSearch.toLowerCase()) || r.cwe.toLowerCase().includes(sastSearch.toLowerCase()))
-                ).length} rules matching
-              </span>
-            </div>
-            <div className="divide-y divide-siem-border/20 max-h-[600px] overflow-y-auto">
-              {sastRules
-                .filter(r =>
-                  (sastLangFilter === 'all' || r.lang === sastLangFilter) &&
-                  (sastSevFilter === 'all' || r.severity === sastSevFilter) &&
-                  (!sastSearch || r.title.toLowerCase().includes(sastSearch.toLowerCase()) ||
-                   r.cwe.toLowerCase().includes(sastSearch.toLowerCase()) ||
-                   r.detail.toLowerCase().includes(sastSearch.toLowerCase()))
-                )
-                .sort((a,b) => {
-                  const o = {critical:0,high:1,medium:2,low:3,info:4}
-                  return (o[a.severity]??5)-(o[b.severity]??5)
-                })
-                .map(rule => {
-                  const sevColor = {critical:'text-red-400',high:'text-orange-400',medium:'text-yellow-400',low:'text-blue-400',info:'text-siem-muted'}[rule.severity]||'text-siem-muted'
-                  const sevBg = {critical:'bg-red-950/20 border-red-800/30',high:'bg-orange-950/15 border-orange-800/25',medium:'bg-yellow-950/10 border-yellow-800/20',low:'bg-blue-950/10 border-blue-800/20',info:'bg-siem-bg border-siem-border/30'}[rule.severity]||'bg-siem-bg border-siem-border/30'
-                  const langColor = {python:'text-blue-400',javascript:'text-yellow-300',go:'text-cyan-400',java:'text-orange-300',php:'text-purple-400',c:'text-gray-300',ruby:'text-red-400',csharp:'text-green-400',rust:'text-orange-500',any:'text-siem-muted'}[rule.lang]||'text-siem-muted'
-                  return (
-                    <div key={rule.id} className="px-4 py-3 hover:bg-white/[0.02]">
-                      <div className="flex items-start gap-3">
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 mb-1 flex-wrap">
-                            <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded border ${sevBg} ${sevColor}`}>{rule.severity}</span>
-                            <span className={`text-[9px] font-semibold uppercase ${langColor}`}>
-                              {rule.lang === 'javascript' ? 'JS/TS' : rule.lang === 'csharp' ? 'C#' : rule.lang}
-                            </span>
-                            <span className="text-[9px] font-mono text-siem-muted/50 border border-siem-border/30 rounded px-1.5 py-0.5">{rule.id}</span>
-                            {rule.cwe && <span className="text-[9px] text-violet-400/70">{rule.cwe}</span>}
-                            {rule.owasp && <span className="text-[9px] text-orange-400/50">OWASP {rule.owasp}</span>}
-                            <span className="text-xs font-semibold text-siem-text">{rule.title}</span>
-                          </div>
-                          <div className="text-[10px] text-siem-muted/70 mb-1">{rule.detail}</div>
-                          {rule.fix && (
-                            <div className="text-[9px] text-emerald-400/60 bg-emerald-950/10 border border-emerald-800/20 rounded px-2 py-1">
-                              Fix: {rule.fix}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  )
-                })}
-            </div>
+            <DenseTable rows={sastRows} rowKey={r => r.id} onRow={r => setOpenSast(r)} current={openSast?.id} empty="Loading rules…"
+              cols={[
+                { key: 's', label: 'Severity', width: '92px', render: r => <SevPill sev={SAST_SEV[r.severity] || 1}/> },
+                { key: 't', label: 'Rule', width: 'minmax(240px, 2.4fr)', render: r => <span className="t1">{r.title}</span>, title: r => r.detail },
+                { key: 'l', label: 'Language', width: '96px', render: r => <span className="t2">{LANG[r.lang] || r.lang}</span> },
+                { key: 'c', label: 'CWE', width: '96px', render: r => <span className="mono t2">{r.cwe || '—'}</span> },
+                { key: 'o', label: 'OWASP', width: '80px', render: r => <span className="mono t2">{r.owasp || '—'}</span> },
+                { key: 'i', label: 'ID', width: '140px', render: r => <span className="mono t3">{r.id}</span> },
+              ]}/>
           </div>
         </div>
       )}
 
-      {/* Signatures Panel */}
-      {osTab !== 'sources' && osTab !== 'sast' && (
-        <>
-          {/* OS description */}
-          <div className="text-xs text-siem-muted bg-siem-surface border border-siem-border rounded-xl px-4 py-2.5">
-            {osTab === 'linux'   && <><span className="text-orange-400 font-medium">Linux</span> - rules fire on process, journald, network, dns, file, and configmon events. All conditions match against fields actually populated by Linux collectors.</>}
-            {osTab === 'windows' && <><span className="text-blue-400 font-medium">Windows</span> - rules fire on ETW process, Sysmon, EventLog, network (iphlpapi), registry, FIM, and DNS events.</>}
-            {osTab === 'macos'   && <><span className="text-gray-300 font-medium">macOS</span> - rules fire on process, syslog, network, dns, FSEvents (file), and configmon events.</>}
-            {osTab === 'all'     && <><span className="text-cyan-400 font-medium">All Platforms</span> - DNS blocklist rules fire on any dns event regardless of OS. Requires Intel Sources to be synced.</>}
+      {osTab === 'sources' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div className="t2" style={{ fontSize: 12.5 }}>Enabled sources pull indicators (IPs, domains, hashes) daily. A match on any platform raises an alert.</div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: 12 }}>
+            {sources.map(s => <SourceCard key={s.name} source={s} onUpdate={updateSource} onSync={syncSource} />)}
           </div>
-
-          {/* Stats bar */}
-          <div className="flex items-center gap-3 text-xs text-siem-muted">
-            <span className="text-siem-green font-medium">{enabledCount}</span> active
-            <span>·</span>
-            <span className="text-red-400 font-medium">{osSigs.length - enabledCount}</span> disabled
-            <span>·</span>
-            <span className="text-siem-text font-medium">{osSigs.length}</span> total
-          </div>
-
-          {/* Category summary cards */}
-          {!loading && (
-            <div className="flex gap-2 flex-wrap">
-              {[...new Set(osSigs.map(s => s.category))].map(cat => {
-                const total  = osSigs.filter(s => s.category === cat).length
-                const active = osSigs.filter(s => s.category === cat && s.enabled).length
-                return (
-                  <button key={cat} onClick={() => setCatFilter(catFilter === cat ? '' : cat)}
-                    className={`border rounded-lg px-3 py-1.5 text-left transition-colors ${
-                      catFilter === cat
-                        ? 'border-siem-accent bg-siem-accent/10'
-                        : 'border-siem-border bg-siem-surface hover:border-siem-accent/40'
-                    }`}>
-                    <span className={`text-xs font-bold ${CAT_COLOR[cat] || 'text-siem-text'}`}>{active}/{total}</span>
-                    <span className="text-[10px] text-siem-muted ml-1.5">{cat}</span>
-                  </button>
-                )
-              })}
-            </div>
-          )}
-
-          {/* Filters */}
-          <div className="flex gap-2 flex-wrap">
-            <select className="bg-siem-bg border border-siem-border rounded-lg px-3 py-1.5 text-xs text-siem-text focus:outline-none"
-              value={statusFilter} onChange={e => setStatusFilter(e.target.value)}>
-              <option value="all">All status</option>
-              <option value="enabled">Enabled only</option>
-              <option value="disabled">Disabled only</option>
-            </select>
-            <select className="bg-siem-bg border border-siem-border rounded-lg px-3 py-1.5 text-xs text-siem-text focus:outline-none"
-              value={catFilter} onChange={e => setCatFilter(e.target.value)}>
-              <option value="">All categories</option>
-              {categories.map(c => <option key={c} value={c}>{c}</option>)}
-            </select>
-            <select className="bg-siem-bg border border-siem-border rounded-lg px-3 py-1.5 text-xs text-siem-text focus:outline-none"
-              value={sevFilter} onChange={e => setSevFilter(Number(e.target.value))}>
-              <option value={0}>All severities</option>
-              <option value={3}>Medium+</option>
-              <option value={4}>High+</option>
-              <option value={5}>Critical only</option>
-            </select>
-          </div>
-
-          {loading
-            ? <div className="text-siem-muted text-sm text-center py-12">Loading signatures...</div>
-            : <SigList
-                sigs={filtered}
-                toggling={toggling}
-                onToggle={toggle}
-                expanded={expanded}
-                onExpand={id => setExpanded(expanded === id ? null : id)}
-              />
-          }
-
-          {/* ── GCP Suppression Rules - shown only in Cloud tab ── */}
-          {osTab === 'cloud' && (
-            <div className="mt-8 space-y-3">
-              <div className="flex items-center justify-between">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <Filter size={14} className="text-cyan-400"/>
-                    <span className="text-sm font-semibold text-siem-text">GCP Alert Suppression Rules</span>
-                    {suppressRules.length > 0 && (
-                      <span className="text-xs text-cyan-400 bg-cyan-900/20 border border-cyan-700/30 rounded px-1.5 py-0.5">{suppressRules.length}</span>
-                    )}
-                  </div>
-                  <p className="text-xs text-siem-muted mt-0.5">
-                    Suppress noisy-but-legitimate GCP activity (CI/CD SA key creation, internal IPs, trusted principals) without disabling the entire rule.
-                  </p>
-                </div>
-                <button onClick={() => setShowSuppressForm(v => !v)}
-                  className="flex items-center gap-1.5 text-xs text-cyan-400 bg-cyan-900/20 border border-cyan-700/30 rounded-lg px-3 py-1.5 hover:bg-cyan-900/30">
-                  <Zap size={11}/>{showSuppressForm ? 'Cancel' : '+ New Rule'}
-                </button>
-              </div>
-
-              {showSuppressForm && (
-                <div className="bg-siem-surface border border-cyan-700/20 rounded-xl p-4 space-y-3">
-                  <div className="text-xs font-semibold text-cyan-400 uppercase tracking-wide">New Suppression Rule</div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="col-span-2">
-                      <label className="text-[10px] text-siem-muted block mb-1">Description *</label>
-                      <input value={suppressForm.description} onChange={e => setSuppressForm(p=>({...p,description:e.target.value}))}
-                        placeholder="e.g. CI/CD pipeline SA key creation"
-                        className="w-full bg-siem-bg border border-siem-border rounded px-3 py-1.5 text-xs text-siem-text focus:outline-none focus:border-siem-accent"/>
-                    </div>
-                    {[
-                      {k:'sig_id', label:'Sig ID / Prefix', ph:'e.g. C-GCP-025 or C-GCP-0'},
-                      {k:'principal', label:'Principal (exact or @suffix)', ph:'e.g. ci-cd@proj.iam.gserviceaccount.com'},
-                      {k:'src_ip_prefix', label:'Source IP Prefix', ph:'e.g. 10.128.'},
-                      {k:'method_contains', label:'Method Contains', ph:'e.g. CloudBuild'},
-                      {k:'expires_days', label:'Expires in days (blank = permanent)', ph:'e.g. 30'},
-                    ].map(f => (
-                      <div key={f.k}>
-                        <label className="text-[10px] text-siem-muted block mb-1">{f.label}</label>
-                        <input value={suppressForm[f.k]} onChange={e => setSuppressForm(p=>({...p,[f.k]:e.target.value}))}
-                          placeholder={f.ph}
-                          className="w-full bg-siem-bg border border-siem-border rounded px-3 py-1.5 text-xs text-siem-text placeholder-siem-muted/50 focus:outline-none focus:border-siem-accent font-mono"/>
-                      </div>
-                    ))}
-                  </div>
-                  <div className="flex justify-end">
-                    <button onClick={saveSuppress} disabled={suppressSaving || !suppressForm.description}
-                      className="px-4 py-1.5 bg-siem-accent text-white rounded-lg text-xs font-semibold disabled:opacity-40">
-                      {suppressSaving ? 'Saving…' : 'Save Rule'}
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {suppressLoading ? (
-                <div className="text-siem-muted text-xs text-center py-4 flex items-center justify-center gap-2">
-                  <RefreshCw size={11} className="animate-spin"/> Loading rules…
-                </div>
-              ) : suppressRules.length === 0 ? (
-                <div className="text-siem-muted text-xs text-center py-6 bg-siem-surface border border-siem-border rounded-xl">
-                  No suppression rules. Create one above to stop specific high-volume but legitimate alerts (e.g. CI/CD SA key creation).
-                </div>
-              ) : (
-                <div className="bg-siem-surface border border-siem-border rounded-xl overflow-hidden divide-y divide-siem-border/30">
-                  {suppressRules.map(rule => {
-                    const expired = rule.expires_at && new Date(rule.expires_at) < new Date()
-                    return (
-                      <div key={rule.id} className={`px-4 py-3 flex items-start gap-3 ${expired ? 'opacity-50' : ''}`}>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 mb-1.5 flex-wrap">
-                            <span className="text-xs font-medium text-siem-text">{rule.description}</span>
-                            {expired && <span className="text-[9px] text-red-400 border border-red-700/30 rounded px-1">EXPIRED</span>}
-                          </div>
-                          <div className="flex gap-1.5 flex-wrap">
-                            {rule.sig_id && <span className="text-[9px] font-mono text-purple-400 bg-purple-900/20 border border-purple-700/20 rounded px-1.5 py-0.5">sig: {rule.sig_id}</span>}
-                            {rule.principal && <span className="text-[9px] font-mono text-cyan-400 bg-cyan-900/20 border border-cyan-700/20 rounded px-1.5 py-0.5">principal: {rule.principal}</span>}
-                            {rule.src_ip_prefix && <span className="text-[9px] font-mono text-yellow-400 bg-yellow-900/20 border border-yellow-700/20 rounded px-1.5 py-0.5">ip: {rule.src_ip_prefix}*</span>}
-                            {rule.method_contains && <span className="text-[9px] font-mono text-green-400 bg-green-900/20 border border-green-700/20 rounded px-1.5 py-0.5">method: *{rule.method_contains}*</span>}
-                            {rule.expires_at && !expired && <span className="text-[9px] text-siem-muted border border-siem-border rounded px-1.5 py-0.5">expires {new Date(rule.expires_at).toLocaleDateString()}</span>}
-                          </div>
-                        </div>
-                        <button onClick={() => deleteSuppress(rule.id)}
-                          className="shrink-0 text-red-400/60 hover:text-red-400 transition-colors p-1">
-                          <Trash2 size={13}/>
-                        </button>
-                      </div>
-                    )
-                  })}
-                </div>
-              )}
-            </div>
-          )}
-        </>
+          <ManualIOCs />
+        </div>
       )}
 
+      {osTab === 'suppress' && (
+        <div className="ow-card" style={{ overflow: 'hidden' }}>
+          <div className="ow-card-bar">
+            <span style={{ fontWeight: 600 }}>Cloud alert suppressions</span>
+            <span className="t3" style={{ fontSize: 12 }}>Quiet known, legitimate cloud activity (CI/CD key creation, trusted principals, internal ranges) without turning a rule off</span>
+            <button className="ow-btn primary" style={{ marginLeft: 'auto' }} onClick={() => setShowSuppressForm(v => !v)}>{showSuppressForm ? 'Cancel' : 'New suppression'}</button>
+          </div>
+          {showSuppressForm && (
+            <div style={{ padding: 16, borderBottom: '1px solid var(--line)', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <div style={{ gridColumn: '1 / -1' }}><Field label="Description"><input className="input" value={suppressForm.description} onChange={e => setSuppressForm(p => ({ ...p, description: e.target.value }))} placeholder="e.g. CI/CD pipeline service-account key creation"/></Field></div>
+              {[{ k: 'sig_id', label: 'Rule ID or prefix', ph: 'C-GCP-025 or C-GCP-0' }, { k: 'principal', label: 'Principal (exact, or @suffix)', ph: 'ci-cd@proj.iam.gserviceaccount.com' },
+                { k: 'src_ip_prefix', label: 'Source IP prefix', ph: '10.128.' }, { k: 'method_contains', label: 'Method contains', ph: 'CloudBuild' },
+                { k: 'expires_days', label: 'Expires after (days, blank = never)', ph: '30' }].map(f => (
+                <Field key={f.k} label={f.label}><input className="input mono" value={suppressForm[f.k]} onChange={e => setSuppressForm(p => ({ ...p, [f.k]: e.target.value }))} placeholder={f.ph}/></Field>
+              ))}
+              <div style={{ gridColumn: '1 / -1', display: 'flex', justifyContent: 'flex-end', gap: 8, alignItems: 'center' }}>
+                <span className="t3" style={{ fontSize: 12 }}>Needs a description and at least one match condition.</span>
+                <button className="ow-btn primary" onClick={saveSuppress} disabled={suppressSaving || !suppressForm.description}>{suppressSaving ? 'Saving…' : 'Save suppression'}</button>
+              </div>
+            </div>
+          )}
+          <DenseTable rows={suppressRules} rowKey={r => r.id} empty={suppressLoading ? 'Loading…' : 'No suppressions.'}
+            rowState={r => r.expires_at && new Date(r.expires_at) < new Date() ? 'none' : null}
+            cols={[
+              { key: 'd', label: 'Description', width: 'minmax(200px, 1.6fr)', render: r => <span className="t1">{r.description}</span> },
+              { key: 'm', label: 'Matches', width: 'minmax(240px, 2fr)', render: r => <span className="mono t2">{[r.sig_id && `rule ${r.sig_id}`, r.principal && `principal ${r.principal}`, r.src_ip_prefix && `ip ${r.src_ip_prefix}*`, r.method_contains && `method *${r.method_contains}*`].filter(Boolean).join(' · ')}</span> },
+              { key: 'e', label: 'Expires', width: '120px', render: r => r.expires_at ? (new Date(r.expires_at) < new Date() ? <StatePill state="none">Expired</StatePill> : <span className="t2">{new Date(r.expires_at).toLocaleDateString()}</span>) : <span className="t3">Never</span> },
+              { key: 'x', label: '', width: '80px', render: r => <button className="ow-btn quiet" style={{ height: 24, color: 'var(--crit)' }} onClick={e => { e.stopPropagation(); if (window.confirm('Delete this suppression? Matching activity will alert again.')) deleteSuppress(r.id) }}>Delete</button> },
+            ]}/>
+        </div>
+      )}
+      </div>
+
+      <Drawer open={!!openSig} onClose={() => setOpenSig(null)} label="Rule details" width={560}>
+        {openSig && (() => { const s = sigs.find(x => x.id === openSig.id) || openSig; return (
+          <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+            <div className="ow-head notabs" style={{ paddingBottom: 14 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}><SevPill sev={s.severity}/><span className="mono t3">{s.id}</span>
+                <button className="ow-btn quiet" style={{ marginLeft: 'auto', height: 26 }} onClick={() => setOpenSig(null)}>Close</button></div>
+              <h1 style={{ fontSize: 17, marginTop: 8 }}>{s.name}</h1>
+              <div className="ow-sub">{s.category} · {PLATFORM[sigOS(s.id)]}</div>
+            </div>
+            <div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 14, overflowY: 'auto' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}><Switch on={s.enabled} busy={toggling[s.id]} onClick={e => toggle(s, e)} label="Rule on or off"/><span>{s.enabled ? 'Enabled' : 'Disabled'}</span></div>
+              {s.description && <div className="t2" style={{ lineHeight: 1.55 }}>{s.description}</div>}
+              {s.mitre && <div><div className="ow-lbl" style={{ marginBottom: 4 }}>MITRE ATT&CK</div>
+                <a className="c-acc mono" href={`https://attack.mitre.org/techniques/${s.mitre.replace('.', '/')}/`} target="_blank" rel="noopener noreferrer">{s.mitre} <ExternalLink size={11} style={{ display: 'inline' }}/></a></div>}
+              <div><div className="ow-lbl" style={{ marginBottom: 4 }}>Backtest</div><div className="t3" style={{ fontSize: 12, marginBottom: 6 }}>Run the rule over the last 24 hours of stored events to see what it would have caught.</div><Backtest sigId={s.id}/></div>
+            </div>
+          </div>) })()}
+      </Drawer>
+      <Drawer open={!!openSast} onClose={() => setOpenSast(null)} label="SAST rule details" width={560}>
+        {openSast && (
+          <div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 12, overflowY: 'auto' }}>
+            <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}><SevPill sev={SAST_SEV[openSast.severity] || 1}/><span className="mono t3">{openSast.id}</span>
+              <button className="ow-btn quiet" style={{ marginLeft: 'auto', height: 26 }} onClick={() => setOpenSast(null)}>Close</button></div>
+            <div style={{ fontSize: 17, fontWeight: 600 }}>{openSast.title}</div>
+            <div className="t2">{LANG[openSast.lang] || openSast.lang}{openSast.cwe && <> · <span className="mono">{openSast.cwe}</span></>}{openSast.owasp && <> · OWASP {openSast.owasp}</>}</div>
+            <div style={{ lineHeight: 1.55 }}>{openSast.detail}</div>
+            {openSast.fix && <div><div className="ow-lbl" style={{ marginBottom: 4 }}>Fix</div><div className="t2" style={{ lineHeight: 1.55 }}>{openSast.fix}</div></div>}
+          </div>
+        )}
+      </Drawer>
     </div>
   )
 }

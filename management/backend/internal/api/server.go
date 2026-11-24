@@ -105,6 +105,7 @@ func New(cfg *config.Config, db *store.DB, backendDB *store.DB, logger *slog.Log
 	protected.HandleFunc("GET /api/v1/events", handleListEvents(db))
 	protected.HandleFunc("GET /api/v1/events/export", handleExportEvents(db))
 	protected.HandleFunc("GET /api/v1/events/search", handleEventSearch(db))
+	protected.HandleFunc("GET /api/v1/events/summary", handleEventSummary(db))
 	protected.HandleFunc("GET /api/v1/events/saved-queries", handleSavedQueries(db))
 	protected.HandleFunc("POST /api/v1/events/saved-queries", handleSavedQueries(db))
 	protected.HandleFunc("DELETE /api/v1/events/saved-queries/{id}", handleSavedQueries(db))
@@ -151,6 +152,8 @@ func New(cfg *config.Config, db *store.DB, backendDB *store.DB, logger *slog.Log
 	// Stats & Threat Intel
 	protected.HandleFunc("GET /api/v1/suppressions", handleListSuppressions(db))
 	protected.HandleFunc("POST /api/v1/suppressions", handleCreateSuppression(db))
+	protected.HandleFunc("GET /api/v1/suppressions/preview", handlePreviewSuppression())
+	protected.HandleFunc("PUT /api/v1/suppressions/{id}", handleUpdateSuppression(db))
 	protected.HandleFunc("DELETE /api/v1/suppressions/{id}", handleDeleteSuppression(db))
 	protected.HandleFunc("GET /api/v1/stats", cachedGET(20*time.Second, handleStats(db)))
 	protected.HandleFunc("GET /api/v1/threat-intel", handleThreatIntel(db))

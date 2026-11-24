@@ -1,94 +1,57 @@
-import { useState, useEffect, useRef, useMemo } from 'react'
-import { useNavigate, useLocation } from 'react-router-dom'
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
+import { useNavigate, useLocation, Link } from 'react-router-dom'
 import {
-  LayoutDashboard, Bell, Activity, Zap, GitBranch, Cloud, Monitor, Network, BookOpen,
-  Shield, Boxes, Crosshair, Search, Settings, Users, Key, ClipboardList, Terminal,
-  LogOut, Sun, Moon, ChevronDown, ChevronRight, PanelLeftClose, PanelLeftOpen, Eye,
+  LayoutDashboard, Bell, Activity, GitBranch, Cloud, Monitor, Network, Shield, Boxes, Crosshair, Search,
+  Settings, Users, Key, ClipboardList, Terminal, LogOut, Sun, Moon, ChevronDown, PanelLeftClose, PanelLeftOpen,
+  Eye, Share2, Gauge, SlidersHorizontal, BellOff, ListChecks, CornerDownLeft, Server, FileSearch,
 } from 'lucide-react'
 import { useTheme } from '../api/useTheme'
 import api from '../api/client'
+import { appApi, appSplitKey } from '../api/app'
 import { useDragSize } from '../hooks/useDragSize'
+import { useTimeRange, RANGE_PRESETS } from './shared/useTimeRange'
 
-function OWLogo({ size = 26 }) {
+export function OWMark({ size = 22 }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 220 220" xmlns="http://www.w3.org/2000/svg">
-      <defs>
-        <radialGradient id="nl-glow" cx="50%" cy="50%" r="50%">
-          <stop offset="0%" stopColor="#00c2e0" stopOpacity="0.4"/>
-          <stop offset="100%" stopColor="#00c2e0" stopOpacity="0"/>
-        </radialGradient>
-        <radialGradient id="nl-lens" cx="38%" cy="35%" r="60%">
-          <stop offset="0%" stopColor="#1a3a4a"/>
-          <stop offset="60%" stopColor="#0a1a22"/>
-          <stop offset="100%" stopColor="#040e14"/>
-        </radialGradient>
-        <radialGradient id="nl-pupil" cx="42%" cy="40%" r="55%">
-          <stop offset="0%" stopColor="#00c2e0" stopOpacity="0.95"/>
-          <stop offset="40%" stopColor="#007fa0"/>
-          <stop offset="100%" stopColor="#002a38"/>
-        </radialGradient>
-      </defs>
-      <circle cx="110" cy="110" r="95" fill="url(#nl-glow)"/>
-      <polygon points="110,12 193,59 193,161 110,208 27,161 27,59" fill="#06111a" stroke="#1a3a4a" strokeWidth="1.5"/>
-      <polygon points="110,22 183,65 183,155 110,198 37,155 37,65" fill="none" stroke="#00c2e0" strokeWidth="0.5" strokeOpacity="0.3"/>
-      <circle cx="110" cy="108" r="62" fill="url(#nl-lens)"/>
-      <circle cx="110" cy="108" r="62" fill="none" stroke="#00c2e0" strokeWidth="1.2" strokeOpacity="0.7"/>
-      <circle cx="110" cy="108" r="42" fill="#0d3040"/>
-      <circle cx="110" cy="108" r="22" fill="url(#nl-pupil)"/>
-      <circle cx="110" cy="108" r="9" fill="#001822"/>
-      <ellipse cx="96" cy="92" rx="9" ry="6" fill="white" fillOpacity="0.12" transform="rotate(-30 96 92)"/>
+    <svg width={size} height={size} viewBox="0 0 22 22" aria-hidden="true">
+      <path d="M11 1.5 20 6.5v9L11 20.5 2 15.5v-9z" fill="none" stroke="var(--acc)" strokeWidth="1.8" strokeLinejoin="round"/>
+      <circle cx="11" cy="11" r="3" fill="var(--acc)"/>
     </svg>
   )
 }
 
-function osCategory(os) {
-  const l = (os || '').toLowerCase()
-  if (l.includes('network-probe')) return 'probe'
-  if (l.includes('win')) return 'windows'
-  if (l.includes('mac') || l.includes('darwin')) return 'macos'
-  if (l.includes('linux') || l.includes('ubuntu') || l.includes('debian') || l.includes('centos')) return 'linux'
-  return 'other'
-}
-
-// One data-driven definition drives the sidebar, the active state and the breadcrumb.
-// `to` may carry a query string; an item is active when its path matches (and its query, if it has one).
-function buildNav({ counts, alertCount, isAdmin }) {
-  const osLabel = (k) => counts[k] ? `${counts[k].online}/${counts[k].total}` : null
+// The rail is grouped by domain. Endpoint, Application, Code and Cloud are the four places;
+// detection, hunting, alerts and response cut across all four, so they get a fifth group.
+function buildNav({ alertCount, isAdmin }) {
   const main = [
-    { section: 'Overview' },
-    { id: 'dash', label: 'Dashboard', icon: LayoutDashboard, to: '/' },
-    { section: 'Monitor' },
-    { id: 'alerts', label: 'Alerts', icon: Bell, to: '/alerts', badge: alertCount },
+    { id: 'dash', label: 'Overview', icon: LayoutDashboard, to: '/' },
+    { section: 'Endpoint' },
+    { id: 'fleet', label: 'Fleet', icon: Monitor, to: '/agents' },
     { id: 'events', label: 'Events', icon: Activity, to: '/events' },
-    { id: 'search', label: 'Search', icon: Search, to: '/search' },
-    { id: 'endpoints', label: 'Endpoints', icon: Monitor, children: [
-      { label: 'All endpoints', to: '/agents' },
-      { label: 'Windows', to: '/agents?os=windows', meta: osLabel('windows') },
-      { label: 'Linux',   to: '/agents?os=linux',   meta: osLabel('linux') },
-      { label: 'macOS',   to: '/agents?os=macos',   meta: osLabel('macos') },
-    ] },
-    { id: 'network', label: 'Network', icon: Network, to: '/network' },
-    { section: 'Detect and hunt' },
-    { id: 'detect', label: 'Detection', icon: Shield, children: [
-      { label: 'Rules', to: '/detections' },
-      { label: 'Alert rules', to: '/alert-rules' },
-    ] },
-    { id: 'hunt', label: 'Threat hunting', icon: Crosshair, to: '/hunt' },
+    { id: 'network', label: 'Network', icon: Network, to: '/network', tag: 'beta' },
+    { section: 'Application' },
+    { id: 'app-overview', label: 'Overview', icon: Gauge, to: '/applications', exact: true },
+    { id: 'app-services', label: 'Services', icon: Boxes, to: '/applications/services' },
+    { id: 'app-map', label: 'Dependencies', icon: Share2, to: '/applications/map' },
+    { id: 'app-coverage', label: 'Coverage', icon: ListChecks, to: '/applications/coverage' },
+    { id: 'app-settings', label: 'Settings', icon: SlidersHorizontal, to: '/applications/settings' },
+    { section: 'Code' },
+    { id: 'repos', label: 'Repositories', icon: GitBranch, to: '/devops' },
+    { section: 'Cloud' },
+    { id: 'cloud', label: 'Posture', icon: Cloud, to: '/cloud' },
+    { section: 'Detect and respond' },
+    { id: 'alerts', label: 'Alerts', icon: Bell, to: '/alerts', badge: alertCount },
+    { id: 'search', label: 'Search', icon: FileSearch, to: '/search' },
+    { id: 'hunt', label: 'Hunt', icon: Crosshair, to: '/hunt' },
     { id: 'insights', label: 'Insights', icon: Eye, to: '/insights' },
-    { section: 'Platforms' },
-    { id: 'cloud', label: 'Cloud', icon: Cloud, to: '/cloud' },
-    { id: 'apps', label: 'Applications', icon: Boxes, children: [
-      { label: 'Overview', to: '/applications' },
-      { label: 'Services', to: '/applications/services' },
-      { label: 'Dependencies', to: '/applications/map' },
-      { label: 'Coverage', to: '/applications/coverage' },
-      { label: 'Settings', to: '/applications/settings' },
-    ] },
-    { id: 'devops', label: 'DevOps', icon: GitBranch, to: '/devops' },
+    { id: 'rules', label: 'Rules', icon: Shield, to: '/detections' },
+    { id: 'alert-rules', label: 'Alert rules', icon: ListChecks, to: '/alert-rules' },
+    { id: 'suppressions', label: 'Suppressions', icon: BellOff, to: '/suppressions' },
+    ...(isAdmin ? [{ id: 'live', label: 'Live response', icon: Terminal, to: '/live-response' }] : []),
   ]
   const admin = isAdmin ? [
+    { section: 'Administration' },
     { id: 'builder', label: 'Agent builder', icon: Key, to: '/agent-builder' },
-    { id: 'live', label: 'Live response', icon: Terminal, to: '/live-response' },
     { id: 'users', label: 'Users and access', icon: Users, to: '/users' },
     { id: 'audit', label: 'Audit log', icon: ClipboardList, to: '/audit-log' },
     { id: 'settings', label: 'Platform settings', icon: Settings, to: '/settings' },
@@ -96,64 +59,167 @@ function buildNav({ counts, alertCount, isAdmin }) {
   return { main, admin }
 }
 
-function splitTo(to) { const [p, q] = to.split('?'); return { path: p, query: q || '' } }
-
-function matches(loc, to) {
-  const { path, query } = splitTo(to)
-  if (path === '/') return loc.pathname === '/'
-  if (query) return loc.pathname === path && loc.search.replace(/^\?/, '').includes(query)
-  // a plain item is active on its own path and on sub-paths, unless a sibling with a query owns the URL
-  return loc.pathname === path || (path !== '/agents' && loc.pathname.startsWith(path + '/'))
-}
-function childActive(loc, c, siblings) {
-  const { path, query } = splitTo(c.to)
-  if (query) return matches(loc, c.to)
-  if (loc.pathname !== path && !loc.pathname.startsWith(path + '/')) return false
-  // "All endpoints" is active only when no sibling's query is selected
-  return !siblings.some(s => s !== c && splitTo(s.to).query && matches(loc, s.to))
+function isActive(loc, it) {
+  if (it.to === '/' || it.exact) return loc.pathname === it.to
+  return loc.pathname === it.to || loc.pathname.startsWith(it.to + '/')
 }
 
-function Badge({ n }) {
-  if (!n) return null
-  return <span className="sb-badge">{n > 99 ? '99+' : n}</span>
-}
+// Pages that read the shared ?from=&to= range. The context-bar range control only appears on these,
+// so it never looks as if it filters a page that ignores it.
+const RANGE_AWARE = ['/applications']
+const rangeAware = (path) => RANGE_AWARE.some(p => path === p || path.startsWith(p + '/'))
 
-function Item({ it, loc, nav, collapsed, openIds, toggle }) {
+function NavItem({ it, loc, collapsed }) {
   const Icon = it.icon
-  if (!it.children) {
-    const active = matches(loc, it.to)
-    return (
-      <div className={`sb-item ${active ? 'active' : ''}`} onClick={() => nav(it.to)} title={collapsed ? it.label : undefined}>
-        <Icon size={15}/>
-        {!collapsed && <span className="sb-label">{it.label}</span>}
-        {!collapsed && <Badge n={it.badge}/>}
-        {collapsed && it.badge > 0 && <span className="sb-dot"/>}
-      </div>
-    )
-  }
-  const anyActive = it.children.some(c => childActive(loc, c, it.children))
-  const open = openIds.has(it.id) || (anyActive && !collapsed)
+  const active = isActive(loc, it)
   return (
-    <div>
-      <div className={`sb-item ${anyActive ? 'active-parent' : ''}`}
-        onClick={() => collapsed ? nav(it.children[0].to) : toggle(it.id)}
-        title={collapsed ? it.label : undefined}>
-        <Icon size={15}/>
-        {!collapsed && <span className="sb-label">{it.label}</span>}
-        {!collapsed && (open ? <ChevronDown size={12} className="sb-chev"/> : <ChevronRight size={12} className="sb-chev"/>)}
+    <Link to={it.to} className={`sb-item ${active ? 'active' : ''}`} title={collapsed ? it.label : undefined} aria-current={active ? 'page' : undefined}>
+      <Icon size={15} strokeWidth={1.6}/>
+      {!collapsed && <span className="sb-label">{it.label}</span>}
+      {!collapsed && it.tag && <span className="sb-tag">{it.tag}</span>}
+      {!collapsed && it.badge > 0 && <span className="sb-badge">{it.badge > 99 ? '99+' : it.badge}</span>}
+      {collapsed && it.badge > 0 && <span className="sb-dot"/>}
+    </Link>
+  )
+}
+
+function NavList({ items, loc, collapsed }) {
+  return items.map((it, i) => it.section
+    ? (collapsed ? <div key={'s' + i} className="sb-rule"/> : <div key={'s' + i} className="sb-section">{it.section}</div>)
+    : <NavItem key={it.id} it={it} loc={loc} collapsed={collapsed}/>)
+}
+
+function useClickAway(ref, onAway) {
+  useEffect(() => {
+    const h = (e) => { if (ref.current && !ref.current.contains(e.target)) onAway() }
+    document.addEventListener('mousedown', h)
+    return () => document.removeEventListener('mousedown', h)
+  }, [ref, onAway])
+}
+
+// ── Global search (Ctrl/⌘ K, or /) ───────────────────────────────────────────
+// Jumps to pages, hosts and services by name; anything else becomes an event search or a hunt.
+function CommandPalette({ open, onClose, pages, agents }) {
+  const navigate = useNavigate()
+  const [q, setQ] = useState('')
+  const [sel, setSel] = useState(0)
+  const [services, setServices] = useState(null)
+  const inputRef = useRef(null)
+
+  useEffect(() => {
+    if (!open) return
+    setQ(''); setSel(0)
+    setTimeout(() => inputRef.current?.focus(), 0)
+    if (services === null) {
+      const to = new Date(), from = new Date(to.getTime() - 7 * 86400e3)
+      appApi.services({ from: from.toISOString(), to: to.toISOString() }, { limit: 500 })
+        .then(d => setServices(d?.services || [])).catch(() => setServices([]))
+    }
+  }, [open]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const results = useMemo(() => {
+    const s = q.trim().toLowerCase()
+    const hit = (txt) => !s || String(txt || '').toLowerCase().includes(s)
+    const out = []
+    pages.filter(p => hit(p.label) || hit(p.group)).slice(0, s ? 6 : 8)
+      .forEach(p => out.push({ kind: 'Pages', label: p.label, hint: p.group, icon: p.icon, to: p.to }))
+    if (s) {
+      agents.filter(a => hit(a.hostname) || hit(a.last_ip)).slice(0, 6).forEach(a =>
+        out.push({ kind: 'Hosts', label: a.hostname, hint: a.online ? 'online' : 'offline', icon: Server, mono: true, to: `/agents?host=${encodeURIComponent(a.hostname)}` }))
+      ;(services || []).filter(v => hit(v.name)).slice(0, 6).forEach(v =>
+        out.push({ kind: 'Services', label: v.name, hint: v.environment || '', icon: Boxes, mono: true, to: `/applications/services/${encodeURIComponent(v.id)}` }))
+      out.push({ kind: 'Search', label: `Search events for "${q.trim()}"`, icon: FileSearch, to: `/events?search=${encodeURIComponent(q.trim())}` })
+      out.push({ kind: 'Search', label: `Hunt stored events for "${q.trim()}"`, icon: Crosshair, to: `/hunt?q=${encodeURIComponent(q.trim())}` })
+    }
+    return out
+  }, [q, pages, agents, services])
+
+  useEffect(() => { setSel(0) }, [q])
+  if (!open) return null
+  const go = (r) => { onClose(); navigate(r.to) }
+  const onKey = (e) => {
+    if (e.key === 'Escape') { e.preventDefault(); onClose() }
+    else if (e.key === 'ArrowDown') { e.preventDefault(); setSel(i => Math.min(results.length - 1, i + 1)) }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); setSel(i => Math.max(0, i - 1)) }
+    else if (e.key === 'Enter' && results[sel]) { e.preventDefault(); go(results[sel]) }
+  }
+  let lastKind = null
+  return (
+    <div className="ow-palette-back" onMouseDown={onClose}>
+      <div className="ow-palette" role="dialog" aria-modal="true" aria-label="Search" onMouseDown={e => e.stopPropagation()}>
+        <div className="ow-palette-in">
+          <Search size={15}/>
+          <input ref={inputRef} value={q} onChange={e => setQ(e.target.value)} onKeyDown={onKey}
+            placeholder="Search hosts, services and pages, or type anything to search events" aria-label="Search"/>
+          <span className="ow-kbd">esc</span>
+        </div>
+        <div className="ow-palette-list" role="listbox">
+          {results.length === 0 && <div style={{ padding: '18px 12px', color: 'var(--t3)', fontSize: 12.5 }}>Nothing matches.</div>}
+          {results.map((r, i) => {
+            const head = r.kind !== lastKind ? <div className="dropdown-section">{r.kind}</div> : null
+            lastKind = r.kind
+            const Icon = r.icon
+            return (
+              <div key={r.kind + r.to}>
+                {head}
+                <div role="option" aria-selected={i === sel} className={`dropdown-item ${i === sel ? 'sel' : ''}`}
+                  onMouseEnter={() => setSel(i)} onClick={() => go(r)}>
+                  <Icon size={14} strokeWidth={1.6}/>
+                  <span className={r.mono ? 'mono' : ''} style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', color: 'var(--t1)' }}>{r.label}</span>
+                  {r.hint && <span style={{ fontSize: 11.5, color: 'var(--t3)' }}>{r.hint}</span>}
+                  {i === sel && <CornerDownLeft size={12} style={{ color: 'var(--t3)' }}/>}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+        <div className="ow-palette-foot"><span><span className="ow-kbd">↑</span> <span className="ow-kbd">↓</span> move</span><span><span className="ow-kbd">↵</span> open</span><span style={{ marginLeft: 'auto' }}>Press <span className="ow-kbd">/</span> anywhere to search</span></div>
       </div>
-      {!collapsed && open && (
-        <div className="sb-children">
-          {it.children.map(c => (
-            <div key={c.to} className={`sb-child ${childActive(loc, c, it.children) ? 'active' : ''}`} onClick={() => nav(c.to)}>
-              <span className="sb-label">{c.label}</span>
-              {c.meta && <span className="sb-meta">{c.meta}</span>}
-            </div>
+    </div>
+  )
+}
+
+const RANGE_NAMES = { '1h': 'Last hour', '6h': 'Last 6 hours', '24h': 'Last 24 hours', '7d': 'Last 7 days', '30d': 'Last 30 days' }
+function RangeControl() {
+  const range = useTimeRange()
+  const [open, setOpen] = useState(false)
+  const ref = useRef(null)
+  useClickAway(ref, useCallback(() => setOpen(false), []))
+  const span = new Date(range.to) - new Date(range.from)
+  const preset = RANGE_PRESETS.find(p => Math.abs(span - p.ms) < 60e3)
+  const fmt = (d) => new Date(d).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+  const label = preset ? RANGE_NAMES[preset.key] : `${fmt(range.from)} – ${fmt(range.to)}`
+  return (
+    <div ref={ref} style={{ position: 'relative' }}>
+      <button className="tb-ctl" onClick={() => setOpen(o => !o)} aria-haspopup="menu" aria-expanded={open}>{label}<span className="caret">▾</span></button>
+      {open && (
+        <div className="dropdown" role="menu" style={{ right: 0, left: 'auto', minWidth: 180 }}>
+          {RANGE_PRESETS.map(p => (
+            <div key={p.key} role="menuitem" className={`dropdown-item ${preset?.key === p.key ? 'active' : ''}`} onClick={() => { range.setPreset(p.ms); setOpen(false) }}>{RANGE_NAMES[p.key]}</div>
           ))}
+          {range.absolute && <><div className="dropdown-divider"/><div className="dropdown-item" role="menuitem" onClick={() => { range.setRange(null, null); setOpen(false) }}>Rolling 24 hours</div></>}
         </div>
       )}
     </div>
   )
+}
+
+// Breadcrumb: domain / page, plus the entity when the URL names one.
+function crumbsFor(loc, items, svcLabel) {
+  let group = ''
+  let found = null
+  for (const it of items) {
+    if (it.section) { group = it.section; continue }
+    if (isActive(loc, it) && (!found || it.to.length > found.it.to.length)) found = { it, group }
+  }
+  if (!found) return []
+  const out = []
+  if (found.it.to !== '/') out.push({ label: found.group })
+  out.push({ label: found.it.label, to: found.it.to })
+  const host = new URLSearchParams(loc.search).get('host')
+  if (found.it.id === 'fleet' && host) out.push({ label: host, mono: true })
+  if (svcLabel) out.push({ label: svcLabel, mono: true })
+  return out
 }
 
 export function Shell({ user, children }) {
@@ -163,10 +229,11 @@ export function Shell({ user, children }) {
   const [agents, setAgents] = useState([])
   const [alertCount, setAlertCount] = useState(0)
   const [userMenu, setUserMenu] = useState(false)
+  const [palette, setPalette] = useState(false)
+  const [svcNames, setSvcNames] = useState({})
   const [collapsed, setCollapsed] = useState(() => { try { return localStorage.getItem('ow_sb_collapsed') === '1' } catch { return false } })
-  const [openIds, setOpenIds] = useState(() => new Set())
   const menuRef = useRef(null)
-  const [sbw, sbHandle] = useDragSize('sidebar', 212, 160, 360, 'x')
+  const [sbw, sbHandle] = useDragSize('rail', 216, 180, 320, 'x')
 
   useEffect(() => {
     const load = () => {
@@ -178,38 +245,42 @@ export function Shell({ user, children }) {
     const id = setInterval(load, 20000)
     return () => clearInterval(id)
   }, [])
-  useEffect(() => {
-    const h = (e) => { if (menuRef.current && !menuRef.current.contains(e.target)) setUserMenu(false) }
-    document.addEventListener('mousedown', h)
-    return () => document.removeEventListener('mousedown', h)
-  }, [])
+  useClickAway(menuRef, useCallback(() => setUserMenu(false), []))
   useEffect(() => { try { localStorage.setItem('ow_sb_collapsed', collapsed ? '1' : '0') } catch { /* */ } }, [collapsed])
-
-  const counts = useMemo(() => {
-    const c = {}
-    for (const a of agents) {
-      const k = osCategory(a.os); if (k === 'probe') continue
-      c[k] = c[k] || { total: 0, online: 0 }
-      c[k].total++; if (a.online) c[k].online++
+  useEffect(() => {
+    const h = (e) => {
+      const typing = /^(input|textarea|select)$/i.test(document.activeElement?.tagName || '') || document.activeElement?.isContentEditable
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); setPalette(p => !p) }
+      else if (e.key === '/' && !typing && !e.metaKey && !e.ctrlKey) { e.preventDefault(); setPalette(true) }
     }
-    return c
-  }, [agents])
-  const totalOnline = agents.filter(a => a.online).length
-  const { main, admin } = useMemo(() => buildNav({ counts, alertCount, isAdmin: user?.role === 'admin' }), [counts, alertCount, user])
+    window.addEventListener('keydown', h)
+    return () => window.removeEventListener('keydown', h)
+  }, [])
 
-  // breadcrumb = section heading + the active item
-  const crumb = useMemo(() => {
-    let section = ''
-    for (const it of [...main, ...admin.map(x => ({ ...x, _admin: true }))]) {
-      if (it.section) { section = it.section; continue }
-      const hit = it.children ? it.children.find(c => childActive(loc, c, it.children)) : (matches(loc, it.to) ? it : null)
-      if (hit) return [it._admin ? 'Administration' : section, it.children ? `${it.label}` : null, it.children ? hit.label : it.label].filter(Boolean)
-    }
-    return []
-  }, [loc, main, admin])
+  const isAdmin = user?.role === 'admin'
+  const { main, admin } = useMemo(() => buildNav({ alertCount, isAdmin }), [alertCount, isAdmin])
+  const allItems = useMemo(() => [...main, ...admin], [main, admin])
+  const pages = useMemo(() => {
+    let g = 'Overview'
+    const out = []
+    for (const it of allItems) { if (it.section) { g = it.section; continue } out.push({ ...it, group: g }) }
+    return out
+  }, [allItems])
 
-  const go = (to) => navigate(to)
-  const toggleGroup = (id) => setOpenIds(s => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n })
+  // Service URLs carry an id or "name|environment"; the breadcrumb shows the name.
+  const svcKey = loc.pathname.match(/^\/applications\/services\/([^/]+)/)?.[1]
+  const svcParam = svcKey ? decodeURIComponent(svcKey) : null
+  useEffect(() => {
+    if (!svcParam || svcNames[svcParam] || !/^\d+$/.test(svcParam)) return
+    appApi.service(svcParam).then(d => { if (d?.service?.name) setSvcNames(m => ({ ...m, [svcParam]: d.service.name })) }).catch(() => {})
+  }, [svcParam]) // eslint-disable-line react-hooks/exhaustive-deps
+  const svcLabel = svcParam ? (svcNames[svcParam] || (/^\d+$/.test(svcParam) ? '…' : appSplitKey(svcParam).name)) : null
+  const crumb = useMemo(() => crumbsFor(loc, allItems, svcLabel), [loc, allItems, svcLabel])
+
+  const hosts = useMemo(() => agents.filter(a => !(a.os || '').toLowerCase().includes('network-probe')), [agents])
+  const online = hosts.filter(a => a.online).length
+  const hostState = hosts.length === 0 ? 'none' : online === hosts.length ? 'ok' : online === 0 ? 'crit' : 'warn'
+
   const logout = () => {
     ['token', 'user', 'require_password_change'].forEach(k => localStorage.removeItem(k))
     navigate('/login')
@@ -217,71 +288,69 @@ export function Shell({ user, children }) {
 
   return (
     <div className={`shell ${collapsed ? 'collapsed' : ''}`} style={{ '--sb-w': sbw + 'px' }}>
-      <aside className="sidebar">
-        <div className="sb-brand" onClick={() => go('/')}>
-          <OWLogo size={26}/>
-          {!collapsed && (
-            <div style={{ lineHeight: 1 }}>
-              <div style={{ fontWeight: 700, fontSize: 13, color: '#fff' }}>ObsidianWatch</div>
-              <div style={{ fontSize: 9, letterSpacing: '0.12em', fontFamily: 'DM Mono, monospace', textTransform: 'uppercase', marginTop: 3, color: 'var(--nav-text)' }}>SIEM · v0.3.1</div>
-            </div>
-          )}
+      <aside className="sidebar" aria-label="Main navigation">
+        <div className="sb-brand" onClick={() => navigate('/')} title="ObsidianWatch">
+          <OWMark size={22}/>{!collapsed && <span>ObsidianWatch</span>}
         </div>
-        <div className="sb-scroll">
-          {main.map((it, i) => it.section
-            ? (collapsed ? <div key={i} className="sb-rule"/> : <div key={i} className="sb-section">{it.section}</div>)
-            : <Item key={it.id} it={it} loc={loc} nav={go} collapsed={collapsed} openIds={openIds} toggle={toggleGroup}/>)}
-        </div>
-        {admin.length > 0 && (
-          <div className="sb-foot">
-            {collapsed ? <div className="sb-rule"/> : <div className="sb-section">Administration</div>}
-            {admin.map(it => <Item key={it.id} it={it} loc={loc} nav={go} collapsed={collapsed} openIds={openIds} toggle={toggleGroup}/>)}
+        <nav className="sb-scroll"><NavList items={[...main, ...admin]} loc={loc} collapsed={collapsed}/></nav>
+        <div className="sb-foot">
+          <div className="sb-status" title={`${online} of ${hosts.length} hosts online`}>
+            <span className={`ow-dot ${hostState}`} style={{ color: `var(--${hostState === 'none' ? 't3' : hostState})` }}/>
+            {!collapsed && <span>{hosts.length ? `${online} of ${hosts.length} hosts online` : 'No hosts enrolled yet'}</span>}
           </div>
-        )}
+        </div>
         {!collapsed && <div {...sbHandle}/>}
       </aside>
 
       <div className="shell-main">
         <header className="topbar">
-          <button className="tb-btn" onClick={() => setCollapsed(c => !c)} title={collapsed ? 'Expand menu' : 'Collapse menu'}>
+          <button className="tb-ctl tb-icon" onClick={() => setCollapsed(c => !c)} title={collapsed ? 'Expand menu' : 'Collapse menu'} aria-label={collapsed ? 'Expand menu' : 'Collapse menu'}>
             {collapsed ? <PanelLeftOpen size={15}/> : <PanelLeftClose size={15}/>}
           </button>
-          <div className="crumb">
+          <nav className="crumb" aria-label="Breadcrumb">
             {crumb.map((c, i) => (
-              <span key={i} className={i === crumb.length - 1 ? 'crumb-last' : ''}>{i > 0 && <span className="crumb-sep">/</span>}{c}</span>
+              <span key={i} className={i === crumb.length - 1 ? 'crumb-last' : ''} style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {i > 0 && <span className="crumb-sep">/</span>}
+                {c.to && i < crumb.length - 1 ? <Link to={c.to}>{c.label}</Link> : <span className={c.mono ? 'mono' : ''}>{c.label}</span>}
+              </span>
             ))}
+          </nav>
+          <div className="ow-field tb-search" role="button" tabIndex={0} onClick={() => setPalette(true)}
+            onKeyDown={e => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), setPalette(true))} aria-label="Search">
+            <Search size={13}/><span className="tb-search-text">Search hosts, services, pages and events</span>
+            <span className="mono" style={{ marginLeft: 'auto', fontSize: 11 }}>{/Mac|iPhone|iPad/.test(navigator.platform) ? '⌘K' : 'Ctrl K'}</span>
           </div>
-          <div style={{ flex: 1 }}/>
-          <div className="tb-stat" title="Agents online">
-            <span className="pulse" style={{ width: 6, height: 6, borderRadius: '50%', background: totalOnline > 0 ? 'var(--green)' : 'var(--text3)' }}/>
-            <span style={{ fontFamily: 'DM Mono, monospace' }}>{totalOnline}</span><span style={{ color: 'var(--text3)' }}>online</span>
-          </div>
-          <button className="tb-btn" onClick={toggle} title="Toggle theme">
-            {theme === 'dark' ? <Sun size={14} style={{ color: '#fbbf24' }}/> : <Moon size={14}/>}
-          </button>
-          <button className="tb-btn" onClick={() => go('/alerts')} title="Open alerts" style={{ position: 'relative', color: alertCount > 0 ? 'var(--red)' : undefined }}>
-            <Bell size={14}/>
-            {alertCount > 0 && <span className="badge" style={{ position: 'absolute', top: -5, right: -5, minWidth: 15, height: 15, fontSize: 8, padding: '0 3px' }}>{alertCount > 9 ? '9+' : alertCount}</span>}
-          </button>
-          <div ref={menuRef} style={{ position: 'relative' }}>
-            <button className="tb-user" onClick={() => setUserMenu(o => !o)}>
-              <span className="tb-avatar">{user?.username?.[0]?.toUpperCase() || 'U'}</span>
-              <span style={{ fontSize: 12, fontWeight: 500 }}>{user?.username}</span>
-              <ChevronDown size={10} style={{ opacity: 0.5 }}/>
+          <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
+            {rangeAware(loc.pathname) && <RangeControl/>}
+            <button className="tb-ctl tb-icon" onClick={toggle} title={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'} aria-label="Toggle theme">
+              {theme === 'dark' ? <Sun size={14}/> : <Moon size={14}/>}
             </button>
-            {userMenu && (
-              <div className="dropdown" style={{ right: 0, left: 'auto', top: 'calc(100% + 4px)', minWidth: 170 }}>
-                <div style={{ padding: '6px 10px 6px', borderBottom: '1px solid var(--border)', marginBottom: 4 }}>
-                  <div style={{ fontSize: 12, fontWeight: 600 }}>{user?.username}</div>
-                  <div style={{ fontSize: 10, color: 'var(--text3)', textTransform: 'capitalize' }}>{user?.role}</div>
+            <button className="tb-ctl tb-icon" onClick={() => navigate('/alerts')} title={`${alertCount} open alerts`} aria-label={`${alertCount} open alerts`}>
+              <Bell size={14}/>
+              {alertCount > 0 && <span className="tb-count">{alertCount > 99 ? '99+' : alertCount}</span>}
+            </button>
+            <div ref={menuRef} style={{ position: 'relative' }}>
+              <button className="tb-ctl" onClick={() => setUserMenu(o => !o)} style={{ paddingLeft: 5 }} aria-haspopup="menu" aria-expanded={userMenu}>
+                <span className="tb-avatar">{user?.username?.[0]?.toUpperCase() || 'U'}</span>
+                <span style={{ fontWeight: 500 }}>{user?.username}</span>
+                <ChevronDown size={11} className="caret"/>
+              </button>
+              {userMenu && (
+                <div className="dropdown" role="menu" style={{ right: 0, left: 'auto', minWidth: 180 }}>
+                  <div style={{ padding: '8px 10px', borderBottom: '1px solid var(--line)', marginBottom: 4 }}>
+                    <div style={{ fontWeight: 600 }}>{user?.username}</div>
+                    <div style={{ fontSize: 12, color: 'var(--t3)', textTransform: 'capitalize' }}>{user?.role}</div>
+                  </div>
+                  <div className="dropdown-item" role="menuitem" onClick={() => { setUserMenu(false); navigate('/change-password') }}><Key size={13}/> Change password</div>
+                  <div className="dropdown-item" role="menuitem" onClick={logout} style={{ color: 'var(--crit)' }}><LogOut size={13}/> Sign out</div>
                 </div>
-                <div className="dropdown-item" onClick={logout} style={{ color: 'var(--red)' }}><LogOut size={12}/> Sign out</div>
-              </div>
-            )}
+              )}
+            </div>
           </div>
         </header>
-        <div id="app-shell">{children}</div>
+        <main id="app-shell">{children}</main>
       </div>
+      <CommandPalette open={palette} onClose={() => setPalette(false)} pages={pages} agents={hosts}/>
     </div>
   )
 }

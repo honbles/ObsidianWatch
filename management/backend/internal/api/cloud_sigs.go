@@ -851,7 +851,7 @@ var cloudSignaturesExtended = []ThreatSig{
 		Description: "Cloud metadata endpoint or credential file accessed - possible credential theft.",
 		Severity: 4, MITRE: "T1552.005", Category: "Credential Access",
 		Match: func(ev store.Event) bool {
-			return (isCloudEvent(ev) || ev.EventType == "network" || ev.EventType == "file") &&
+			return isCloudEvent(ev) &&
 				containsAny(rawStr(ev),
 					"169.254.169.254",
 					"metadata.google.internal",
@@ -982,7 +982,8 @@ var cloudNetworkSignatures = []ThreatSig{
 		Description: "Cloud instance metadata endpoint (169.254.169.254) queried from a source that is not the instance itself - SSRF or credential theft attempt.",
 		Severity: 5, MITRE: "T1552.005", Category: "Credential Access",
 		Match: func(ev store.Event) bool {
-			return (ev.EventType == "network" || ev.EventType == "cloud.cloudtrail") &&
+			// Endpoint network events are handled by NET-IMDS-001/002.
+			return ev.EventType == "cloud.cloudtrail" &&
 				containsAny(rawStr(ev), "169.254.169.254", "metadata.google.internal",
 					"instance/service-accounts", "latest/meta-data/iam")
 		},

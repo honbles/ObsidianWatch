@@ -763,6 +763,17 @@ func sigmaField(x *sigmaEvalCtx, f string) (string, bool) {
 		return pick(sigStr(ev.FileHash))
 	case "computername", "computer":
 		return pick(ev.Host)
+	case "parentimage":
+		// Linux/macOS agents put the parent executable in raw "parent_exe".
+		if d, ok := x.data["parentimage"]; ok {
+			return d, true
+		}
+		return pick(rawStringField(ev, "parent_exe"))
+	case "parentcommandline":
+		if d, ok := x.data["parentcommandline"]; ok {
+			return d, true
+		}
+		return pick(rawStringField(ev, "parent_cmdline"))
 	}
 	d, ok := x.data[f]
 	return d, ok

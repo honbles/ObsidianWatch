@@ -74,11 +74,36 @@ func (db *DB) AppPurge(ctx context.Context, now time.Time) (AppPurgeResult, erro
 	// ingest migration that creates them has run.
 	var haveDiag bool
 	if err := db.QueryRowContext(ctx, `SELECT to_regclass('app_db_stats') IS NOT NULL`).Scan(&haveDiag); err == nil && haveDiag {
-		for _, t := range []string{"app_route_children", "app_db_stats", "app_route_n1"} {
+		for _, t := range []string{"app_route_children", "app_db_stats", "app_route_n1", "app_metrics"} {
 			var n int64
 			if err := exec(&n, `DELETE FROM `+t+` WHERE minute < $1`, now.AddDate(0, 0, -sd)); err != nil {
 				return out, err
 			}
+		}
+	}
+	var haveSamp bool
+	if err := db.QueryRowContext(ctx, `SELECT to_regclass('app_sampling_stats') IS NOT NULL`).Scan(&haveSamp); err == nil && haveSamp {
+		var n int64
+		if err := exec(&n, `DELETE FROM app_sampling_stats WHERE hour < $1`, now.AddDate(0, 0, -sd)); err != nil {
+			return out, err
+		}
+	}
+	var haveOps bool
+	if err := db.QueryRowContext(ctx, `SELECT to_regclass('app_operations') IS NOT NULL`).Scan(&haveOps); err == nil && haveOps {
+		var n int64
+		if err := exec(&n, `DELETE FROM app_operations WHERE minute < $1`, now.AddDate(0, 0, -sd)); err != nil {
+			return out, err
+		}
+	}
+	// Error groups: hourly counts age out with the other statistics, and a group nobody has seen for as long goes too.
+	var haveErr bool
+	if err := db.QueryRowContext(ctx, `SELECT to_regclass('error_groups') IS NOT NULL`).Scan(&haveErr); err == nil && haveErr {
+		var n int64
+		if err := exec(&n, `DELETE FROM error_group_hours WHERE hour < $1`, now.AddDate(0, 0, -sd)); err != nil {
+			return out, err
+		}
+		if err := exec(&n, `DELETE FROM error_groups WHERE last_seen < $1`, now.AddDate(0, 0, -sd)); err != nil {
+			return out, err
 		}
 	}
 	// Sampled request parameters (payload capture) are short-lived; the table exists only once the ingest

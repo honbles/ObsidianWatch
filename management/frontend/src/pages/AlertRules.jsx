@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { BookOpen, Plus, Trash2, ToggleLeft, ToggleRight, Pencil } from 'lucide-react'
 import api from '../api/client'
+import { PageHeader, Num, DenseTable, SevPill, Drawer } from '../components/ui'
 
 const EVENT_TYPES = ['', 'process', 'network', 'logon', 'registry', 'file', 'dns', 'sysmon', 'raw']
 const OS_OPTIONS  = ['', 'linux', 'windows', 'macos']
@@ -151,16 +152,8 @@ function FilterBadges({ rule }) {
     rule.source_match        && `source:${rule.source_match}`,
   ].filter(Boolean)
 
-  if (badges.length === 0) return <span className="text-siem-muted">-</span>
-  return (
-    <div className="flex flex-wrap gap-1">
-      {badges.map(b => (
-        <span key={b} className="bg-siem-surface border border-siem-border rounded px-1.5 py-0.5 text-xs text-siem-muted">
-          {b}
-        </span>
-      ))}
-    </div>
-  )
+  if (badges.length === 0) return <span className="t3">any event</span>
+  return <span className="mono t2" style={{ fontSize: 12 }} title={badges.join('  ')}>{badges.join('  ·  ')}</span>
 }
 
 export default function AlertRules() {
@@ -184,86 +177,50 @@ export default function AlertRules() {
   const toggle = async (rule) => { await api.put(`/api/v1/alert-rules/${rule.id}`, { ...rule, enabled: !rule.enabled }); load() }
   const del    = async (id)   => { if (!confirm('Delete this rule?')) return; await api.delete(`/api/v1/alert-rules/${id}`); load() }
 
-  const severityLabel = s => ['', 'Info', 'Low', 'Medium', 'High', 'Critical'][s] || s
-  const severityColor = s => s >= 5 ? 'text-red-400' : s >= 4 ? 'text-orange-400' : s >= 3 ? 'text-yellow-400' : 'text-siem-muted'
+  const [q, setQ] = useState('')
+  const shown = rules.filter(r => !q || `${r.name} ${r.description || ''} ${r.event_type || ''}`.toLowerCase().includes(q.toLowerCase()))
+  const on = rules.filter(r => r.enabled).length
+  const editRule = rules.find(r => r.id === editing)
 
   return (
-    <div className="p-6 space-y-5">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <BookOpen className="text-siem-accent" size={20} />
-          <h1 className="text-xl font-bold text-siem-text">Alert Rules</h1>
+    <div>
+      <PageHeader title="Alert rules"
+        sub="Your own match rules, evaluated every 30 seconds. Every condition must match; a blank field matches anything. The DNS domain condition only applies to dns events."
+        actions={<button className="ow-btn primary" onClick={() => { setEditing(null); setShowCreate(true) }}><Plus size={13}/>New rule</button>}
+        nums={<>
+          <Num k="Rules" v={rules.length}/>
+          <Num k="Enabled" v={on} unit={`of ${rules.length}`}/>
+          <Num k="Critical" v={rules.filter(r => r.severity >= 5).length}/>
+        </>}/>
+      <div className="ow-body">
+        <div className="ow-card" style={{ overflow: 'hidden' }}>
+          <div className="ow-card-bar">
+            <label className="ow-field" style={{ flex: 1, maxWidth: 380, height: 28 }}>
+              <input value={q} onChange={e => setQ(e.target.value)} placeholder="Filter rules" aria-label="Filter rules"/>
+            </label>
+            <span className="t2" style={{ fontSize: 12 }}>{shown.length} of {rules.length}</span>
+          </div>
+          <DenseTable rows={loading ? [] : shown} rowKey={r => r.id} onRow={r => { setShowCreate(false); setEditing(r.id) }} current={editing}
+            empty={loading ? 'Loading…' : rules.length ? 'No rules match.' : 'No alert rules yet. Built-in detections live under Rules; add your own here.'}
+            cols={[
+              { key: 'on', label: 'On', width: '52px', render: r => (
+                <button className={`ow-switch ${r.enabled ? 'on' : ''}`} role="switch" aria-checked={r.enabled} aria-label={`${r.enabled ? 'Disable' : 'Enable'} ${r.name}`}
+                  onClick={e => { e.stopPropagation(); toggle(r) }}><span/></button>) },
+              { key: 'sev', label: 'Severity', width: '92px', render: r => <SevPill sev={r.severity}/> },
+              { key: 'name', label: 'Rule', width: 'minmax(220px, 1.6fr)', render: r => <span className={r.enabled ? 't1' : 't3'}>{r.name}</span>, title: r => r.description },
+              { key: 'type', label: 'Event type', width: '110px', render: r => <span className="mono t2">{r.event_type || 'any'}</span> },
+              { key: 'f', label: 'Conditions', width: 'minmax(240px, 2fr)', render: r => <FilterBadges rule={r}/> },
+              { key: 'x', label: '', width: '76px', render: r => <button className="ow-btn quiet" style={{ height: 24, color: 'var(--crit)' }} onClick={e => { e.stopPropagation(); del(r.id) }}><Trash2 size={13}/>Delete</button> },
+            ]}/>
         </div>
-        <button onClick={() => setShowCreate(true)}
-          className="flex items-center gap-1.5 text-xs bg-siem-accent hover:bg-siem-accent/90 text-white px-3 py-2 rounded-lg">
-          <Plus size={13} /> New rule
-        </button>
       </div>
-
-      <div className="text-xs text-siem-muted bg-siem-surface border border-siem-border rounded-xl p-3">
-        Rules are evaluated every 30 seconds. All conditions must match (AND logic). Leave a field blank to match any value.
-        The <span className="text-siem-accent">DNS domain</span> filter only matches <code>dns</code> events - the queried domain is stored in the destination IP field on all platforms.
-      </div>
-
-      {showCreate && <RuleForm onSave={create} onCancel={() => setShowCreate(false)} />}
-
-      <div className="bg-siem-surface border border-siem-border rounded-xl overflow-hidden">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-siem-border text-siem-muted text-xs">
-              <th className="text-left px-4 py-3">Name</th>
-              <th className="text-left px-4 py-3">Min Severity</th>
-              <th className="text-left px-4 py-3">Event Type</th>
-              <th className="text-left px-4 py-3">Filters</th>
-              <th className="text-left px-4 py-3">Status</th>
-              <th className="px-4 py-3"></th>
-            </tr>
-          </thead>
-          <tbody>
-            {loading ? (
-              <tr><td colSpan={6} className="text-center py-10 text-siem-muted">Loading...</td></tr>
-            ) : rules.length === 0 ? (
-              <tr><td colSpan={6} className="text-center py-10 text-siem-muted">No rules yet - create one above.</td></tr>
-            ) : rules.map(rule => (
-              <>
-                <tr key={rule.id} className="border-b border-siem-border/40">
-                  <td className="px-4 py-3">
-                    <div className="text-siem-text font-medium">{rule.name}</div>
-                    {rule.description && <div className="text-xs text-siem-muted">{rule.description}</div>}
-                  </td>
-                  <td className={`px-4 py-3 font-medium ${severityColor(rule.severity)}`}>
-                    {rule.severity} - {severityLabel(rule.severity)}
-                  </td>
-                  <td className="px-4 py-3 text-siem-accent">{rule.event_type || 'Any'}</td>
-                  <td className="px-4 py-3"><FilterBadges rule={rule} /></td>
-                  <td className="px-4 py-3">
-                    <button onClick={() => toggle(rule)}>
-                      {rule.enabled
-                        ? <span className="flex items-center gap-1 text-siem-green text-xs"><ToggleRight size={16} /> Enabled</span>
-                        : <span className="flex items-center gap-1 text-siem-muted text-xs"><ToggleLeft size={16} /> Disabled</span>}
-                    </button>
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex gap-2 justify-end">
-                      <button onClick={() => setEditing(editing === rule.id ? null : rule.id)}
-                        className="text-siem-muted hover:text-siem-accent transition-colors"><Pencil size={14} /></button>
-                      <button onClick={() => del(rule.id)}
-                        className="text-siem-muted hover:text-siem-red transition-colors"><Trash2 size={14} /></button>
-                    </div>
-                  </td>
-                </tr>
-                {editing === rule.id && (
-                  <tr key={`edit-${rule.id}`} className="border-b border-siem-border/40">
-                    <td colSpan={6} className="px-4 py-3">
-                      <RuleForm initial={rule} onSave={update} onCancel={() => setEditing(null)} />
-                    </td>
-                  </tr>
-                )}
-              </>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <Drawer open={showCreate || !!editRule} onClose={() => { setShowCreate(false); setEditing(null) }} label={editRule ? 'Edit alert rule' : 'New alert rule'} width={620}>
+        <div style={{ padding: 20, overflowY: 'auto' }}>
+          <div style={{ fontSize: 17, fontWeight: 600, marginBottom: 14 }}>{editRule ? `Edit "${editRule.name}"` : 'New alert rule'}</div>
+          {showCreate && <RuleForm onSave={create} onCancel={() => setShowCreate(false)} />}
+          {editRule && <RuleForm key={editRule.id} initial={editRule} onSave={update} onCancel={() => setEditing(null)} />}
+        </div>
+      </Drawer>
     </div>
   )
 }

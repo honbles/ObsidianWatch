@@ -11,6 +11,8 @@ import {
 } from 'recharts'
 import { format, formatDistanceToNow } from 'date-fns'
 import api from '../api/client'
+import { PageHeader, Tabs } from '../components/ui'
+import Tactical from './overview/Tactical'
 import { useLiveFeed } from '../api/useLiveFeed'
 import { SeverityBadge } from '../components/SeverityBadge'
 
@@ -222,10 +224,11 @@ function IntegrationBar({ navigate }) {
 
 // ── MAIN DASHBOARD ────────────────────────────────────────────────────────────
 const VIEWS = [
-  { id: 'overview',  label: 'Overview',  icon: '⬡' },
-  { id: 'endpoint',  label: 'Endpoint',  icon: '⬡' },
-  { id: 'cloud',     label: 'Cloud',     icon: '⬡' },
-  { id: 'devops',    label: 'DevOps',    icon: '⬡' },
+  { id: 'overview',  label: 'Tactical overview' },
+  { id: 'activity',  label: 'Activity' },
+  { id: 'endpoint',  label: 'Endpoint' },
+  { id: 'cloud',     label: 'Cloud' },
+  { id: 'devops',    label: 'Code' },
 ]
 
 export default function Dashboard() {
@@ -287,64 +290,20 @@ export default function Dashboard() {
   const recentAlerts = d?.recent_alerts || []
   const sevDist      = raw?.by_severity || []
 
-  if (loading) return (
-    <div className="flex items-center justify-center h-full gap-3 text-siem-muted">
-      <div className="w-5 h-5 border-2 border-siem-accent/30 border-t-siem-accent rounded-full animate-spin"/>
-      <span className="text-sm">Loading dashboard…</span>
-    </div>
-  )
-
   return (
-    <div className="h-screen overflow-y-auto bg-siem-bg">
-      <div className="p-5 space-y-4 max-w-[1600px] mx-auto">
-
-        {/* ── Header ── */}
-        <div className="flex items-center justify-between">
-          <div style={{ display:'flex', alignItems:'center', gap:16 }}>
-            <div>
-              <h1 style={{ fontSize:18, fontWeight:700, color:'var(--text)', letterSpacing:'-0.3px' }}>
-                {VIEWS.find(v=>v.id===view)?.label || 'Overview'} Dashboard
-              </h1>
-              <div style={{ display:'flex', alignItems:'center', gap:12, marginTop:3 }}>
-                <div style={{ display:'flex', alignItems:'center', gap:5, fontSize:10,
-                               color: connected ? 'var(--green)' : 'var(--text3)' }}>
-                  <span className={connected ? 'pulse' : ''} style={{
-                    width:5, height:5, borderRadius:'50%', display:'inline-block',
-                    background: connected ? 'var(--green)' : 'var(--text3)'
-                  }}/>
-                  {connected ? 'Live' : 'Reconnecting…'}
-                </div>
-                {lastRefresh && (
-                  <span style={{ fontSize:10, color:'var(--text3)' }}>
-                    {format(lastRefresh, 'HH:mm:ss')}
-                  </span>
-                )}
-              </div>
-            </div>
-            {/* View switcher */}
-            <div style={{ display:'flex', gap:3, background:'var(--surface2)',
-                           border:'1px solid var(--border)', borderRadius:9, padding:3 }}>
-              {VIEWS.map(v => (
-                <button key={v.id} onClick={() => setView(v.id)}
-                  style={{
-                    padding:'4px 12px', borderRadius:7, fontSize:11.5, fontWeight:500,
-                    cursor:'pointer', border:'none', transition:'all 0.15s',
-                    background: view===v.id ? 'var(--surface)' : 'transparent',
-                    color: view===v.id ? 'var(--accent)' : 'var(--text3)',
-                    boxShadow: view===v.id ? '0 1px 4px rgba(0,0,0,0.3)' : 'none',
-                    borderColor: view===v.id ? 'var(--border)' : 'transparent',
-                  }}>
-                  {v.label}
-                </button>
-              ))}
-            </div>
-          </div>
-          <button onClick={load}
-            className="flex items-center gap-1.5 text-xs text-siem-muted border border-siem-border rounded-lg px-3 py-1.5 hover:text-siem-text hover:border-siem-accent/30 transition-all">
-            <RefreshCw size={11}/> Refresh
-          </button>
-        </div>
-
+    <div>
+      <PageHeader
+        title="Overview"
+        sub={<>Everything monitored, on one page.{' '}
+          <span style={{ color: connected ? 'var(--ok)' : 'var(--t3)' }}>{connected ? 'Live' : 'Reconnecting…'}</span>
+          {lastRefresh && <> · updated {format(lastRefresh, 'HH:mm:ss')}</>}</>}
+        actions={<button className="ow-btn" onClick={load}><RefreshCw size={13}/>Refresh</button>}
+        tabs={<Tabs value={view} onChange={setView} tabs={VIEWS}/>}
+      />
+      <div className="ow-body" style={{ display: 'flex', flexDirection: 'column', gap: 16, maxWidth: 1680 }}>
+        {view === 'overview' && <Tactical/>}
+        {view !== 'overview' && loading && <div className="t3" style={{ padding: 40, textAlign: 'center' }}>Loading…</div>}
+        {!loading && <>
         {/* ── View-specific content ── */}
 
         {/* ── Cloud Dashboard ── */}
@@ -379,7 +338,7 @@ export default function Dashboard() {
                             <div style={{ height:'100%', borderRadius:3, background:'var(--accent)',
                               width:`${Math.min(100,(p.count/Math.max(...(raw?.by_cloud_provider||[{count:1}]).map(x=>x.count)))*100)}%` }}/>
                           </div>
-                          <span style={{ fontSize:11, color:'var(--text3)', fontFamily:'DM Mono, monospace', width:40, textAlign:'right' }}>{p.count}</span>
+                          <span style={{ fontSize:11, color:'var(--text3)', fontFamily:'var(--font-data)', width:40, textAlign:'right' }}>{p.count}</span>
                         </div>
                       ))
                   }
@@ -427,11 +386,11 @@ export default function Dashboard() {
                         <tbody>
                           {(raw?.sast_results || []).slice(0,8).map((r,i) => (
                             <tr key={i}>
-                              <td style={{ fontFamily:'DM Mono, monospace', color:'var(--text)' }}>{r.repo}</td>
+                              <td style={{ fontFamily:'var(--font-data)', color:'var(--text)' }}>{r.repo}</td>
                               <td><span className="tag">{r.engine}</span></td>
-                              <td style={{ fontFamily:'DM Mono, monospace' }}>{r.finding_count}</td>
+                              <td style={{ fontFamily:'var(--font-data)' }}>{r.finding_count}</td>
                               <td style={{ color: r.critical_count > 0 ? 'var(--red)' : 'var(--text3)',
-                                           fontFamily:'DM Mono, monospace', fontWeight: r.critical_count > 0 ? 600 : 400 }}>
+                                           fontFamily:'var(--font-data)', fontWeight: r.critical_count > 0 ? 600 : 400 }}>
                                 {r.critical_count}
                               </td>
                               <td style={{ color:'var(--text3)', fontSize:11 }}>{r.scanned_at ? new Date(r.scanned_at).toLocaleDateString() : '-'}</td>
@@ -455,7 +414,7 @@ export default function Dashboard() {
                       <div key={s.label} style={{ marginBottom:10 }}>
                         <div style={{ display:'flex', justifyContent:'space-between', fontSize:11, marginBottom:4 }}>
                           <span style={{ color:'var(--text2)' }}>{s.label}</span>
-                          <span style={{ color:s.color, fontFamily:'DM Mono, monospace' }}>{s.value}</span>
+                          <span style={{ color:s.color, fontFamily:'var(--font-data)' }}>{s.value}</span>
                         </div>
                         <div style={{ height:5, background:'var(--surface2)', borderRadius:3 }}>
                           <div style={{ height:'100%', borderRadius:3, background:s.color,
@@ -496,7 +455,7 @@ export default function Dashboard() {
                   {(raw?.endpoint_agents || []).map((a,i) => (
                     <tr key={i} onClick={() => navigate(`/agents?host=${encodeURIComponent(a.hostname)}`)}
                       style={{ cursor:'pointer' }}>
-                      <td style={{ fontFamily:'DM Mono, monospace', fontWeight:500, color:'var(--text)' }}>{a.hostname}</td>
+                      <td style={{ fontFamily:'var(--font-data)', fontWeight:500, color:'var(--text)' }}>{a.hostname}</td>
                       <td><span className="tag">{a.os || '-'}</span></td>
                       <td>
                         <span style={{ display:'flex', alignItems:'center', gap:5, fontSize:11,
@@ -506,9 +465,9 @@ export default function Dashboard() {
                           {a.online ? 'Online' : 'Offline'}
                         </span>
                       </td>
-                      <td style={{ fontFamily:'DM Mono, monospace', fontSize:11, color:'var(--text2)' }}>{a.ip_address || '-'}</td>
+                      <td style={{ fontFamily:'var(--font-data)', fontSize:11, color:'var(--text2)' }}>{a.ip_address || '-'}</td>
                       <td style={{ fontSize:11, color:'var(--text3)' }}>{a.last_seen ? new Date(a.last_seen).toLocaleString() : '-'}</td>
-                      <td style={{ fontFamily:'DM Mono, monospace', fontSize:11 }}>{a.events_today?.toLocaleString() || '-'}</td>
+                      <td style={{ fontFamily:'var(--font-data)', fontSize:11 }}>{a.events_today?.toLocaleString() || '-'}</td>
                     </tr>
                   ))}
                   {(raw?.endpoint_agents || []).length === 0 && (
@@ -522,7 +481,7 @@ export default function Dashboard() {
           </div>
         )}
 
-        {view === 'overview' && <>
+        {view === 'activity' && <>
 
         {/* ── Row 1: KPI strip ── */}
         <div style={{ display:'grid', gridTemplateColumns:'repeat(6,1fr)', gap:12 }}>
@@ -591,7 +550,7 @@ export default function Dashboard() {
                   <div key={row.label} style={{ marginBottom:10 }}>
                     <div style={{ display:'flex', justifyContent:'space-between', fontSize:11, marginBottom:3 }}>
                       <span style={{ color:'var(--text2)' }}>{row.label}</span>
-                      <span style={{ color:row.color, fontFamily:'DM Mono, monospace' }}>{Number(count).toLocaleString()}</span>
+                      <span style={{ color:row.color, fontFamily:'var(--font-data)' }}>{Number(count).toLocaleString()}</span>
                     </div>
                     <div style={{ height:4, background:'var(--surface2)', borderRadius:2 }}>
                       <div style={{ height:'100%', borderRadius:2, background:row.color,
@@ -617,11 +576,11 @@ export default function Dashboard() {
                   onClick={() => navigate(`/events?search=${encodeURIComponent(p.process_name||'')}`)}
                   onMouseEnter={e=>e.currentTarget.style.background='rgba(56,189,248,0.03)'}
                   onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
-                  <span style={{ fontFamily:'DM Mono, monospace', fontSize:11, color:'var(--text)',
+                  <span style={{ fontFamily:'var(--font-data)', fontSize:11, color:'var(--text)',
                     flex:1, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
                     {p.process_name}
                   </span>
-                  <span style={{ fontSize:10, color:'var(--text3)', fontFamily:'DM Mono, monospace', flexShrink:0 }}>
+                  <span style={{ fontSize:10, color:'var(--text3)', fontFamily:'var(--font-data)', flexShrink:0 }}>
                     {Number(p.count||0).toLocaleString()}
                   </span>
                   {Number(p.max_severity) >= 4 && (
@@ -644,11 +603,11 @@ export default function Dashboard() {
                   cursor:'pointer', transition:'background 0.1s' }}
                   onMouseEnter={e=>e.currentTarget.style.background='rgba(56,189,248,0.03)'}
                   onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
-                  <span style={{ fontFamily:'DM Mono, monospace', fontSize:11, color:'var(--text)',
+                  <span style={{ fontFamily:'var(--font-data)', fontSize:11, color:'var(--text)',
                     flex:1, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
                     {p.domain || p.dst_ip || '-'}
                   </span>
-                  <span style={{ fontSize:10, color:'var(--text3)', fontFamily:'DM Mono, monospace', flexShrink:0 }}>
+                  <span style={{ fontSize:10, color:'var(--text3)', fontFamily:'var(--font-data)', flexShrink:0 }}>
                     {Number(p.count||0).toLocaleString()}
                   </span>
                 </div>
@@ -668,8 +627,8 @@ export default function Dashboard() {
                 return (
                   <div key={i} style={{ marginBottom:8 }}>
                     <div style={{ display:'flex', justifyContent:'space-between', fontSize:11, marginBottom:3 }}>
-                      <span style={{ color:'var(--text2)', fontFamily:'DM Mono, monospace', fontSize:11 }}>{c.country || c.dst_ip || '-'}</span>
-                      <span style={{ color:'var(--text3)', fontFamily:'DM Mono, monospace' }}>{Number(c.count||0).toLocaleString()}</span>
+                      <span style={{ color:'var(--text2)', fontFamily:'var(--font-data)', fontSize:11 }}>{c.country || c.dst_ip || '-'}</span>
+                      <span style={{ color:'var(--text3)', fontFamily:'var(--font-data)' }}>{Number(c.count||0).toLocaleString()}</span>
                     </div>
                     <div style={{ height:3, background:'var(--surface2)', borderRadius:2 }}>
                       <div style={{ height:'100%', borderRadius:2, background:'var(--accent)',
@@ -692,14 +651,14 @@ export default function Dashboard() {
           <div className="card">
             <div className="card-head" style={{ color:'var(--red)' }}>
               ⚠ Malicious IPs
-              <span style={{ fontFamily:'DM Mono, monospace', color:'var(--text3)', fontSize:10, fontWeight:400, textTransform:'none', letterSpacing:0 }}>
+              <span style={{ fontFamily:'var(--font-data)', color:'var(--text3)', fontSize:10, fontWeight:400, textTransform:'none', letterSpacing:0 }}>
                 {(d?.malicious_ips||[]).length} detected
               </span>
             </div>
             <div style={{ padding:'4px 0 8px' }}>
               {(d?.malicious_ips || []).slice(0,6).map((item,i) => (
                 <div key={i} style={{ padding:'6px 16px', borderBottom:'1px solid color-mix(in srgb, var(--border) 30%, transparent)' }}>
-                  <div style={{ fontSize:11, color:'var(--red)', fontFamily:'DM Mono, monospace',
+                  <div style={{ fontSize:11, color:'var(--red)', fontFamily:'var(--font-data)',
                     overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{item.title}</div>
                   <div style={{ fontSize:10, color:'var(--text3)', marginTop:2 }}>{item.host} · {item.created_at ? new Date(item.created_at).toLocaleTimeString() : ''}</div>
                 </div>
@@ -716,14 +675,14 @@ export default function Dashboard() {
           <div className="card">
             <div className="card-head" style={{ color:'var(--orange)' }}>
               ⚠ Malicious Domains
-              <span style={{ fontFamily:'DM Mono, monospace', color:'var(--text3)', fontSize:10, fontWeight:400, textTransform:'none', letterSpacing:0 }}>
+              <span style={{ fontFamily:'var(--font-data)', color:'var(--text3)', fontSize:10, fontWeight:400, textTransform:'none', letterSpacing:0 }}>
                 {(d?.malicious_domains||[]).length} detected
               </span>
             </div>
             <div style={{ padding:'4px 0 8px' }}>
               {(d?.malicious_domains || []).slice(0,6).map((item,i) => (
                 <div key={i} style={{ padding:'6px 16px', borderBottom:'1px solid color-mix(in srgb, var(--border) 30%, transparent)' }}>
-                  <div style={{ fontSize:11, color:'var(--orange)', fontFamily:'DM Mono, monospace',
+                  <div style={{ fontSize:11, color:'var(--orange)', fontFamily:'var(--font-data)',
                     overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{item.title}</div>
                   <div style={{ fontSize:10, color:'var(--text3)', marginTop:2 }}>{item.host} · {item.created_at ? new Date(item.created_at).toLocaleTimeString() : ''}</div>
                 </div>
@@ -740,14 +699,14 @@ export default function Dashboard() {
           <div className="card">
             <div className="card-head" style={{ color:'var(--yellow)' }}>
               ⚠ Malicious Files
-              <span style={{ fontFamily:'DM Mono, monospace', color:'var(--text3)', fontSize:10, fontWeight:400, textTransform:'none', letterSpacing:0 }}>
+              <span style={{ fontFamily:'var(--font-data)', color:'var(--text3)', fontSize:10, fontWeight:400, textTransform:'none', letterSpacing:0 }}>
                 {(d?.malicious_files||[]).length} detected
               </span>
             </div>
             <div style={{ padding:'4px 0 8px' }}>
               {(d?.malicious_files || []).slice(0,6).map((item,i) => (
                 <div key={i} style={{ padding:'6px 16px', borderBottom:'1px solid color-mix(in srgb, var(--border) 30%, transparent)' }}>
-                  <div style={{ fontSize:11, color:'var(--yellow)', fontFamily:'DM Mono, monospace',
+                  <div style={{ fontSize:11, color:'var(--yellow)', fontFamily:'var(--font-data)',
                     overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{item.title}</div>
                   <div style={{ fontSize:10, color:'var(--text3)', marginTop:2 }}>{item.host} · {item.created_at ? new Date(item.created_at).toLocaleTimeString() : ''}</div>
                 </div>
@@ -819,7 +778,7 @@ export default function Dashboard() {
                     className={a.online ? 'pulse' : ''}/>
                   <div style={{ flex:1, minWidth:0 }}>
                     <div style={{ fontSize:11.5, fontWeight:500, color:'var(--text)',
-                      fontFamily:'DM Mono, monospace', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                      fontFamily:'var(--font-data)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
                       {a.hostname}
                     </div>
                     <div style={{ fontSize:10, color:'var(--text3)', marginTop:1 }}>{a.os}</div>
@@ -863,7 +822,7 @@ export default function Dashboard() {
                           <div key={m.label} style={{ background:'var(--surface2)', borderRadius:7, padding:'6px 10px' }}>
                             <div style={{ fontSize:9, color:'var(--text3)', textTransform:'uppercase', letterSpacing:'0.08em' }}>{m.label}</div>
                             <div style={{ fontSize:16, fontWeight:600, color: Number(m.value) > 0 ? m.color : 'var(--text3)',
-                              fontFamily:'DM Mono, monospace', marginTop:2 }}>{Number(m.value||0)}</div>
+                              fontFamily:'var(--font-data)', marginTop:2 }}>{Number(m.value||0)}</div>
                           </div>
                         ))}
                       </div>
@@ -875,7 +834,7 @@ export default function Dashboard() {
         </div>
 
         </>}
-
+        </>}
       </div>
     </div>
   )

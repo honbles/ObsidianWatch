@@ -129,16 +129,16 @@ Respond with a JSON object:
             {f.title}
           </div>
           <div style={{ display:'flex', alignItems:'center', gap:6, flexWrap:'wrap' }}>
-            <span style={{ fontSize:9.5, background:'var(--surface2)', border:'1px solid var(--border)', borderRadius:4, padding:'1px 5px', color:'var(--text3)', fontFamily:'DM Mono, monospace' }}>
+            <span style={{ fontSize:9.5, background:'var(--surface2)', border:'1px solid var(--border)', borderRadius:4, padding:'1px 5px', color:'var(--text3)', fontFamily:'var(--font-data)' }}>
               {f.resource_type}
             </span>
-            <span style={{ fontSize:10, color:'var(--text3)', fontFamily:'DM Mono, monospace' }}>{f.resource}</span>
+            <span style={{ fontSize:10, color:'var(--text3)', fontFamily:'var(--font-data)' }}>{f.resource}</span>
             {cis && <span style={{ fontSize:9, color:'var(--text3)', opacity:0.7 }}>{cis}</span>}
           </div>
         </div>
         <div style={{ display:'flex', alignItems:'center', gap:8, flexShrink:0 }}>
           {f.mitre && (
-            <span style={{ fontSize:9, background:'rgba(0,194,224,0.1)', border:'1px solid rgba(0,194,224,0.2)', color:'var(--accent)', borderRadius:4, padding:'1px 5px', fontFamily:'DM Mono, monospace' }}>
+            <span style={{ fontSize:9, background:'rgba(0,194,224,0.1)', border:'1px solid rgba(0,194,224,0.2)', color:'var(--accent)', borderRadius:4, padding:'1px 5px', fontFamily:'var(--font-data)' }}>
               {f.mitre}
             </span>
           )}
@@ -206,7 +206,7 @@ Respond with a JSON object:
                   <div style={{ fontSize:10, color:'#34d399', fontWeight:600, marginBottom:4 }}>Steps:</div>
                   {aiText.steps.map((s,i) => (
                     <div key={i} style={{ display:'flex', gap:6, marginBottom:3 }}>
-                      <span style={{ fontSize:10, color:'var(--accent)', fontFamily:'DM Mono, monospace', flexShrink:0 }}>{i+1}.</span>
+                      <span style={{ fontSize:10, color:'var(--accent)', fontFamily:'var(--font-data)', flexShrink:0 }}>{i+1}.</span>
                       <span style={{ fontSize:11, color:'var(--text2)', lineHeight:1.5 }}>{s}</span>
                     </div>
                   ))}
@@ -234,7 +234,7 @@ export function RiskScoreGauge({ score }) {
           strokeDasharray={`${dash} ${circumference}`}
           strokeLinecap="round"
           style={{ transformOrigin:'center', transform:'rotate(-90deg)', transition:'stroke-dasharray 0.6s ease' }}/>
-        <text x={cx} y={cy-2} textAnchor="middle" style={{ fill:'var(--text)', fontSize:18, fontWeight:700, fontFamily:'DM Mono, monospace' }}>{score}</text>
+        <text x={cx} y={cy-2} textAnchor="middle" style={{ fill:'var(--text)', fontSize:18, fontWeight:700, fontFamily:'var(--font-data)' }}>{score}</text>
         <text x={cx} y={cy+13} textAnchor="middle" style={{ fill:'var(--text3)', fontSize:9 }}>/100</text>
       </svg>
       <span style={{ fontSize:11, fontWeight:600, color:rl.color }}>{rl.label}</span>
@@ -334,7 +334,7 @@ export function AssetInventory({ findings }) {
               <Icon size={12} color="var(--text3)"/>
               <span style={{ fontSize:10, color:'var(--text3)', fontWeight:600 }}>{meta.label}</span>
             </div>
-            <div style={{ fontSize:18, fontWeight:700, color:'var(--text)', fontFamily:'DM Mono, monospace' }}>{data.resources.size}</div>
+            <div style={{ fontSize:18, fontWeight:700, color:'var(--text)', fontFamily:'var(--font-data)' }}>{data.resources.size}</div>
             <div style={{ fontSize:10, color: data.issues > 0 ? '#f87171' : '#34d399' }}>
               {data.issues} issue{data.issues !== 1 ? 's' : ''}
             </div>
@@ -364,7 +364,7 @@ export function NetworkExposure({ findings }) {
         <div key={res} style={{ display:'flex', alignItems:'center', gap:8, padding:'8px 10px',
           background:'var(--surface2)', border:'1px solid var(--border)', borderRadius:7 }}>
           <Globe size={12} color={issues.some(i => i.severity === 'critical') ? '#f87171' : '#fb923c'}/>
-          <span style={{ flex:1, fontSize:11, color:'var(--text2)', fontFamily:'DM Mono, monospace' }}>{res}</span>
+          <span style={{ flex:1, fontSize:11, color:'var(--text2)', fontFamily:'var(--font-data)' }}>{res}</span>
           <div style={{ display:'flex', gap:4 }}>
             {issues.map((issue,i) => (
               <span key={i} style={{ fontSize:9, padding:'1px 5px', borderRadius:4,
@@ -587,16 +587,16 @@ ${JSON.stringify(compact)}`
               return (
                 <div key={i} style={{ padding:'10px 14px', borderBottom: i < cspm.errors.length-1 ? '1px solid rgba(251,146,60,0.1)' : 'none' }}>
                   <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:4 }}>
-                    <code style={{ fontSize:11, background:'var(--surface2)', border:'1px solid var(--border)', borderRadius:4, padding:'1px 6px', color:'#fb923c', fontFamily:'DM Mono, monospace' }}>{checkName}</code>
+                    <code style={{ fontSize:11, background:'var(--surface2)', border:'1px solid var(--border)', borderRadius:4, padding:'1px 6px', color:'#fb923c', fontFamily:'var(--font-data)' }}>{checkName}</code>
                     <span style={{ fontSize:10.5, color: is403 ? '#f87171' : is404 ? '#38bdf8' : '#fb923c' }}>
                       {is403 ? '403 Permission Denied' : is404 ? '404 Not Found / API disabled' : 'Error'}
                     </span>
                   </div>
-                  <div style={{ fontSize:11, color:'var(--text3)', fontFamily:'DM Mono, monospace', marginBottom:6, wordBreak:'break-all' }}>{errMsg.slice(0, 200)}</div>
+                  <div style={{ fontSize:11, color:'var(--text3)', fontFamily:'var(--font-data)', marginBottom:6, wordBreak:'break-all' }}>{errMsg.slice(0, 200)}</div>
                   {requiredRoles[checkName] && (
                     <div style={{ display:'flex', alignItems:'center', gap:5, fontSize:10.5 }}>
                       <span style={{ color:'#34d399', fontWeight:600 }}>Fix:</span>
-                      <code style={{ color:'var(--text2)', fontFamily:'DM Mono, monospace', background:'var(--surface2)', padding:'1px 6px', borderRadius:4 }}>
+                      <code style={{ color:'var(--text2)', fontFamily:'var(--font-data)', background:'var(--surface2)', padding:'1px 6px', borderRadius:4 }}>
                         {requiredRoles[checkName]}
                       </code>
                     </div>
@@ -649,7 +649,7 @@ ${JSON.stringify(compact)}`
                 <div key={k.label} style={{ background:'var(--surface)', border:'1px solid var(--border)',
                   borderRadius:8, padding:'10px 12px', borderTop:`2px solid ${k.color}` }}>
                   <div style={{ fontSize:10, color:'var(--text3)', marginBottom:4, fontWeight:600, textTransform:'uppercase', letterSpacing:'0.06em' }}>{k.label}</div>
-                  <div style={{ fontSize:22, fontWeight:700, color:k.color, fontFamily:'DM Mono, monospace' }}>{k.value||0}</div>
+                  <div style={{ fontSize:22, fontWeight:700, color:k.color, fontFamily:'var(--font-data)' }}>{k.value||0}</div>
                 </div>
               ))}
             </div>

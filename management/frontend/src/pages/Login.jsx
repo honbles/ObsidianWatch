@@ -238,7 +238,7 @@ export default function Login({ onLogin }) {
               ObsidianWatch
             </div>
             <div style={{ fontSize:10, color:'var(--text3)', letterSpacing:'0.14em',
-                          fontFamily:'DM Mono, monospace', textTransform:'uppercase', marginTop:3 }}>
+                          fontFamily:'var(--font-data)', textTransform:'uppercase', marginTop:3 }}>
               Security Intelligence Platform
             </div>
           </div>
@@ -265,7 +265,7 @@ export default function Login({ onLogin }) {
           ].map(s => (
             <div key={s.label}>
               <div style={{ fontSize:18, fontWeight:700, color:'var(--accent)',
-                             fontFamily:'DM Mono, monospace' }}>{s.value}</div>
+                             fontFamily:'var(--font-data)' }}>{s.value}</div>
               <div style={{ fontSize:10, color:'var(--text3)', marginTop:2 }}>{s.label}</div>
             </div>
           ))}

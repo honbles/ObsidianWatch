@@ -39,6 +39,8 @@ type BatchRoute struct {
 	Status429   int64     `json:"status_429"`
 	Status5xx   int64     `json:"status_5xx"`
 	DurBuckets  []int64   `json:"duration_buckets"`
+	// Sketch is the mergeable latency sketch (schema_version 2). An older agent omits it; the backend then uses the histogram.
+	Sketch *SketchWire `json:"sketch,omitempty"`
 }
 
 // BatchParam counts one parameter NAME seen on a route since the last flush. Values are never sent.
@@ -116,26 +118,30 @@ type BatchNote struct {
 
 // Batch is one POST body.
 type Batch struct {
-	AgentID   string          `json:"agent_id"`
-	SentAt    time.Time       `json:"sent_at"`
-	Instances []BatchInstance `json:"instances"`
-	Routes    []BatchRoute    `json:"routes"`
-	Edges     []BatchEdge     `json:"edges"`
-	Traces    []BatchTrace    `json:"traces"`
-	Clients   []BatchClient   `json:"clients"`
-	Params    []BatchParam    `json:"params,omitempty"`
-	Payloads  []BatchPayload  `json:"payloads,omitempty"`
-	Children  []BatchChild    `json:"children,omitempty"`
-	Queries   []BatchQuery    `json:"queries,omitempty"`
-	NPlusOne  []BatchNPlusOne `json:"n_plus_one,omitempty"`
+	AgentID    string           `json:"agent_id"`
+	SentAt     time.Time        `json:"sent_at"`
+	Instances  []BatchInstance  `json:"instances"`
+	Routes     []BatchRoute     `json:"routes"`
+	Edges      []BatchEdge      `json:"edges"`
+	Traces     []BatchTrace     `json:"traces"`
+	Clients    []BatchClient    `json:"clients"`
+	Params     []BatchParam     `json:"params,omitempty"`
+	Payloads   []BatchPayload   `json:"payloads,omitempty"`
+	Children   []BatchChild     `json:"children,omitempty"`
+	Queries    []BatchQuery     `json:"queries,omitempty"`
+	NPlusOne   []BatchNPlusOne  `json:"n_plus_one,omitempty"`
+	Errors     []BatchError     `json:"errors,omitempty"`
+	Metrics    []BatchMetric    `json:"metrics,omitempty"`
+	Sampling   []BatchSampling  `json:"sampling,omitempty"`
+	Operations []BatchOperation `json:"operations,omitempty"`
 	// SchemaVersion is 2 from the release that adds children, queries and n_plus_one. An older agent omits it.
-	SchemaVersion int `json:"schema_version,omitempty"`
-	Notes     []BatchNote     `json:"notes"`
+	SchemaVersion int         `json:"schema_version,omitempty"`
+	Notes         []BatchNote `json:"notes"`
 }
 
 // Empty reports whether the batch carries nothing.
 func (b *Batch) Empty() bool {
-	return len(b.Instances)+len(b.Routes)+len(b.Edges)+len(b.Traces)+len(b.Clients)+len(b.Params)+len(b.Payloads)+len(b.Children)+len(b.Queries)+len(b.NPlusOne)+len(b.Notes) == 0
+	return len(b.Instances)+len(b.Routes)+len(b.Edges)+len(b.Traces)+len(b.Clients)+len(b.Params)+len(b.Payloads)+len(b.Children)+len(b.Queries)+len(b.NPlusOne)+len(b.Errors)+len(b.Metrics)+len(b.Sampling)+len(b.Operations)+len(b.Notes) == 0
 }
 
 // Limits the backend enforces per batch (keep in step with app_batch.go).

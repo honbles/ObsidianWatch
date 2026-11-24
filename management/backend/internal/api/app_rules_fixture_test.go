@@ -15,21 +15,30 @@ var appNow = time.Date(2026, 11, 10, 12, 0, 0, 0, time.UTC)
 // ── fake data layer ────────────────────────────────────────────────────────
 
 type appFakeData struct {
-	insts      []appInst
-	svcs       map[int64]appSvc
-	baselines  map[string]int64
-	deploy     bool
-	intel      map[string]string
-	anomaly    string
-	clientRows []appClientRow
-	newRoutes  []appRouteRef
-	requests   int64
-	curWin     []appWindowStats
-	baseWin    []appWindowStats
-	agentSeen  map[string]time.Time
-	alive      map[int]bool
-	lastReq    time.Time
-	prior      []appWindowStats // traffic before lastReq
+	insts           []appInst
+	svcs            map[int64]appSvc
+	baselines       map[string]int64
+	deploy          bool
+	intel           map[string]string
+	anomaly         string
+	clientRows      []appClientRow
+	newRoutes       []appRouteRef
+	requests        int64
+	curWin          []appWindowStats
+	baseWin         []appWindowStats
+	agentSeen       map[string]time.Time
+	alive           map[int]bool
+	lastReq         time.Time
+	errGroups       []appErrGroupRef
+	metrics         []appMetricAgg
+	qCur, qBase     []appQueryAgg
+	deploys         []appDeploy
+	ops             []appOpAgg
+	sli             func(from, to time.Time, target int) appSLICounts
+	totals          func(from, to time.Time) appWindowTotals // overrides preTot and postTot
+	jobs            []appJobHistory
+	postTot, preTot appWindowTotals
+	prior           []appWindowStats // traffic before lastReq
 }
 
 func (f *appFakeData) ServiceForLineage(_ context.Context, agentID, container string, pids []int) (appSvc, appInst, int, bool) {
@@ -120,6 +129,56 @@ func (f *appFakeData) ProcessAlive(_ context.Context, _ string, pid int, _ time.
 }
 func (f *appFakeData) LastRequestMinute(context.Context, int64) (time.Time, error) {
 	return f.lastReq, nil
+}
+
+func (f *appFakeData) QueryWindow(_ context.Context, _ int64, from, to time.Time) ([]appQueryAgg, error) {
+	if to.After(appNow) { // the current window reaches "now"
+		return f.qCur, nil
+	}
+	return f.qBase, nil
+}
+
+func (f *appFakeData) Deploys(_ context.Context, _ int64, since time.Time) ([]appDeploy, error) {
+	var out []appDeploy
+	for _, d := range f.deploys {
+		if !d.FirstSeen.Before(since) {
+			out = append(out, d)
+		}
+	}
+	return out, nil
+}
+
+func (f *appFakeData) WindowTotals(_ context.Context, _ int64, from, to time.Time) (appWindowTotals, error) {
+	if f.totals != nil {
+		return f.totals(from, to), nil
+	}
+	if to.After(appNow) {
+		return f.postTot, nil
+	}
+	return f.preTot, nil
+}
+
+func (f *appFakeData) OperationWindow(context.Context, int64, time.Time, time.Time) ([]appOpAgg, error) {
+	return f.ops, nil
+}
+
+func (f *appFakeData) JobHistory(context.Context, int64, time.Time) ([]appJobHistory, error) {
+	return f.jobs, nil
+}
+
+func (f *appFakeData) SLICounts(_ context.Context, _ int64, from, to time.Time, target int) (appSLICounts, error) {
+	if f.sli == nil {
+		return appSLICounts{}, nil
+	}
+	return f.sli(from, to, target), nil
+}
+
+func (f *appFakeData) MetricWindow(context.Context, int64, time.Time, time.Time) ([]appMetricAgg, error) {
+	return f.metrics, nil
+}
+
+func (f *appFakeData) ErrorGroups(context.Context, int64, time.Time) ([]appErrGroupRef, error) {
+	return f.errGroups, nil
 }
 
 // ── fake emitter: applies the same gate, weighting and dedup the real one does ──

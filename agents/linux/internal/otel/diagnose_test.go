@@ -46,7 +46,10 @@ func TestDiagnoseTrace(t *testing.T) {
 	tr.spans = append(tr.spans,
 		sp("r", "", kindServer, 0, 100, func(s *Span) { s.Route, s.Method = "/orders/:id", "GET" }),
 		sp("h", "r", kindInternal, 1, 90, nil),
-		sp("p", "h", kindClient, 2, 30, func(s *Span) { s.DBSystem, s.Name = "postgresql", "SELECT orders"; s.DBOp, s.DBTable = "SELECT", "orders" }),
+		sp("p", "h", kindClient, 2, 30, func(s *Span) {
+			s.DBSystem, s.Name = "postgresql", "SELECT orders"
+			s.DBOp, s.DBTable = "SELECT", "orders"
+		}),
 		sp("x", "h", kindClient, 40, 40, func(s *Span) { s.PeerService, s.Name = "payments", "POST /charge/123456" }),
 	)
 	for i := 0; i < 12; i++ { // an N+1: the same statement under one parent

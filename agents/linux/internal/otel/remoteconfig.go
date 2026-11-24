@@ -30,6 +30,10 @@ type RemoteService struct {
 	LatencyTargetMs int    `json:"latency_target_ms"`
 	// DBStatementMode is "off" (default) or "fingerprint": whether a literal-free statement fingerprint is forwarded.
 	DBStatementMode string `json:"db_statement_mode,omitempty"`
+	// ErrorMessageMode is "off" (default) or "masked": whether a scrubbed error message is forwarded.
+	ErrorMessageMode string `json:"error_message_mode,omitempty"`
+	// Sampling is the service's trace sampling policy; nil means the defaults.
+	Sampling *SamplePolicy `json:"sampling,omitempty"`
 	// PolicyOnly marks an entry that only carries payload routes: the service has no saved settings, so the
 	// privacy fields of this entry are not an override and are ignored.
 	PolicyOnly bool `json:"policy_only,omitempty"`
@@ -98,6 +102,12 @@ func (l *liveSettings) set(list []RemoteService, now time.Time) {
 		}
 		if r.DBStatementMode != "fingerprint" {
 			r.DBStatementMode = "off"
+		}
+		if r.ErrorMessageMode != "masked" {
+			r.ErrorMessageMode = "off"
+		}
+		if r.Sampling != nil {
+			r.Sampling = cleanSamplePolicy(r.Sampling)
 		}
 		if r.PolicyOnly {
 			continue

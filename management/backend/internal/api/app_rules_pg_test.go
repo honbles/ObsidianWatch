@@ -40,7 +40,7 @@ func appPGSetup(t *testing.T) *appPGFx {
 		t.Fatal(err)
 	}
 	for _, f := range []string{"../../../../backend/internal/store/migrations/002_agents.sql", "../../../../backend/internal/store/migrations/030_app_services.sql",
-		"../../../../backend/internal/store/migrations/031_app_edge_client_stats.sql", "../store/migrations/060_app_service_settings.sql", "../store/migrations/064_app_db_statement_mode.sql",
+		"../../../../backend/internal/store/migrations/031_app_edge_client_stats.sql", "../store/migrations/060_app_service_settings.sql", "../store/migrations/066_app_db_statement_mode.sql", "../store/migrations/067_app_error_message_mode.sql", "../store/migrations/068_app_sampling.sql", "../store/migrations/069_app_slo.sql",
 		"../store/migrations/004_alerts.sql", "../store/migrations/010_alert_source_event.sql", "../store/migrations/014_alerts_dedup.sql",
 		"../store/migrations/017_ai_analysis_cache.sql", "../store/migrations/027_alert_occurrences.sql", "../store/migrations/040_foundation_alert_entities.sql", "../store/migrations/041_foundation_rule_settings.sql", "../store/migrations/062_alert_related_events.sql"} {
 		b, err := os.ReadFile(f)
@@ -248,7 +248,7 @@ func TestAppTapDeliversEventsToTheWorker(t *testing.T) {
 
 func (fx *appPGFx) promoteAll() {
 	for _, id := range []string{"APP-H01", "APP-H02", "APP-H03", "APP-H04", "APP-H05", "APP-H06", "APP-H07", "APP-H08", "APP-H11",
-		"APP-A01", "APP-A08", "APP-A09", "APP-A13", "APP-X02", "APP-X06", "APM-O01", "APM-O03", "APM-O05"} {
+		"APP-A01", "APP-A08", "APP-A09", "APP-A13", "APP-X02", "APP-X06", "APM-O01", "APM-O03", "APM-O05", "APM-O06", "APM-O07", "APM-O08", "APM-O09", "APM-O10", "APM-O11", "APM-O12", "APM-O13", "APM-O14"} {
 		appMustExec(fx.t, fx.raw, `INSERT INTO rule_settings (rule_id, scope_kind, scope_id, enabled, observe) VALUES ($1,'','',TRUE,FALSE)`, id)
 	}
 }

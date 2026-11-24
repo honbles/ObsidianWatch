@@ -29,7 +29,9 @@ export default function AppServiceSettingsForm({ service, requests, onSaved, com
     export_routes: lines(s0.export_routes), public_routes: lines(s0.public_routes),
     latency_target_ms: s0.latency_target_ms ?? '', error_budget_pct: s0.error_budget_pct ?? '',
     maintenance: (s0.maintenance || []).map(m => ({ start: toLocal(m.start), end: toLocal(m.end), reason: m.reason || '' })),
-    store_client_ip: s0.store_client_ip, cleartext_users: !!s0.cleartext_users, db_statement_mode: s0.db_statement_mode || 'off', reset_learning: false,
+    store_client_ip: s0.store_client_ip, cleartext_users: !!s0.cleartext_users, db_statement_mode: s0.db_statement_mode || 'off', error_message_mode: s0.error_message_mode || 'off', reset_learning: false,
+    samp_baseline: s0.sampling?.baseline_pct ?? '', samp_error_max: s0.sampling?.error_max_per_min || '', samp_flush: s0.sampling?.max_per_flush || '',
+    slo_window: s0.slo?.window_days || '', slo_avail: s0.slo?.availability_target_pct ?? '', slo_lat: s0.slo?.latency_target_pct ?? '',
   }))
   const [state, setState] = useState({ saving: false, error: '', ok: false })
   const set = (k) => (e) => setF(v => ({ ...v, [k]: e.target.type === 'checkbox' ? e.target.checked : e.target.value }))
@@ -46,7 +48,9 @@ export default function AppServiceSettingsForm({ service, requests, onSaved, com
         latency_target_ms: f.latency_target_ms === '' ? null : Number(f.latency_target_ms),
         error_budget_pct: f.error_budget_pct === '' ? null : Number(f.error_budget_pct),
         maintenance: f.maintenance.filter(m => m.start && m.end).map(m => ({ start: new Date(m.start).toISOString(), end: new Date(m.end).toISOString(), reason: m.reason })),
-        store_client_ip: f.store_client_ip, cleartext_users: f.cleartext_users, db_statement_mode: f.db_statement_mode,
+        store_client_ip: f.store_client_ip, cleartext_users: f.cleartext_users, db_statement_mode: f.db_statement_mode, error_message_mode: f.error_message_mode,
+        sampling: { ...(f.samp_baseline === '' ? {} : { baseline_pct: Number(f.samp_baseline) }), error_max_per_min: Number(f.samp_error_max) || 0, max_per_flush: Number(f.samp_flush) || 0 },
+        slo: { ...(f.slo_window === '' ? {} : { window_days: Number(f.slo_window) }), ...(f.slo_avail === '' ? {} : { availability_target_pct: Number(f.slo_avail) }), ...(f.slo_lat === '' ? {} : { latency_target_pct: Number(f.slo_lat) }) },
         learning_started: s0.learning_started || null, reset_learning: f.reset_learning,
       }
       const res = await appApi.saveSettings(service.id, body)
@@ -109,6 +113,40 @@ export default function AppServiceSettingsForm({ service, requests, onSaved, com
         </select>
         <span>Names only sends the operation and table (SELECT, users). Fingerprints also send the statement with every value removed on the host, so <span className="font-mono">WHERE id = 5</span> becomes <span className="font-mono">where id = ?</span>, which lets slow queries be told apart. The agent applies the change within 5 minutes.</span>
       </label>
+
+      <label className="flex items-start gap-2 text-xs text-siem-muted">
+        <select className="bg-siem-surface2 border border-siem-border rounded px-1.5 py-1 text-siem-text" value={f.error_message_mode} onChange={set('error_message_mode')} disabled={dis}>
+          <option value="off">Errors: no message</option>
+          <option value="masked">Errors: masked message</option>
+        </select>
+        <span>Error groups always show the exception type, the route and the stack frames (function and file, no values). A masked message also shows the message with numbers, quoted text, emails, ids and long tokens replaced by <span className="font-mono">?</span>. Off by default.</span>
+      </label>
+
+      <div className="rounded-lg border border-siem-border p-3 text-xs space-y-2">
+        <div className="text-siem-text font-medium">Service level objective</div>
+        <div className="text-siem-muted">Leave a field empty for the default: availability is 100 minus the error budget above (99.9% when none is set), latency is 95% of requests under the latency target, over 28 days. The SLO tab shows the budget left; alert APM-O13 fires when it burns too fast.</div>
+        <div className="flex gap-3 flex-wrap">
+          <label className="flex flex-col gap-1 text-siem-muted">Availability target (%)
+            <input className="input w-32" type="number" min="1" max="99.999" step="0.01" placeholder="99.9" value={f.slo_avail} onChange={set('slo_avail')} disabled={dis} /></label>
+          <label className="flex flex-col gap-1 text-siem-muted">Latency target share (%)
+            <input className="input w-32" type="number" min="1" max="99.999" step="0.1" placeholder="95" value={f.slo_lat} onChange={set('slo_lat')} disabled={dis} /></label>
+          <label className="flex flex-col gap-1 text-siem-muted">Window
+            <select className="bg-siem-surface2 border border-siem-border rounded px-1.5 py-1 text-siem-text" value={f.slo_window} onChange={set('slo_window')} disabled={dis}><option value="">28 days</option><option value="7">7 days</option><option value="28">28 days (explicit)</option></select></label>
+        </div>
+      </div>
+
+      <div className="rounded-lg border border-siem-border p-3 text-xs space-y-2">
+        <div className="text-siem-text font-medium">Trace sampling</div>
+        <div className="text-siem-muted">Errors, slow traces (over the latency target above) and traces with a security signal are kept. Leave a field empty for the default. The agent applies changes within 5 minutes; the Overview shows how many traces were seen and kept for each reason. When a flush is over its limit, ordinary traces are dropped first, then slow, then errors; security traces are never dropped.</div>
+        <div className="flex gap-3 flex-wrap">
+          <label className="flex flex-col gap-1 text-siem-muted">Ordinary traces kept (%)
+            <input className="input w-32" type="number" min="0" max="100" step="0.1" placeholder="1" value={f.samp_baseline} onChange={set('samp_baseline')} disabled={dis} /></label>
+          <label className="flex flex-col gap-1 text-siem-muted">Error traces per minute (max)
+            <input className="input w-32" type="number" min="0" placeholder="all" value={f.samp_error_max} onChange={set('samp_error_max')} disabled={dis} /></label>
+          <label className="flex flex-col gap-1 text-siem-muted">Traces per flush (max)
+            <input className="input w-32" type="number" min="0" max="5000" placeholder="500" value={f.samp_flush} onChange={set('samp_flush')} disabled={dis} /></label>
+        </div>
+      </div>
 
       <div className="rounded-lg border border-siem-border p-3 text-xs flex items-center justify-between gap-3 flex-wrap">
         <div><span className="text-siem-muted">Learning: </span>{appLearningText(learn, service.tier)}</div>

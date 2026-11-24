@@ -68,8 +68,29 @@ type ProcessCollectorConfig struct {
 type procEntry struct {
 	name    string
 	cmdline string
+	args    []string // original argv, so rules can match arguments instead of a joined string
 	ppid    int
 	uid     int
+}
+
+// Caps keep a hostile or huge command line from bloating events.
+const (
+	maxArgvItems = 64
+	maxArgvBytes = 512
+)
+
+func capArgv(args []string) []string {
+	if len(args) > maxArgvItems {
+		args = args[:maxArgvItems]
+	}
+	out := make([]string, len(args))
+	for i, a := range args {
+		if len(a) > maxArgvBytes {
+			a = a[:maxArgvBytes]
+		}
+		out[i] = a
+	}
+	return out
 }
 
 func NewProcessCollector(cfg ProcessCollectorConfig, agentID, host string, out chan<- schema.Event, logger *slog.Logger) *ProcessCollector {
@@ -380,6 +401,7 @@ func (p *ProcessCollector) readProc(pid int) procEntry {
 		// cmdline is null-separated
 		args := strings.Split(strings.TrimRight(string(cmdlineData), "\x00"), "\x00")
 		entry.cmdline = strings.Join(args, " ")
+		entry.args = capArgv(args)
 	}
 
 	return entry
@@ -442,6 +464,9 @@ func (p *ProcessCollector) emit(pid int, entry procEntry, action string, sev sch
 		"uid":      entry.uid,
 		"username": username,
 	}
+	if len(entry.args) > 0 {
+		rawData["argv"] = entry.args // B2: preserved argv (quotes are lost in "cmdline")
+	}
 	// Parent image path (edge baseline for the Alert Graph).
 	if entry.ppid > 0 {
 		if pe := p.resolveExePath(entry.ppid); pe != "" {
@@ -462,6 +487,14 @@ func (p *ProcessCollector) emit(pid int, entry procEntry, action string, sev sch
 	sha := exeSHA256(pid)
 	if sha != "" {
 		rawData["sha256"] = sha
+		// A1: package-verified tag. Absent field = unknown; the SIEM only
+		// uses it to downgrade hash-IOC hits.
+		if ok, known, pkg := pkgVerify(pid, exePath, sha); known {
+			rawData["pkg_verified"] = ok
+			if pkg != "" {
+				rawData["pkg_name"] = pkg
+			}
+		}
 	}
 	rawJSON, _ := json.Marshal(rawData)
 

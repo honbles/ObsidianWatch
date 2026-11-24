@@ -30,14 +30,14 @@ func init() {
 	adm.EventID = fxU32p(4728)
 	sigFixtures = append(sigFixtures, []sigFixture{
 		{"DC-T1003.006", fxDCSync("attacker"), fxDCSync("DC02$")},
-		{"DC-T1558.003", fxKerb(4769, "svc-sql", 1), fxKerb(4769, "DC01$", 1)},
-		{"DC-T1558.004", fxKerb(4768, "alice", 3), fxKerb(4768, "alice", 1)},
+		{"DC-T1558.003", fxRoastBurst(), fxKerbRC4("svc-1", "alice")},
+		{"DC-T1558.003b", fxKerbRC4("svc-sql", "alice"), fxKerb(4769, "svc-sql", 1)},
+		{"DC-T1558.004", fxKerbRaw(4768, "alice", `{"event_data":{"PreAuthType":"0"}}`), fxKerbRaw(4768, "alice", `{"event_data":{"PreAuthType":"2"}}`)},
 		{"DC-T1558.001", fxKerb(4769, "krbtgt", 1), fxKerb(4768, "krbtgt", 1)},
 		{"DC-T1484.001", fxAD(4739, ""), fxAD(5136, "")},
 		{"DC-T1078.002", fxAD(5136, "CN=AdminSDHolder,CN=System"), fxAD(5136, "CN=Users,DC=corp")},
 		{"DC-T1484.001b", fxAD(5136, "CN=Policies,CN=GroupPolicyContainer"), fxAD(5136, "CN=Users,DC=corp")},
 		{"DC-T1136.002", store.Event{EventType: "ad_change", EventID: fxU32p(4728), ProcessName: fxStrp("Domain Admins")}, store.Event{EventType: "ad_change", EventID: fxU32p(4728), ProcessName: fxStrp("Print Operators")}},
-		{"DC-T1110.003", fxKerb(4771, "alice", 1), fxKerb(4768, "alice", 1)},
 		{"DNS-CAT-001", fxDNSEvent("c2.bad.test"), fxDNSEvent("good.example.test")},
 		{"DNS-CAT-002", fxDNSEvent("phish.bad.test"), fxDNSEvent("good.example.test")},
 		{"DNS-CAT-003", fxDNSEvent("mal.bad.test"), fxDNSEvent("good.example.test")},

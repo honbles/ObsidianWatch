@@ -112,6 +112,18 @@ func New(opt Options) (*Service, error) {
 		}
 		return "off"
 	}
+	opt.Agg.ErrMsgFn = func(svc, env string) string {
+		if rs, ok := live.get(svc, env); ok && !rs.PolicyOnly {
+			return rs.ErrorMessageMode
+		}
+		return "off"
+	}
+	opt.Agg.SamplingFn = func(svc, env string) SamplePolicy {
+		if rs, ok := live.get(svc, env); ok && !rs.PolicyOnly && rs.Sampling != nil {
+			return *rs.Sampling
+		}
+		return SamplePolicy{}
+	}
 	agg := NewAggregator(opt.Agg, nil)
 	snd, err := NewSender(opt.Sender, agg.Requeue, opt.Logger)
 	if err != nil {

@@ -50,18 +50,19 @@ type AppInstance struct {
 
 // AppRouteStat is one per-minute aggregate for a route template.
 type AppRouteStat struct {
-	Service     string    `json:"service"`
-	Environment string    `json:"environment"`
-	Route       string    `json:"route"`
-	Method      string    `json:"method"`
-	Minute      time.Time `json:"minute"`
-	Calls       int64     `json:"calls"`
-	Errors      int64     `json:"errors"`
-	Status2xx   int64     `json:"status_2xx"`
-	Status40103 int64     `json:"status_401_403"`
-	Status429   int64     `json:"status_429"`
-	Status5xx   int64     `json:"status_5xx"`
-	DurBuckets  []int64   `json:"duration_buckets"`
+	Service     string      `json:"service"`
+	Environment string      `json:"environment"`
+	Route       string      `json:"route"`
+	Method      string      `json:"method"`
+	Minute      time.Time   `json:"minute"`
+	Calls       int64       `json:"calls"`
+	Errors      int64       `json:"errors"`
+	Status2xx   int64       `json:"status_2xx"`
+	Status40103 int64       `json:"status_401_403"`
+	Status429   int64       `json:"status_429"`
+	Status5xx   int64       `json:"status_5xx"`
+	DurBuckets  []int64     `json:"duration_buckets"`
+	Sketch      *SketchWire `json:"sketch"`
 }
 
 // AppEdge is an outbound dependency observed from a service.
@@ -120,21 +121,82 @@ type AppServiceNote struct {
 
 // AppBatch is the body of POST /api/v1/app/batch.
 type AppBatch struct {
-	AgentID   string           `json:"agent_id"`
-	SentAt    time.Time        `json:"sent_at"`
-	Instances []AppInstance    `json:"instances"`
-	Routes    []AppRouteStat   `json:"routes"`
-	Edges     []AppEdge        `json:"edges"`
-	Traces    []AppTrace       `json:"traces"`
-	Clients   []AppClientStat  `json:"clients"`
-	Params    []AppRouteParam  `json:"params"`
-	Payloads  []AppPayload     `json:"payloads"`
-	Children  []AppChild       `json:"children"`
-	Queries   []AppQuery       `json:"queries"`
-	NPlusOne  []AppNPlusOne    `json:"n_plus_one"`
-	Notes     []AppServiceNote `json:"notes"`
+	AgentID    string           `json:"agent_id"`
+	SentAt     time.Time        `json:"sent_at"`
+	Instances  []AppInstance    `json:"instances"`
+	Routes     []AppRouteStat   `json:"routes"`
+	Edges      []AppEdge        `json:"edges"`
+	Traces     []AppTrace       `json:"traces"`
+	Clients    []AppClientStat  `json:"clients"`
+	Params     []AppRouteParam  `json:"params"`
+	Payloads   []AppPayload     `json:"payloads"`
+	Children   []AppChild       `json:"children"`
+	Queries    []AppQuery       `json:"queries"`
+	NPlusOne   []AppNPlusOne    `json:"n_plus_one"`
+	Errors     []AppError       `json:"errors"`
+	Metrics    []AppMetric      `json:"metrics"`
+	Sampling   []AppSampling    `json:"sampling"`
+	Operations []AppOperation   `json:"operations"`
+	Notes      []AppServiceNote `json:"notes"`
 	// SchemaVersion is 2 when the agent sends children, queries and n_plus_one; an older agent omits it.
 	SchemaVersion int `json:"schema_version"`
+}
+
+// AppOperation is one job or message consumer's runs in one minute.
+type AppOperation struct {
+	Service     string      `json:"service"`
+	Environment string      `json:"environment"`
+	Kind        string      `json:"kind"`
+	Name        string      `json:"name"`
+	Minute      time.Time   `json:"minute"`
+	Runs        int64       `json:"runs"`
+	Failures    int64       `json:"failures"`
+	DurBuckets  []int64     `json:"duration_buckets"`
+	Sketch      *SketchWire `json:"sketch"`
+	LastRun     time.Time   `json:"last_run"`
+}
+
+// AppSampling counts the traces of one kind a service completed (seen) and kept since the agent's last flush.
+type AppSampling struct {
+	Service     string `json:"service"`
+	Environment string `json:"environment"`
+	Reason      string `json:"reason"`
+	Seen        int64  `json:"seen"`
+	Kept        int64  `json:"kept"`
+}
+
+// AppMetric is one runtime or pool series for one instance and minute.
+type AppMetric struct {
+	Service     string    `json:"service"`
+	Environment string    `json:"environment"`
+	Instance    string    `json:"instance"`
+	Name        string    `json:"name"`
+	Attr        string    `json:"attr"`
+	Unit        string    `json:"unit"`
+	Identity    string    `json:"identity"`
+	Minute      time.Time `json:"minute"`
+	Last        float64   `json:"last"`
+	Min         float64   `json:"min"`
+	Max         float64   `json:"max"`
+	Sum         float64   `json:"sum"`
+	Count       int64     `json:"count"`
+}
+
+// AppError is one error group's occurrences since the agent's last flush, with one scrubbed sample.
+type AppError struct {
+	Service     string    `json:"service"`
+	Environment string    `json:"environment"`
+	Route       string    `json:"route"`
+	Method      string    `json:"method"`
+	Fingerprint string    `json:"fingerprint"`
+	Type        string    `json:"type"`
+	Frame       string    `json:"frame"`
+	Frames      []string  `json:"frames"`
+	Message     string    `json:"message"`
+	Version     string    `json:"version"`
+	TraceID     string    `json:"trace_id"`
+	Count       int64     `json:"count"`
+	Time        time.Time `json:"time"`
 }
 
 // AppChild is one slow-downstream aggregate for a route in a minute.
@@ -224,8 +286,8 @@ type AppChange struct {
 
 // AppIngestResult summarises what a batch wrote.
 type AppIngestResult struct {
-	Instances, Routes, Edges, Traces, Clients, Params, Payloads, PayloadsRejected, Children, Queries int
-	Changes                                                                       []AppChange
+	Instances, Routes, Edges, Traces, Clients, Params, Payloads, PayloadsRejected, Children, Queries, Errors, Metrics, Operations int
+	Changes                                                                                                                       []AppChange
 }
 
 // AppAgentInfo returns the registered agent's hostname and OS. ok is false when
@@ -400,9 +462,25 @@ func (db *DB) AppIngestBatch(ctx context.Context, agentID, host string, b AppBat
 			return res, fmt.Errorf("route: %w", err)
 		}
 		hist, _ := json.Marshal(r.DurBuckets)
+		var skJSON any // nil keeps whatever sketch the row already has
+		var skCalls int64
+		if sk := SketchFromWire(r.Sketch); sk != nil && sk.Count() > 0 {
+			var cur []byte
+			_ = tx.QueryRowContext(ctx, `SELECT sketch FROM app_route_stats WHERE minute=$1 AND service_id=$2 AND route=$3 AND method=$4 FOR UPDATE`,
+				r.Minute, sid, r.Route, r.Method).Scan(&cur)
+			if len(cur) > 0 {
+				var w SketchWire
+				if json.Unmarshal(cur, &w) == nil {
+					sk.Merge(SketchFromWire(&w))
+				}
+			}
+			skCalls = SketchFromWire(r.Sketch).Count()
+			b, _ := json.Marshal(sk.Wire())
+			skJSON = string(b)
+		}
 		if _, err := tx.ExecContext(ctx, `
-			INSERT INTO app_route_stats (minute, service_id, route, method, calls, errors, status_2xx, status_401_403, status_429, status_5xx, duration_buckets)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb)
+			INSERT INTO app_route_stats (minute, service_id, route, method, calls, errors, status_2xx, status_401_403, status_429, status_5xx, duration_buckets, sketch, sketch_calls)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb,$12::jsonb,$13)
 			ON CONFLICT (minute, service_id, route, method) DO UPDATE SET
 			  calls          = app_route_stats.calls          + EXCLUDED.calls,
 			  errors         = app_route_stats.errors         + EXCLUDED.errors,
@@ -412,8 +490,10 @@ func (db *DB) AppIngestBatch(ctx context.Context, agentID, host string, b AppBat
 			  status_5xx     = app_route_stats.status_5xx     + EXCLUDED.status_5xx,
 			  duration_buckets = (SELECT COALESCE(jsonb_agg(
 			      COALESCE((app_route_stats.duration_buckets->>g.i)::bigint,0) + COALESCE((EXCLUDED.duration_buckets->>g.i)::bigint,0)
-			      ORDER BY g.i), '[]'::jsonb) FROM generate_series(0, 11) AS g(i))`,
-			r.Minute, sid, r.Route, r.Method, r.Calls, r.Errors, r.Status2xx, r.Status40103, r.Status429, r.Status5xx, string(hist)); err != nil {
+			      ORDER BY g.i), '[]'::jsonb) FROM generate_series(0, 11) AS g(i)),
+			  sketch       = COALESCE(EXCLUDED.sketch, app_route_stats.sketch),
+			  sketch_calls = app_route_stats.sketch_calls + EXCLUDED.sketch_calls`,
+			r.Minute, sid, r.Route, r.Method, r.Calls, r.Errors, r.Status2xx, r.Status40103, r.Status429, r.Status5xx, string(hist), skJSON, skCalls); err != nil {
 			return res, fmt.Errorf("route stats: %w", err)
 		}
 		res.Routes++
@@ -565,6 +645,82 @@ func (db *DB) AppIngestBatch(ctx context.Context, agentID, host string, b AppBat
 		}
 	}
 
+	for _, e := range b.Errors {
+		sid, _, err := svc(e.Service, e.Environment, "otel", "")
+		if err != nil {
+			return res, fmt.Errorf("service: %w", err)
+		}
+		if err := appUpsertErrorGroup(ctx, tx, sid, e, now); err != nil {
+			return res, fmt.Errorf("error group: %w", err)
+		}
+		res.Errors++
+	}
+	for _, o := range b.Operations {
+		sid, _, err := svc(o.Service, o.Environment, "otel", "")
+		if err != nil {
+			return res, fmt.Errorf("service: %w", err)
+		}
+		hist, _ := json.Marshal(o.DurBuckets)
+		var skJSON any
+		var skCalls int64
+		if sk := SketchFromWire(o.Sketch); sk != nil && sk.Count() > 0 {
+			var cur []byte
+			_ = tx.QueryRowContext(ctx, `SELECT sketch FROM app_operations WHERE minute=$1 AND service_id=$2 AND kind=$3 AND name=$4 FOR UPDATE`,
+				o.Minute, sid, o.Kind, o.Name).Scan(&cur)
+			if len(cur) > 0 {
+				var w SketchWire
+				if json.Unmarshal(cur, &w) == nil {
+					sk.Merge(SketchFromWire(&w))
+				}
+			}
+			skCalls = SketchFromWire(o.Sketch).Count()
+			b, _ := json.Marshal(sk.Wire())
+			skJSON = string(b)
+		}
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO app_operations (minute, service_id, kind, name, runs, failures, duration_buckets, sketch, sketch_calls, last_run)
+			VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8::jsonb,$9,$10)
+			ON CONFLICT (service_id, kind, name, minute) DO UPDATE SET
+			  runs = app_operations.runs + EXCLUDED.runs, failures = app_operations.failures + EXCLUDED.failures,
+			  duration_buckets = (SELECT COALESCE(jsonb_agg(
+			      COALESCE((app_operations.duration_buckets->>g.i)::bigint,0) + COALESCE((EXCLUDED.duration_buckets->>g.i)::bigint,0)
+			      ORDER BY g.i), '[]'::jsonb) FROM generate_series(0, 11) AS g(i)),
+			  sketch = COALESCE(EXCLUDED.sketch, app_operations.sketch),
+			  sketch_calls = app_operations.sketch_calls + EXCLUDED.sketch_calls,
+			  last_run = GREATEST(app_operations.last_run, EXCLUDED.last_run)`,
+			o.Minute, sid, o.Kind, o.Name, o.Runs, o.Failures, string(hist), skJSON, skCalls, o.LastRun); err != nil {
+			return res, fmt.Errorf("operations: %w", err)
+		}
+		res.Operations++
+	}
+	for _, sm := range b.Sampling {
+		sid, _, err := svc(sm.Service, sm.Environment, "otel", "")
+		if err != nil {
+			return res, fmt.Errorf("service: %w", err)
+		}
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO app_sampling_stats (hour, service_id, reason, seen, kept) VALUES ($1,$2,$3,$4,$5)
+			ON CONFLICT (service_id, reason, hour) DO UPDATE SET seen = app_sampling_stats.seen + EXCLUDED.seen, kept = app_sampling_stats.kept + EXCLUDED.kept`,
+			now.Truncate(time.Hour), sid, sm.Reason, sm.Seen, sm.Kept); err != nil {
+			return res, fmt.Errorf("sampling: %w", err)
+		}
+	}
+	for _, m := range b.Metrics {
+		sid, _, err := svc(m.Service, m.Environment, "otel", "")
+		if err != nil {
+			return res, fmt.Errorf("service: %w", err)
+		}
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO app_metrics (minute, service_id, instance, name, attr, unit, identity, last, min, max, sum, count)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+			ON CONFLICT (service_id, instance, name, attr, minute) DO UPDATE SET
+			  last = EXCLUDED.last, min = LEAST(app_metrics.min, EXCLUDED.min), max = GREATEST(app_metrics.max, EXCLUDED.max),
+			  sum = app_metrics.sum + EXCLUDED.sum, count = app_metrics.count + EXCLUDED.count`,
+			m.Minute, sid, m.Instance, m.Name, m.Attr, m.Unit, m.Identity, m.Last, m.Min, m.Max, m.Sum, m.Count); err != nil {
+			return res, fmt.Errorf("metrics: %w", err)
+		}
+		res.Metrics++
+	}
 	if len(b.Payloads) > 0 {
 		var havePolicy bool
 		_ = tx.QueryRowContext(ctx, `SELECT to_regclass('app_route_payload_policy') IS NOT NULL`).Scan(&havePolicy)
@@ -644,16 +800,26 @@ func (db *DB) AppIngestBatch(ctx context.Context, agentID, host string, b AppBat
 // opt-in, latency target). The agent polls these so changes made in the UI take effect without
 // rebuilding it.
 type AppRemoteService struct {
-	Service         string `json:"service"`
-	Environment     string `json:"environment"`
-	StoreClientIP   string `json:"store_client_ip"`
-	CleartextUsers  bool   `json:"cleartext_users"`
-	LatencyTargetMs int    `json:"latency_target_ms"`
-	DBStatementMode string `json:"db_statement_mode,omitempty"` // off | fingerprint
+	Service          string `json:"service"`
+	Environment      string `json:"environment"`
+	StoreClientIP    string `json:"store_client_ip"`
+	CleartextUsers   bool   `json:"cleartext_users"`
+	LatencyTargetMs  int    `json:"latency_target_ms"`
+	DBStatementMode  string `json:"db_statement_mode,omitempty"`  // off | fingerprint
+	ErrorMessageMode string `json:"error_message_mode,omitempty"` // off | masked
+	// Sampling is the trace sampling policy; nil means the agent's defaults.
+	Sampling *AppSamplingPolicy `json:"sampling,omitempty"`
 	// PolicyOnly marks an entry that exists only to carry payload routes: the service has no saved settings,
 	// so the agent must not treat the privacy fields above as an override.
 	PolicyOnly bool                    `json:"policy_only,omitempty"`
 	Payload    []AppRemotePayloadRoute `json:"payload_routes,omitempty"`
+}
+
+// AppSamplingPolicy mirrors the agent's SamplePolicy.
+type AppSamplingPolicy struct {
+	BaselinePct    *float64 `json:"baseline_pct,omitempty"`
+	ErrorMaxPerMin int      `json:"error_max_per_min,omitempty"`
+	MaxPerFlush    int      `json:"max_per_flush,omitempty"`
 }
 
 // AppRemotePayloadRoute is a route an admin has reviewed and the parameter names left unmasked.
@@ -689,9 +855,20 @@ func (db *DB) AppRemoteConfig(ctx context.Context) ([]AppRemoteService, error) {
 		SELECT s.name, s.environment, st.store_client_ip, st.cleartext_users, COALESCE(st.latency_target_ms, 0), %s
 		FROM service_settings st JOIN services s ON s.id = st.service_id
 		ORDER BY s.name, s.environment LIMIT 5000`
-	rows, err := db.QueryContext(ctx, fmt.Sprintf(q, "COALESCE(st.db_statement_mode, 'off')"))
-	if pe, ok := err.(*pq.Error); ok && pe.Code == "42703" { // management migration 064 not applied yet
-		rows, err = db.QueryContext(ctx, fmt.Sprintf(q, "'off'"))
+	// Newest column set first; an older management schema falls back to fewer columns.
+	variants := []string{
+		"COALESCE(st.db_statement_mode, 'off'), COALESCE(st.error_message_mode, 'off'), COALESCE(st.sampling, '{}'::jsonb)",
+		"COALESCE(st.db_statement_mode, 'off'), COALESCE(st.error_message_mode, 'off'), '{}'::jsonb",
+		"'off', 'off', '{}'::jsonb",
+	}
+	var rows *sql.Rows
+	var err error
+	for _, v := range variants {
+		rows, err = db.QueryContext(ctx, fmt.Sprintf(q, v))
+		if pe, ok := err.(*pq.Error); ok && pe.Code == "42703" { // management migration 066, 067 or 068 not applied yet
+			continue
+		}
+		break
 	}
 	if err != nil {
 		if pe, ok := err.(*pq.Error); ok && pe.Code == "42P01" { // undefined_table
@@ -703,8 +880,13 @@ func (db *DB) AppRemoteConfig(ctx context.Context) ([]AppRemoteService, error) {
 	out := []AppRemoteService{}
 	for rows.Next() {
 		var r AppRemoteService
-		if err := rows.Scan(&r.Service, &r.Environment, &r.StoreClientIP, &r.CleartextUsers, &r.LatencyTargetMs, &r.DBStatementMode); err != nil {
+		var samp []byte
+		if err := rows.Scan(&r.Service, &r.Environment, &r.StoreClientIP, &r.CleartextUsers, &r.LatencyTargetMs, &r.DBStatementMode, &r.ErrorMessageMode, &samp); err != nil {
 			return nil, err
+		}
+		var sp AppSamplingPolicy
+		if json.Unmarshal(samp, &sp) == nil && (sp.BaselinePct != nil || sp.ErrorMaxPerMin != 0 || sp.MaxPerFlush != 0) {
+			r.Sampling = &sp
 		}
 		out = append(out, r)
 	}
@@ -886,5 +1068,69 @@ func appRouteOtherStyle(route string) string {
 func appPadHist(h []int64) []int64 {
 	out := make([]int64, 12)
 	copy(out, h)
+	return out
+}
+
+// appUpsertErrorGroup counts occurrences into a group. A resolved group that fails again under a different
+// version than the one it was resolved in is reopened and marked regressed; an ignored group stays ignored.
+func appUpsertErrorGroup(ctx context.Context, tx *sql.Tx, sid int64, e AppError, now time.Time) error {
+	seen := e.Time.UTC()
+	if seen.IsZero() || seen.After(now) {
+		seen = now
+	}
+	frames, _ := json.Marshal(e.Frames)
+	var id int64
+	var status, resolvedVer string
+	var traces []byte
+	err := tx.QueryRowContext(ctx, `SELECT id, status, resolved_version, sample_traces FROM error_groups WHERE service_id=$1 AND fingerprint=$2 FOR UPDATE`,
+		sid, e.Fingerprint).Scan(&id, &status, &resolvedVer, &traces)
+	if err == sql.ErrNoRows {
+		tj, _ := json.Marshal(appTraceList(nil, e.TraceID))
+		if err := tx.QueryRowContext(ctx, `
+			INSERT INTO error_groups (service_id, fingerprint, type, route, method, frame, frames, message, first_seen, last_seen, count,
+			                          first_version, last_version, sample_traces)
+			VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8,$9,$9,$10,$11,$11,$12::jsonb) RETURNING id`,
+			sid, e.Fingerprint, e.Type, e.Route, e.Method, e.Frame, string(frames), e.Message, seen, e.Count, e.Version, string(tj)).Scan(&id); err != nil {
+			return err
+		}
+		_, err = tx.ExecContext(ctx, `INSERT INTO error_group_hours (group_id, hour, count) VALUES ($1,$2,$3)`, id, seen.Truncate(time.Hour), e.Count)
+		return err
+	}
+	if err != nil {
+		return err
+	}
+	regress := status == "resolved" && e.Version != "" && e.Version != resolvedVer
+	var prev []string
+	_ = json.Unmarshal(traces, &prev)
+	tj, _ := json.Marshal(appTraceList(prev, e.TraceID))
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE error_groups SET count = count + $2, last_seen = GREATEST(last_seen, $3),
+		  last_version = CASE WHEN $4 <> '' THEN $4 ELSE last_version END,
+		  frame = CASE WHEN frame = '' THEN $5 ELSE frame END,
+		  frames = CASE WHEN frames = '[]'::jsonb THEN $6::jsonb ELSE frames END,
+		  message = CASE WHEN message = '' THEN $7 ELSE message END,
+		  sample_traces = $8::jsonb,
+		  status = CASE WHEN $9 THEN 'open' ELSE status END,
+		  regressed = regressed OR $9,
+		  regressed_at = CASE WHEN $9 THEN $10 ELSE regressed_at END
+		WHERE id = $1`, id, e.Count, seen, e.Version, e.Frame, string(frames), e.Message, string(tj), regress, now); err != nil {
+		return err
+	}
+	_, err = tx.ExecContext(ctx, `INSERT INTO error_group_hours (group_id, hour, count) VALUES ($1,$2,$3)
+		ON CONFLICT (group_id, hour) DO UPDATE SET count = error_group_hours.count + EXCLUDED.count`, id, seen.Truncate(time.Hour), e.Count)
+	return err
+}
+
+// appTraceList keeps the five most recent distinct sample trace ids.
+func appTraceList(prev []string, add string) []string {
+	out := []string{}
+	if add != "" {
+		out = append(out, add)
+	}
+	for _, t := range prev {
+		if t != add && len(out) < 5 {
+			out = append(out, t)
+		}
+	}
 	return out
 }

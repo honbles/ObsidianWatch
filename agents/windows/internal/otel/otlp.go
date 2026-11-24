@@ -209,9 +209,8 @@ func pbSpan(b []byte, res Resource) (Span, error) {
 			if err != nil {
 				return s, err
 			}
-			if t := pbExceptionType(eb); t != "" && s.ExcType == "" {
-				s.ExcType = t
-			}
+			t, m, st := pbException(eb)
+			s.setExc(t, m, st)
 		case f == 15 && w == wireBytes: // status
 			sb, err := r.bytes()
 			if err != nil {
@@ -244,40 +243,48 @@ func pbSpan(b []byte, res Resource) (Span, error) {
 	return s, nil
 }
 
-// pbExceptionType returns exception.type when the span event is named "exception".
-func pbExceptionType(b []byte) string {
+// pbException returns exception.type, exception.message and exception.stacktrace when the span event is named
+// "exception".
+func pbException(b []byte) (typ, msg, stack string) {
 	r := &pbReader{b: b}
-	name, typ := "", ""
+	name := ""
 	for !r.done() {
 		f, w, err := r.next()
 		if err != nil {
-			return ""
+			return "", "", ""
 		}
 		switch {
 		case f == 2 && w == wireBytes:
 			x, err := r.bytes()
 			if err != nil {
-				return ""
+				return "", "", ""
 			}
 			name = string(x)
 		case f == 3 && w == wireBytes:
 			kb, err := r.bytes()
 			if err != nil {
-				return ""
+				return "", "", ""
 			}
-			if k, v, err := pbKeyValue(kb); err == nil && k == "exception.type" {
-				typ = v.str()
+			if k, v, err := pbKeyValue(kb); err == nil {
+				switch k {
+				case "exception.type":
+					typ = v.str()
+				case "exception.message":
+					msg = v.str()
+				case "exception.stacktrace":
+					stack = v.str()
+				}
 			}
 		default:
 			if r.skip(w) != nil {
-				return ""
+				return "", "", ""
 			}
 		}
 	}
 	if name == "exception" {
-		return typ
+		return typ, msg, stack
 	}
-	return ""
+	return "", "", ""
 }
 
 // DecodeTracesPB decodes an ExportTraceServiceRequest.
@@ -614,11 +621,18 @@ func DecodeTracesJSON(b []byte) ([]Span, error) {
 					if ev.Name != "exception" {
 						continue
 					}
+					var t, m, st string
 					for _, kv := range ev.Attributes {
-						if kv.Key == "exception.type" && s.ExcType == "" {
-							s.ExcType = kv.Value.value().str()
+						switch kv.Key {
+						case "exception.type":
+							t = kv.Value.value().str()
+						case "exception.message":
+							m = kv.Value.value().str()
+						case "exception.stacktrace":
+							st = kv.Value.value().str()
 						}
 					}
+					s.setExc(t, m, st)
 				}
 				out = append(out, s)
 			}

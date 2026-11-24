@@ -119,7 +119,7 @@ func TestAppScanRunsEveryDataDrivenRule(t *testing.T) {
 
 func TestAppRuleMetaContract(t *testing.T) {
 	ids := []string{"APP-H01", "APP-H02", "APP-H03", "APP-H04", "APP-H05", "APP-H06", "APP-H07", "APP-H08", "APP-H11",
-		"APP-A01", "APP-A08", "APP-A09", "APP-A13", "APP-X02", "APP-X06", "APM-O01", "APM-O03", "APM-O05"}
+		"APP-A01", "APP-A08", "APP-A09", "APP-A13", "APP-X02", "APP-X06", "APM-O01", "APM-O03", "APM-O05", "APM-O06", "APM-O07", "APM-O08", "APM-O09", "APM-O10", "APM-O11", "APM-O12", "APM-O13", "APM-O14"}
 	for _, id := range ids {
 		m, ok := RuleMetaFor(id)
 		if !ok {
@@ -173,7 +173,7 @@ func TestAppRuleFixtureCoverage(t *testing.T) {
 	appFixtureSeen.Lock()
 	defer appFixtureSeen.Unlock()
 	for _, id := range []string{"APP-H01", "APP-H02", "APP-H03", "APP-H04", "APP-H05", "APP-H06", "APP-H07", "APP-H08", "APP-H11",
-		"APP-A01", "APP-A08", "APP-A09", "APP-A13", "APP-X02", "APP-X06", "APM-O01", "APM-O03", "APM-O05"} {
+		"APP-A01", "APP-A08", "APP-A09", "APP-A13", "APP-X02", "APP-X06", "APM-O01", "APM-O03", "APM-O05", "APM-O06", "APM-O07", "APM-O08", "APM-O09", "APM-O10", "APM-O11", "APM-O12", "APM-O13", "APM-O14"} {
 		if !appFixtureSeen.pos[id] {
 			t.Errorf("%s: no positive fixture ran", id)
 		}
@@ -199,8 +199,8 @@ func TestAppRulesStatusEndpoint(t *testing.T) {
 		t.Fatal(rec.Code)
 	}
 	_ = json.Unmarshal(rec.Body.Bytes(), &out)
-	if len(out.Rules) != 18 {
-		t.Fatalf("all 18 v1 rules must be listed even before they run: %d", len(out.Rules))
+	if len(out.Rules) != 27 {
+		t.Fatalf("all 27 rules must be listed even before they run: %d", len(out.Rules))
 	}
 	for _, r := range out.Rules {
 		if !r.Observe {

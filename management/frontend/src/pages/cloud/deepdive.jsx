@@ -88,7 +88,7 @@ export function PanelDeepDive({ cspm, conn }) {
               {count > 0 && (
                 <span style={{ marginLeft:'auto', fontSize:10, background: count>0 ? 'rgba(248,113,113,0.15)' : 'var(--surface2)',
                   color: count>0 ? '#f87171' : 'var(--text3)', border:`1px solid ${count>0 ? 'rgba(248,113,113,0.3)' : 'var(--border)'}`,
-                  borderRadius:10, padding:'0 5px', fontFamily:'DM Mono,monospace' }}>{count}</span>
+                  borderRadius:10, padding:'0 5px', fontFamily:'var(--font-data)' }}>{count}</span>
               )}
             </div>
             <span style={{ fontSize:10, color:'var(--text3)', lineHeight:1.4 }}>{desc}</span>
