@@ -40,6 +40,21 @@ func handleIngest(db ingestStore, maxBatch int, logger *slog.Logger) http.Handle
 			http.Error(w, `{"error":"missing agent_id"}`, http.StatusBadRequest)
 			return
 		}
+		// A2: a certificate-authenticated agent may only send its own events.
+		if boundAgentMismatch(r, batch.AgentID) {
+			metrics.invalid.Add(1)
+			logger.Warn("ingest: agent_id differs from certificate", "claimed", batch.AgentID)
+			http.Error(w, errAgentMismatch, http.StatusForbidden)
+			return
+		}
+		for i := range batch.Events {
+			if a := batch.Events[i].AgentID; a != "" && boundAgentMismatch(r, a) {
+				metrics.invalid.Add(1)
+				logger.Warn("ingest: event agent_id differs from certificate", "claimed", a)
+				http.Error(w, errAgentMismatch, http.StatusForbidden)
+				return
+			}
+		}
 		if len(batch.Events) == 0 {
 			writeJSON(w, http.StatusOK, map[string]any{"accepted": 0})
 			return

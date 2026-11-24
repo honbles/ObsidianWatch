@@ -682,6 +682,10 @@ func appHandleBatch(db appBatchStore, logger *slog.Logger) http.HandlerFunc {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "missing or invalid agent_id"})
 			return
 		}
+		if boundAgentMismatch(r, b.AgentID) {
+			writeJSON(w, http.StatusForbidden, map[string]string{"error": "agent_id does not match the client certificate"})
+			return
+		}
 		if len(b.Instances) > appMaxInstances || len(b.Routes) > appMaxRoutes || len(b.Edges) > appMaxEdges || len(b.Traces) > appMaxTraces || len(b.Clients) > appMaxClients || len(b.Params) > appMaxParams || len(b.Payloads) > appMaxPayloads || len(b.Children) > appMaxChildren || len(b.Queries) > appMaxQueries || len(b.NPlusOne) > appMaxNPlusOne || len(b.Errors) > appMaxErrors || len(b.Metrics) > appMaxMetrics || len(b.Sampling) > appMaxSampling || len(b.Operations) > appMaxOperations {
 			writeJSON(w, http.StatusRequestEntityTooLarge, map[string]string{"error": "batch too large"})
 			return

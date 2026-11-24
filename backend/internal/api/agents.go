@@ -80,6 +80,10 @@ func handleUpdateAgentLocation(db *store.DB, logger *slog.Logger) http.HandlerFu
 			http.Error(w, `{"error":"bad request"}`, 400)
 			return
 		}
+		if boundAgentMismatch(r, body.AgentID) {
+			http.Error(w, errAgentMismatch, http.StatusForbidden)
+			return
+		}
 		if body.Lat == 0 && body.Lng == 0 {
 			http.Error(w, `{"error":"invalid coordinates"}`, 400)
 			return

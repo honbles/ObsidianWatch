@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { DataTable } from '../../../components/shared'
 import { appApi } from '../../../api/app'
 import useAppLoad from '../../../components/app/useAppLoad'
@@ -9,6 +9,8 @@ const STATUS_TONE = { open: 'border-red-500/40 text-red-300', resolved: 'border-
 
 // Error groups: the same failure counted once, with its stack, the versions it appeared in and a status.
 export default function AppTabErrors({ service, range, focus }) {
+  const navigate = useNavigate()
+  const errPath = (id) => `/applications/services/${encodeURIComponent(`${service.name}|${service.environment}`)}/errors/${id}`
   const [status, setStatus] = useState('open')
   const [rev, setRev] = useState(0)
   const [openId, setOpenId] = useState(focus ? Number(focus) : null)
@@ -16,7 +18,7 @@ export default function AppTabErrors({ service, range, focus }) {
   const rows = data?.errors || []
   const cols = [
     { key: 'type', label: 'Error', render: g => (
-      <button className="text-left hover:underline" onClick={() => setOpenId(g.id)}>
+      <button className="text-left hover:underline" onClick={() => navigate(errPath(g.id))}>
         <span className="font-mono text-xs text-siem-text">{g.type || 'error'}</span>
         {g.regressed && <span className="ml-1 text-[10px] rounded border border-orange-500/40 text-orange-300 px-1" title="Resolved earlier and back in a newer version">regressed</span>}
         <span className="block text-[11px] text-siem-muted font-mono">{g.method} {g.route || '(no route)'} {g.frame ? `· ${g.frame}` : ''}</span>
@@ -39,6 +41,7 @@ export default function AppTabErrors({ service, range, focus }) {
       </div>
       <div className="card"><DataTable columns={cols} rows={rows} loading={loading} error={error} rowKey={g => g.id}
         initialSort={{ key: 'range', dir: 'desc' }}
+        onRowClick={g => navigate(errPath(g.id))}
         emptyText="No error groups in this range. They appear when the app records exceptions on its spans (most frameworks do for failed requests)." /></div>
       {openId && <AppErrorDetail id={openId} service={service} onClose={() => setOpenId(null)} onChanged={() => setRev(x => x + 1)} />}
       <div className="text-[11px] text-siem-muted">
@@ -49,7 +52,7 @@ export default function AppTabErrors({ service, range, focus }) {
   )
 }
 
-function AppErrorDetail({ id, service, onClose, onChanged }) {
+export function AppErrorDetail({ id, service, svcKey, onClose, onChanged, page }) {
   const [rev, setRev] = useState(0)
   const [assignee, setAssignee] = useState('')
   const [err, setErr] = useState('')
@@ -69,7 +72,7 @@ function AppErrorDetail({ id, service, onClose, onChanged }) {
           <div className="text-siem-muted font-mono">{g.method} {g.route || '(no route)'}</div>
           {g.message && <div className="text-siem-muted mt-1">{g.message}</div>}
         </div>
-        <button className="text-siem-muted hover:underline" onClick={onClose}>Close</button>
+        {!page && <button className="text-siem-muted hover:underline" onClick={onClose}>Close</button>}
       </div>
       <div className="flex flex-wrap gap-x-4 gap-y-1 text-siem-muted">
         <span>First seen <b className="text-siem-text">{appRel(g.first_seen)}</b> in {g.first_version || 'unknown version'}</span>
@@ -83,7 +86,7 @@ function AppErrorDetail({ id, service, onClose, onChanged }) {
           : <div className="text-siem-muted">No stack was reported for this error.</div>}
       </div>
       {(g.sample_traces || []).length > 0 && (
-        <div>Sample traces: {g.sample_traces.map(t => <Link key={t} className="mr-2 font-mono text-siem-accent hover:underline" to={`/applications/services/${service.id}?tab=traces&trace=${t}`}>{t.slice(0, 8)}</Link>)}
+        <div>Sample traces: {g.sample_traces.map(t => <Link key={t} className="mr-2 font-mono text-siem-accent hover:underline" to={`/applications/traces/${encodeURIComponent(t)}?svc=${encodeURIComponent(svcKey || `${service.name}|${service.environment}`)}`}>{t.slice(0, 8)}</Link>)}
           <span className="text-siem-muted">(traces are kept 7 days, so an old sample may be gone)</span></div>
       )}
       {admin ? (

@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -37,11 +38,12 @@ const (
 // ── Agent tunnel registry ─────────────────────────────────────────────────────
 
 type agentTunnel struct {
-	broker   *actionBroker
-	agentID  string
-	conn     *websocket.Conn
-	mu       sync.Mutex
-	sessions map[string]chan []byte
+	broker     *actionBroker
+	agentID    string
+	certSerial string // identity certificate serial; empty for fleet-key tunnels
+	conn       *websocket.Conn
+	mu         sync.Mutex
+	sessions   map[string]chan []byte
 }
 
 func (t *agentTunnel) sendJSON(v any) error {
@@ -62,6 +64,24 @@ func NewTunnelRegistry() *TunnelRegistry {
 }
 
 func brokerFor(t *agentTunnel) *actionBroker { return t.broker }
+
+// Claim registers t as agentID's tunnel unless another live tunnel holds it
+// (A3: one tunnel per agent; a second connection never replaces a live one).
+// The single exception is a reconnect with the same certificate, which
+// replaces the stale entry: it is the same identity. Returns the previous
+// tunnel when it was replaced, or the holder when the claim was refused.
+func (r *TunnelRegistry) Claim(agentID string, t *agentTunnel) (prev *agentTunnel, ok bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	old, exists := r.tunnels[agentID]
+	if exists && old != nil {
+		if t.certSerial == "" || old.certSerial != t.certSerial {
+			return old, false
+		}
+	}
+	r.tunnels[agentID] = t
+	return old, true
+}
 
 func (r *TunnelRegistry) Register(agentID string, t *agentTunnel) {
 	r.mu.Lock()
@@ -117,22 +137,27 @@ type wireMsg struct {
 // Agent connects here to establish its control tunnel.
 // URL: GET /api/v1/live-response/agent-tunnel?agent_id=HOSTNAME
 
-func handleAgentTunnel(db *store.DB, registry *TunnelRegistry, logger *slog.Logger, agentAPIKey string) http.HandlerFunc {
+func handleAgentTunnel(db *store.DB, registry *TunnelRegistry, logger *slog.Logger, ta *tunnelAuth) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		agentID := r.URL.Query().Get("agent_id")
-		if agentID == "" {
-			http.Error(w, "agent_id required", 400)
+		caller, err := ta.authenticate(r)
+		if err != nil {
+			var ae *authError
+			if errors.As(err, &ae) {
+				http.Error(w, ae.msg, ae.code)
+			} else {
+				http.Error(w, "unauthorized", 401)
+			}
 			return
 		}
-		// M-02: without this check, any caller could open a tunnel claiming
-		// to be any agent_id, hijacking live-response sessions meant for a
-		// real endpoint.
-		if !validAgentAPIKey(agentAPIKey, r) {
-			http.Error(w, "invalid or missing X-API-Key", 401)
-			return
-		}
+		agentID := caller.agentID
 		if _, err := db.GetAgent(r.Context(), agentID); err != nil {
 			http.Error(w, "unknown agent_id", 401)
+			return
+		}
+		// A3: refuse before upgrading when another tunnel is live.
+		if old, ok := registry.Get(agentID); ok && old != nil && (caller.serial == "" || old.certSerial != caller.serial) {
+			refuseSecondTunnel(db, logger, caller, old.certSerial, clientIP(r))
+			http.Error(w, "another tunnel for this agent is live", http.StatusConflict)
 			return
 		}
 
@@ -143,20 +168,27 @@ func handleAgentTunnel(db *store.DB, registry *TunnelRegistry, logger *slog.Logg
 		}
 		conn.SetReadLimit(lrAgentMaxFrame) // bound a single inbound frame
 
-		// Close any stale tunnel already registered for this agent before
-		// replacing it, so a crashed/reconnecting agent doesn't leave a
-		// dead entry that silently blocks the new, real connection.
-		if old, ok := registry.Get(agentID); ok && old != nil {
-			old.conn.Close()
-		}
-
 		tunnel := &agentTunnel{
-			broker:   registry.broker,
-			agentID:  agentID,
-			conn:     conn,
-			sessions: make(map[string]chan []byte),
+			broker:     registry.broker,
+			agentID:    agentID,
+			certSerial: caller.serial,
+			conn:       conn,
+			sessions:   make(map[string]chan []byte),
 		}
-		registry.Register(agentID, tunnel)
+		// Atomic claim: two connections racing past the check above cannot
+		// both win. A same-certificate reconnect replaces its stale tunnel.
+		prev, claimed := registry.Claim(agentID, tunnel)
+		if !claimed {
+			refuseSecondTunnel(db, logger, caller, prev.certSerial, clientIP(r))
+			_ = conn.WriteControl(websocket.CloseMessage,
+				websocket.FormatCloseMessage(websocket.ClosePolicyViolation, "another tunnel for this agent is live"),
+				time.Now().Add(time.Second))
+			conn.Close()
+			return
+		}
+		if prev != nil {
+			prev.conn.Close()
+		}
 		go dispatchQueuedHunts(db, registry, agentID, logger)
 		logger.Info("lr: agent tunnel connected", "agent", agentID)
 
@@ -206,8 +238,8 @@ func handleAgentTunnel(db *store.DB, registry *TunnelRegistry, logger *slog.Logg
 			}
 			switch env.Type {
 			case "action_result":
-				if env.Token != "" {
-					registry.broker.deliver(env.Token, env.Payload)
+				if env.Token != "" && !registry.broker.deliverFrom(agentID, env.Token, env.Payload) {
+					logger.Warn("lr: dropped action result not addressed to this agent", "agent", agentID)
 				}
 			case "response_state":
 				go onResponseState(db, tunnel, agentID, env.Payload, firstState, logger)

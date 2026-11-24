@@ -74,7 +74,7 @@ func TestValidateAction(t *testing.T) {
 func TestActionBroker(t *testing.T) {
 	b := newActionBroker()
 	got := make(chan actionResult, 1)
-	b.expect("t1", time.Minute, func(r actionResult) { got <- r })
+	b.expect("ag", "t1", time.Minute, func(r actionResult) { got <- r })
 	b.deliver("t1", json.RawMessage(`{"ok":true,"message":"done","data":{"x":1}}`))
 	select {
 	case r := <-got:
@@ -91,7 +91,7 @@ func TestActionBroker(t *testing.T) {
 	case <-time.After(50 * time.Millisecond):
 	}
 	// timeout path
-	b.expect("t2", 30*time.Millisecond, func(r actionResult) { got <- r })
+	b.expect("ag", "t2", 30*time.Millisecond, func(r actionResult) { got <- r })
 	select {
 	case r := <-got:
 		if r.OK || !strings.HasPrefix(r.Message, "timeout") {
@@ -101,7 +101,7 @@ func TestActionBroker(t *testing.T) {
 		t.Fatal("no timeout")
 	}
 	// malformed agent payload must not panic
-	b.expect("t3", time.Minute, func(r actionResult) { got <- r })
+	b.expect("ag", "t3", time.Minute, func(r actionResult) { got <- r })
 	b.deliver("t3", json.RawMessage(`not json`))
 	if r := <-got; r.OK {
 		t.Fatal("malformed payload treated as success")
@@ -112,6 +112,59 @@ func TestAbsPath(t *testing.T) {
 	for p, want := range map[string]bool{"/etc/x": true, `C:\a\b`: true, `c:/a`: true, `\\srv\share\f`: true, "rel/x": false, "": false, "~/x": false} {
 		if absPath(p) != want {
 			t.Errorf("absPath(%q)=%v", p, !want)
+		}
+	}
+}
+
+func TestHuntWaitWindows(t *testing.T) {
+	cases := []struct {
+		offline, wait string
+		hours         int
+		mode          string
+		window        time.Duration
+		bad           bool
+	}{
+		{"", "", 0, "", 0, false},
+		{"skip", "7d", 0, "", 0, false},
+		{"wait", "1h", 0, "1h", time.Hour, false},
+		{"wait", "24h", 0, "24h", 24 * time.Hour, false},
+		{"wait", "7d", 0, "7d", 7 * 24 * time.Hour, false},
+		{"wait", "until_done", 0, "until_done", huntHardExpiry, false},
+		{"wait", "", 0, "24h", 24 * time.Hour, false},     // older clients
+		{"wait", "", 999, "168h", 168 * time.Hour, false}, // capped
+		{"wait", "forever", 0, "", 0, true},
+		{"later", "", 0, "", 0, true},
+	}
+	for _, c := range cases {
+		mode, win, err := huntWait(c.offline, c.wait, c.hours)
+		if (err != nil) != c.bad || mode != c.mode || win != c.window {
+			t.Errorf("huntWait(%q,%q,%d) = %q %s %v", c.offline, c.wait, c.hours, mode, win, err)
+		}
+	}
+	if huntHardExpiry > 31*24*time.Hour || huntHardExpiry <= 7*24*time.Hour {
+		t.Errorf("until_done hard expiry %s out of range", huntHardExpiry)
+	}
+}
+
+func TestQueuedHuntsAreReadOnlyQueries(t *testing.T) {
+	for kind := range liveHuntKinds {
+		action, params, ok := queuedHuntFrame(store.QueuedHunt{ID: "h", Kind: kind})
+		if !ok || action != "query" || !strings.Contains(string(params), `"kind":"`+kind+`"`) {
+			t.Errorf("%s: %q %s %v", kind, action, params, ok)
+		}
+	}
+	for _, kind := range []string{"isolate", "kill_process", "quarantine_file", "shell", ""} {
+		if _, _, ok := queuedHuntFrame(store.QueuedHunt{ID: "h", Kind: kind}); ok {
+			t.Errorf("%q must never be sent from the offline queue", kind)
+		}
+	}
+}
+
+func TestHuntResultStates(t *testing.T) {
+	for status, want := range map[string]string{"pending": "running", "ok": "answered", "failed": "answered", "timeout": "answered",
+		"queued": "queued", "expired": "expired", "skipped": "skipped", "offline": "skipped"} {
+		if got := store.HuntResultState(status); got != want {
+			t.Errorf("%s -> %s, want %s", status, got, want)
 		}
 	}
 }

@@ -25,6 +25,35 @@ func handleListUsers(db *store.DB) http.HandlerFunc {
 	}
 }
 
+// handleListAssignees returns the minimum needed to show and pick an assignee.
+func handleListAssignees(db *store.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		users, err := db.ListUsers(r.Context())
+		if err != nil {
+			writeJSON(w, 500, map[string]string{"error": "query failed"})
+			return
+		}
+		writeJSON(w, 200, map[string]interface{}{"users": assigneesOf(users)})
+	}
+}
+
+type assignee struct {
+	ID       int64  `json:"id"`
+	Username string `json:"username"`
+	Role     string `json:"role"`
+}
+
+func assigneesOf(users []store.User) []assignee {
+	out := make([]assignee, 0, len(users))
+	for _, u := range users {
+		if u.Role == "viewer" { // viewers cannot act on an alert
+			continue
+		}
+		out = append(out, assignee{ID: u.ID, Username: u.Username, Role: u.Role})
+	}
+	return out
+}
+
 func handleCreateUser(db *store.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		claims := auth.GetClaims(r)

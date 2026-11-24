@@ -1,9 +1,8 @@
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
-import { DataTable, StateBlock } from '../../../components/shared'
+import { Link, useNavigate } from 'react-router-dom'
+import { DataTable } from '../../../components/shared'
 import { appApi } from '../../../api/app'
 import useAppLoad from '../../../components/app/useAppLoad'
-import AppTraceWaterfall from '../../../components/app/AppTraceWaterfall'
 import { appMs, appTime, appReviewPath, appSplitRequest } from '../../../components/app/appFormat'
 
 const sel = 'bg-siem-surface2 border border-siem-border rounded-lg px-2.5 py-1.5 text-xs text-siem-text'
@@ -15,9 +14,9 @@ export default function AppTabTraces({ service, range, traceId, onSelect }) {
   const [slow, setSlow] = useState('')
   const list = useAppLoad(() => appApi.traces(range, { service_id: service.id, reason, status, min_duration_ms: slow || undefined, limit: 100 }),
     [service.id, range.from, range.to, reason, status, slow])
-  const one = useAppLoad(() => appApi.trace(traceId), [traceId], !!traceId)
-  const [pick, setPick] = useState(traceId || '')
-  useEffect(() => { setPick(traceId || '') }, [traceId])
+  const navigate = useNavigate()
+  // Old links (?tab=traces&trace=…) still work: they forward to the trace page.
+  useEffect(() => { if (traceId) navigate(`/applications/traces/${encodeURIComponent(traceId)}?svc=${encodeURIComponent(`${service.name}|${service.environment}`)}`, { replace: true }) }, [traceId]) // eslint-disable-line react-hooks/exhaustive-deps
   const cols = [
     { key: 'started', label: 'Started', render: t => appTime(t.started), sort: t => t.started, width: 170 },
     { key: 'root_route', label: 'Request', render: t => <span className="font-mono text-xs">{t.root_route || '-'}</span> },
@@ -40,13 +39,8 @@ export default function AppTabTraces({ service, range, traceId, onSelect }) {
         <input className={`${sel} w-40`} type="number" min="0" placeholder="min duration ms" value={slow} onChange={e => setSlow(e.target.value)} />
       </div>
       <div className="card"><DataTable columns={cols} rows={list.data?.traces} loading={list.loading} error={list.error} rowKey={t => t.trace_id}
-        onRowClick={t => { setPick(t.trace_id); onSelect && onSelect(t.trace_id) }}
+        onRowClick={t => navigate(`/applications/traces/${encodeURIComponent(t.trace_id)}?svc=${encodeURIComponent(`${service.name}|${service.environment}`)}`)}
         emptyText="No sampled traces in this range. Errors, slow requests and requests touched by a security event are always kept; others are sampled at 1%." /></div>
-      {pick && (
-        <StateBlock loading={one.loading && !one.data} error={one.error}>
-          {one.data && <AppTraceWaterfall trace={one.data} />}
-        </StateBlock>
-      )}
     </div>
   )
 }

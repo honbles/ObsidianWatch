@@ -17,6 +17,7 @@ import (
 	"github.com/gorilla/websocket"
 	_ "github.com/lib/pq"
 
+	"obsidianwatch/management/internal/agentid"
 	"obsidianwatch/management/internal/store"
 )
 
@@ -132,7 +133,7 @@ func TestResponseAndHuntEndToEnd(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	reg := NewTunnelRegistry()
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /tunnel", handleAgentTunnel(db, reg, logger, "k"))
+	mux.HandleFunc("GET /tunnel", handleAgentTunnel(db, reg, logger, &tunnelAuth{mode: tunnelAuthLegacy, apiKey: "k", ca: &agentCAPool{}, rev: agentid.NewRevocations(nil), now: time.Now}))
 	mux.HandleFunc("POST /agents/{id}/actions", handleAgentAction(db, reg, logger))
 	mux.HandleFunc("POST /hunt", handleStartFleetHunt(db, reg, logger))
 	mux.HandleFunc("GET /hunt/{id}", handleGetFleetHunt(db))

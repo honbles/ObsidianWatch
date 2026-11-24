@@ -1,0 +1,25 @@
+# Dependencies (restore with `npm ci` / `go mod download`; Dockerfiles do this)
+node_modules
+vendor/
+
+# Build output
+management/frontend/dist/
+*.timestamp-*.mjs
+*.test
+*.out
+coverage.*
+/backend/server
+/management/backend/server
+
+# Local secrets and generated key material
+.env
+!.env.example
+agent-ca/
+*.key
+
+# Editor / OS noise
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp

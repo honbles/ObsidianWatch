@@ -5,6 +5,7 @@ import { Settings as SettingsIcon, Mail, CheckCircle, AlertCircle, Send,
          Key, Shield, Database, Brain, Search, ExternalLink, RefreshCw } from 'lucide-react'
 import api from '../api/client'
 import { PageHeader, Tabs } from '../components/ui'
+import AgentEnrollment from './settings/AgentEnrollment'
 
 // ── Shared UI helpers ─────────────────────────────────────────────────────────
 const inputCls = "w-full bg-siem-bg border border-siem-border rounded-lg px-3 py-2 text-sm text-siem-text focus:outline-none focus:border-siem-accent"
@@ -599,6 +600,7 @@ const TABS = [
   { id: 'email',      label: 'Email Alerts',      icon: Mail   },
   { id: 'cloud',      label: 'Cloud Connectors',  icon: Cloud  },
   { id: 'detections', label: 'Detections',        icon: Zap    },
+  { id: 'enrollment', label: 'Agent enrollment',  icon: Shield },
 ]
 
 const COMPONENTS = {
@@ -606,6 +608,7 @@ const COMPONENTS = {
   email:        SMTPSettings,
   cloud:        CloudSettings,
   detections:   DetectionSettings,
+  enrollment:   AgentEnrollment,
 }
 
 export default function Settings() {

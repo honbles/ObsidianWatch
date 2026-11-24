@@ -156,7 +156,7 @@ func TestResponseAndHuntStorePG(t *testing.T) {
 	// offline queue: a2 is offline and the hunt waits for it
 	exp := time.Now().Add(time.Hour)
 	if err := db.CreateFleetHunt(ctx, FleetHunt{ID: "hunt2", Name: "q", Kind: "processes", Match: "evil", RequestedBy: "admin"},
-		[]Agent{{ID: "a1", Hostname: "LAP1", OS: "windows"}, {ID: "a2", Hostname: "SRV2", OS: "linux"}}, map[string]bool{"a2": true}, &exp); err != nil {
+		[]Agent{{ID: "a1", Hostname: "LAP1", OS: "windows"}, {ID: "a2", Hostname: "SRV2", OS: "linux"}}, map[string]string{"a2": "queued"}, &exp); err != nil {
 		t.Fatal(err)
 	}
 	db.CompleteHuntResult(ctx, "hunt2", "a1", "ok", "", nil, nil, 0, false)
@@ -186,7 +186,7 @@ func TestResponseAndHuntStorePG(t *testing.T) {
 	}
 	// expiry: a window that has already ended is not dispatched and ends the wait
 	past := time.Now().Add(-time.Minute)
-	db.CreateFleetHunt(ctx, FleetHunt{ID: "hunt3", Name: "e", Kind: "users", RequestedBy: "admin"}, []Agent{{ID: "a3", Hostname: "OLD", OS: "linux"}}, map[string]bool{"a3": true}, &past)
+	db.CreateFleetHunt(ctx, FleetHunt{ID: "hunt3", Name: "e", Kind: "users", RequestedBy: "admin"}, []Agent{{ID: "a3", Hostname: "OLD", OS: "linux"}}, map[string]string{"a3": "queued"}, &past)
 	if q, _ := db.ClaimQueuedHunts(ctx, "a3"); len(q) != 0 {
 		t.Fatalf("expired hunt must not be sent: %+v", q)
 	}

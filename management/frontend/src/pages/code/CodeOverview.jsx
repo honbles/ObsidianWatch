@@ -2,9 +2,17 @@
 // Each connector contributes its latest secret/code scan, its latest SAST scan and its last posture check.
 // They are joined on the short repository name, since posture reports "org/repo@branch" and scans "repo" or "org/repo".
 import { useEffect, useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import api from '../../api/client'
 import { PageHeader, Num, Tabs, StatePill, SevPill, Facets, countBy, useFacetFilter, DenseTable, parseFilter, relTime, downloadCSV } from '../../components/ui'
 import { Search, X, Download, RefreshCw } from 'lucide-react'
+
+// Findings have no server id, so the page URL carries a short stable key built from what identifies one.
+function hash32(str) { let h = 2166136261; for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619) } return (h >>> 0).toString(36) }
+export const findingId = (f) => `${f.connector}-${f.source}-${hash32([f.repo, f.where, f.title, f.type].join('|'))}`
+export const repoPath = (connector, repo) => `/devops/repos/${connector}/${encodeURIComponent(repo)}`
+export const findingPath = (f) => `/devops/findings/${findingId(f)}`
+export { SOURCE_LABEL, TYPE_LABEL, PROVIDER_LABEL, N_SEV }
 
 const SEV_N = { critical: 5, high: 4, medium: 3, low: 2, info: 1 }
 const N_SEV = { 5: 'critical', 4: 'high', 3: 'medium', 2: 'low', 1: 'info' }
@@ -117,7 +125,9 @@ function toggler(setSel) {
 }
 
 const R_GET = { severity: r => r.sevName, type: r => r.types.length ? r.types : '(none)', provider: r => r.provider, org: r => r.org }
-function RepositoriesTab({ repos, onOpen, multiOrg }) {
+function RepositoriesTab({ repos, multiOrg }) {
+  const navigate = useNavigate()
+  const onOpen = (r) => navigate(repoPath(r.connector, r.name))
   const [sel, setSel] = useState({})
   const [q, setQ] = useState('')
   const faceted = useFacetFilter(repos, R_GET, sel)
@@ -162,7 +172,7 @@ function FindingsTab({ findings, initialRepo }) {
   const [sel, setSel] = useState(() => initialRepo ? { repo: new Set([initialRepo]) } : {})
   useEffect(() => { if (initialRepo) setSel({ repo: new Set([initialRepo]) }) }, [initialRepo])
   const [q, setQ] = useState('')
-  const [open, setOpen] = useState(null)
+  const navigate = useNavigate()
   const faceted = useFacetFilter(findings, F_GET, sel)
   const rows = useMemo(() => {
     const { text } = parseFilter(q)
@@ -189,19 +199,9 @@ function FindingsTab({ findings, initialRepo }) {
         <div className="ow-card" style={{ overflow: 'hidden' }}>
           <FilterBar value={q} onChange={setQ} placeholder="Filter findings by title, repository or file" count={rows.length} total={findings.length}/>
           <DenseTable cols={cols} rows={rows.slice(0, 500)} rowKey={f => [f.connector, f.source, f.repo, f.where, f.title].join('|')} rowState={f => sevState(f.sev)}
-            onRow={f => setOpen(o => o === f ? null : f)} empty={findings.length ? 'No findings match these filters.' : 'No findings. Scans run from the Connectors tab.'}/>
+            onRow={f => navigate(findingPath(f))} empty={findings.length ? 'No findings match these filters.' : 'No findings. Scans run from the Connectors tab.'}/>
           {rows.length > 500 && <div className="ow-card-foot">Showing the first 500 of {rows.length.toLocaleString()}.</div>}
         </div>
-        {open && (
-          <div className="ow-card" style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 8 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}><SevPill sev={open.sev}/><span style={{ fontWeight: 600 }}>{open.title}</span>
-              <button className="ow-btn quiet" style={{ marginLeft: 'auto' }} onClick={() => setOpen(null)}>Close</button></div>
-            <div className="t2" style={{ fontSize: 12.5 }}><span className="mono t1">{open.org}/{open.repo}</span>{open.where && <> · <span className="mono">{open.where}</span></>} · {SOURCE_LABEL[open.source]} · {TYPE_LABEL[open.type] || open.type}</div>
-            {open.detail && <div style={{ whiteSpace: 'pre-wrap' }}>{open.detail}</div>}
-            {open.commit && <div className="t2" style={{ fontSize: 12.5 }}>Commit <span className="mono">{open.commit.slice(0, 12)}</span>{open.author && <> by {open.author}</>}</div>}
-            {open.fix && <div><div className="ow-lbl" style={{ marginBottom: 4 }}>Fix</div><div className="t2" style={{ whiteSpace: 'pre-wrap' }}>{open.fix}</div></div>}
-          </div>
-        )}
       </div>
     </div>
   )
@@ -251,7 +251,7 @@ export default function CodeOverview({ connectorsView }) {
       {tab === 'connectors' ? connectorsView : (
         <div className="ow-body">
           {d.loading ? <div className="t3" style={{ padding: 32, textAlign: 'center' }}>Loading…</div>
-            : tab === 'repos' ? <RepositoriesTab repos={repos} multiOrg={d.connectors.length > 1} onOpen={r => { setRepoFocus(r.name); setTab('findings') }}/>
+            : tab === 'repos' ? <RepositoriesTab repos={repos} multiOrg={d.connectors.length > 1}/>
               : <FindingsTab findings={d.findings} initialRepo={repoFocus}/>}
         </div>
       )}

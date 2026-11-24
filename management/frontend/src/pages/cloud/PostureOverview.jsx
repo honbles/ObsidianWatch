@@ -1,10 +1,14 @@
 // Cloud posture across every connected account: one findings list with facets, one accounts table,
 // and the per-account workspace (scans, compliance, blast radius, events) as the third tab.
 import { useEffect, useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import api from '../../api/client'
 import { PageHeader, Num, Tabs, StatePill, SevPill, Facets, countBy, useFacetFilter, DenseTable, parseFilter, relTime, downloadCSV, Meter } from '../../components/ui'
 import { riskScore, CIS_MAPPING } from './shared.jsx'
 import { Search, X, Download, RefreshCw } from 'lucide-react'
+
+export const cloudFindingPath = (f) => `/cloud/findings/${f.connector}/${encodeURIComponent(f.id)}`
+export { PROVIDER, CAT_LABEL }
 
 const SEV_N = { critical: 5, high: 4, medium: 3, low: 2, info: 1 }
 const N_SEV = { 5: 'critical', 4: 'high', 3: 'medium', 2: 'low', 1: 'info' }
@@ -54,7 +58,7 @@ const F_GET = { severity: f => N_SEV[f.sevN], status: f => f.status, provider: f
 function FindingsTab({ findings, multiProvider }) {
   const [sel, setSel] = useState({ status: new Set(['open']) })
   const [q, setQ] = useState('')
-  const [open, setOpen] = useState(null)
+  const navigate = useNavigate()
   const faceted = useFacetFilter(findings, F_GET, sel)
   const rows = useMemo(() => {
     const { fields, text } = parseFilter(q)
@@ -94,19 +98,10 @@ function FindingsTab({ findings, multiProvider }) {
             <span className="t2" style={{ fontSize: 12 }}>{rows.length.toLocaleString()} of {findings.length.toLocaleString()}</span>
           </div>
           <DenseTable cols={cols} rows={rows.slice(0, 500)} rowKey={f => `${f.connector}|${f.id}|${f.resource}`} rowState={f => f.status === 'suppressed' ? 'none' : sevState(f.sevN)}
-            onRow={f => setOpen(o => o === f ? null : f)}
+            onRow={f => navigate(cloudFindingPath(f))}
             empty={findings.length ? 'No findings match these filters.' : 'No posture findings yet. Run a scan from the Accounts and scans tab.'}/>
           {rows.length > 500 && <div className="ow-card-foot">Showing the first 500 of {rows.length.toLocaleString()}. Narrow the filter to see the rest.</div>}
         </div>
-        {open && (
-          <div className="ow-card" style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 8 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}><SevPill sev={open.sevN}/><span style={{ fontWeight: 600 }}>{open.title}</span>
-              <button className="ow-btn quiet" style={{ marginLeft: 'auto' }} onClick={() => setOpen(null)}>Close</button></div>
-            <div className="t2" style={{ fontSize: 12.5 }}>{PROVIDER[open.provider]} · {open.account} · <span className="mono t1">{open.resource}</span>{open.resource_type && <> ({open.resource_type})</>}{open.cis && <> · {open.cis}</>}{open.mitre && <> · MITRE {open.mitre}</>}</div>
-            {open.description && <div style={{ whiteSpace: 'pre-wrap' }}>{open.description}</div>}
-            {open.remediation && <div><div className="ow-lbl" style={{ marginBottom: 4 }}>Remediation</div><div className="t2" style={{ whiteSpace: 'pre-wrap' }}>{open.remediation}</div></div>}
-          </div>
-        )}
       </div>
     </div>
   )

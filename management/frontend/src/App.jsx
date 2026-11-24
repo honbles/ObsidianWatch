@@ -21,8 +21,12 @@ import ThreatGraph from './pages/ThreatGraph'
 import Locations from './pages/Locations'
 import CloudPage from './pages/Cloud'
 import AgentBuilder from './pages/AgentBuilder'
-import LiveResponse from './pages/LiveResponse'
+import Response from './pages/Response'
 import DevOps from './pages/DevOps'
+import AlertPage from './pages/AlertPage'
+import RepoPage from './pages/code/RepoPage'
+import FindingPage from './pages/code/FindingPage'
+import CloudFindingPage from './pages/cloud/FindingPage'
 import NetworkProbes from './pages/NetworkProbes'
 import Setup from './pages/Setup'
 import Insights from './pages/Insights'
@@ -72,6 +76,7 @@ export default function App() {
         <Route path="/events"       element={<ProtectedRoute><Events /></ProtectedRoute>} />
         <Route path="/agents"       element={<ProtectedRoute><Agents /></ProtectedRoute>} />
         <Route path="/alerts"       element={<ProtectedRoute><Alerts /></ProtectedRoute>} />
+        <Route path="/alerts/:id"          element={<ProtectedRoute><AlertPage /></ProtectedRoute>} />
         <Route path="/alert-rules"  element={<ProtectedRoute><AlertRules /></ProtectedRoute>} />
         <Route path="/threat-intel" element={<Navigate to="/agents" replace />} />
         <Route path="/users"        element={<ProtectedRoute adminOnly><Users /></ProtectedRoute>} />
@@ -82,10 +87,14 @@ export default function App() {
         <Route path="/threat-graph" element={<Navigate to="/agents" replace />} />
         <Route path="/locations"      element={<Navigate to="/agents" replace />} />
         <Route path="/cloud"           element={<ProtectedRoute><CloudPage /></ProtectedRoute>} />
+        <Route path="/cloud/findings/:connector/:id" element={<ProtectedRoute><CloudFindingPage /></ProtectedRoute>} />
           <Route path="/detections"    element={<ProtectedRoute><Detections /></ProtectedRoute>} />
         <Route path="/agent-builder"   element={<ProtectedRoute adminOnly><AgentBuilder /></ProtectedRoute>} />
-        <Route path="/live-response"    element={<ProtectedRoute adminOnly><LiveResponse /></ProtectedRoute>} />
+        <Route path="/response"         element={<ProtectedRoute><Response /></ProtectedRoute>} />
+        <Route path="/live-response"    element={<Navigate to="/response?tab=live" replace />} />
         <Route path="/devops"             element={<ProtectedRoute><DevOps /></ProtectedRoute>} />
+        <Route path="/devops/repos/:connector/:repo" element={<ProtectedRoute><RepoPage /></ProtectedRoute>} />
+        <Route path="/devops/findings/:fid" element={<ProtectedRoute><FindingPage /></ProtectedRoute>} />
         <Route path="/network"            element={<ProtectedRoute><NetworkProbes /></ProtectedRoute>} />
         {/* [NET-ROUTES-BEGIN] - Network build adds /network/* routes here */}
         {/* [NET-ROUTES-END] */}

@@ -23,7 +23,7 @@ Platform severity maps as: 5 Critical, 4 High (warning colour), 3 Medium (info c
 
 | Page | Rule |
 |---|---|
-| Fleet host | offline: Offline. Any open high/critical alert: Critical. Any open medium alert: Warning. Else OK. |
+| Fleet host | Online or Offline only. Hosts carry no health verdict; open alerts are a separate column (count and worst severity) linking to the alerts. |
 | Service | error rate ≥ 5% or SLO budget spent: Failing. Error rate ≥ 1%, p95 over target, < 25% budget, or an open alert: Degraded. No traffic: Unknown. |
 | Repository / cloud finding | worst open finding's severity. |
 
@@ -68,6 +68,10 @@ Alert rules, Suppressions, Users, Audit log. Standard header and tabs: Hunt, Ins
 Network, all Applications pages. Workspace layouts kept (restyled by tokens): Search, Live response, host detail tabs,
 per-connector Code and Cloud workspaces, Sigma and threat-intel panels.
 
-Differences from the boards, because the data does not exist: Fleet shows tamper protection and groups (host tags)
+Navigation rule: a row that names a thing opens that thing's page (repository, finding, cloud finding, trace, error,
+alert); nothing expands inline below a table. Response is one page (`/response`): pick hosts, pick an action, review,
+run; history and live response sit beside it. Hosts are grouped by tags only (no host groups); policies will target tags.
+
+Differences from the boards, because the data does not exist: Fleet shows tamper protection and tags
 instead of CPU, mode and policies; there is no global environment selector; Cloud shows the existing risk score
 (lower is better) and pass rate; Code has no pipeline-change or unreviewed-merge counts.

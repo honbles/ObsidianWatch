@@ -11,6 +11,10 @@ server:
   # TLS - auto-enabled when /app/certs/server.crt + server.key exist
   tls_cert_file: "/app/certs/server.crt"
   tls_key_file:  "/app/certs/server.key"
+  # Agent tunnels (spec A2/A3). The agent listener asks for the agent
+  # certificate; the main listener never does, so browsers are not prompted.
+  agent_tunnel_auth: "mixed"     # legacy | mixed | enforced
+  agent_listen_addr: ":8445"
 
 database:
   host:     "timescaledb"      # Docker service name - do not change

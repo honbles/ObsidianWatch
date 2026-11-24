@@ -37,6 +37,18 @@ auth:
   # Also set server.tls_ca_file when enabling this.
   mtls_enabled: false
 
+  # Agent identity (spec A1-A4). Agents enroll with a token from the console
+  # (Settings > Agent enrollment) and then use a per-agent certificate.
+  #   legacy   - fleet api_key on every route (behaviour before enrollment)
+  #   mixed    - certificate when presented, fleet key still accepted (default)
+  #   enforced - certificate required; fleet key only on /api/v1/enroll
+  agent_identity:
+    mode: "mixed"
+    ca_cert_file: "agent-ca/agent-ca.crt"   # created on first start
+    ca_key_file:  "agent-ca/agent-ca.key"   # 0600; back it up with the volume
+    cert_ttl: "720h"                        # 30 days; agents renew at half life
+    allow_fleet_key_enrollment: false       # migration aid for existing installs
+
 log:
   level:  "info"    # debug | info | warn | error
   format: "json"    # json | text

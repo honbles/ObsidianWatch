@@ -1,5 +1,5 @@
 import { useMemo, useState, useRef, useEffect } from 'react'
-import { useParams, useSearchParams } from 'react-router-dom'
+import { useParams, useSearchParams, useNavigate } from 'react-router-dom'
 import { useTimeRange, StateBlock } from '../../components/shared'
 import { appApi, appResolveService } from '../../api/app'
 import useAppLoad from '../../components/app/useAppLoad'
@@ -9,7 +9,7 @@ import AppSetupHint from '../../components/app/AppSetupHint'
 import AppDependencyGraph from '../../components/app/AppDependencyGraph'
 import AppServiceSettingsForm from '../../components/app/AppServiceSettingsForm'
 import { AppTierBadge, AppExposureBadge, AppCriticalityBadge } from '../../components/app/AppBadges'
-import { appInt, appPct, appMs, appRel, appLearning, appLearningText, APP_LEARN_REQUESTS } from '../../components/app/appFormat'
+import { appInt, appPct, appMs, appRel, appLearning, appLearningText, APP_LEARN_REQUESTS, appReviewPath } from '../../components/app/appFormat'
 import AppTabRoutes from './tabs/AppTabRoutes'
 import AppTabInstances from './tabs/AppTabInstances'
 import AppTabDatabase from './tabs/AppTabDatabase'
@@ -102,6 +102,7 @@ function routeState(r, target) {
 // Service detail: is it healthy and what changed, then tabs (spec 11.3).
 export default function AppServiceDetail() {
   const { key } = useParams()
+  const navigate = useNavigate()
   const range = useTimeRange(24 * 3600e3)
   const prev = useMemo(() => {
     const span = new Date(range.to) - new Date(range.from)
@@ -235,7 +236,7 @@ export default function AppServiceDetail() {
                 <button className="ow-btn quiet" style={{ marginLeft: 'auto' }} onClick={() => go('routes')}>All {routes.data?.routes?.length ?? ''} endpoints</button>
               </div>
               <DenseTable rowKey={r => r.method + ' ' + r.route} rows={topRoutes} rowState={r => r._st}
-                onRow={r => go('routes', { route: `${r.method} ${r.route}` })}
+                onRow={r => navigate(appReviewPath(full, r.method, r.route))}
                 empty={routes.loading ? 'Loading…' : 'No endpoint traffic in this range.'}
                 cols={[
                   { key: 's', label: 'State', width: '90px', render: r => <StatePill state={r._st}>{{ ok: 'OK', warn: 'Warning', crit: 'Critical', none: 'No data' }[r._st]}</StatePill> },

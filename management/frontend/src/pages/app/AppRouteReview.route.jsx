@@ -86,7 +86,7 @@ export default function AppRouteReview() {
                                   <td className="text-right pr-3">{s.duration_ms ? appMs(s.duration_ms) : '-'}</td>
                                   <td className="font-mono break-all">{Object.entries(s.params).map(([k, v]) => <span key={k} className="mr-3">{k}=<span className="text-siem-text">{v}</span></span>)}</td>
                                   <td className="font-mono text-siem-muted break-all">{s.withheld.join(', ') || '-'}</td>
-                                  <td className="text-right">{s.trace_id ? <Link className="text-siem-accent hover:underline" to={`${svcPath}?tab=traces&trace=${encodeURIComponent(s.trace_id)}`}>open</Link> : '-'}</td>
+                                  <td className="text-right">{s.trace_id ? <Link className="text-siem-accent hover:underline" to={`/applications/traces/${encodeURIComponent(s.trace_id)}?svc=${encodeURIComponent(key)}`}>open</Link> : '-'}</td>
                                 </tr>))}
                               {!(list.data?.payloads || []).length && <tr><td colSpan={6} className="py-3 text-siem-muted">None in this range{status ? ' for that status' : ''}. Samples arrive after the agent pulls the policy and the route receives traffic.</td></tr>}
                             </tbody>

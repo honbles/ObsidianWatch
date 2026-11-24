@@ -47,7 +47,7 @@ function buildNav({ alertCount, isAdmin }) {
     { id: 'rules', label: 'Rules', icon: Shield, to: '/detections' },
     { id: 'alert-rules', label: 'Alert rules', icon: ListChecks, to: '/alert-rules' },
     { id: 'suppressions', label: 'Suppressions', icon: BellOff, to: '/suppressions' },
-    ...(isAdmin ? [{ id: 'live', label: 'Live response', icon: Terminal, to: '/live-response' }] : []),
+    { id: 'response', label: 'Response', icon: Terminal, to: '/response' },
   ]
   const admin = isAdmin ? [
     { section: 'Administration' },

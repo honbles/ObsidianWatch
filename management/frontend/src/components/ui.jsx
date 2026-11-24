@@ -225,6 +225,13 @@ export function relTime(t) {
   if (!t) return '—'
   const d = (Date.now() - new Date(t).getTime()) / 1000
   if (!isFinite(d)) return '—'
+  if (d < -45) {
+    const f = -d
+    if (f < 3600) return `in ${Math.round(f / 60)} min`
+    if (f < 86400) return `in ${Math.round(f / 3600)} h`
+    if (f < 2 * 86400) return 'tomorrow'
+    return `in ${Math.round(f / 86400)} days`
+  }
   if (d < 45) return 'just now'
   if (d < 3600) return `${Math.round(d / 60)} min ago`
   if (d < 86400) return `${Math.round(d / 3600)} h ago`

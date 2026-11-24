@@ -62,6 +62,8 @@ function HuntResults({ id }) {
         <span className="text-[10px] text-siem-muted">{hunt.responded}/{hunt.agents_total} hosts answered</span>
         <span className="text-[10px] text-siem-muted">{hunt.hosts_with_hits} with hits · {hunt.total_rows} rows</span>
         {!done && <span className="text-[10px] text-amber-300 flex items-center gap-1"><Loader2 size={11} className="animate-spin" /> {hunt.queued > 0 ? `${hunt.queued} waiting for hosts to come online` : 'collecting…'}</span>}
+        {hunt.skipped > 0 && <span className="text-[10px] text-siem-muted">{hunt.skipped} skipped (offline)</span>}
+        {hunt.expired > 0 && <span className="text-[10px] text-siem-muted">{hunt.expired} expired</span>}
         {hunt.expires_at && !done && <span className="text-[10px] text-siem-muted">window ends {formatDistanceToNow(new Date(hunt.expires_at), { addSuffix: true })}</span>}
         <button onClick={download} className="ml-auto text-[11px] text-siem-muted hover:text-siem-text flex items-center gap-1"><Download size={12} /> CSV</button>
       </div>
@@ -76,8 +78,14 @@ function HuntResults({ id }) {
                 {hit ? (isOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />) : <span className="w-3" />}
                 <span className="text-xs font-medium text-siem-text">{r.hostname}</span>
                 <span className="text-[10px] text-siem-muted">{r.os}</span>
-                <span className={`ml-auto text-[10px] ${r.status === 'ok' ? (hit ? 'text-orange-300' : 'text-siem-muted') : (r.status === 'pending' || r.status === 'queued') ? 'text-amber-300' : 'text-red-300'}`}>
-                  {r.status === 'ok' ? `${r.row_count} row${r.row_count === 1 ? '' : 's'}${r.truncated ? '+' : ''}${r.was_queued ? ' · answered late' : ''}` : r.status === 'queued' ? 'offline, will run when it reconnects' : r.status === 'pending' ? 'waiting…' : `${r.status}: ${r.message}`}
+                {r.late && <span className="ow-pill warn" title={r.ran_at ? `Ran ${new Date(r.ran_at).toLocaleString()} (host was offline when the hunt started)` : undefined}>late · ran {r.ran_at ? formatDistanceToNow(new Date(r.ran_at), { addSuffix: true }) : ''}</span>}
+                <span className={`ml-auto text-[10px] ${r.status === 'ok' ? (hit ? 'text-orange-300' : 'text-siem-muted') : (r.state === 'running' || r.state === 'queued') ? 'text-amber-300' : (r.state === 'skipped' || r.state === 'expired') ? 'text-siem-muted' : 'text-red-300'}`}>
+                  {r.status === 'ok' ? `${r.row_count} row${r.row_count === 1 ? '' : 's'}${r.truncated ? '+' : ''}`
+                    : r.state === 'queued' ? 'queued · runs when the host reconnects'
+                    : r.state === 'running' ? 'waiting…'
+                    : r.state === 'skipped' ? 'skipped · host was offline'
+                    : r.state === 'expired' ? 'expired · host did not come online in time'
+                    : `${r.status}: ${r.message}`}
                 </span>
               </div>
               {isOpen && hit && <div className="px-3 pb-3"><Table cols={cols} rows={rows} /></div>}
@@ -96,7 +104,7 @@ function LiveTab({ library, initial }) {
   const [path, setPath] = useState('')
   const [os, setOS] = useState('')
   const [offline, setOffline] = useState('skip')
-  const [waitH, setWaitH] = useState(24)
+  const [wait, setWait] = useState('24h')
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
   const [hunts, setHunts] = useState([])
@@ -108,7 +116,7 @@ function LiveTab({ library, initial }) {
   const run = async () => {
     setBusy(true); setErr('')
     try {
-      const { data } = await api.post('/api/v1/hunt/live', { kind, match, path, os, offline, wait_hours: waitH })
+      const { data } = await api.post('/api/v1/hunt/live', { kind, match, path, os, offline, wait: offline === 'wait' ? wait : undefined })
       setActive(data.id); loadHunts()
     } catch (e) { setErr(e.response?.data?.error || e.message) } finally { setBusy(false) }
   }
@@ -126,17 +134,17 @@ function LiveTab({ library, initial }) {
             <option value="">All operating systems</option><option value="windows">Windows</option><option value="linux">Linux</option><option value="darwin">macOS</option>
           </select>
           <div className="flex items-center gap-2 text-xs text-siem-text">
-            <span className="text-siem-muted">Offline hosts</span>
-            <select value={offline} onChange={e => setOffline(e.target.value)} className="bg-siem-bg border border-siem-border rounded px-2 py-1 text-xs">
+            <span className="text-siem-muted whitespace-nowrap">Offline</span>
+            <select value={offline} onChange={e => setOffline(e.target.value)} className="bg-siem-bg border border-siem-border rounded px-2 py-1 text-xs min-w-0" aria-label="Offline hosts">
               <option value="skip">Skip</option><option value="wait">Wait for them</option>
             </select>
             {offline === 'wait' && (
-              <select value={waitH} onChange={e => setWaitH(+e.target.value)} className="bg-siem-bg border border-siem-border rounded px-2 py-1 text-xs">
-                <option value={1}>1 hour</option><option value={24}>24 hours</option><option value={72}>3 days</option><option value={168}>7 days</option>
+              <select value={wait} onChange={e => setWait(e.target.value)} className="bg-siem-bg border border-siem-border rounded px-2 py-1 text-xs flex-1 min-w-0" aria-label="How long to wait">
+                <option value="1h">1 hour</option><option value="24h">24 hours</option><option value="7d">7 days</option><option value="until_done">Until done (max 30 days)</option>
               </select>
             )}
           </div>
-          {offline === 'wait' && <div className="text-[10px] text-siem-muted">Offline hosts get the question the moment they reconnect, until the window ends. Late answers are marked.</div>}
+          {offline === 'wait' && <div className="text-[10px] text-siem-muted">Offline hosts get the question the moment they reconnect, until the window ends; then they show as expired. Late answers are marked with the time they really ran. Only these read-only questions ever wait; response actions never do.</div>}
           <div className="text-[10px] text-siem-muted">Fixed, read-only questions: nothing is executed on the host. Several words must all match; <code>col:text</code> limits a word to one column. Hosts need a live tunnel to answer.</div>
           {admin ? (
             <button onClick={run} disabled={busy || (kind === 'file_find' && !match)} className="w-full px-3 py-2 rounded bg-siem-accent text-white text-xs font-semibold flex items-center justify-center gap-1.5 disabled:opacity-50">

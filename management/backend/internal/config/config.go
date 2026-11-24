@@ -43,6 +43,14 @@ type ServerConfig struct {
 	TLSCertFile string `yaml:"tls_cert_file"` // default: /app/certs/server.crt
 	TLSKeyFile  string `yaml:"tls_key_file"`  // default: /app/certs/server.key
 	TLSEnabled  bool   `yaml:"tls_enabled"`   // auto-set to true if cert files exist
+	// AgentTunnelAuth (spec A2): "legacy" (fleet key), "mixed" (agent
+	// certificate when presented, else fleet key; default) or "enforced"
+	// (agent certificate required).
+	AgentTunnelAuth string `yaml:"agent_tunnel_auth"`
+	// AgentListenAddr is a separate TLS listener for agent tunnels that asks
+	// for the agent certificate (e.g. ":8445"). The main listener never asks
+	// for client certificates, so browsers are not prompted. Empty = off.
+	AgentListenAddr string `yaml:"agent_listen_addr"`
 }
 
 type DatabaseConfig struct {
@@ -104,10 +112,11 @@ func Load(path string) (*Config, error) {
 func defaults() *Config {
 	return &Config{
 		Server: ServerConfig{
-			ListenAddr:   ":8080",
-			ReadTimeout:  30 * time.Second,
-			WriteTimeout: 30 * time.Second,
-			CORSOrigins:  []string{"*"},
+			ListenAddr:      ":8080",
+			ReadTimeout:     30 * time.Second,
+			WriteTimeout:    30 * time.Second,
+			CORSOrigins:     []string{"*"},
+			AgentTunnelAuth: "mixed",
 		},
 		Database: DatabaseConfig{
 			Host:            "localhost",

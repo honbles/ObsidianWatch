@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { ShieldAlert, ShieldCheck, Skull, FileX2, Loader2, RotateCcw, WifiOff } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
+import { Link } from 'react-router-dom'
 import api from '../api/client'
 import { ProcessPicker } from './ProcessList.jsx'
 
@@ -47,175 +48,41 @@ function statusStyle(s) {
   return s === 'ok' ? 'text-emerald-400' : s === 'failed' || s === 'timeout' ? 'text-red-400' : 'text-amber-300'
 }
 
+// Host detail › Response: this host's containment state and history. Actions are taken on the Response page,
+// which handles one or many hosts the same way.
 export function TabResponse({ agent }) {
-  const admin = isAdminUser()
-  const [st, reload] = useResponseState(agent.id)
-  const [busy, setBusy] = useState('')
-  const [msg, setMsg] = useState(null)
-  const [ttl, setTtl] = useState(0)
-  const [reason, setReason] = useState('')
-  const [pid, setPid] = useState('')
-  const [image, setImage] = useState('')
-  const [tree, setTree] = useState(true)
-  const [path, setPath] = useState('')
-  const [quar, setQuar] = useState(null)
-  const [blocked, setBlocked] = useState(null)
-
+  const [st] = useResponseState(agent.id)
   const state = st?.state
   const isolated = !!state?.isolated
   const pending = !!state?.desired_isolated && !isolated
-  const online = !!st?.tunnel_online
-
-  const go = async (key, action, params, confirmText) => {
-    if (confirmText && !window.confirm(confirmText)) return
-    setBusy(key); setMsg(null)
-    const r = await runAction(agent.id, action, params, { reason })
-    setMsg({ ok: r.ok, text: r.data?.message || r.error || (r.ok ? 'Done' : 'Failed') })
-    setBusy(''); reload()
-    if (action === 'list_quarantine' && r.data?.result) setQuar(r.data.result)
-    return r
-  }
-  const loadBlocked = async () => {
-    const r = await go('lb', 'list_blocked', {})
-    if (r?.data?.result) setBlocked(r.data.result)
-  }
-  const loadQuar = async () => {
-    const r = await go('quar', 'list_quarantine', {})
-    if (r?.data?.result) setQuar(r.data.result)
-  }
-
+  const acts = st?.actions || []
   return (
-    <div className="p-5 space-y-5 overflow-y-auto h-full">
-      {!online && (
-        <div className="rounded-lg border border-amber-800/60 bg-amber-950/20 p-3 text-xs text-amber-200 flex gap-2">
-          <WifiOff size={14} className="shrink-0 mt-0.5" />
-          <div>The agent's Live Response tunnel is not connected. Isolate and release will be queued and applied when it reconnects; kill and quarantine need a live agent. Response actions require <code>live_response.enabled</code> on the agent.</div>
-        </div>
-      )}
-
-      <div className={`rounded-xl border p-4 ${isolated ? 'border-red-800 bg-red-950/20' : pending ? 'border-amber-800 bg-amber-950/10' : 'border-siem-border bg-siem-surface/40'}`}>
-        <div className="flex items-center gap-3">
-          {isolated ? <ShieldAlert className="text-red-400" size={22} /> : <ShieldCheck className="text-emerald-400" size={22} />}
-          <div className="flex-1">
-            <div className="text-sm font-semibold text-siem-text">
-              {isolated ? 'Host is network-isolated' : pending ? 'Isolation pending (host offline)' : 'Host is connected normally'}
-            </div>
-            <div className="text-[11px] text-siem-muted">
-              {isolated
-                ? `Only the ObsidianWatch backend and management server are reachable. No other host and no internet.${state.isolated_since ? ' Since ' + formatDistanceToNow(new Date(state.isolated_since), { addSuffix: true }) + '.' : ''}${state.expires_at ? ' Auto-releases ' + formatDistanceToNow(new Date(state.expires_at), { addSuffix: true }) + '.' : ''}`
-                : 'Isolation cuts the host off from every other machine and the internet, but keeps it talking to ObsidianWatch so you can still investigate with Live Response.'}
-            </div>
+    <div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 16, overflowY: 'auto', height: '100%' }}>
+      <div className="ow-card" style={{ padding: 16, display: 'flex', alignItems: 'center', gap: 14 }}>
+        {isolated ? <ShieldAlert size={22} style={{ color: 'var(--crit)' }}/> : <ShieldCheck size={22} style={{ color: pending ? 'var(--warn)' : 'var(--ok)' }}/>}
+        <div style={{ flex: 1 }}>
+          <div style={{ fontWeight: 600 }}>{isolated ? 'Network-isolated' : pending ? 'Isolation pending: applied when the host reconnects' : 'Connected normally'}</div>
+          <div className="t2" style={{ fontSize: 12.5 }}>
+            {isolated && state.isolated_since ? `Since ${formatDistanceToNow(new Date(state.isolated_since), { addSuffix: true })}. ` : ''}
+            {isolated && state.expires_at ? `Releases ${formatDistanceToNow(new Date(state.expires_at), { addSuffix: true })}. ` : ''}
+            {st ? (st.tunnel_online ? 'Response tunnel connected.' : 'Response tunnel not connected: only isolate and release can be queued.') : 'Loading…'}
+            {' '}{state?.quarantined ? `${state.quarantined} file${state.quarantined === 1 ? '' : 's'} in quarantine.` : ''}
           </div>
         </div>
-        {admin && (
-          <div className="mt-3 flex flex-wrap items-center gap-2">
-            <input value={reason} onChange={e => setReason(e.target.value)} placeholder="Reason (kept in the audit log)" className="flex-1 min-w-[200px] bg-siem-bg border border-siem-border rounded px-2 py-1.5 text-xs text-siem-text" />
-            {!isolated && !pending && (
-              <>
-                <select value={ttl} onChange={e => setTtl(+e.target.value)} className="bg-siem-bg border border-siem-border rounded px-2 py-1.5 text-xs text-siem-text">
-                  {TTLS.map(([l, v]) => <option key={v} value={v}>{l}</option>)}
-                </select>
-                <button disabled={!!busy} onClick={() => go('iso', 'isolate', { ttl_minutes: ttl }, `Isolate ${agent.hostname}?\n\nIt will lose access to every other host and the internet. Only ObsidianWatch stays reachable.`)}
-                  className="px-3 py-1.5 rounded bg-red-600 hover:bg-red-500 text-white text-xs font-semibold flex items-center gap-1.5 disabled:opacity-50">
-                  {busy === 'iso' ? <Loader2 size={12} className="animate-spin" /> : <ShieldAlert size={12} />} Isolate host
-                </button>
-              </>
-            )}
-            {(isolated || pending) && (
-              <button disabled={!!busy} onClick={() => go('rel', 'release', {}, `Release ${agent.hostname} from isolation?`)}
-                className="px-3 py-1.5 rounded bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold flex items-center gap-1.5 disabled:opacity-50">
-                {busy === 'rel' ? <Loader2 size={12} className="animate-spin" /> : <ShieldCheck size={12} />} Release host
-              </button>
-            )}
-          </div>
-        )}
+        <Link to={`/response?host=${encodeURIComponent(agent.hostname)}`} className="ow-btn primary" style={{ textDecoration: 'none' }}>Take action</Link>
+        <Link to={`/response?tab=live&host=${encodeURIComponent(agent.hostname)}`} className="ow-btn" style={{ textDecoration: 'none' }}>Live response</Link>
       </div>
-
-      {msg && <div className={`rounded-lg border p-2.5 text-xs ${msg.ok ? 'border-emerald-800 bg-emerald-950/20 text-emerald-200' : 'border-red-800 bg-red-950/20 text-red-200'}`}>{msg.text}</div>}
-
-      {admin && (
-        <div className="grid md:grid-cols-2 gap-4">
-          <div className="rounded-xl border border-siem-border bg-siem-surface/40 p-4 space-y-2">
-            <div className="text-xs font-semibold text-siem-text flex items-center gap-1.5"><Skull size={13} className="text-red-400" /> Kill process</div>
-            <ProcessPicker agentId={agent.id} enabled={online} onPick={p => { setPid(String(p.pid)); setImage(p.path || '') }} />
-            <input value={pid} onChange={e => setPid(e.target.value.replace(/\D/g, ''))} placeholder="PID" className="w-full bg-siem-bg border border-siem-border rounded px-2 py-1.5 text-xs text-siem-text font-mono" />
-            <input value={image} onChange={e => setImage(e.target.value)} placeholder="Expected image, e.g. C:\Users\x\evil.exe (guards against PID reuse)" className="w-full bg-siem-bg border border-siem-border rounded px-2 py-1.5 text-xs text-siem-text font-mono" />
-            <label className="flex items-center gap-2 text-[11px] text-siem-muted"><input type="checkbox" checked={tree} onChange={e => setTree(e.target.checked)} /> Also kill child processes</label>
-            <button disabled={!pid || !!busy || !online} onClick={() => go('kill', 'kill_process', { pid: +pid, image, tree }, `Kill PID ${pid}${tree ? ' and its children' : ''} on ${agent.hostname}?`)}
-              className="px-3 py-1.5 rounded bg-red-700 hover:bg-red-600 text-white text-xs font-semibold disabled:opacity-40">{busy === 'kill' ? 'Killing…' : 'Kill process'}</button>
-            <div className="text-[10px] text-siem-muted pt-1">Killing does not stop it starting again. Block makes the program non-executable and ends it every time it is started. System files and the agent cannot be blocked.</div>
-            <div className="flex gap-2">
-              <button disabled={!/^([A-Za-z]:[\\/]|\/)/.test(image) || !!busy || !online} onClick={() => go('blk', 'block_process', { path: image }, `Block ${image} from running on ${agent.hostname}? Running copies are ended and it cannot be started until you unblock it.`).then(loadBlocked)}
-                className="px-3 py-1.5 rounded bg-red-900 hover:bg-red-800 text-white text-xs font-semibold disabled:opacity-40">{busy === 'blk' ? 'Blocking…' : 'Block from running'}</button>
-              <button disabled={!!busy || !online} onClick={loadBlocked} className="px-3 py-1.5 rounded border border-siem-border text-siem-muted hover:text-siem-text text-xs disabled:opacity-40">Blocked programs</button>
-            </div>
+      <div className="ow-card" style={{ overflow: 'hidden' }}>
+        <div className="ow-card-bar"><span style={{ fontWeight: 600 }}>Actions on this host</span><Link to="/response?tab=history" className="c-acc" style={{ marginLeft: 'auto', fontSize: 12 }}>Fleet history</Link></div>
+        {acts.length === 0 ? <div className="t3" style={{ padding: 16 }}>No response actions yet.</div> : acts.map(a => (
+          <div key={a.id} className="ow-grid" style={{ gridTemplateColumns: '110px 150px minmax(160px, 1.4fr) minmax(140px, 1fr) 100px' }}>
+            <span className="t2">{formatDistanceToNow(new Date(a.requested_at), { addSuffix: true })}</span>
+            <span className="t1">{a.action.replace(/_/g, ' ')}</span>
+            <span className="mono t2" title={JSON.stringify(a.params)}>{a.params?.pid ? `PID ${a.params.pid} ${a.params.image || ''}` : a.params?.path || a.params?.id || ''}</span>
+            <span title={a.reason}><span className="t1">{a.requested_by}</span>{a.reason && <span className="t3"> · {a.reason}</span>}</span>
+            <span className={a.status === 'ok' ? 'c-ok' : ['failed', 'timeout'].includes(a.status) ? 'c-crit' : 'c-acc'} title={a.message}>{a.status}</span>
           </div>
-          <div className="rounded-xl border border-siem-border bg-siem-surface/40 p-4 space-y-2">
-            <div className="text-xs font-semibold text-siem-text flex items-center gap-1.5"><FileX2 size={13} className="text-orange-400" /> Quarantine file</div>
-            <input value={path} onChange={e => setPath(e.target.value)} placeholder="Full path, e.g. /tmp/payload or C:\Users\x\evil.exe" className="w-full bg-siem-bg border border-siem-border rounded px-2 py-1.5 text-xs text-siem-text font-mono" />
-            <div className="text-[10px] text-siem-muted">The file is moved to a locked vault on the host with its SHA-256 recorded. It can be restored.</div>
-            <div className="flex gap-2">
-              <button disabled={!path || !!busy || !online} onClick={() => go('q', 'quarantine_file', { path }, `Quarantine ${path} on ${agent.hostname}?`)}
-                className="px-3 py-1.5 rounded bg-orange-700 hover:bg-orange-600 text-white text-xs font-semibold disabled:opacity-40">{busy === 'q' ? 'Working…' : 'Quarantine'}</button>
-              <button disabled={!!busy || !online} onClick={loadQuar} className="px-3 py-1.5 rounded border border-siem-border text-siem-muted hover:text-siem-text text-xs disabled:opacity-40">View vault ({state?.quarantined ?? 0})</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {blocked && (
-        <div className="rounded-xl border border-siem-border overflow-hidden">
-          <div className="px-3 py-2 text-[10px] uppercase tracking-wider text-siem-muted bg-siem-surface/40">Blocked programs</div>
-          {(blocked.rows || []).length === 0 ? <div className="p-3 text-xs text-siem-muted">Nothing is blocked.</div> : (
-            <table className="w-full text-xs"><tbody>
-              {blocked.rows.map(r => (
-                <tr key={r[0]} className="border-t border-siem-border/40">
-                  <td className="px-3 py-2 font-mono break-all">{r[0]}</td>
-                  <td className="px-3 py-2 text-[10px] text-siem-muted">{formatDistanceToNow(new Date(r[1]), { addSuffix: true })}</td>
-                  <td className="px-3 py-2 text-right">{admin && <button onClick={() => go('ub' + r[0], 'unblock_process', { path: r[0] }, `Unblock ${r[0]}?`).then(loadBlocked)} className="text-siem-muted hover:text-siem-text flex items-center gap-1 ml-auto"><RotateCcw size={11} /> Unblock</button>}</td>
-                </tr>
-              ))}
-            </tbody></table>
-          )}
-        </div>
-      )}
-
-      {quar && (
-        <div className="rounded-xl border border-siem-border overflow-hidden">
-          <div className="px-3 py-2 text-[10px] uppercase tracking-wider text-siem-muted bg-siem-surface/40">Quarantine vault</div>
-          {quar.length === 0 ? <div className="p-3 text-xs text-siem-muted">Nothing quarantined.</div> : (
-            <table className="w-full text-xs"><tbody>
-              {quar.map(q => (
-                <tr key={q.id} className="border-t border-siem-border/40">
-                  <td className="px-3 py-2 font-mono break-all">{q.orig_path}</td>
-                  <td className="px-3 py-2 font-mono text-[10px] text-siem-muted">{q.sha256?.slice(0, 16)}…</td>
-                  <td className="px-3 py-2 text-right">{admin && <button onClick={() => go('r' + q.id, 'restore_file', { id: q.id }, `Restore ${q.orig_path}? It will be put back where it was.`).then(loadQuar)} className="text-siem-muted hover:text-siem-text flex items-center gap-1 ml-auto"><RotateCcw size={11} /> Restore</button>}</td>
-                </tr>
-              ))}
-            </tbody></table>
-          )}
-        </div>
-      )}
-
-      <div>
-        <div className="text-[10px] uppercase tracking-wider text-siem-muted mb-1.5">Action history</div>
-        <div className="rounded-xl border border-siem-border overflow-hidden">
-          {(st?.actions || []).length === 0 ? <div className="p-3 text-xs text-siem-muted">No response actions yet.</div> : (
-            <table className="w-full text-xs">
-              <thead><tr className="text-[9px] uppercase text-siem-muted bg-siem-surface/40"><th className="text-left px-3 py-1.5">When</th><th className="text-left px-3 py-1.5">Action</th><th className="text-left px-3 py-1.5">By</th><th className="text-left px-3 py-1.5">Outcome</th></tr></thead>
-              <tbody>
-                {st.actions.map(a => (
-                  <tr key={a.id} className="border-t border-siem-border/40 align-top">
-                    <td className="px-3 py-2 text-siem-muted whitespace-nowrap">{formatDistanceToNow(new Date(a.requested_at), { addSuffix: true })}</td>
-                    <td className="px-3 py-2 font-mono">{a.action}{a.params?.pid ? ` #${a.params.pid}` : ''}{a.params?.path ? ` ${a.params.path}` : ''}</td>
-                    <td className="px-3 py-2">{a.requested_by}{a.reason ? <div className="text-[10px] text-siem-muted">{a.reason}</div> : null}</td>
-                    <td className={`px-3 py-2 ${statusStyle(a.status)}`}>{a.status}<div className="text-[10px] text-siem-muted break-all">{a.message}</div></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
+        ))}
       </div>
     </div>
   )

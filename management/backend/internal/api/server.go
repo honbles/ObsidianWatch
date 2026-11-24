@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"obsidianwatch/management/internal/agentid"
 	"obsidianwatch/management/internal/auth"
 	"obsidianwatch/management/internal/config"
 	"obsidianwatch/management/internal/notify"
@@ -30,6 +31,8 @@ type Server struct {
 	tiEngine     *ThreatIntelEngine
 	vtEngine     *VirusTotalEngine
 	lrRegistry   *TunnelRegistry
+	tunnelAuth   *tunnelAuth
+	agentHTTP    *http.Server // agent-certificate listener (A2), nil when off
 }
 
 func New(cfg *config.Config, db *store.DB, backendDB *store.DB, logger *slog.Logger) *Server {
@@ -54,7 +57,7 @@ func New(cfg *config.Config, db *store.DB, backendDB *store.DB, logger *slog.Log
 		syslogFwd.Enqueue(a)
 	}
 	installAlertAnchorLinker(db) // Alert Graph: link every new alert to its entities
-	go func() { // one-time: make events from before migration 009 usable by the graph
+	go func() {                  // one-time: make events from before migration 009 usable by the graph
 		time.Sleep(30 * time.Second) // let migrations settle
 		if n, err := db.BackfillProcessGUIDs(context.Background(), 7); err != nil {
 			logger.Warn("graph: process GUID backfill stopped", "err", err, "rows", n)
@@ -142,7 +145,10 @@ func New(cfg *config.Config, db *store.DB, backendDB *store.DB, logger *slog.Log
 	protected.HandleFunc("DELETE /api/v1/alert-rules/{id}", handleDeleteAlertRule(db))
 
 	// Users
-	protected.HandleFunc("GET /api/v1/users", handleListUsers(db))
+	protected.HandleFunc("GET /api/v1/users", adminOnly(handleListUsers(db)))
+	// Assignable people for alert/case pickers: id, name and role only, for any
+	// signed-in role. The full user list (login times, password state) is admin-only (spec F3).
+	protected.HandleFunc("GET /api/v1/assignees", handleListAssignees(db))
 	protected.HandleFunc("POST /api/v1/users", handleCreateUser(db))
 	protected.HandleFunc("DELETE /api/v1/users/{id}", handleDeleteUser(db, jwt))
 
@@ -165,7 +171,46 @@ func New(cfg *config.Config, db *store.DB, backendDB *store.DB, logger *slog.Log
 
 	// Live Response - WebSocket tunnel + session management
 	// Agent tunnel endpoint is public (agents auth via X-API-Key header)
-	mux.HandleFunc("GET /api/v1/live-response/agent-tunnel", handleAgentTunnel(db, lrRegistry, logger, cfg.Server.AgentAPIKey))
+	// A2/A3: agent tunnels authenticate with the agent certificate (agent
+	// listener) or, until enforced, the fleet key.
+	idDB := backendDB
+	if idDB == nil {
+		idDB = db
+	}
+	tunnelMode := cfg.Server.AgentTunnelAuth
+	switch tunnelMode {
+	case tunnelAuthLegacy, tunnelAuthMixed, tunnelAuthEnforced:
+	default:
+		logger.Warn("server.agent_tunnel_auth not recognised, using mixed", "value", tunnelMode)
+		tunnelMode = tunnelAuthMixed
+	}
+	s.tunnelAuth = &tunnelAuth{
+		mode:   tunnelMode,
+		ca:     &agentCAPool{load: idDB.AgentCACert},
+		rev:    agentid.NewRevocations(idDB.RevokedAgentIDs),
+		apiKey: cfg.Server.AgentAPIKey,
+		now:    time.Now,
+	}
+	s.tunnelAuth.rev.OnLoad(func(rv map[string]bool) { lrRegistry.closeRevokedTunnels(rv, logger) })
+	tunnelHandler := handleAgentTunnel(db, lrRegistry, logger, s.tunnelAuth)
+	mux.HandleFunc("GET /api/v1/live-response/agent-tunnel", tunnelHandler)
+	if cfg.Server.AgentListenAddr != "" {
+		agentMux := http.NewServeMux()
+		agentMux.HandleFunc("GET /api/v1/live-response/agent-tunnel", tunnelHandler)
+		s.agentHTTP = &http.Server{
+			Addr:              cfg.Server.AgentListenAddr,
+			Handler:           loggingMiddleware(logger)(limitRequestBody(maxRequestBody)(agentMux)),
+			ReadHeaderTimeout: 10 * time.Second,
+			IdleTimeout:       120 * time.Second,
+			MaxHeaderBytes:    64 << 10,
+		}
+	}
+	// Agent enrollment administration (A1, A4). Admin only.
+	protected.HandleFunc("GET /api/v1/enrollment-tokens", adminOnly(handleListEnrollmentTokens(idDB)))
+	protected.HandleFunc("POST /api/v1/enrollment-tokens", adminOnly(handleCreateEnrollmentToken(idDB)))
+	protected.HandleFunc("DELETE /api/v1/enrollment-tokens/{id}", adminOnly(handleRevokeEnrollmentToken(idDB)))
+	protected.HandleFunc("GET /api/v1/agent-identities", adminOnly(handleListAgentIdentities(idDB)))
+	protected.HandleFunc("POST /api/v1/agent-identities/{id}/revoke", adminOnly(handleRevokeAgentIdentity(idDB, lrRegistry, s.tunnelAuth.rev, logger)))
 	// Analyst-facing endpoints are protected
 	protected.HandleFunc("POST /api/v1/live-response/sessions", adminOnly(handleInitiateSession(db, lrRegistry, logger)))
 	protected.HandleFunc("GET /api/v1/live-response/sessions", handleListSessions(db))
@@ -320,7 +365,12 @@ func New(cfg *config.Config, db *store.DB, backendDB *store.DB, logger *slog.Log
 	// WebSocket
 	protected.HandleFunc("GET /ws/events", hub.ServeWS)
 
-	guard := auth.Middleware(jwt)
+	// Every authenticated request passes the password-change gate (spec F2):
+	// until the initial password is changed only /auth/password, /auth/me and
+	// /auth/logout answer.
+	pwGate := newPasswordGate(storePasswordLookup(db.GetUserByID))
+	jwtGuard := auth.Middleware(jwt)
+	guard := func(h http.Handler) http.Handler { return jwtGuard(pwGate.wrap(h)) }
 	auditedProtected := readOnlyRole(auditMutations(db, protected))
 	mux.Handle("/api/", guard(auditedProtected))
 	mux.Handle("/auth/me", guard(auditedProtected))
@@ -345,6 +395,35 @@ func New(cfg *config.Config, db *store.DB, backendDB *store.DB, logger *slog.Log
 
 func (s *Server) Start(ctx context.Context) error {
 	refreshAIModels(ctx, s.db)
+	// E1: end the wait for hosts that never came back, even if nobody opens the hunt.
+	go func() {
+		tk := time.NewTicker(5 * time.Minute)
+		defer tk.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-tk.C:
+				_ = s.db.ExpireQueuedHunts(ctx)
+			}
+		}
+	}()
+	// A4: revocations and the agent CA are re-read well inside 60 s.
+	go s.tunnelAuth.rev.Run(ctx, agentid.DefaultRefresh)
+	go func() {
+		tk := time.NewTicker(time.Minute)
+		defer tk.Stop()
+		for {
+			if err := s.tunnelAuth.ca.Refresh(ctx); err != nil {
+				s.logger.Warn("agent CA: refresh failed", "err", err)
+			}
+			select {
+			case <-ctx.Done():
+				return
+			case <-tk.C:
+			}
+		}
+	}()
 	engine := NewAlertEngine(s.db, s.mailer, s.logger)
 	go engine.Run(ctx)
 	detection := NewDetectionEngine(s.db, s.mailer, s.logger)
@@ -396,13 +475,31 @@ func (s *Server) Start(ctx context.Context) error {
 				tls.TLS_AES_128_GCM_SHA256,
 			},
 		}
+		if s.agentHTTP != nil {
+			// Agent listener: asks for (does not require) a client
+			// certificate; tunnelAuth verifies it against the agent CA.
+			// The handshake proves the agent holds the private key.
+			s.agentHTTP.TLSConfig = &tls.Config{MinVersion: tls.VersionTLS12, ClientAuth: tls.RequestClientCert}
+			go func() {
+				s.logger.Info("agent tunnel listener starting (TLS, client certificates)", "addr", s.agentHTTP.Addr)
+				if err := s.agentHTTP.ListenAndServeTLS(certFile, keyFile); err != nil && err != http.ErrServerClosed {
+					s.logger.Error("agent tunnel listener stopped", "err", err)
+				}
+			}()
+		}
 		return s.http.ListenAndServeTLS(certFile, keyFile)
+	}
+	if s.agentHTTP != nil {
+		s.logger.Warn("agent_listen_addr ignored: TLS is off, certificates cannot be presented")
 	}
 	s.logger.Info("management server starting (HTTP)", "addr", s.cfg.Server.ListenAddr)
 	return s.http.ListenAndServe()
 }
 
 func (s *Server) Shutdown(ctx context.Context) error {
+	if s.agentHTTP != nil {
+		_ = s.agentHTTP.Shutdown(ctx)
+	}
 	return s.http.Shutdown(ctx)
 }
 

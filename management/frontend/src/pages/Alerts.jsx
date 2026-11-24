@@ -1,7 +1,7 @@
 // Alerts: incident review. Status tabs (Checkmk's unhandled / handled split), urgency, owner and SLA on every row,
 // facets and a timeline above the list (Splunk "show charts"), commands on selected rows, details in a side panel.
 import { useEffect, useMemo, useState, useCallback } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useSearchParams, Link } from 'react-router-dom'
 import { Plus, RefreshCw, Search, X, Download, BarChart3 } from 'lucide-react'
 import api from '../api/client'
 import AlertPanel from '../components/AlertPanel'
@@ -154,7 +154,7 @@ export default function Alerts() {
   }, [tab, host])
   useEffect(() => { setLoading(true); load() }, [load])
   useEffect(() => { const id = setInterval(load, 30000); return () => clearInterval(id) }, [load])
-  useEffect(() => { api.get('/api/v1/users').then(r => setUsers(r.data.users || [])).catch(() => {}) }, [])
+  useEffect(() => { api.get('/api/v1/assignees').then(r => setUsers(r.data.users || [])).catch(() => {}) }, [])
   useEffect(() => { selection.clear() }, [tab, host]) // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { try { localStorage.setItem('ow_alert_charts', charts ? '1' : '0') } catch { /* */ } }, [charts])
 
@@ -306,7 +306,12 @@ export default function Alerts() {
         </div>
       </div>
       <Drawer open={!!openId} onClose={() => setOpenId(null)} label="Alert details">
-        {openId && <AlertPanel alertId={openId} users={users} onClose={() => setOpenId(null)} onStatusChange={load} inline/>}
+        {openId && <>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '6px 10px', borderBottom: '1px solid var(--line)' }}>
+            <Link to={`/alerts/${openId}`} className="ow-btn quiet" style={{ height: 24, textDecoration: 'none' }}>Open full page ↗</Link>
+          </div>
+          <AlertPanel alertId={openId} users={users} onClose={() => setOpenId(null)} onStatusChange={load} inline/>
+        </>}
       </Drawer>
     </div>
   )

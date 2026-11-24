@@ -1,4 +1,5 @@
 module obsidianwatch/management
+
 // cache-bust: v3-azure-anom-fix
 
 go 1.25.7

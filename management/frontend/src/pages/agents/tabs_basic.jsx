@@ -1265,7 +1265,7 @@ export function TabAlerts({ agent }) {
 
   useEffect(() => {
     loadAlerts()
-    api.get('/api/v1/users').then(r => setUsers(r.data.users || [])).catch(() => {})
+    api.get('/api/v1/assignees').then(r => setUsers(r.data.users || [])).catch(() => {})
   }, [agent.hostname])
 
   const SEV_BORDER = { 5:'border-l-red-500', 4:'border-l-orange-500', 3:'border-l-yellow-500', 2:'border-l-blue-500', 1:'border-l-siem-border' }

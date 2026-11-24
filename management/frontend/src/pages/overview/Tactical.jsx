@@ -5,9 +5,9 @@ import { Link, useNavigate } from 'react-router-dom'
 import api from '../../api/client'
 import { appApi } from '../../api/app'
 import { StatePill, SevPill, Histogram, SEV_STACKS, relTime, DenseTable } from '../../components/ui'
-import { hostState, isProbe, alertsByHost, serviceListState } from '../../utils/states'
-import { useCodeData, buildRepos } from '../code/CodeOverview'
-import { usePosture } from '../cloud/PostureOverview'
+import { isProbe, serviceListState } from '../../utils/states'
+import { useCodeData, buildRepos, findingPath } from '../code/CodeOverview'
+import { usePosture, cloudFindingPath } from '../cloud/PostureOverview'
 
 const SLA_MS = { 5: 3600e3, 4: 4 * 3600e3, 3: 24 * 3600e3, 2: 72 * 3600e3 }
 const pastSLA = (a) => SLA_MS[a.severity] && a.status === 'open' && !a.acknowledged_at && Date.now() - new Date(a.created_at) > SLA_MS[a.severity]
@@ -43,11 +43,8 @@ export default function Tactical() {
 
   const open = (d.alerts || []).filter(a => a.status === 'open')
   const active = (d.alerts || []).filter(a => a.status !== 'closed')
-  const hosts = useMemo(() => {
-    if (!d.agents) return null
-    const by = alertsByHost(open)
-    return d.agents.filter(a => !isProbe(a)).map(a => ({ ...a, ...hostState(a, by[a.hostname]) }))
-  }, [d.agents, d.alerts]) // eslint-disable-line react-hooks/exhaustive-deps
+  // Hosts are online or offline; alerts are counted on their own row, not folded into the host.
+  const hosts = useMemo(() => d.agents ? d.agents.filter(a => !isProbe(a)).map(a => ({ ...a, state: a.online ? 'ok' : 'none' })) : null, [d.agents])
   const svcs = useMemo(() => d.services ? d.services.map(s => ({ ...s, ...serviceListState(s) })) : null, [d.services])
   const repos = useMemo(() => code.loading ? null : buildRepos(code.findings, code.repoList, code.connectors).filter(r => !r.orgLevel), [code])
   const accts = cloud.loading ? null : cloud.accounts
@@ -55,8 +52,8 @@ export default function Tactical() {
 
   const rows = [
     { k: 'Hosts', to: '/agents', total: hosts?.length,
-      problems: cnt(hosts, h => h.state !== 'ok'), crit: cnt(hosts, h => h.state === 'crit'), stale: cnt(hosts, h => h.state === 'none'),
-      links: { problems: '/agents?state=attention', crit: '/agents?state=crit', stale: '/agents?state=none' }, staleLabel: 'offline' },
+      problems: cnt(hosts, h => !h.online), crit: null, stale: null,
+      links: { problems: '/agents?status=offline' }, problemsLabel: 'offline' },
     { k: 'Alerts', to: '/alerts', total: d.alerts ? active.length : null,
       problems: d.alerts ? open.length : null, crit: cnt(d.alerts && open, a => a.severity >= 5), stale: cnt(d.alerts && open, pastSLA),
       links: { problems: '/alerts', crit: '/alerts?sev=5', stale: '/alerts?sla=breached' }, problemsLabel: 'unhandled', staleLabel: 'past response target' },
@@ -75,11 +72,11 @@ export default function Tactical() {
   // Unhandled problems across every domain, worst first (Checkmk "unhandled problems").
   const problems = useMemo(() => {
     const out = []
-    for (const a of open) out.push({ key: 'a' + a.id, sev: a.severity, domain: 'Alert', what: a.title, where: a.host || '—', since: a.created_at, to: `/alerts`, extra: pastSLA(a) ? 'past target' : '' })
+    for (const a of open) out.push({ key: 'a' + a.id, sev: a.severity, domain: 'Alert', what: a.title, where: a.host || '—', since: a.created_at, to: `/alerts/${a.id}`, extra: pastSLA(a) ? 'past target' : '' })
     for (const h of hosts || []) if (h.state === 'none') out.push({ key: 'h' + h.id, sev: 4, domain: 'Host', what: 'Agent offline', where: h.hostname, since: h.last_seen, to: `/agents?host=${encodeURIComponent(h.hostname)}` })
     for (const s of svcs || []) if (s.state === 'crit' || s.state === 'warn') out.push({ key: 's' + s.id, sev: s.state === 'crit' ? 5 : 4, domain: 'Service', what: s.why, where: s.name, since: s.last_seen, to: `/applications/services/${s.id}` })
-    for (const r of repos || []) if (r.sev >= 4 && r.top) out.push({ key: 'r' + r.key, sev: r.sev, domain: 'Code', what: r.top.title, where: r.name, since: r.top.at, to: '/devops' })
-    for (const f of cloud.findings || []) if (f.status === 'open' && f.sevN >= 4) out.push({ key: 'c' + f.connector + f.id, sev: f.sevN, domain: 'Cloud', what: f.title, where: f.resource || f.account, since: f.scanned, to: '/cloud' })
+    for (const r of repos || []) if (r.sev >= 4 && r.top) out.push({ key: 'r' + r.key, sev: r.sev, domain: 'Code', what: r.top.title, where: r.name, since: r.top.at, to: findingPath(r.top) })
+    for (const f of cloud.findings || []) if (f.status === 'open' && f.sevN >= 4) out.push({ key: 'c' + f.connector + f.id, sev: f.sevN, domain: 'Cloud', what: f.title, where: f.resource || f.account, since: f.scanned, to: cloudFindingPath(f) })
     return out.sort((a, b) => b.sev - a.sev || new Date(a.since) - new Date(b.since))
   }, [open, hosts, svcs, repos, cloud.findings]) // eslint-disable-line react-hooks/exhaustive-deps
 

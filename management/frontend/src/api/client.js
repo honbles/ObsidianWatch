@@ -21,6 +21,11 @@ api.interceptors.response.use(
         window.location.href = '/login'
       }
     }
+    // The server refuses every route until the initial password is changed.
+    if (err.response?.status === 403 && err.response?.data?.code === 'password_change_required') {
+      localStorage.setItem('require_password_change', 'true')
+      if (window.location.pathname !== '/change-password') window.location.href = '/change-password'
+    }
     return Promise.reject(err)
   }
 )

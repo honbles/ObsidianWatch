@@ -33,20 +33,25 @@ type actionResult struct {
 type actionBroker struct {
 	mu      sync.Mutex
 	waiters map[string]func(actionResult)
+	owner   map[string]string // token -> agent that was asked (A3)
 }
 
-func newActionBroker() *actionBroker { return &actionBroker{waiters: map[string]func(actionResult){}} }
+func newActionBroker() *actionBroker {
+	return &actionBroker{waiters: map[string]func(actionResult){}, owner: map[string]string{}}
+}
 
-// expect registers cb for token. If no result arrives within ttl, cb receives a
-// timeout result so nothing stays "sent" forever.
-func (b *actionBroker) expect(token string, ttl time.Duration, cb func(actionResult)) {
+// expect registers cb for token, sent to agentID. If no result arrives within
+// ttl, cb receives a timeout result so nothing stays "sent" forever.
+func (b *actionBroker) expect(agentID, token string, ttl time.Duration, cb func(actionResult)) {
 	b.mu.Lock()
 	b.waiters[token] = cb
+	b.owner[token] = agentID
 	b.mu.Unlock()
 	time.AfterFunc(ttl, func() {
 		b.mu.Lock()
 		f, ok := b.waiters[token]
 		delete(b.waiters, token)
+		delete(b.owner, token)
 		b.mu.Unlock()
 		if ok {
 			f(actionResult{Message: "timeout: the agent did not answer in time"})
@@ -54,10 +59,27 @@ func (b *actionBroker) expect(token string, ttl time.Duration, cb func(actionRes
 	})
 }
 
+// deliverFrom accepts a result frame read from agentID's tunnel. A3: a result
+// for a token issued to another agent is dropped, so one agent cannot answer
+// (or forge the outcome of) an action sent to another.
+func (b *actionBroker) deliverFrom(agentID, token string, payload json.RawMessage) bool {
+	b.mu.Lock()
+	owner, known := b.owner[token]
+	b.mu.Unlock()
+	if !known || owner != agentID {
+		return false
+	}
+	b.deliver(token, payload)
+	return true
+}
+
+// deliver completes token with payload. Server-side use only (send errors);
+// frames from agents go through deliverFrom.
 func (b *actionBroker) deliver(token string, payload json.RawMessage) {
 	b.mu.Lock()
 	f, ok := b.waiters[token]
 	delete(b.waiters, token)
+	delete(b.owner, token)
 	b.mu.Unlock()
 	if !ok {
 		return
@@ -208,7 +230,7 @@ func handleAgentAction(db *store.DB, reg *TunnelRegistry, logger *slog.Logger) h
 		logger.Warn("response action", "agent", agentID, "action", req.Action, "by", by)
 
 		done := make(chan actionResult, 1)
-		reg.broker.expect(act.ID, 3*time.Minute, func(res actionResult) {
+		reg.broker.expect(agentID, act.ID, 3*time.Minute, func(res actionResult) {
 			status := "ok"
 			if !res.OK {
 				status = "failed"
@@ -351,7 +373,7 @@ func onResponseState(db *store.DB, t *agentTunnel, agentID string, payload json.
 	}
 	logger.Warn("response: reconciling isolation state", "agent", agentID, "action", action)
 	// The result frame is correlated by the broker like any other action.
-	brokerFor(t).expect(act.ID, 3*time.Minute, func(res actionResult) {
+	brokerFor(t).expect(agentID, act.ID, 3*time.Minute, func(res actionResult) {
 		status := "ok"
 		if !res.OK {
 			status = "failed"
@@ -377,7 +399,7 @@ func handleAgentProcesses(db *store.DB, reg *TunnelRegistry) http.HandlerFunc {
 		}
 		tok := newToken()
 		ch := make(chan actionResult, 1)
-		reg.broker.expect(tok, 40*time.Second, func(res actionResult) { ch <- res })
+		reg.broker.expect(id, tok, 40*time.Second, func(res actionResult) { ch <- res })
 		if err := sendAction(t, tok, "query", mustJSON(map[string]any{"kind": "processes", "limit": 5000})); err != nil {
 			reg.broker.deliver(tok, mustJSON(actionResult{Message: "could not reach the agent: " + err.Error()}))
 		}

@@ -25,6 +25,10 @@ func appHandleAgentConfig(db appConfigStore, logger *slog.Logger) http.HandlerFu
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "missing or invalid agent_id"})
 			return
 		}
+		if boundAgentMismatch(r, id) {
+			writeJSON(w, http.StatusForbidden, map[string]string{"error": "agent_id does not match the client certificate"})
+			return
+		}
 		_, _, ok, err := db.AppAgentInfo(r.Context(), id)
 		if err != nil {
 			logger.Error("app agent-config: agent lookup failed", "err", err)

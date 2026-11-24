@@ -188,11 +188,14 @@ type FleetHunt struct {
 	CompletedAt *time.Time `json:"completed_at,omitempty"`
 	AgentsTotal int        `json:"agents_total"`
 	ExpiresAt   *time.Time `json:"expires_at,omitempty"` // set when the hunt waits for offline hosts
+	WaitMode    string     `json:"wait_mode,omitempty"`  // "", 1h, 24h, 7d, until_done
 	// summary, filled by ListFleetHunts / GetFleetHunt
 	Responded int `json:"responded"`
 	Hosts     int `json:"hosts_with_hits"`
 	Rows      int `json:"total_rows"`
 	Queued    int `json:"queued"` // hosts still waiting to come online
+	Skipped   int `json:"skipped"`
+	Expired   int `json:"expired"`
 }
 
 type FleetHuntResult struct {
@@ -206,32 +209,67 @@ type FleetHuntResult struct {
 	RowCount    int             `json:"row_count"`
 	Truncated   bool            `json:"truncated"`
 	CompletedAt *time.Time      `json:"completed_at,omitempty"`
-	WasQueued   bool            `json:"was_queued"` // the host was offline when the hunt started; answered late
+	WasQueued   bool            `json:"was_queued"` // the host was offline when the hunt started
 	QueuedAt    *time.Time      `json:"queued_at,omitempty"`
+	SentAt      *time.Time      `json:"ran_at,omitempty"` // when the question reached the host (real run time)
+	State       string          `json:"state"`            // running | answered | queued | expired | skipped
+	Late        bool            `json:"late"`             // answered after waiting for the host
 }
 
-// CreateFleetHunt stores a hunt and one result row per target. Targets whose id is in offline start as
-// "queued" (waiting for the host to reconnect) and the hunt expires at expires; others start "pending".
-func (db *DB) CreateFleetHunt(ctx context.Context, h FleetHunt, targets []Agent, offline map[string]bool, expires *time.Time) error {
+// HuntResultState maps a stored status to the per-host state the result
+// view shows (spec E1).
+func HuntResultState(status string) string {
+	switch status {
+	case "pending":
+		return "running"
+	case "ok", "failed", "timeout":
+		return "answered"
+	case "queued", "expired", "skipped":
+		return status
+	case "offline": // rows written before E1
+		return "skipped"
+	}
+	return status
+}
+
+// CreateFleetHunt stores a hunt and one result row per target. initial gives the starting status of
+// targets that are not asked now: "queued" (waiting for the host to reconnect, until expires) or
+// "skipped" (offline and the hunt does not wait). Every other target starts "pending" and is sent now.
+func (db *DB) CreateFleetHunt(ctx context.Context, h FleetHunt, targets []Agent, initial map[string]string, expires *time.Time) error {
+	if expires == nil {
+		for _, st := range initial {
+			if st == "queued" {
+				return fmt.Errorf("store: a hunt that queues hosts needs an expiry")
+			}
+		}
+	}
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
-	if _, err := tx.ExecContext(ctx, `INSERT INTO fleet_hunts (id, name, kind, match, path, requested_by, agents_total, expires_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
-		h.ID, h.Name, h.Kind, h.Match, h.Path, h.RequestedBy, len(targets), expires); err != nil {
+	if _, err := tx.ExecContext(ctx, `INSERT INTO fleet_hunts (id, name, kind, match, path, requested_by, agents_total, expires_at, wait_mode) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+		h.ID, h.Name, h.Kind, h.Match, h.Path, h.RequestedBy, len(targets), expires, h.WaitMode); err != nil {
 		return err
 	}
 	for _, a := range targets {
-		status, wq := "pending", false
-		if offline[a.ID] {
+		status, wq, msg := "pending", false, ""
+		switch initial[a.ID] {
+		case "queued":
 			status, wq = "queued", true
+		case "skipped":
+			status, msg = "skipped", "host was offline; the hunt did not wait for it"
 		}
-		if _, err := tx.ExecContext(ctx, `INSERT INTO fleet_hunt_results (hunt_id, agent_id, hostname, os, status, was_queued, queued_at)
-			VALUES ($1,$2,$3,$4,$5,$6, CASE WHEN $6 THEN now() END)`,
-			h.ID, a.ID, a.Hostname, a.OS, status, wq); err != nil {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO fleet_hunt_results (hunt_id, agent_id, hostname, os, status, message, was_queued, queued_at, sent_at, completed_at)
+			VALUES ($1,$2,$3,$4,$5,$6,$7, CASE WHEN $7 THEN now() END, CASE WHEN $5='pending' THEN now() END, CASE WHEN $5='skipped' THEN now() END)`,
+			h.ID, a.ID, a.Hostname, a.OS, status, msg, wq); err != nil {
 			return err
 		}
+	}
+	// A hunt where no host is asked or waited for is complete at once.
+	if _, err := tx.ExecContext(ctx, `UPDATE fleet_hunts SET completed_at=now() WHERE id=$1
+		AND NOT EXISTS (SELECT 1 FROM fleet_hunt_results WHERE hunt_id=$1 AND status IN ('pending','queued'))`, h.ID); err != nil {
+		return err
 	}
 	return tx.Commit()
 }
@@ -259,7 +297,7 @@ type QueuedHunt struct{ ID, Kind, Match, Path string }
 // ClaimQueuedHunts atomically moves this agent's queued, unexpired hunt results to pending and returns
 // the questions to send. Called when the agent's tunnel connects.
 func (db *DB) ClaimQueuedHunts(ctx context.Context, agentID string) ([]QueuedHunt, error) {
-	rows, err := db.QueryContext(ctx, `UPDATE fleet_hunt_results r SET status='pending'
+	rows, err := db.QueryContext(ctx, `UPDATE fleet_hunt_results r SET status='pending', sent_at=now()
 		FROM fleet_hunts h WHERE r.hunt_id=h.id AND r.agent_id=$1 AND r.status='queued'
 		  AND (h.expires_at IS NULL OR h.expires_at > now())
 		RETURNING h.id, h.kind, h.match, h.path`, agentID)
@@ -301,17 +339,19 @@ func (db *DB) TimeoutHunt(ctx context.Context, huntID string) error {
 }
 
 const huntSummarySQL = `
-	SELECT h.id, h.name, h.kind, h.match, h.path, h.requested_by, h.created_at, h.completed_at, h.agents_total, h.expires_at,
-	       COALESCE(SUM(CASE WHEN r.status NOT IN ('pending','queued') THEN 1 ELSE 0 END),0),
+	SELECT h.id, h.name, h.kind, h.match, h.path, h.requested_by, h.created_at, h.completed_at, h.agents_total, h.expires_at, h.wait_mode,
+	       COALESCE(SUM(CASE WHEN r.status IN ('ok','failed','timeout') THEN 1 ELSE 0 END),0),
 	       COALESCE(SUM(CASE WHEN r.row_count>0 THEN 1 ELSE 0 END),0),
 	       COALESCE(SUM(r.row_count),0),
-	       COALESCE(SUM(CASE WHEN r.status='queued' THEN 1 ELSE 0 END),0)
+	       COALESCE(SUM(CASE WHEN r.status='queued' THEN 1 ELSE 0 END),0),
+	       COALESCE(SUM(CASE WHEN r.status IN ('skipped','offline') THEN 1 ELSE 0 END),0),
+	       COALESCE(SUM(CASE WHEN r.status='expired' THEN 1 ELSE 0 END),0)
 	FROM fleet_hunts h LEFT JOIN fleet_hunt_results r ON r.hunt_id = h.id`
 
 func scanHunt(sc interface{ Scan(...interface{}) error }) (FleetHunt, error) {
 	var h FleetHunt
 	var done, exp sql.NullTime
-	err := sc.Scan(&h.ID, &h.Name, &h.Kind, &h.Match, &h.Path, &h.RequestedBy, &h.CreatedAt, &done, &h.AgentsTotal, &exp, &h.Responded, &h.Hosts, &h.Rows, &h.Queued)
+	err := sc.Scan(&h.ID, &h.Name, &h.Kind, &h.Match, &h.Path, &h.RequestedBy, &h.CreatedAt, &done, &h.AgentsTotal, &exp, &h.WaitMode, &h.Responded, &h.Hosts, &h.Rows, &h.Queued, &h.Skipped, &h.Expired)
 	if done.Valid {
 		t := done.Time
 		h.CompletedAt = &t
@@ -350,7 +390,7 @@ func (db *DB) GetFleetHunt(ctx context.Context, id string) (*FleetHunt, []FleetH
 	if err != nil {
 		return nil, nil, err
 	}
-	rows, err := db.QueryContext(ctx, `SELECT agent_id, hostname, os, status, message, columns, rows, row_count, truncated, completed_at, was_queued, queued_at
+	rows, err := db.QueryContext(ctx, `SELECT agent_id, hostname, os, status, message, columns, rows, row_count, truncated, completed_at, was_queued, queued_at, sent_at
 		FROM fleet_hunt_results WHERE hunt_id=$1 ORDER BY row_count DESC, hostname`, id)
 	if err != nil {
 		return nil, nil, err
@@ -359,10 +399,16 @@ func (db *DB) GetFleetHunt(ctx context.Context, id string) (*FleetHunt, []FleetH
 	res := []FleetHuntResult{}
 	for rows.Next() {
 		var r FleetHuntResult
-		var done, qat sql.NullTime
-		if err := rows.Scan(&r.AgentID, &r.Hostname, &r.OS, &r.Status, &r.Message, &r.Columns, &r.Rows, &r.RowCount, &r.Truncated, &done, &r.WasQueued, &qat); err != nil {
+		var done, qat, sat sql.NullTime
+		if err := rows.Scan(&r.AgentID, &r.Hostname, &r.OS, &r.Status, &r.Message, &r.Columns, &r.Rows, &r.RowCount, &r.Truncated, &done, &r.WasQueued, &qat, &sat); err != nil {
 			return nil, nil, err
 		}
+		if sat.Valid {
+			t := sat.Time
+			r.SentAt = &t
+		}
+		r.State = HuntResultState(r.Status)
+		r.Late = r.WasQueued && r.State == "answered"
 		if qat.Valid {
 			t := qat.Time
 			r.QueuedAt = &t
