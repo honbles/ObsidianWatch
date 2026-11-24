@@ -37,7 +37,7 @@ func (f *fakeIngestStore) UpsertAgent(_ context.Context, id, hostname, os, versi
 func postIngest(h http.HandlerFunc, body string) *httptest.ResponseRecorder {
 	req := httptest.NewRequest("POST", "/api/v1/ingest", strings.NewReader(body))
 	rr := httptest.NewRecorder()
-	h.ServeHTTP(rr, req)
+	h.ServeHTTP(rr, asClaimedAgent(req))
 	return rr
 }
 
@@ -74,7 +74,7 @@ func TestIngestFillsDefaultsAndClampsFuture(t *testing.T) {
 	st := &fakeIngestStore{}
 	h := handleIngest(st, 100, quietLogger())
 	future := time.Now().UTC().Add(48 * time.Hour).Format(time.RFC3339)
-	body := `{"agent_id":"agent-fill","events":[{"id":"e1","host":"box1"},{"id":"e2","time":"` + future + `","agent_id":"other"}]}`
+	body := `{"agent_id":"agent-fill","events":[{"id":"e1","host":"box1"},{"id":"e2","time":"` + future + `","agent_id":"agent-fill"}]}`
 	rr := postIngest(h, body)
 	if rr.Code != 200 {
 		t.Fatalf("code %d: %s", rr.Code, rr.Body.String())
@@ -85,8 +85,8 @@ func TestIngestFillsDefaultsAndClampsFuture(t *testing.T) {
 	if st.events[0].AgentID != "agent-fill" || st.events[0].Time.IsZero() {
 		t.Errorf("defaults not applied: %+v", st.events[0])
 	}
-	if st.events[1].AgentID != "other" {
-		t.Errorf("explicit agent id should be kept")
+	if st.events[1].AgentID != "agent-fill" {
+		t.Errorf("explicit (matching) agent id should be kept")
 	}
 	if st.events[1].Time.After(time.Now().UTC().Add(11 * time.Minute)) {
 		t.Errorf("future event not clamped: %v", st.events[1].Time)

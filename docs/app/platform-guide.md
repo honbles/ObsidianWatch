@@ -121,7 +121,7 @@ Twenty rules, all in **observe mode** by default: the alert is created but shown
 
 - Only allowlisted attributes survive decoding. Route templates only; no URLs, headers or response bodies.
 - Command lines are redacted on the host (`--password=`, tokens, `KEY=`, `user:pw@`, bearer values).
-- User, session and object ids are HMAC-hashed with a key derived from the agent API key. With no key, ids are not sent.
+- User, session and object ids are HMAC-hashed with a key the Agent builder derives from `OW_SECRET_KEY` (the same for every agent of the organisation). With no key, ids are not sent.
 - Client addresses follow the service's mode: full, truncated (/24 or /48) or off.
 - Where time goes (slowest downstream calls per route, at most 20) and database operation and table names are sent as names and numbers. Error groups send the exception type, the route and stack frames (function and short file path with line, no arguments); the message is sent only when an admin turns on masked messages. A database statement is never sent raw; if an admin turns on fingerprints for a service, only the statement with every value removed is sent (512 bytes at most).
 - Every 30 s the agent sends per-minute statistics, edges, heartbeats and sampled traces. Raw spans stay on the host. At most 500 routes per service; the rest count as "other".

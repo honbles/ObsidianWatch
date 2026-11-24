@@ -1,10 +1,9 @@
 package api
 
 import (
-	"context"
+	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
-	"crypto/x509"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
@@ -14,7 +13,6 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"obsidianwatch/management/internal/agentid"
@@ -22,58 +20,69 @@ import (
 	"obsidianwatch/management/internal/store"
 )
 
-// Tunnel authentication modes (spec A2), mirroring the ingest backend's
-// agent_identity.mode.
+// tunnelAuth decides which agent is calling. Agents reach the management
+// server only through the ingest backend, which verifies the agent
+// certificate and forwards the identity in signed headers (backend
+// agent_tunnel_proxy.go). There is no shared API key.
+type tunnelAuth struct {
+	rev *agentid.Revocations
+	now func() time.Time
+	// fwdKey verifies forwarded identities. Derived from OW_SECRET_KEY;
+	// nil = nothing is accepted.
+	fwdKey []byte
+}
+
+// Forwarded identity headers (must match backend api.Hdr*).
 const (
-	tunnelAuthLegacy   = "legacy"   // fleet key only (before A1)
-	tunnelAuthMixed    = "mixed"    // certificate when presented, else fleet key
-	tunnelAuthEnforced = "enforced" // certificate required
+	hdrAgentID     = "X-Ow-Agent-Id"
+	hdrAgentSerial = "X-Ow-Agent-Serial"
+	hdrAgentTime   = "X-Ow-Agent-Time"
+	hdrAgentSig    = "X-Ow-Agent-Sig"
+	// fwdMaxSkew bounds replay of a captured forwarded request.
+	fwdMaxSkew = 60 * time.Second
 )
 
-// agentCAPool holds the agent CA published by the ingest backend. It is
-// reloaded periodically so management never needs the CA key.
-type agentCAPool struct {
-	mu   sync.RWMutex
-	pem  string
-	pool *x509.CertPool
-	load func(ctx context.Context) (string, error)
-}
-
-func (p *agentCAPool) Refresh(ctx context.Context) error {
-	pemText, err := p.load(ctx)
-	if err != nil {
-		return err
-	}
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	if pemText == p.pem {
+// tunnelIdentityKey must match backend api.TunnelIdentityKey.
+func tunnelIdentityKey(secret string) []byte {
+	if secret == "" {
 		return nil
 	}
-	if pemText == "" {
-		p.pem, p.pool = "", nil
-		return nil
-	}
-	pool := x509.NewCertPool()
-	if !pool.AppendCertsFromPEM([]byte(pemText)) {
-		return errors.New("agent CA: published certificate does not parse")
-	}
-	p.pem, p.pool = pemText, pool
-	return nil
+	m := hmac.New(sha256.New, []byte(secret))
+	m.Write([]byte("obsidianwatch tunnel identity v1"))
+	return m.Sum(nil)
 }
 
-func (p *agentCAPool) Get() *x509.CertPool {
-	p.mu.RLock()
-	defer p.mu.RUnlock()
-	return p.pool
+func signTunnelIdentity(key []byte, id, serial string, ts int64) string {
+	m := hmac.New(sha256.New, key)
+	fmt.Fprintf(m, "%s|%s|%d", id, serial, ts)
+	return hex.EncodeToString(m.Sum(nil))
 }
 
-// tunnelAuth decides who is on the other end of an agent tunnel.
-type tunnelAuth struct {
-	mode   string
-	ca     *agentCAPool
-	rev    *agentid.Revocations
-	apiKey string
-	now    func() time.Time
+// forwardedIdentity returns the identity the ingest backend verified, if the
+// request carries a valid, fresh signature. ok=false with err=nil means no
+// forwarded identity was sent.
+func (ta *tunnelAuth) forwardedIdentity(r *http.Request) (id, serial string, ok bool, err error) {
+	id = r.Header.Get(hdrAgentID)
+	sig := r.Header.Get(hdrAgentSig)
+	if id == "" && sig == "" {
+		return "", "", false, nil
+	}
+	if ta.fwdKey == nil {
+		return "", "", false, &authError{http.StatusUnauthorized, "forwarded identity not accepted (OW_SECRET_KEY not set)"}
+	}
+	serial = r.Header.Get(hdrAgentSerial)
+	ts, perr := strconv.ParseInt(r.Header.Get(hdrAgentTime), 10, 64)
+	if perr != nil {
+		return "", "", false, &authError{http.StatusUnauthorized, "bad forwarded identity"}
+	}
+	if d := ta.now().Sub(time.Unix(ts, 0)); d > fwdMaxSkew || d < -fwdMaxSkew {
+		return "", "", false, &authError{http.StatusUnauthorized, "stale forwarded identity"}
+	}
+	want := signTunnelIdentity(ta.fwdKey, id, serial, ts)
+	if !hmac.Equal([]byte(want), []byte(sig)) || !agentid.Valid(id) {
+		return "", "", false, &authError{http.StatusUnauthorized, "bad forwarded identity"}
+	}
+	return id, serial, true, nil
 }
 
 type tunnelCaller struct {
@@ -90,39 +99,30 @@ func (e *authError) Error() string { return e.msg }
 
 func (ta *tunnelAuth) authenticate(r *http.Request) (tunnelCaller, error) {
 	claimed := r.URL.Query().Get("agent_id")
-	if r.TLS != nil && len(r.TLS.PeerCertificates) > 0 && ta.mode != tunnelAuthLegacy {
-		pool := ta.ca.Get()
-		if pool == nil {
-			return tunnelCaller{}, &authError{http.StatusServiceUnavailable, "agent CA not published yet"}
-		}
-		id, err := agentid.Verify(r.TLS.PeerCertificates[0], r.TLS.PeerCertificates[1:], pool, ta.now())
-		if err != nil {
-			return tunnelCaller{}, &authError{http.StatusUnauthorized, "client certificate not accepted"}
-		}
-		if ta.rev.Revoked(id.AgentID) {
-			return tunnelCaller{}, &authError{http.StatusUnauthorized, "agent identity revoked"}
-		}
-		if claimed != "" && claimed != id.AgentID {
-			return tunnelCaller{}, &authError{http.StatusForbidden, "agent_id does not match the client certificate"}
-		}
-		return tunnelCaller{agentID: id.AgentID, serial: id.Serial}, nil
+	id, serial, ok, err := ta.forwardedIdentity(r)
+	if err != nil {
+		return tunnelCaller{}, err
 	}
-	if ta.mode == tunnelAuthEnforced {
-		return tunnelCaller{}, &authError{http.StatusUnauthorized, "client certificate required; enroll this agent"}
+	if !ok {
+		return tunnelCaller{}, &authError{http.StatusUnauthorized, "agent certificate required: agents connect through the ingest backend"}
 	}
-	if claimed == "" {
-		return tunnelCaller{}, &authError{http.StatusBadRequest, "agent_id required"}
+	if ta.rev.Revoked(id) {
+		return tunnelCaller{}, &authError{http.StatusUnauthorized, "agent identity revoked"}
 	}
-	// An enrolled id can only be used with its certificate; the fleet key
-	// must not let anyone speak for an enrolled agent.
-	if agentid.Valid(claimed) {
-		return tunnelCaller{}, &authError{http.StatusForbidden, "enrolled agents must present their certificate"}
+	if claimed != "" && claimed != id {
+		return tunnelCaller{}, &authError{http.StatusForbidden, "agent_id does not match the client certificate"}
 	}
-	// M-02: the fleet key proves membership of the fleet, not identity.
-	if !validAgentAPIKey(ta.apiKey, r) {
-		return tunnelCaller{}, &authError{http.StatusUnauthorized, "invalid or missing X-API-Key"}
+	return tunnelCaller{agentID: id, serial: serial}, nil
+}
+
+// writeAuthError answers a failed authenticate.
+func writeAuthError(w http.ResponseWriter, err error) {
+	var ae *authError
+	if errors.As(err, &ae) {
+		writeJSON(w, ae.code, map[string]string{"error": ae.msg})
+		return
 	}
-	return tunnelCaller{agentID: claimed}, nil
+	writeJSON(w, 401, map[string]string{"error": "unauthorized"})
 }
 
 // refuseSecondTunnel records a refused takeover (A3): logged and alerted.
@@ -156,7 +156,7 @@ func refuseSecondTunnel(db *store.DB, logger *slog.Logger, c tunnelCaller, exist
 
 func orNone(s string) string {
 	if s == "" {
-		return "none (fleet key)"
+		return "none"
 	}
 	return s
 }

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
+	"os"
 	"time"
 
 	"obsidianwatch/backend/internal/auth"
@@ -34,60 +35,34 @@ func New(cfg *config.Config, db *store.DB, logger *slog.Logger) (*Server, error)
 	// ── Public routes ────────────────────────────────────────────────
 	mux.HandleFunc("/health", handleHealth(db))
 
-	// ── Agent ingest + query routes (auth required) ──────────────────
-	// Fleet API key: the DB key takes priority - if setup has run, the DB key
-	// is the real one. Only fall back to the YAML key if the DB has nothing
-	// yet (fresh install before the setup wizard has been completed).
-	validKeys := cfg.Auth.APIKeys
-	if dbKey := db.GetAgentAPIKey(context.Background()); dbKey != "" {
-		validKeys = []string{dbKey}
-		logger.Info("auth: using agent API key from database")
-	} else {
-		logger.Info("auth: no DB key yet - using key(s) from server.yaml")
-	}
-	keyAuth := auth.APIKeyMiddleware(validKeys)
-
+	// ── Agent routes: authenticated by the agent's own certificate ─────
+	// (spec A1-A4). There is no shared API key: an agent enrolls once with
+	// an enrollment token at /api/v1/enroll, which is the only route that
+	// works without a certificate.
 	idCfg := cfg.Auth.AgentIdentity
-	var authMiddleware func(http.Handler) http.Handler
-	var agentCA *enroll.CA
-	if idCfg.Mode == IdentityLegacy {
-		if cfg.Auth.MTLSEnabled {
-			authMiddleware = auth.MTLSMiddleware
-		} else {
-			authMiddleware = keyAuth
-		}
-	} else {
-		// A1-A4: per-agent certificates from the agent CA.
-		ca, created, err := enroll.LoadOrCreateCA(idCfg.CACertFile, idCfg.CAKeyFile)
-		if err != nil {
-			return nil, err
-		}
-		agentCA = ca
-		if created {
-			logger.Warn("agent CA created - back up the key file", "cert", idCfg.CACertFile, "key", idCfg.CAKeyFile)
-		}
-		if err := db.PublishAgentCA(context.Background(), string(ca.CertPEM)); err != nil {
-			logger.Warn("agent CA: could not publish certificate for management", "err", err)
-		}
-		rev := agentid.NewRevocations(db.RevokedAgentIDs)
-		ctx, cancel := context.WithCancel(context.Background())
-		s.stop = cancel
-		go rev.Run(ctx, agentid.DefaultRefresh)
-		gate := &identityGate{
-			mode: idCfg.Mode, roots: ca.Pool(), revoked: rev, keyAuth: keyAuth,
-			legacyCA: cfg.Auth.MTLSEnabled, now: time.Now,
-		}
-		authMiddleware = gate.wrap
-		ec := &enrollConfig{
-			ca: ca, certTTL: idCfg.CertTTL, fleetKeys: validKeys,
-			allowFleetKey: idCfg.AllowFleetKeyEnrollment, now: time.Now,
-		}
-		// The enrollment endpoint is the only one reachable without a
-		// certificate once identity is enforced.
-		mux.HandleFunc("POST /api/v1/enroll", handleEnroll(db, ec, logger))
-		s.renew = handleRenew(db, ec, logger)
-		logger.Info("agent identity enabled", "mode", idCfg.Mode, "cert_ttl", idCfg.CertTTL.String(),
-			"fleet_key_enrollment", idCfg.AllowFleetKeyEnrollment)
+	ca, created, err := enroll.LoadOrCreateCA(idCfg.CACertFile, idCfg.CAKeyFile)
+	if err != nil {
+		return nil, err
+	}
+	agentCA := ca
+	if created {
+		logger.Warn("agent CA created - back up the key file", "cert", idCfg.CACertFile, "key", idCfg.CAKeyFile)
+	}
+	if err := db.PublishAgentCA(context.Background(), string(ca.CertPEM)); err != nil {
+		logger.Warn("agent CA: could not publish certificate for management", "err", err)
+	}
+	rev := agentid.NewRevocations(db.RevokedAgentIDs)
+	ctx, cancel := context.WithCancel(context.Background())
+	s.stop = cancel
+	go rev.Run(ctx, agentid.DefaultRefresh)
+	gate := &identityGate{roots: ca.Pool(), revoked: rev, now: time.Now}
+	authMiddleware := gate.wrap
+	ec := &enrollConfig{ca: ca, certTTL: idCfg.CertTTL, now: time.Now}
+	mux.HandleFunc("POST /api/v1/enroll", handleEnroll(db, ec, logger))
+	s.renew = handleRenew(db, ec, logger)
+	logger.Info("agent identity: certificates required", "cert_ttl", idCfg.CertTTL.String())
+	if len(cfg.Auth.APIKeys) > 0 || cfg.Auth.MTLSEnabled {
+		logger.Warn("auth.api_keys and auth.mtls_enabled are no longer used: agents authenticate with their own certificate; remove them from server.yaml")
 	}
 
 	protected := http.NewServeMux()
@@ -99,8 +74,22 @@ func New(cfg *config.Config, db *store.DB, logger *slog.Logger) (*Server, error)
 	protected.HandleFunc("GET /api/v1/metrics", certOnlyForbidden(handleMetrics()))
 	protected.HandleFunc("GET /api/v1/agents", certOnlyForbidden(handleListAgents(db)))
 	protected.HandleFunc("GET /api/v1/agents/{id}", certOnlyForbidden(handleGetAgent(db)))
-	if s.renew != nil {
-		protected.HandleFunc("POST /api/v1/enroll/renew", s.renew)
+	protected.HandleFunc("POST /api/v1/enroll/renew", s.renew)
+	// Agent calls answered by the management server (live-response tunnel,
+	// install-key registration and uninstall check) ride the ingest port:
+	// verified here, passed to management with a signed identity.
+	if tc := cfg.Tunnel; tc.ManagementURL != "" {
+		tp, err := newTunnelProxy(tc.ManagementURL, tc.ManagementCAFile, tc.ManagementServerName, tc.InsecureSkipVerify, os.Getenv("OW_SECRET_KEY"), logger)
+		if err != nil {
+			return nil, err
+		}
+		if tp.key == nil {
+			logger.Error("tunnel: OW_SECRET_KEY is not set - live response and install-key checks will not work")
+		}
+		protected.Handle("GET /api/v1/live-response/agent-tunnel", tp)
+		protected.Handle("POST /api/v1/agent/register-key", tp)
+		protected.Handle("POST /api/v1/verify-install-key", tp)
+		logger.Info("tunnel: agent calls pass through to management", "url", tc.ManagementURL)
 	}
 	// [NET-ROUTES-BEGIN]
 	registerNetworkIngestRoutes(protected, db, logger)
@@ -112,37 +101,18 @@ func New(cfg *config.Config, db *store.DB, logger *slog.Logger) (*Server, error)
 	mux.Handle("/api/", authMiddleware(protected))
 
 	// ── TLS configuration ────────────────────────────────────────────
+	// Client certificates are verified against the agent CA when presented
+	// (enrollment needs none); each route then requires one.
 	var tlsCfg *tls.Config
-	var err error
-
 	if cfg.Server.TLSCertFile != "" && cfg.Server.TLSKeyFile != "" {
-		if cfg.Auth.MTLSEnabled && cfg.Server.TLSCAFile != "" {
-			caPool, err := auth.LoadCA(cfg.Server.TLSCAFile)
-			if err != nil {
-				return nil, err
-			}
-			tlsCfg, err = auth.MTLSConfig(cfg.Server.TLSCertFile, cfg.Server.TLSKeyFile, caPool)
-			if err != nil {
-				return nil, err
-			}
-			if agentCA != nil {
-				// Enrollment must work without a certificate: verify when
-				// given, enforce per route at the HTTP layer.
-				caPool.AddCert(agentCA.Cert)
-				tlsCfg.ClientAuth = tls.VerifyClientCertIfGiven
-			}
-		} else {
-			tlsCfg, err = auth.TLSConfig(cfg.Server.TLSCertFile, cfg.Server.TLSKeyFile)
-			if err == nil && agentCA != nil {
-				tlsCfg.ClientCAs = agentCA.Pool()
-				tlsCfg.ClientAuth = tls.VerifyClientCertIfGiven
-			}
-		}
+		tlsCfg, err = auth.TLSConfig(cfg.Server.TLSCertFile, cfg.Server.TLSKeyFile)
 		if err != nil {
 			return nil, err
 		}
-	} else if agentCA != nil {
-		logger.Warn("agent identity: no TLS configured, certificates cannot be presented; only the fleet key works")
+		tlsCfg.ClientCAs = agentCA.Pool()
+		tlsCfg.ClientAuth = tls.VerifyClientCertIfGiven
+	} else {
+		logger.Error("no TLS configured: agents cannot present certificates, so none can connect")
 	}
 
 	s.http = &http.Server{
@@ -209,6 +179,10 @@ type responseWriter struct {
 	http.ResponseWriter
 	code int
 }
+
+// Unwrap lets http.ResponseController reach the connection (WebSocket
+// upgrades through the tunnel proxy need Hijack and deadline control).
+func (rw *responseWriter) Unwrap() http.ResponseWriter { return rw.ResponseWriter }
 
 func (rw *responseWriter) WriteHeader(code int) {
 	rw.code = code

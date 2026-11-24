@@ -86,7 +86,6 @@ func (c *LiveResponseCollector) runTunnel(ctx context.Context) error {
 
 	dialer := wsDialerForCAPEM(c.caPEM, c.caFile, c.allowInsecureTLS)
 	headers := http.Header{}
-	headers.Set("X-API-Key", c.apiKey)
 
 	conn, _, err := dialer.DialContext(ctx, wsURL, headers)
 	if err != nil {

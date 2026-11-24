@@ -9,7 +9,6 @@ export default function Setup() {
     backend_domain: '',
     backend_url: '',
     management_url: '',
-    agent_api_key: '',
     groq_api_key: '',
     nvd_api_key: '',
     anthropic_api_key: '',
@@ -40,10 +39,6 @@ export default function Setup() {
 
   const submit = async () => {
     setError('')
-    if (!form.agent_api_key) {
-      setError('Agent API Key is required - it must match the key in backend/docker/server.yaml')
-      return
-    }
     setSaving(true)
     try {
       await api.post('/api/v1/setup/complete', form)
@@ -92,30 +87,10 @@ export default function Setup() {
 
         <div className="space-y-4 mb-5">
 
-          {/* Agent API Key - required */}
-          <div className="rounded-xl border border-red-500/20 bg-siem-surface overflow-hidden">
-            <div className="px-4 py-2.5 bg-red-500/10 border-b border-red-500/20 flex items-center gap-2">
-              <span className="text-red-400 text-sm font-semibold">🔑 Agent API Key</span>
-              <span className="text-xs text-red-400/70 ml-auto">Required</span>
-            </div>
-            <div className="p-4">
-              <div className="relative">
-                <input
-                  type={showPwd.agent ? 'text' : 'password'}
-                  value={form.agent_api_key}
-                  onChange={e => set('agent_api_key', e.target.value)}
-                  placeholder="Paste from backend/docker/server.yaml → auth.api_keys[0]"
-                  className="w-full bg-siem-bg border border-siem-border rounded-lg px-3 py-2 text-sm text-siem-text placeholder-siem-muted focus:outline-none focus:border-cyan-500/50 pr-12"
-                />
-                <button type="button" onClick={() => setShowPwd(s => ({...s, agent: !s.agent}))}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-siem-muted hover:text-siem-text">
-                  {showPwd.agent ? 'hide' : 'show'}
-                </button>
-              </div>
-              <p className="text-xs text-siem-muted mt-1.5">
-                Choose any strong key (generate with <code className="text-cyan-400">openssl rand -hex 32</code>). This will be written to both <code className="text-cyan-400">backend/docker/server.yaml</code> and <code className="text-cyan-400">management/docker/server.yaml</code> automatically, and embedded into all agent binaries.
-              </p>
-            </div>
+          {/* Agents need no shared key any more */}
+          <div className="rounded-xl border border-siem-border bg-siem-surface p-4 text-xs text-siem-muted leading-relaxed">
+            <span className="text-siem-text font-semibold">No agent API key.</span> Agents authenticate with their own certificate.
+            Each build from the Agent builder carries a short-lived enrollment token; on install the agent enrolls and gets its certificate.
           </div>
 
           {/* Optional domain */}

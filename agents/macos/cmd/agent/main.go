@@ -18,6 +18,7 @@ import (
 	"obsidianwatch/macos-agent/internal/collector"
 	"obsidianwatch/macos-agent/internal/config"
 	"obsidianwatch/macos-agent/internal/forwarder"
+	"obsidianwatch/macos-agent/internal/identity"
 	"obsidianwatch/macos-agent/internal/ownproc"
 	"obsidianwatch/macos-agent/internal/response"
 	"obsidianwatch/macos-agent/internal/parser"
@@ -50,6 +51,13 @@ func main() {
 		agentID = resolveAgentID(hostname)
 	}
 
+	// The agent's own certificate replaces the shared API key (spec A1).
+	idm, err := newIdentity(cfg, hostname, "macos", buildLogger(cfg.Log.Level))
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Agent identity: %v\n", err)
+		os.Exit(1)
+	}
+
 	switch subcmd {
 	case "install":
 		self, _ := os.Executable()
@@ -61,7 +69,7 @@ func main() {
 			ManagementCACertPEM: cfg.Forwarder.ManagementCACertPEM,
 			AgentID:             agentID,
 			Hostname:            hostname,
-			APIKey:              cfg.Forwarder.APIKey,
+			Enroll:              enrollAtInstall(cfg, idm, hostname),
 		})
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Install failed: %v\n", err)
@@ -70,7 +78,8 @@ func main() {
 		return
 
 	case "uninstall":
-		err := service.Uninstall(cfg.Forwarder.ManagementURL, cfg.Forwarder.CAFile, uninstallCA(cfg.Forwarder.ManagementCACertPEM, cfg.Forwarder.CACertPEM), cfg.Forwarder.APIKey, agentID)
+		identity.SetActive(idm) // the backend checks the agent certificate
+		err := service.Uninstall(cfg.Forwarder.BackendURL, cfg.Forwarder.CAFile, cfg.Forwarder.CACertPEM, idm.AgentID())
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Uninstall failed: %v\n", err)
 			os.Exit(1)
@@ -88,6 +97,15 @@ func main() {
 
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
+
+	// Enroll (first start) or load the certificate, then keep it renewed.
+	if err := startIdentity(ctx, cfg, idm, hostname, logger); err != nil {
+		logger.Error("agent identity unavailable; not sending anything", "err", err)
+		<-ctx.Done() // stay up (no restart loop) until the agent is reinstalled
+		return
+	}
+	agentID = idm.AgentID()
+	logger.Info("agent identity", "agent_id", agentID, "certificate_expires", idm.NotAfter())
 
 	// Raw event channel (collectors → normalizer → rate limiter → forwarder)
 	rawCh := make(chan schema.Event, 2048)
@@ -144,7 +162,6 @@ func main() {
 		FlushInterval: cfg.Forwarder.FlushInterval,
 		CAFile:        cfg.Forwarder.CAFile,
 		CACertPEM:     cfg.Forwarder.CACertPEM,
-		APIKey:        cfg.Forwarder.APIKey,
 	}
 	fwd, err := forwarder.NewHTTPForwarder(fwdCfg, q, agentID, hostname, agentVersion, logger)
 	if err != nil {
@@ -248,7 +265,7 @@ func main() {
 		loc := collector.NewLocationCollector(
 			30*time.Minute,
 			agentID, hostname,
-			cfg.Forwarder.BackendURL, cfg.Forwarder.APIKey,
+			cfg.Forwarder.BackendURL, "",
 			cfg.Forwarder.CAFile, cfg.Forwarder.CACertPEM,
 			cfg.Forwarder.AllowInsecureTLS,
 			rawCh, logger,
@@ -261,8 +278,8 @@ func main() {
 	if cfg.LiveResponse.Enabled {
 		lr := collector.NewLiveResponseCollector(
 			agentID, hostname,
-			cfg.Forwarder.ManagementURL,
-			cfg.Forwarder.APIKey,
+			cfg.Forwarder.BackendURL, // the tunnel rides the backend port with the agent certificate
+			"",
 			cfg.Forwarder.CAFile,
 			cfg.Forwarder.CAFile,
 			logger,

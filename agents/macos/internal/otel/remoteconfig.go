@@ -149,9 +149,6 @@ func (s *Sender) FetchConfig(ctx context.Context, agentID string) ([]RemoteServi
 		return nil, err
 	}
 	req.Header.Set("User-Agent", "obsidianwatch-agent/"+s.opt.Version)
-	if s.opt.APIKey != "" {
-		req.Header.Set("X-API-Key", s.opt.APIKey)
-	}
 	resp, err := s.client.Do(req)
 	if err != nil {
 		return nil, err

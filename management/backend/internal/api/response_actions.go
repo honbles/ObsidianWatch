@@ -8,11 +8,13 @@ package api
 import (
 	"context"
 	"crypto/rand"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net/http"
+	"net/netip"
 	"regexp"
 	"strings"
 	"sync"
@@ -117,12 +119,25 @@ func absPath(p string) bool {
 }
 
 type actionParams struct {
-	PID        int    `json:"pid,omitempty"`
-	Image      string `json:"image,omitempty"`
-	Tree       bool   `json:"tree,omitempty"`
-	Path       string `json:"path,omitempty"`
-	ID         string `json:"id,omitempty"`
-	TTLMinutes int    `json:"ttl_minutes,omitempty"`
+	PID         int    `json:"pid,omitempty"`
+	Image       string `json:"image,omitempty"`
+	Tree        bool   `json:"tree,omitempty"`
+	Path        string `json:"path,omitempty"`
+	ID          string `json:"id,omitempty"`
+	TTLMinutes  int    `json:"ttl_minutes,omitempty"`
+	NoBlockPage bool   `json:"no_block_page,omitempty"` // isolate: skip the "contact your administrator" page
+	SHA256      string `json:"sha256,omitempty"`        // delete_file: only if the content still matches
+	IP          string `json:"ip,omitempty"`            // block_ip / unblock_ip
+	User        string `json:"user,omitempty"`          // disable_user / enable_user
+}
+
+var (
+	sha256Re   = regexp.MustCompile(`^[0-9A-Fa-f]{64}$`)
+	acctNameRe = regexp.MustCompile(`^[A-Za-z0-9_][A-Za-z0-9._@ -]{0,63}$`)
+)
+
+func filePathOK(p string) bool {
+	return absPath(p) && len(p) <= 2048 && !strings.ContainsRune(p, 0)
 }
 
 var quarIDRe = regexp.MustCompile(`^[0-9a-f]{16}$`)
@@ -134,7 +149,7 @@ func validateAction(action string, p actionParams) string {
 		if p.TTLMinutes < 0 || p.TTLMinutes > 7*24*60 {
 			return "ttl_minutes must be between 0 and 10080"
 		}
-	case "release", "list_quarantine", "list_blocked":
+	case "release", "list_quarantine", "list_blocked", "list_blocked_ips":
 	case "kill_process":
 		if p.PID <= 1 || p.PID > 4194304 {
 			return "a valid pid is required"
@@ -150,9 +165,32 @@ func validateAction(action string, p actionParams) string {
 		if !absPath(p.Path) || len(p.Path) > 2048 || strings.ContainsRune(p.Path, 0) {
 			return "an absolute file path is required"
 		}
-	case "restore_file":
+	case "restore_file", "delete_quarantined":
 		if !quarIDRe.MatchString(p.ID) {
 			return "a valid quarantine id is required"
+		}
+	case "delete_file":
+		if !filePathOK(p.Path) {
+			return "an absolute file path is required"
+		}
+		if p.SHA256 != "" && !sha256Re.MatchString(p.SHA256) {
+			return "sha256 must be 64 hex characters"
+		}
+	case "file_info", "collect_file":
+		if !filePathOK(p.Path) {
+			return "an absolute file path is required"
+		}
+	case "block_ip", "unblock_ip":
+		a, err := netip.ParseAddr(strings.TrimSpace(p.IP))
+		if err != nil {
+			return "a single IPv4 or IPv6 address is required"
+		}
+		if a = a.Unmap(); a.IsLoopback() || a.IsUnspecified() || a.IsMulticast() || a.IsLinkLocalUnicast() {
+			return "loopback, unspecified, multicast and link-local addresses cannot be blocked"
+		}
+	case "disable_user", "enable_user":
+		if !acctNameRe.MatchString(strings.TrimSpace(p.User)) || strings.Contains(p.User, "..") {
+			return "a local account name is required"
 		}
 	default:
 		return "unknown action"
@@ -298,6 +336,48 @@ func handleIsolatedAgents(db *store.DB) http.HandlerFunc {
 		}
 		writeJSON(w, 200, map[string]any{"agents": l})
 	}
+}
+
+// GET /api/v1/response/actions/{id}/file - download what collect_file
+// brought back. Admin only; served as an attachment, never rendered.
+func handleCollectedFile(db *store.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id := r.PathValue("id")
+		host, path, sha, b64, err := db.CollectedFile(r.Context(), id)
+		if err != nil {
+			writeJSON(w, 404, map[string]string{"error": "no collected file for that action"})
+			return
+		}
+		data, err := base64.StdEncoding.DecodeString(b64)
+		if err != nil {
+			writeJSON(w, 500, map[string]string{"error": "stored content is unreadable"})
+			return
+		}
+		base := path
+		if i := strings.LastIndexAny(base, `/\`); i >= 0 {
+			base = base[i+1:]
+		}
+		name := safeFileName(host + "_" + base)
+		db.WriteAudit(r.Context(), actor(r), "response_collect_download", "action:"+id, path, clientIP(r))
+		w.Header().Set("Content-Type", "application/octet-stream")
+		w.Header().Set("Content-Disposition", `attachment; filename="`+name+`.collected"`)
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		w.Header().Set("X-Sha256", sha)
+		_, _ = w.Write(data)
+	}
+}
+
+func safeFileName(s string) string {
+	b := []byte(s)
+	for i, c := range b {
+		if !(c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '.' || c == '-' || c == '_') {
+			b[i] = '_'
+		}
+	}
+	if len(b) > 120 {
+		b = b[:120]
+	}
+	return string(b)
 }
 
 // GET /api/v1/response/actions - fleet-wide recent actions.

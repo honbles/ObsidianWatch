@@ -186,7 +186,7 @@ forwarder:
   # key_file:  "certs/agent.key"
   ca_file:   "certs/ca.crt"         # CA cert for backend :8443
   # management_ca_file: "certs/mgmt-ca.crt" # CA cert for management HTTPS (leave empty to reuse ca_file)
-  api_key: "changeme-generate-a-real-key-with-openssl-rand-hex-32"
+  enroll_token: ""   # enrollment token (Platform settings → Agent enrollment); no API key
 
   # Tamper Protection - required when installing as a Windows service.
   # Get this key from the ObsidianWatch dashboard:

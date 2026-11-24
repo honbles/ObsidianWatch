@@ -20,6 +20,8 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+
+	"obsidianwatch/macos-agent/internal/identity"
 )
 
 // tlsConfigForCA builds a *tls.Config that trusts the given CA cert file.
@@ -34,7 +36,9 @@ func tlsConfigForCA(caFile string) *tls.Config {
 	}
 	pool := x509.NewCertPool()
 	pool.AppendCertsFromPEM(caCert)
-	return &tls.Config{RootCAs: pool}
+	cfg := &tls.Config{RootCAs: pool}
+	identity.ApplyActive(cfg)
+	return cfg
 }
 
 // tlsConfigForCAPEM builds a *tls.Config that trusts the given CA cert PEM string.
@@ -54,7 +58,9 @@ func tlsConfigForCAPEM(caPEM, caFile string) *tls.Config {
 	}
 	pool := x509.NewCertPool()
 	pool.AppendCertsFromPEM(certBytes)
-	return &tls.Config{RootCAs: pool}
+	cfg := &tls.Config{RootCAs: pool}
+	identity.ApplyActive(cfg)
+	return cfg
 }
 
 // wsDialerForCAPEM returns a WebSocket dialer trusting the given CA PEM or file.

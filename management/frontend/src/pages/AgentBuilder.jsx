@@ -68,9 +68,10 @@ const FIELD_GROUPS = [
     title: 'Connection',
     icon: '⬡',
     fields: [
-      { key: 'backend_url',    label: 'Backend URL',    placeholder: 'https://192.168.1.140:8443', required: true, hint: 'Agent ingest endpoint (port 8443)' },
-      { key: 'management_url', label: 'Management URL', placeholder: 'http://192.168.1.140',       required: true, hint: 'Management dashboard URL' },
-      { key: 'agent_api_key',  label: 'Agent API Key',  placeholder: 'openssl rand -hex 32',       required: true, hint: 'Matches agent_api_key in server.yaml', password: true },
+      { key: 'backend_url',    label: 'Backend URL',    placeholder: 'https://192.168.1.140:8443', required: true, hint: 'The only address agents connect to: events, live response and enrollment. Use whatever host and port your backend is published on.' },
+      { key: 'management_url', label: 'Management URL', placeholder: 'https://192.168.1.140',      required: false, hint: 'Optional. Agents do not connect to it; it is only kept reachable while a host is isolated.' },
+      { key: 'enroll_days',    label: 'Enrollment token valid for (days)', placeholder: '30', required: false, hint: 'Each build embeds a new enrollment token instead of an API key. Hosts must be installed within this time (1 to 90 days). Enrolled agents are not affected when it expires.' },
+      { key: 'enroll_max_uses', label: 'Maximum hosts for this build', placeholder: '500', required: false, hint: 'How many hosts can enroll with this build. Revoke the token in Platform settings → Agent enrollment if the file leaks.' },
       { key: 'site_name',      label: 'Site Name (Network Probe only)', placeholder: 'HQ-Network', required: false, hint: 'Friendly name for this network probe location', probeOnly: true },
     ],
   },
@@ -160,7 +161,7 @@ function PlatformCard({ platform, status, form, onBuild, onDownloadCached, build
         {/* Build / Rebuild button */}
         <button
           onClick={() => onBuild(platform)}
-          disabled={isBuilding || !form.backend_url || !form.management_url || !form.agent_api_key}
+          disabled={isBuilding || !form.backend_url}
           className={`w-full py-2 rounded-lg border text-sm font-medium transition-all disabled:opacity-40 disabled:cursor-not-allowed ${
             hasZip
               ? 'border-siem-border text-siem-muted hover:text-siem-text hover:border-siem-border-hover'
@@ -188,9 +189,15 @@ function PlatformCard({ platform, status, form, onBuild, onDownloadCached, build
   )
 }
 
+// The server mints the enrollment token; the form only sets its lifetime and host limit.
+function buildPayload(platform, form) {
+  const { enroll_days, enroll_max_uses, ...rest } = form
+  return { platform, ...rest, enroll_ttl_hours: Math.round(Number(enroll_days) * 24) || 720, enroll_max_uses: Number(enroll_max_uses) || 500 }
+}
+
 export default function AgentBuilder() {
   const [form, setForm] = useState({
-    backend_url: '', management_url: '', agent_api_key: '',
+    backend_url: '', management_url: '', enroll_days: '30', enroll_max_uses: '500',
     ca_cert: '', management_ca_cert: '', enable_live_response: false,
     /* [APP-FORM-BEGIN] */ enable_app_profile: false, /* [APP-FORM-END] */
   })
@@ -213,7 +220,8 @@ export default function AgentBuilder() {
       setForm(f => ({
         backend_url:        f.backend_url        || r.data.default_backend_url    || '',
         management_url:     f.management_url     || r.data.default_management_url || '',
-        agent_api_key:      f.agent_api_key      || r.data.default_agent_api_key  || '',
+        enroll_days:        f.enroll_days        || String(Math.round((r.data.default_enroll_ttl_hours || 720) / 24)),
+        enroll_max_uses:    f.enroll_max_uses    || String(r.data.default_enroll_max_uses || 500),
         ca_cert:            f.ca_cert            || r.data.default_ca_cert        || '',
         management_ca_cert: f.management_ca_cert || '',
       }))
@@ -226,13 +234,18 @@ export default function AgentBuilder() {
 
   const handleBuild = async (platform) => {
     setError(''); setSuccess('')
-    if (!form.backend_url || !form.management_url || !form.agent_api_key) {
-      setError('Fill in Backend URL, Management URL and Agent API Key before building.')
+    if (!form.backend_url) {
+      setError('Fill in the Backend URL before building.')
+      return
+    }
+    const days = Number(form.enroll_days), uses = Number(form.enroll_max_uses)
+    if (!(days >= 1 && days <= 90) || !(uses >= 1 && uses <= 100000)) {
+      setError('Enrollment token: 1 to 90 days and 1 to 100000 hosts.')
       return
     }
     setBuilding(b => ({ ...b, [platform]: true }))
     try {
-      await api.post('/api/v1/agent-builder/build', { platform, ...form })
+      await api.post('/api/v1/agent-builder/build', buildPayload(platform, form))
       setSuccess(`${platform} build started - this takes 1–2 minutes on first run.`)
     } catch (e) {
       setError('Build failed: ' + (e.response?.data?.error || e.message))

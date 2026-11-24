@@ -37,6 +37,7 @@ import (
 	"obsidianwatch/agent/internal/collector"
 	"obsidianwatch/agent/internal/config"
 	"obsidianwatch/agent/internal/forwarder"
+	"obsidianwatch/agent/internal/identity"
 	"obsidianwatch/agent/internal/ownproc"
 	"obsidianwatch/agent/internal/response"
 	"obsidianwatch/agent/internal/parser"
@@ -243,12 +244,22 @@ func run(ctx context.Context, cfg *config.Config, logger *slog.Logger) error {
 	logStep("windows services checked")
 	go retrySysmonInstall(ctx, logger)
 
-	// Resolve host metadata once.
-	agentID := cfg.Agent.ID
-	if agentID == "" {
-		h, _ := os.Hostname()
-		agentID = h
+	// The agent's own certificate replaces the shared API key (spec A1):
+	// enroll on first start, then keep it renewed.
+	hostName, _ := os.Hostname()
+	idm, err := newIdentity(cfg, hostName, logger)
+	if err != nil {
+		logStep("identity FAILED: " + err.Error())
+		return err
 	}
+	if err := startIdentity(ctx, cfg, idm, logger); err != nil {
+		logStep("identity unavailable: " + err.Error())
+		logger.Error("agent identity unavailable; not sending anything", "err", err)
+		<-ctx.Done()
+		return nil
+	}
+	agentID := idm.AgentID()
+	logStep("identity: " + agentID)
 	hostInfo := parser.ResolveHostInfo(agentID, cfg.Agent.Version)
 	logStep("host info resolved: " + agentID)
 
@@ -283,7 +294,6 @@ func run(ctx context.Context, cfg *config.Config, logger *slog.Logger) error {
 		KeyFile:       resolveRelative(cfg.Forwarder.KeyFile),
 		CAFile:        resolveRelative(cfg.Forwarder.CAFile),
 		CACertPEM:     cfg.Forwarder.CACertPEM,
-		APIKey:        cfg.Forwarder.APIKey,
 	}
 	caInfo := fwdCfg.CAFile
 	if caInfo == "" && fwdCfg.CACertPEM != "" {
@@ -510,7 +520,7 @@ func run(ctx context.Context, cfg *config.Config, logger *slog.Logger) error {
 		c := collector.NewLocationCollector(
 			30*time.Minute,
 			agentID, hostInfo.Hostname,
-			cfg.Forwarder.BackendURL, cfg.Forwarder.APIKey,
+			cfg.Forwarder.BackendURL, "",
 			resolveRelative(cfg.Forwarder.CAFile), cfg.Forwarder.CACertPEM,
 			cfg.Forwarder.AllowInsecureTLS, cfg.Collector.LocationPrecisePositioning,
 			eventCh, // bypasses rate limiter - location is low frequency
@@ -524,18 +534,14 @@ func run(ctx context.Context, cfg *config.Config, logger *slog.Logger) error {
 	if cfg.LiveResponse.Enabled {
 		lr := collector.NewLiveResponseCollector(
 			agentID, hostInfo.Hostname,
-			cfg.Forwarder.ManagementURL,
-			cfg.Forwarder.APIKey,
+			cfg.Forwarder.BackendURL, // the tunnel rides the backend port with the agent certificate
+			"",
 			cfg.Forwarder.CAFile,
 			cfg.Forwarder.CAFile,
 			cfg.Forwarder.AllowInsecureTLS,
 			logger,
 		)
-		caPEM := cfg.Forwarder.ManagementCACertPEM
-		if caPEM == "" {
-			caPEM = cfg.Forwarder.CACertPEM
-		}
-		if caPEM != "" {
+		if caPEM := cfg.Forwarder.CACertPEM; caPEM != "" { // backend CA: the tunnel goes to the backend
 			lr.SetCAPEM(caPEM)
 		}
 		// One-click response actions share the tunnel; isolation survives restarts.
@@ -599,7 +605,7 @@ func installService() error {
 		return fmt.Errorf("abs exe path: %w", err)
 	}
 
-	// C-3: the binary embeds the fleet API key and CA, so restrict it to
+	// C-3: the binary embeds the enrollment token and CA, so restrict it to
 	// SYSTEM and Administrators (best effort; warn if it fails).
 	if out, aerr := exec.Command("icacls", exePath, "/inheritance:r",
 		"/grant:r", "*S-1-5-18:(RX)", "*S-1-5-32-544:(F)").CombinedOutput(); aerr != nil {
@@ -620,32 +626,22 @@ func installService() error {
 	fmt.Printf("  Generated install key: %s\n", installKey)
 	fmt.Println("  This key will appear on the ObsidianWatch dashboard (Agents → shield icon).")
 
-	agentInstallID := cfg.Agent.ID
-	if agentInstallID == "" {
-		if h, err2 := os.Hostname(); err2 == nil {
-			agentInstallID = h
-		}
-	}
-
-	// Register key with management server.
-	if cfg.Forwarder.ManagementURL != "" {
-		fmt.Println("  Registering with management server...")
-		// Use management CA if provided, fall back to backend CA.
-		mgmtCA := cfg.Forwarder.ManagementCACertPEM
-		if mgmtCA == "" {
-			mgmtCA = cfg.Forwarder.CACertPEM
-		}
-		if err := registerInstallKey(cfg.Forwarder.ManagementURL, cfg.Forwarder.APIKey, mgmtCA, agentInstallID, installKey); err != nil {
-			fmt.Printf("  Warning: could not register with server: %v\n", err)
-			fmt.Println("  The key is saved locally and will sync on first connection.")
-		} else {
-			fmt.Println("  Registered on dashboard OK.")
-		}
-	}
-
 	// Persist key to state file (no config yaml to patch).
 	if err := config.PersistInstallKey(installKey); err != nil {
 		fmt.Printf("  Warning: could not persist install key: %v\n", err)
+	}
+
+	// Enroll now (the identity is stored machine-bound, readable by SYSTEM
+	// and Administrators) and register the install key. If the server cannot
+	// be reached, the service does both when it starts.
+	if host, _ := os.Hostname(); true {
+		if idm, ierr := newIdentity(cfg, host, slog.New(slog.NewTextHandler(io.Discard, nil))); ierr != nil {
+			return ierr
+		} else if err := enrollNow(cfg, idm, installKey); err != nil {
+			fmt.Printf("  Warning: %v\n  The service will enroll and register as soon as it can reach the server.\n", err)
+		} else {
+			fmt.Printf("  Enrolled as %s and registered on the dashboard.\n", idm.AgentID())
+		}
 	}
 
 	m, err := mgr.Connect()
@@ -879,12 +875,14 @@ func generateInstallKey() (string, error) {
 	return hex.EncodeToString(b), nil
 }
 
-func registerInstallKey(mgmtURL, apiKey, mgmtCACertPEM, agentID, password string) error {
-	mgmtURL = strings.TrimRight(mgmtURL, "/")
+// registerInstallKey posts the install key through the backend, which checks
+// the agent certificate and passes it to the management server.
+func registerInstallKey(backendURL, caCertPEM, agentID, password string) error {
+	backendURL = strings.TrimRight(backendURL, "/")
 	body := fmt.Sprintf(`{"agent_id":%q,"install_key":%q,"os":"windows"}`, agentID, password)
 
 	// W-05: fail closed - no silent InsecureSkipVerify fallback.
-	tlsCfg, err := config.BuildTLSConfig([]byte(mgmtCACertPEM), false)
+	tlsCfg, err := config.BuildTLSConfig([]byte(caCertPEM), false)
 	if err != nil {
 		return err
 	}
@@ -892,13 +890,12 @@ func registerInstallKey(mgmtURL, apiKey, mgmtCACertPEM, agentID, password string
 		Timeout:   10 * time.Second,
 		Transport: &http.Transport{TLSClientConfig: tlsCfg},
 	}
-	req, err := http.NewRequest(http.MethodPost, mgmtURL+"/api/v1/agent/register-key",
+	req, err := http.NewRequest(http.MethodPost, backendURL+"/api/v1/agent/register-key",
 		strings.NewReader(body))
 	if err != nil {
 		return err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-API-Key", apiKey)
 	resp, err := client.Do(req)
 	if err != nil {
 		return err
@@ -910,51 +907,45 @@ func registerInstallKey(mgmtURL, apiKey, mgmtCACertPEM, agentID, password string
 	return nil
 }
 
-// verifyInstallKey (F-02/W-05) asks the management server to verify the key.
-// The key goes in a POST body (never the URL) with the fleet API key header.
-// The server rotates the key on success, so each key is single-use.
-// Returns (accepted, reachable): reachable=false means the server could not be
-// contacted at all (as opposed to contacted-and-rejected).
-func verifyInstallKey(key, mgmtURL, apiKey string) (bool, bool) {
-	if mgmtURL == "" {
-		return false, false
-	}
-	mgmtURL = strings.TrimRight(mgmtURL, "/")
-
+// verifyInstallKey (F-02/W-05) asks the server to verify the key. The request
+// goes to the backend with the agent certificate; the server rotates the key
+// on success, so each key is single-use. reachable=false means no answer
+// about this agent could be had (unreachable, or no valid identity).
+func verifyInstallKey(key string) (bool, bool) {
 	cfg, err := config.LoadEmbedded("agent.yaml")
-	if err != nil {
+	if err != nil || cfg.Forwarder.BackendURL == "" {
 		return false, false
 	}
-	mgmtCA := cfg.Forwarder.ManagementCACertPEM
-	if mgmtCA == "" {
-		mgmtCA = cfg.Forwarder.CACertPEM
+	host, _ := os.Hostname()
+	idm, err := newIdentity(cfg, host, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if err != nil || idm.AgentID() == "" {
+		return false, false
 	}
-	tlsCfg, err := config.BuildTLSConfig([]byte(mgmtCA), cfg.Forwarder.AllowInsecureTLS)
+	identity.SetActive(idm)
+	tlsCfg, err := config.BuildTLSConfig([]byte(cfg.Forwarder.CACertPEM), cfg.Forwarder.AllowInsecureTLS)
 	if err != nil {
 		fmt.Printf("Warning: TLS setup failed: %v\n", err)
 		return false, false
 	}
-	if apiKey == "" {
-		apiKey = cfg.Forwarder.APIKey
-	}
-
 	client := &http.Client{
 		Timeout:   10 * time.Second,
 		Transport: &http.Transport{TLSClientConfig: tlsCfg},
 	}
 	body := fmt.Sprintf(`{"key":%q}`, key)
-	req, err := http.NewRequest(http.MethodPost, mgmtURL+"/api/v1/verify-install-key", strings.NewReader(body))
+	req, err := http.NewRequest(http.MethodPost, strings.TrimRight(cfg.Forwarder.BackendURL, "/")+"/api/v1/verify-install-key", strings.NewReader(body))
 	if err != nil {
 		return false, false
 	}
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-API-Key", apiKey)
 	resp, err := client.Do(req)
 	if err != nil {
-		fmt.Printf("Warning: could not reach management server at %s: %v\n", mgmtURL, err)
+		fmt.Printf("Warning: could not reach the server at %s: %v\n", cfg.Forwarder.BackendURL, err)
 		return false, false
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode == 401 {
+		return false, false
+	}
 	return resp.StatusCode == 200, true
 }
 
@@ -984,11 +975,7 @@ func uninstallService() error {
 	// rotates it, so a key is single-use and "Regenerate key" on the dashboard
 	// actually works. The local copy is consulted only when the server cannot
 	// be reached at all; a server rejection is final.
-	mgmtURL := ""
-	if ecfg, cerr := config.LoadEmbedded("agent.yaml"); cerr == nil {
-		mgmtURL = ecfg.Forwarder.ManagementURL
-	}
-	accepted, reachable := verifyInstallKey(inputKey, mgmtURL, "")
+	accepted, reachable := verifyInstallKey(inputKey)
 	if reachable {
 		if !accepted {
 			fmt.Println()
@@ -997,7 +984,7 @@ func uninstallService() error {
 		}
 	} else if subtle.ConstantTimeCompare([]byte(inputKey), []byte(installKey)) != 1 {
 		fmt.Println()
-		fmt.Println("  ✗ Incorrect key (management server unreachable; checked against local copy). Uninstall blocked.")
+		fmt.Println("  ✗ Incorrect key (server could not verify; checked against local copy). Uninstall blocked.")
 		return fmt.Errorf("tamper protection: incorrect install key")
 	}
 	fmt.Println("  ✓ Key accepted.")

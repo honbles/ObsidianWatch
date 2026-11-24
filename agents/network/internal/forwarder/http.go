@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"obsidianwatch/network-probe/internal/config"
+	"obsidianwatch/network-probe/internal/identity"
 	"obsidianwatch/network-probe/pkg/schema"
 )
 
@@ -43,6 +44,8 @@ func New(cfg config.ForwarderConfig, probeID, host, ver string, logger *slog.Log
 		}
 		tlsCfg.RootCAs = pool
 	}
+	// The probe authenticates with its own enrolled certificate (no API key).
+	identity.ApplyActive(tlsCfg)
 
 	client := &http.Client{
 		Transport: &http.Transport{TLSClientConfig: tlsCfg},
@@ -177,13 +180,14 @@ func (f *Forwarder) send(ctx context.Context, events []schema.ProbeEvent) error 
 		return err
 	}
 
-	url := f.cfg.BackendURL + "/api/v1/ingest"
+	// The backend's ingest route (the probe used to post to /api/v1/ingest,
+	// which the backend never served).
+	url := f.cfg.BackendURL + "/api/v1/events"
 	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(body))
 	if err != nil {
 		return err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-Agent-Key", f.cfg.APIKey)
 
 	resp, err := f.client.Do(req)
 	if err != nil {
@@ -191,9 +195,9 @@ func (f *Forwarder) send(ctx context.Context, events []schema.ProbeEvent) error 
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode >= 400 {
-		// Only malformed/oversized payloads are permanent. 401/403 (wrong or
-		// rotated key) and 429 are retried so data is not lost while an
-		// operator fixes the configuration.
+		// Only malformed/oversized payloads are permanent. 401/403 (identity
+		// not yet valid, or revoked) and 429 are retried so data is not lost
+		// while an operator fixes it.
 		if resp.StatusCode == 400 || resp.StatusCode == 413 || resp.StatusCode == 422 {
 			return errPermanent{code: resp.StatusCode}
 		}

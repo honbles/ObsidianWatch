@@ -10,16 +10,17 @@ import (
 
 // handleAgentRegisterKey allows an agent to register/update its own install key.
 // Called at install time with the password the operator chose interactively.
-// Auth: X-API-Key header matching any backend api_key.
+// Auth: the agent certificate, verified by the ingest backend.
 // registerKeyLimiter bounds install-key registrations per source IP. The fleet
 // API key can create agent rows by registering unseen agent_ids, so an
 // unthrottled loop would let a leaked key flood the agents table.
 var registerKeyLimiter = NewRateLimiter(1*time.Minute, 60)
 
-func handleAgentRegisterKey(db *store.DB, agentAPIKey string) http.HandlerFunc {
+func handleAgentRegisterKey(db *store.DB, ta *tunnelAuth) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if !validAgentAPIKey(agentAPIKey, r) {
-			writeJSON(w, 401, map[string]string{"error": "invalid or missing X-API-Key"})
+		caller, err := ta.authenticate(r)
+		if err != nil {
+			writeAuthError(w, err)
 			return
 		}
 		if !registerKeyLimiter.Allow(clientIP(r)) {
@@ -43,10 +44,10 @@ func handleAgentRegisterKey(db *store.DB, agentAPIKey string) http.HandlerFunc {
 			writeJSON(w, 400, map[string]string{"error": "field too long"})
 			return
 		}
-		// agentID optional - if not provided we try to find by API key header
-		agentID := body.AgentID
-		if agentID == "" {
-			writeJSON(w, 400, map[string]string{"error": "agent_id required"})
+		// An agent registers its own key only (identity from its certificate).
+		agentID := caller.agentID
+		if body.AgentID != "" && body.AgentID != agentID {
+			writeJSON(w, 403, map[string]string{"error": "agent_id does not match the client certificate"})
 			return
 		}
 		if err := db.SetInstallKey(r.Context(), agentID, body.InstallKey, body.OS); err != nil {
@@ -71,10 +72,11 @@ var installKeyLimiter = NewRateLimiter(1*time.Minute, 10)
 // with the key in the body, requires the shared agent X-API-Key on top of
 // the install key itself, rate-limited, and rotates the key on success so
 // a logged/observed key can't be replayed to authorize a second uninstall.
-func handleVerifyInstallKey(db *store.DB, agentAPIKey string) http.HandlerFunc {
+func handleVerifyInstallKey(db *store.DB, ta *tunnelAuth) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if !validAgentAPIKey(agentAPIKey, r) {
-			writeJSON(w, 401, map[string]string{"error": "invalid or missing X-API-Key"})
+		caller, err := ta.authenticate(r)
+		if err != nil {
+			writeAuthError(w, err)
 			return
 		}
 		if !installKeyLimiter.Allow(clientIP(r)) {
@@ -93,7 +95,9 @@ func handleVerifyInstallKey(db *store.DB, agentAPIKey string) http.HandlerFunc {
 			return
 		}
 		agent, err := db.GetAgentByInstallKey(r.Context(), key)
-		if err != nil || agent == nil {
+		// The key must belong to the agent asking: one host's key never
+		// authorises another host's uninstall.
+		if err != nil || agent == nil || agent.ID != caller.agentID {
 			writeJSON(w, 403, map[string]string{"error": "invalid key"})
 			return
 		}

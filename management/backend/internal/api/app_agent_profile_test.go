@@ -8,13 +8,13 @@ import (
 )
 
 func TestAppProfileYAMLOffByDefault(t *testing.T) {
-	if got := appProfileYAML(AgentBuilderConfig{AgentAPIKey: "k"}); got != "" {
+	if got := appProfileYAML(AgentBuilderConfig{UserHashSeed: "k"}); got != "" {
 		t.Fatalf("must be empty when the profile is off: %q", got)
 	}
 }
 
 func TestAppProfileYAMLContent(t *testing.T) {
-	y := appProfileYAML(AgentBuilderConfig{EnableAppProfile: true, AgentAPIKey: "org-key", AppOTLPSocket: "/run/ow/otlp.sock", AppClientIPMode: "TRUNCATED", AppSensorMode: "Poll", AppEnvironment: "prod"})
+	y := appProfileYAML(AgentBuilderConfig{EnableAppProfile: true, UserHashSeed: "org-key", AppOTLPSocket: "/run/ow/otlp.sock", AppClientIPMode: "TRUNCATED", AppSensorMode: "Poll", AppEnvironment: "prod"})
 	var out struct {
 		App struct {
 			Enabled bool `yaml:"enabled"`
@@ -65,7 +65,7 @@ func TestAppProfileYAMLRejectsHostileValues(t *testing.T) {
 
 // The profile must compose with the real builder output as one valid document.
 func TestAppProfileComposesWithBuilder(t *testing.T) {
-	y := buildAgentYAML(AgentBuilderConfig{Platform: "linux", BackendURL: "https://b:8443", ManagementURL: "https://m", AgentAPIKey: "k", EnableAppProfile: true})
+	y := buildAgentYAML(AgentBuilderConfig{Platform: "linux", BackendURL: "https://b:8443", ManagementURL: "https://m", UserHashSeed: "k", EnableAppProfile: true})
 	var v map[string]any
 	if err := yaml.Unmarshal([]byte(y), &v); err != nil {
 		t.Fatalf("combined YAML invalid: %v", err)
@@ -73,7 +73,7 @@ func TestAppProfileComposesWithBuilder(t *testing.T) {
 	if _, ok := v["app_monitoring"]; !ok {
 		t.Fatal("app_monitoring block missing from builder output")
 	}
-	if off := buildAgentYAML(AgentBuilderConfig{Platform: "linux", BackendURL: "https://b:8443", ManagementURL: "https://m", AgentAPIKey: "k"}); strings.Contains(off, "app_monitoring") {
+	if off := buildAgentYAML(AgentBuilderConfig{Platform: "linux", BackendURL: "https://b:8443", ManagementURL: "https://m", UserHashSeed: "k"}); strings.Contains(off, "app_monitoring") {
 		t.Fatal("block must be absent when off")
 	}
 }
@@ -82,5 +82,24 @@ func TestAppProfileSensorDefaults(t *testing.T) {
 	y := appProfileYAML(AgentBuilderConfig{EnableAppProfile: true, AppSensorMode: "kernel"}) // not a valid tier: falls back to auto
 	if !strings.Contains(y, "mode: auto") || strings.Contains(y, "environment:") {
 		t.Fatalf("%s", y)
+	}
+}
+
+// Builds carry an enrollment token, never an API key.
+func TestBuilderYAMLCarriesEnrollmentToken(t *testing.T) {
+	for _, p := range []string{"linux", "windows", "macos"} {
+		y := buildAgentYAML(AgentBuilderConfig{Platform: p, BackendURL: "https://b:8443", EnrollToken: "owe_tok"})
+		var v struct {
+			Forwarder map[string]any `yaml:"forwarder"`
+		}
+		if err := yaml.Unmarshal([]byte(y), &v); err != nil {
+			t.Fatalf("%s: %v", p, err)
+		}
+		if v.Forwarder["enroll_token"] != "owe_tok" {
+			t.Errorf("%s: enroll_token missing: %v", p, v.Forwarder)
+		}
+		if _, ok := v.Forwarder["api_key"]; ok {
+			t.Errorf("%s: api_key must not be in a build", p)
+		}
 	}
 }

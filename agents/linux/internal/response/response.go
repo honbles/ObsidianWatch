@@ -35,6 +35,12 @@ type Params struct {
 	Match      string `json:"match,omitempty"`
 	Limit      int    `json:"limit,omitempty"`
 	TTLMinutes int    `json:"ttl_minutes,omitempty"` // isolate: auto-release after N minutes (0 = until released)
+	// NoBlockPage (isolate): do not redirect browsing to the "contact your
+	// administrator" page.
+	NoBlockPage bool   `json:"no_block_page,omitempty"`
+	SHA256      string `json:"sha256,omitempty"` // delete_file: only delete if the content still matches
+	IP          string `json:"ip,omitempty"`     // block_ip / unblock_ip
+	User        string `json:"user,omitempty"`   // disable_user / enable_user
 }
 
 // Table is a tabular answer to a fleet query.
@@ -65,6 +71,11 @@ type isoState struct {
 	Expires  time.Time `json:"expires,omitempty"`
 	Allow    []string  `json:"allow"`           // union of every address ever resolved for the backend/management hosts
 	Saved    string    `json:"saved,omitempty"` // platform-specific data needed to undo (e.g. firewall profile states)
+	// Block page (blockpage.go): server names' addresses for the DNS sink,
+	// whether the page is on, and platform data to undo the DNS change.
+	HostIPs    map[string][]string `json:"host_ips,omitempty"`
+	BlockPage  bool                `json:"block_page,omitempty"`
+	BlockSaved string              `json:"block_saved,omitempty"`
 }
 
 // Handler runs response actions.
@@ -76,6 +87,8 @@ type Handler struct {
 
 	cbMu     sync.Mutex
 	onChange func() // told when isolation ends on its own (ttl expiry)
+
+	bp blockPage
 }
 
 // SetOnChange registers a callback fired when the state changes without a
@@ -234,6 +247,26 @@ func (h *Handler) Handle(ctx context.Context, action string, p Params) (res Resu
 		return Result{OK: true, Data: h.listQuarantine()}
 	case "query":
 		return h.query(ctx, p)
+	case "delete_file":
+		return h.deleteFile(p)
+	case "delete_quarantined":
+		return h.deleteQuarantined(p.ID)
+	case "file_info":
+		return h.fileInfo(p.Path, false)
+	case "collect_file":
+		return h.fileInfo(p.Path, true)
+	case "block_ip":
+		return h.blockIP(p.IP)
+	case "unblock_ip":
+		return h.unblockIP(p.IP)
+	case "list_blocked_ips":
+		h.mu.Lock()
+		defer h.mu.Unlock()
+		return Result{OK: true, Data: h.loadIPBlocks()}
+	case "disable_user":
+		return h.disableUserAction(p.User)
+	case "enable_user":
+		return h.enableUserAction(p.User)
 	}
 	return Result{Message: "unknown action " + action}
 }
@@ -246,6 +279,10 @@ func (h *Handler) isolate(p Params) Result {
 	if err != nil {
 		return Result{Message: err.Error()}
 	}
+	// Resolve the server names now, while DNS still works: the block page's
+	// DNS sink answers them with these addresses.
+	exempt, keep := exemptFor(h.hosts, st.HostIPs, lookupHost)
+	st.HostIPs = keep
 	saved, err := applyIsolation(allow, st.Saved)
 	if err != nil {
 		return Result{Message: "isolation failed: " + err.Error()}
@@ -254,6 +291,14 @@ func (h *Handler) isolate(p Params) Result {
 		st.Since = time.Now().UTC()
 	}
 	st.Isolated, st.Allow, st.Saved = true, addrStrings(allow), saved
+	note := ""
+	if !p.NoBlockPage {
+		st.BlockPage = true
+		note = blockPageErr(h.startBlockPage(exempt, &st))
+	} else if st.BlockPage {
+		h.stopBlockPage(&st)
+		st.BlockPage = false
+	}
 	st.Expires = time.Time{}
 	if p.TTLMinutes > 0 {
 		st.Expires = time.Now().UTC().Add(time.Duration(p.TTLMinutes) * time.Minute)
@@ -261,21 +306,62 @@ func (h *Handler) isolate(p Params) Result {
 	if err := h.saveIso(st); err != nil {
 		h.logger.Warn("response: cannot persist isolation state", "err", err)
 	}
-	h.logger.Warn("response: host ISOLATED", "allow", st.Allow)
-	return Result{OK: true, Message: fmt.Sprintf("host isolated; only %v is reachable", st.Allow), Data: h.stateLocked()}
+	h.logger.Warn("response: host ISOLATED", "allow", st.Allow, "block_page", st.BlockPage)
+	msg := fmt.Sprintf("host isolated; only %v is reachable", st.Allow)
+	if st.BlockPage {
+		msg += "; browsing shows the \"contact your administrator\" page" + note
+	}
+	return Result{OK: true, Message: msg, Data: h.stateLocked()}
 }
 
 func (h *Handler) release() Result {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	st := h.loadIso()
+	h.stopBlockPage(&st)
 	if err := removeIsolation(st.Saved); err != nil {
 		return Result{Message: "release failed: " + err.Error()}
 	}
-	st.Isolated, st.Expires, st.Saved = false, time.Time{}, ""
+	st.Isolated, st.Expires, st.Saved, st.BlockPage = false, time.Time{}, "", false
 	_ = h.saveIso(st)
 	h.logger.Warn("response: host RELEASED from isolation")
 	return Result{OK: true, Message: "isolation removed; normal network access restored", Data: h.stateLocked()}
+}
+
+// startBlockPage brings up the block page and, where the platform needs it,
+// points DNS at its sink. Caller holds h.mu and saves st.
+func (h *Handler) startBlockPage(exempt map[string][]netip.Addr, st *isoState) error {
+	httpAddr, dnsAddr := blockPageAddrs()
+	host, _ := os.Hostname()
+	dnsOK, err := h.bp.start(httpAddr, dnsAddr, exempt, host)
+	if dnsOK {
+		saved, perr := pointToBlockPage(st.BlockSaved)
+		if perr != nil {
+			h.logger.Warn("response: cannot point DNS at the block page", "err", perr)
+			if err == nil {
+				err = perr
+			}
+		} else {
+			st.BlockSaved = saved
+		}
+	}
+	return err
+}
+
+func (h *Handler) stopBlockPage(st *isoState) {
+	if st.BlockSaved != "" {
+		if err := unpointBlockPage(st.BlockSaved); err != nil {
+			h.logger.Warn("response: cannot restore DNS settings", "err", err)
+		}
+		st.BlockSaved = ""
+	}
+	h.bp.stop()
+}
+
+func lookupHost(name string) ([]netip.Addr, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	return net.DefaultResolver.LookupNetIP(ctx, "ip", name)
 }
 
 func (h *Handler) stateLocked() State {
@@ -292,8 +378,9 @@ func (h *Handler) Restore() {
 		return
 	}
 	if !st.Expires.IsZero() && time.Now().After(st.Expires) {
+		h.stopBlockPage(&st)
 		_ = removeIsolation(st.Saved)
-		st.Isolated, st.Saved = false, ""
+		st.Isolated, st.Saved, st.BlockPage = false, "", false
 		_ = h.saveIso(st)
 		h.logger.Warn("response: isolation window elapsed; host released")
 		h.notify()
@@ -308,8 +395,14 @@ func (h *Handler) Restore() {
 		h.logger.Error("response: re-apply isolation failed", "err", err)
 	} else {
 		st.Allow, st.Saved = addrStrings(allow), saved
+		if st.BlockPage {
+			exempt, keep := exemptFor(h.hosts, st.HostIPs, lookupHost)
+			st.HostIPs = keep
+			if err := h.startBlockPage(exempt, &st); err != nil {
+				h.logger.Warn("response: block page", "err", err)
+			}
+		}
 		_ = h.saveIso(st)
-		h.logger.Warn("response: isolation re-applied after restart")
 	}
 }
 
@@ -320,6 +413,7 @@ func (h *Handler) Run(ctx context.Context) {
 	go h.enforceLoop(ctx)
 	go h.EnsurePrereqs(ctx) // install nftables now if the host has no firewall tool, so isolation is ready
 	h.Restore()
+	h.reapplyIPBlocks()
 	t := time.NewTicker(2 * time.Minute)
 	defer t.Stop()
 	for {

@@ -23,11 +23,11 @@ var appSocketRe = regexp.MustCompile(`^/[A-Za-z0-9._/-]{1,200}$`)
 var appEnvRe = regexp.MustCompile(`^[A-Za-z0-9._-]{1,64}$`)
 
 // appUserHashKey derives the per-organization HMAC key (empty when there is no API key).
-func appUserHashKey(agentAPIKey string) string {
-	if agentAPIKey == "" {
+func appUserHashKey(seed string) string {
+	if seed == "" {
 		return ""
 	}
-	m := hmac.New(sha256.New, []byte(agentAPIKey))
+	m := hmac.New(sha256.New, []byte(seed))
 	m.Write([]byte("obsidianwatch/app-monitoring/user-hash/v1"))
 	return hex.EncodeToString(m.Sum(nil))
 }
@@ -48,7 +48,7 @@ func appProfileYAML(cfg AgentBuilderConfig) string {
 	if sock := strings.TrimSpace(cfg.AppOTLPSocket); appSocketRe.MatchString(sock) && !strings.Contains(sock, "..") {
 		fmt.Fprintf(&b, "    socket: %q\n", sock)
 	}
-	if k := appUserHashKey(cfg.AgentAPIKey); k != "" {
+	if k := appUserHashKey(cfg.UserHashSeed); k != "" {
 		fmt.Fprintf(&b, "  user_hash_key: %q\n", k)
 	}
 	fmt.Fprintf(&b, "  client_ip_default: %s\n", mode)

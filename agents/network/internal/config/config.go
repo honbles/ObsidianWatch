@@ -29,7 +29,8 @@ type ProbeConfig struct {
 type ForwarderConfig struct {
 	BackendURL       string `yaml:"backend_url"`
 	ManagementURL    string `yaml:"management_url"`
-	APIKey           string `yaml:"api_key"`
+	EnrollToken      string `yaml:"enroll_token"` // built in by the Agent builder; used once to get the probe's certificate
+	APIKey           string `yaml:"api_key"`      // no longer accepted by the backend
 	CACertPEM        string `yaml:"ca_cert_pem"`
 	ManagementCACert string `yaml:"management_ca_cert_pem"`
 	BatchSize        int    `yaml:"batch_size"`

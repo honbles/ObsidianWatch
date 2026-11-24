@@ -37,7 +37,7 @@ ObsidianWatch collects security telemetry from **endpoints**, **cloud accounts**
 
 ```
  Endpoints (Linux / Windows / macOS)            Cloud (AWS / Azure / GCP)     Git (GitHub / GitLab / ADO)
-        │  TLS :8443  (API key + install key)          │  API polling every 5 min      │  polling + webhooks
+        │  TLS :8443  (agent certificate)               │  API polling every 5 min      │  polling + webhooks
         ▼                                              ▼                               ▼
  ┌──────────────┐   TimescaleDB   ┌─────────────────────────────────────────────────────────────┐
  │   backend    │ ───────────────►│  Management API (:8444 HTTPS)                               │
@@ -94,9 +94,9 @@ Fill in `.env`. Compose refuses to start if a required value is missing.
 |---|:---:|---|
 | `HOST_IP` | ✅ | Server LAN/public IP. Becomes a SAN in the TLS certificate |
 | `DB_PASSWORD` | ✅ | `openssl rand -hex 16` |
-| `AGENT_API_KEY` | ✅ | `openssl rand -hex 32`. Shared key agents use to authenticate |
+| `AGENT_API_KEY` | – | No longer used: agents authenticate with their own certificates. Leave empty |
 | `JWT_SECRET` | ✅ | `openssl rand -hex 32` (≥ 32 chars). Signs dashboard logins |
-| `OW_SECRET_KEY` | ✅ | `openssl rand -base64 32`. Encrypts cloud/Git credentials, API keys and SMTP password at rest (AES-256-GCM). **Back it up separately. Losing it makes stored credentials unrecoverable** |
+| `OW_SECRET_KEY` | ✅ | `openssl rand -base64 32`. Encrypts cloud/Git credentials, API keys and SMTP password at rest (AES-256-GCM), and signs the agent identity the backend passes to management (both services need the same value). **Back it up separately. Losing it makes stored credentials unrecoverable** |
 | `BACKEND_DOMAIN` | – | Domain name agents should use; added to the certificate |
 | `EXTRA_SAN_DNS` | – | Extra comma-separated DNS names for the certificate |
 | `OW_ALLOWED_ORIGINS` | – | Extra browser origins allowed to open WebSockets |
@@ -120,7 +120,6 @@ The first build compiles the management image (Go, Semgrep and, best-effort, Cod
 
 | Field | Required | Notes |
 |---|:---:|---|
-| Agent API Key | ✅ | Same value as `AGENT_API_KEY` |
 | Backend Domain | – | Adds a domain to the certificate SAN; clears the agent cache |
 | Backend URL / Management URL | auto | Pre-filled from detected IPs; override if needed |
 | Groq API Key | – | AI alert analysis (primary) |
@@ -153,10 +152,10 @@ Agents run as a system service on each host, collect telemetry locally, and forw
 
 ### 3.1 How to get an agent onto an endpoint
 
-Agents are **compiled by the platform with your configuration embedded** (backend URL, API key, CA certificate). The endpoint needs no config file and no certificate files.
+Agents are **compiled by the platform with your configuration embedded** (backend URL, CA certificate and a one-purpose **enrollment token**). There is no API key. On install the agent creates its own key pair, enrolls with the token and receives a 30-day client certificate for a random agent id; it renews it at half life. Every connection (events, application telemetry, live response, install-key checks) uses that certificate and goes to the backend URL only. The endpoint needs no config file and no certificate files. See `docs/security/agent-identity.md`.
 
 1. In the dashboard open **Agent Builder** (admin only). Fields are pre-filled from setup.
-2. Choose a platform and click **Build**. First compile takes 1–2 minutes; later downloads of the same platform are served from cache.
+2. Choose a platform, set how long the build's enrollment token is valid (default 30 days) and how many hosts may use it (default 500), and click **Build**. Each build embeds a new token, so a build compiles fresh each time (1–2 minutes). Hosts must be installed before the token expires; enrolled hosts are not affected afterwards. Revoke a build's token in **Platform settings → Agent enrollment** if the file leaks.
 
    | Platform key | Output | Target |
    |---|---|---|
@@ -555,7 +554,7 @@ SMTP host, port, username, password (or app password), From address, recipient l
 |---|---|
 | Syslog forwarding and webhook notifications | API only: `GET/POST /api/v1/settings/syslog`, `/settings/webhooks`, with `/test` variants. No UI tab yet |
 | Users and roles | **Users** page |
-| Agent URLs, CA certificate, agent API key | Setup wizard / **Agent Builder → Reconfigure setup** |
+| Agent URLs, CA certificate | Setup wizard / **Agent Builder → Reconfigure setup** |
 | Intel source on/off and manual sync | **Detections → Intel Sources** |
 | Cloud and Git credentials | **Cloud** and **DevOps** pages |
 | Server tuning: CORS origins, timeouts, DB pool, JWT lifetime (default 24 h), SMTP defaults | `management/docker/server.yaml`, then `sudo docker compose restart mgmt-api`. Secrets from `.env` override the placeholder values |
@@ -648,16 +647,19 @@ Then rebuild and redeploy all agents.
 - The `timescale_data` volume (events and platform data).
 - `.env`, especially **`OW_SECRET_KEY`** (without it stored credentials cannot be decrypted), kept separately from database backups.
 - The `ca-private` volume (CA private key).
+- The `agent-ca` volume (agent identity CA). Without it every agent must be rebuilt and reinstalled.
 
 ### Agent ingest API (for custom integrations)
 
-All routes except `/health` require the API key (`X-API-Key`) or a client certificate when mTLS is enabled.
+All routes except `/health` and `POST /api/v1/enroll` require an agent client certificate from the agent CA (`docs/security/agent-identity.md`). There is no API key.
 
 | Route | Purpose |
 |---|---|
 | `GET /health` | Liveness |
-| `POST /api/v1/events` | Batch event ingest |
-| `GET /api/v1/events` | Query events |
+| `POST /api/v1/enroll` | Enrollment: token + CSR → certificate (no client certificate needed) |
+| `POST /api/v1/enroll/renew` | Certificate renewal |
+| `POST /api/v1/events` | Batch event ingest (`agent_id` must match the certificate) |
+| `GET /api/v1/events` | Query events (refused for agent certificates) |
 | `POST /api/v1/agents/location` | Agent location report |
 | `GET /api/v1/agents`, `GET /api/v1/agents/{id}` | Agent registry |
 | `GET /api/v1/metrics` | Ingest metrics |
@@ -668,7 +670,7 @@ All routes except `/health` require the API key (`X-API-Key`) or a client certif
 |---|---|
 | Compose refuses to start | A required `.env` value is missing or still a placeholder |
 | Dashboard container exits | Certificates missing: `docker compose logs cert-init` |
-| Agent not appearing | `curl -k https://<server>:8443/health` from the endpoint; confirm the API key matches; check the agent log (table in 3.3) |
+| Agent not appearing | `curl -k https://<server>:8443/health` from the endpoint; check the agent log for "identity:" lines (an expired, revoked or used-up enrollment token is named there; rebuild in the Agent builder); check Platform settings → Agent enrollment (table in 3.3) |
 | Agent TLS errors | Certificates were regenerated: rebuild the agent |
 | Windows process detection empty | Sysmon not running: check the Sysmon health alert |
 | macOS process events delayed | Full Disk Access not granted, so `eslogger` is unavailable and polling is used |
@@ -700,7 +702,7 @@ cd agents/macos   && GOOS=darwin  GOARCH=arm64 go build ./cmd/agent   # or amd64
 cd management/backend && go test ./...
 ```
 
-Development builds without an embedded config read `agent.yaml` from disk. Copy `agents/<os>/configs/agent.yaml`, set `backend_url`, `api_key` and `ca_file`, and run the binary directly.
+Development builds without an embedded config read `agent.yaml` from disk. Copy `agents/<os>/configs/agent.yaml`, set `backend_url`, `enroll_token` (create one in Platform settings → Agent enrollment) and `ca_file`, and run the binary directly.
 
 **Contributing:** keep each platform's signatures limited to fields its collectors populate, add new signature sets to `sig_registry.go` so the sanity tests and ATT&CK coverage see them, and add a migration (never edit an applied one) for schema changes.
 

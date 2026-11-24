@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -45,8 +46,21 @@ func (a *fakeAgent) state() map[string]any {
 	return map[string]any{"type": "response_state", "payload": map[string]any{"isolated": a.isolated, "quarantined": 0}}
 }
 
+const (
+	e2eA1     = "ag-0000000000000000000000000000e2e1"
+	e2eA2     = "ag-0000000000000000000000000000e2e2"
+	e2eSecret = "e2e-secret"
+)
+
+// connectFakeAgent opens a tunnel the way the ingest backend passes one on:
+// with the agent identity in signed headers.
 func connectFakeAgent(t *testing.T, srvURL, id string, isolated bool) *fakeAgent {
-	hdr := http.Header{"X-API-Key": []string{"k"}}
+	ts := time.Now().Unix()
+	hdr := http.Header{}
+	hdr.Set(hdrAgentID, id)
+	hdr.Set(hdrAgentSerial, "e2e")
+	hdr.Set(hdrAgentTime, strconv.FormatInt(ts, 10))
+	hdr.Set(hdrAgentSig, signTunnelIdentity(tunnelIdentityKey(e2eSecret), id, "e2e", ts))
 	c, _, err := websocket.DefaultDialer.Dial("ws"+strings.TrimPrefix(srvURL, "http")+"/tunnel?agent_id="+id, hdr)
 	if err != nil {
 		t.Fatal(err)
@@ -123,8 +137,8 @@ func TestResponseAndHuntEndToEnd(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer sdb.Close()
-	sdb.Exec(`DELETE FROM response_actions; DELETE FROM agent_response_state; DELETE FROM fleet_hunts; DELETE FROM agents WHERE id LIKE 'e2e-%'`)
-	for _, id := range []string{"e2e-1", "e2e-2"} {
+	sdb.Exec(`DELETE FROM response_actions; DELETE FROM agent_response_state; DELETE FROM fleet_hunts; DELETE FROM agents WHERE id LIKE 'ag-%e2e_'`)
+	for _, id := range []string{e2eA1, e2eA2} {
 		if _, err := sdb.Exec(`INSERT INTO agents (id, hostname, os, version) VALUES ($1, $1, 'windows', '1')`, id); err != nil {
 			t.Fatal(err)
 		}
@@ -133,7 +147,7 @@ func TestResponseAndHuntEndToEnd(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	reg := NewTunnelRegistry()
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /tunnel", handleAgentTunnel(db, reg, logger, &tunnelAuth{mode: tunnelAuthLegacy, apiKey: "k", ca: &agentCAPool{}, rev: agentid.NewRevocations(nil), now: time.Now}))
+	mux.HandleFunc("GET /tunnel", handleAgentTunnel(db, reg, logger, &tunnelAuth{rev: agentid.NewRevocations(nil), now: time.Now, fwdKey: tunnelIdentityKey(e2eSecret)}))
 	mux.HandleFunc("POST /agents/{id}/actions", handleAgentAction(db, reg, logger))
 	mux.HandleFunc("POST /hunt", handleStartFleetHunt(db, reg, logger))
 	mux.HandleFunc("GET /hunt/{id}", handleGetFleetHunt(db))
@@ -154,27 +168,27 @@ func TestResponseAndHuntEndToEnd(t *testing.T) {
 	}
 
 	// 1. online isolate
-	a1 := connectFakeAgent(t, srv.URL, "e2e-1", false)
-	waitFor(t, "tunnel registration", func() bool { _, ok := reg.Get("e2e-1"); return ok })
-	code, m := post("/agents/e2e-1/actions", map[string]any{"action": "isolate", "params": map[string]any{"ttl_minutes": 30}, "reason": "ransomware"})
+	a1 := connectFakeAgent(t, srv.URL, e2eA1, false)
+	waitFor(t, "tunnel registration", func() bool { _, ok := reg.Get(e2eA1); return ok })
+	code, m := post("/agents/"+e2eA1+"/actions", map[string]any{"action": "isolate", "params": map[string]any{"ttl_minutes": 30}, "reason": "ransomware"})
 	if code != 200 || m["status"] != "ok" {
 		t.Fatalf("isolate: %d %v", code, m)
 	}
-	waitFor(t, "reported isolated", func() bool { return db.GetRespState(t.Context(), "e2e-1").Isolated })
-	st := db.GetRespState(t.Context(), "e2e-1")
+	waitFor(t, "reported isolated", func() bool { return db.GetRespState(t.Context(), e2eA1).Isolated })
+	st := db.GetRespState(t.Context(), e2eA1)
 	if !st.DesiredIsolated || st.DesiredTTLMin != 30 {
 		t.Fatalf("state: %+v", st)
 	}
 
 	// 2. a failing action is reported as failed, not swallowed
 	a1.failKill = true
-	code, m = post("/agents/e2e-1/actions", map[string]any{"action": "kill_process", "params": map[string]any{"pid": 4242, "image": "evil.exe"}})
+	code, m = post("/agents/"+e2eA1+"/actions", map[string]any{"action": "kill_process", "params": map[string]any{"pid": 4242, "image": "evil.exe"}})
 	if code != 502 || m["status"] != "failed" || !strings.Contains(m["message"].(string), "PID reused") {
 		t.Fatalf("failed kill: %d %v", code, m)
 	}
 
 	// 3. validation and unknown agent
-	if code, _ = post("/agents/e2e-1/actions", map[string]any{"action": "kill_process", "params": map[string]any{"pid": 1}}); code != 400 {
+	if code, _ = post("/agents/"+e2eA1+"/actions", map[string]any{"action": "kill_process", "params": map[string]any{"pid": 1}}); code != 400 {
 		t.Fatalf("pid 1 accepted: %d", code)
 	}
 	if code, _ = post("/agents/nope/actions", map[string]any{"action": "release"}); code != 404 {
@@ -182,7 +196,7 @@ func TestResponseAndHuntEndToEnd(t *testing.T) {
 	}
 
 	// 4. history recorded with the requester and reason
-	acts, _ := db.ListResponseActions(t.Context(), "e2e-1", 10)
+	acts, _ := db.ListResponseActions(t.Context(), e2eA1, 10)
 	if len(acts) != 2 {
 		t.Fatalf("history: %+v", acts)
 	}
@@ -194,16 +208,16 @@ func TestResponseAndHuntEndToEnd(t *testing.T) {
 
 	// 5. offline: isolate is queued, kill is refused; reconnect reconciles
 	a1.conn.Close()
-	waitFor(t, "tunnel gone", func() bool { _, ok := reg.Get("e2e-1"); return !ok })
-	if code, m = post("/agents/e2e-1/actions", map[string]any{"action": "kill_process", "params": map[string]any{"pid": 77}}); code != 409 {
+	waitFor(t, "tunnel gone", func() bool { _, ok := reg.Get(e2eA1); return !ok })
+	if code, m = post("/agents/"+e2eA1+"/actions", map[string]any{"action": "kill_process", "params": map[string]any{"pid": 77}}); code != 409 {
 		t.Fatalf("offline kill: %d %v", code, m)
 	}
-	post("/agents/e2e-1/actions", map[string]any{"action": "release"}) // queued: desired=not isolated
-	if s := db.GetRespState(t.Context(), "e2e-1"); s.DesiredIsolated {
+	post("/agents/"+e2eA1+"/actions", map[string]any{"action": "release"}) // queued: desired=not isolated
+	if s := db.GetRespState(t.Context(), e2eA1); s.DesiredIsolated {
 		t.Fatal("desired state not updated while offline")
 	}
 	// the host comes back still isolated (it kept its rules): the server must release it
-	b1 := connectFakeAgent(t, srv.URL, "e2e-1", true)
+	b1 := connectFakeAgent(t, srv.URL, e2eA1, true)
 	waitFor(t, "reconcile release", func() bool {
 		for _, x := range b1.actions() {
 			if x == "release" {
@@ -212,23 +226,23 @@ func TestResponseAndHuntEndToEnd(t *testing.T) {
 		}
 		return false
 	})
-	waitFor(t, "reported released", func() bool { return !db.GetRespState(t.Context(), "e2e-1").Isolated })
+	waitFor(t, "reported released", func() bool { return !db.GetRespState(t.Context(), e2eA1).Isolated })
 	// a rebooted host that lost its rules while we want it isolated gets isolated again
-	db.SetDesiredIsolation(t.Context(), "e2e-2", true, 0)
-	b2 := connectFakeAgent(t, srv.URL, "e2e-2", false)
+	db.SetDesiredIsolation(t.Context(), e2eA2, true, 0)
+	b2 := connectFakeAgent(t, srv.URL, e2eA2, false)
 	waitFor(t, "reconcile isolate", func() bool { return len(b2.actions()) == 1 && b2.actions()[0] == "isolate" })
 	// an elapsed isolation window must not re-isolate
 	b2.conn.Close()
-	waitFor(t, "e2e-2 gone", func() bool { _, ok := reg.Get("e2e-2"); return !ok })
-	sdb.Exec(`UPDATE agent_response_state SET desired_isolated=true, desired_expires_at=now() - interval '1 minute' WHERE agent_id='e2e-2'`)
-	b3 := connectFakeAgent(t, srv.URL, "e2e-2", false)
+	waitFor(t, "e2e-2 gone", func() bool { _, ok := reg.Get(e2eA2); return !ok })
+	sdb.Exec(`UPDATE agent_response_state SET desired_isolated=true, desired_expires_at=now() - interval '1 minute' WHERE agent_id='ag-0000000000000000000000000000e2e2'`)
+	b3 := connectFakeAgent(t, srv.URL, e2eA2, false)
 	time.Sleep(400 * time.Millisecond)
-	if len(b3.actions()) != 0 || db.GetRespState(t.Context(), "e2e-2").DesiredIsolated {
+	if len(b3.actions()) != 0 || db.GetRespState(t.Context(), e2eA2).DesiredIsolated {
 		t.Fatalf("expired isolation was re-applied: %v", b3.actions())
 	}
 
 	// 6. fleet hunt: both agents are online and answer
-	waitFor(t, "both online", func() bool { _, a := reg.Get("e2e-1"); _, b := reg.Get("e2e-2"); return a && b })
+	waitFor(t, "both online", func() bool { _, a := reg.Get(e2eA1); _, b := reg.Get(e2eA2); return a && b })
 	code, m = post("/hunt", map[string]any{"kind": "processes", "match": "powershell"})
 	if code != 202 || m["agents"].(float64) != 2 {
 		t.Fatalf("hunt start: %d %v", code, m)
@@ -254,5 +268,5 @@ func TestResponseAndHuntEndToEnd(t *testing.T) {
 	}
 	b1.conn.Close()
 	b3.conn.Close()
-	sdb.Exec(`DELETE FROM response_actions; DELETE FROM agent_response_state; DELETE FROM fleet_hunts; DELETE FROM agents WHERE id LIKE 'e2e-%'`)
+	sdb.Exec(`DELETE FROM response_actions; DELETE FROM agent_response_state; DELETE FROM fleet_hunts; DELETE FROM agents WHERE id LIKE 'ag-%e2e_'`)
 }

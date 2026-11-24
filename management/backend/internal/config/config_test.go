@@ -26,7 +26,8 @@ func TestValidate(t *testing.T) {
 		{"placeholder db password", mk("changeme", goodSecret, ""), "database.password"},
 		{"placeholder jwt", mk("dbpass-xyz", "changeme-please", ""), "jwt_secret"},
 		{"short jwt", mk("dbpass-xyz", "short-but-not-placeholder", ""), "at least 32"},
-		{"placeholder agent key", mk("dbpass-xyz", goodSecret, "change-me-agent"), "agent_api_key"},
+		// Not an agent credential any more: a leftover placeholder is ignored.
+		{"placeholder agent key", mk("dbpass-xyz", goodSecret, "change-me-agent"), ""},
 	}
 	for _, c := range cases {
 		err := validate(c.cfg)

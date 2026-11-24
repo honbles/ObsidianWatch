@@ -3,7 +3,6 @@ package api
 import (
 	"context"
 	"crypto/sha256"
-	"crypto/subtle"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -110,8 +109,6 @@ func handleEnroll(db enrollStore, cfg *enrollConfig, logger *slog.Logger) http.H
 				return
 			}
 			tokenID = &id
-		case cfg.allowFleetKey && fleetKeyMatches(cfg.fleetKeys, r.Header.Get("X-API-Key")):
-			// Migration path only: existing installs carry the fleet key.
 		default:
 			http.Error(w, `{"error":"enrollment token required"}`, http.StatusUnauthorized)
 			return
@@ -191,19 +188,6 @@ func certOnlyForbidden(next http.HandlerFunc) http.HandlerFunc {
 		}
 		next(w, r)
 	}
-}
-
-func fleetKeyMatches(keys []string, got string) bool {
-	if got == "" {
-		return false
-	}
-	ok := false
-	for _, k := range keys {
-		if k != "" && subtle.ConstantTimeCompare([]byte(k), []byte(got)) == 1 {
-			ok = true
-		}
-	}
-	return ok
 }
 
 func peerIP(r *http.Request) string {

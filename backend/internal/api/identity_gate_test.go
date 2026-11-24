@@ -26,7 +26,6 @@ import (
 	"testing"
 	"time"
 
-	"obsidianwatch/backend/internal/auth"
 	"obsidianwatch/backend/internal/enroll"
 	"obsidianwatch/backend/internal/store"
 	"obsidianwatch/backend/pkg/agentid"
@@ -114,7 +113,7 @@ type gateRig struct {
 
 const testFleetKey = "fleet-key-0123456789abcdef"
 
-func newGateRig(t *testing.T, mode string, allowFleetKey bool) *gateRig {
+func newGateRig(t *testing.T) *gateRig {
 	t.Helper()
 	ca, _, _, err := enroll.NewCA("test agent CA", 365*24*time.Hour)
 	if err != nil {
@@ -122,8 +121,8 @@ func newGateRig(t *testing.T, mode string, allowFleetKey bool) *gateRig {
 	}
 	rg := &gateRig{ca: ca, st: newFakeEnrollStore(), ingest: &fakeIngestStore{}}
 	rg.rev = agentid.NewRevocations(rg.st.revokedIDs)
-	ec := &enrollConfig{ca: ca, certTTL: 30 * 24 * time.Hour, fleetKeys: []string{testFleetKey}, allowFleetKey: allowFleetKey, now: time.Now}
-	gate := &identityGate{mode: mode, roots: ca.Pool(), revoked: rg.rev, keyAuth: auth.APIKeyMiddleware([]string{testFleetKey}), now: time.Now}
+	ec := &enrollConfig{ca: ca, certTTL: 30 * 24 * time.Hour, now: time.Now}
+	gate := &identityGate{roots: ca.Pool(), revoked: rg.rev, now: time.Now}
 
 	protected := http.NewServeMux()
 	protected.HandleFunc("POST /api/v1/events", handleIngest(rg.ingest, 1000, quietLogger()))
@@ -212,7 +211,7 @@ func batch(agent string, eventAgent string) map[string]any {
 }
 
 func TestEnrollIssuesRandomIdentityPerHost(t *testing.T) {
-	rg := newGateRig(t, IdentityEnforced, false)
+	rg := newGateRig(t)
 	rg.st.addToken("tok-golden-image", 2, false, false)
 
 	a, _, code := rg.enrollAs(t, "tok-golden-image", nil)
@@ -248,7 +247,7 @@ func TestEnrollIssuesRandomIdentityPerHost(t *testing.T) {
 }
 
 func TestEnrollTokenRules(t *testing.T) {
-	rg := newGateRig(t, IdentityEnforced, false)
+	rg := newGateRig(t)
 	rg.st.addToken("expired", 5, true, false)
 	rg.st.addToken("revoked", 5, false, true)
 	for _, tok := range []string{"expired", "revoked", "never-issued", ""} {
@@ -273,18 +272,23 @@ func TestEnrollTokenRules(t *testing.T) {
 	}
 }
 
-func TestFleetKeyEnrollmentMigration(t *testing.T) {
-	rg := newGateRig(t, IdentityEnforced, true)
-	if _, _, code := rg.enrollAs(t, "", map[string]string{"X-API-Key": testFleetKey}); code != 200 {
-		t.Errorf("fleet key enrollment when allowed: got %d want 200", code)
+// The old shared fleet key opens nothing: not enrollment, not ingest.
+func TestFleetKeyNeverWorks(t *testing.T) {
+	rg := newGateRig(t)
+	key := map[string]string{"X-API-Key": testFleetKey}
+	if _, _, code := rg.enrollAs(t, "", key); code != 401 {
+		t.Errorf("fleet key enrollment: got %d want 401", code)
 	}
-	if _, _, code := rg.enrollAs(t, "", map[string]string{"X-API-Key": "wrong"}); code != 401 {
-		t.Errorf("wrong fleet key: got %d want 401", code)
+	if code, _, _ := rg.do(t, nil, "POST", "/api/v1/events", batch("web-01", ""), key); code != 401 {
+		t.Errorf("fleet key ingest: got %d want 401", code)
+	}
+	if code, _, _ := rg.do(t, nil, "GET", "/api/v1/events", nil, key); code != 401 {
+		t.Errorf("fleet key query: got %d want 401", code)
 	}
 }
 
 func TestForgedAgentIDRejected(t *testing.T) {
-	rg := newGateRig(t, IdentityEnforced, false)
+	rg := newGateRig(t)
 	rg.st.addToken("t", 2, false, false)
 	me, myCert, _ := rg.enrollAs(t, "t", nil)
 	other, _, _ := rg.enrollAs(t, "t", nil)
@@ -317,8 +321,8 @@ func TestForgedAgentIDRejected(t *testing.T) {
 	}
 }
 
-func TestEnforcedModeNeedsCertificate(t *testing.T) {
-	rg := newGateRig(t, IdentityEnforced, false)
+func TestCertificateRequired(t *testing.T) {
+	rg := newGateRig(t)
 	key := map[string]string{"X-API-Key": testFleetKey}
 	if code, _, _ := rg.do(t, nil, "POST", "/api/v1/events", batch("web-01", ""), key); code != 401 {
 		t.Errorf("fleet key on ingest when enforced: got %d want 401", code)
@@ -336,31 +340,11 @@ func TestEnforcedModeNeedsCertificate(t *testing.T) {
 	}
 }
 
-func TestMixedModeKeepsFleetKeyForUnenrolled(t *testing.T) {
-	rg := newGateRig(t, IdentityMixed, false)
-	if code, _, _ := rg.do(t, nil, "POST", "/api/v1/events", batch("legacy-host", ""), map[string]string{"X-API-Key": testFleetKey}); code != 200 {
-		t.Errorf("legacy agent with fleet key in mixed mode: got %d want 200", code)
-	}
-	if code, _, _ := rg.do(t, nil, "POST", "/api/v1/events", batch("legacy-host", ""), nil); code != 401 {
-		t.Errorf("no credentials: got %d want 401", code)
-	}
-	// An enrolled agent is bound even in mixed mode.
-	rg.st.addToken("t", 1, false, false)
-	me, cert, _ := rg.enrollAs(t, "t", nil)
-	if code, _, _ := rg.do(t, cert, "POST", "/api/v1/events", batch("legacy-host", ""), nil); code != 403 {
-		t.Errorf("enrolled agent claiming another id in mixed mode: got %d want 403", code)
-	}
-	// The fleet key cannot speak for an enrolled agent.
-	if code, _, _ := rg.do(t, nil, "POST", "/api/v1/events", batch(me.AgentID, ""), map[string]string{"X-API-Key": testFleetKey}); code != 403 {
-		t.Errorf("fleet key using an enrolled agent_id: got %d want 403", code)
-	}
-}
-
 func TestRevocationTakesEffect(t *testing.T) {
 	if agentid.DefaultRefresh > 30*time.Second {
 		t.Fatalf("refresh interval %s leaves no margin in the 60 s revocation budget", agentid.DefaultRefresh)
 	}
-	rg := newGateRig(t, IdentityEnforced, false)
+	rg := newGateRig(t)
 	rg.st.addToken("t", 1, false, false)
 	me, cert, _ := rg.enrollAs(t, "t", nil)
 	if code, _, _ := rg.do(t, cert, "POST", "/api/v1/events", batch(me.AgentID, ""), nil); code != 200 {
@@ -378,7 +362,7 @@ func TestRevocationTakesEffect(t *testing.T) {
 }
 
 func TestRenewKeepsIdentity(t *testing.T) {
-	rg := newGateRig(t, IdentityEnforced, false)
+	rg := newGateRig(t)
 	rg.st.addToken("t", 1, false, false)
 	me, cert, _ := rg.enrollAs(t, "t", nil)
 	_, csr := newCSR(t)
@@ -397,10 +381,9 @@ func TestRenewKeepsIdentity(t *testing.T) {
 	}
 }
 
-// Deployment-CA client certificates from before enrollment (mtls_enabled)
-// keep working in mixed mode, prove nothing about identity, and stop working
-// once identity is enforced.
-func TestLegacyDeploymentCertificates(t *testing.T) {
+// Client certificates from the deployment CA (the old mtls_enabled option)
+// carry no agent identity and are refused.
+func TestDeploymentCertificatesRefused(t *testing.T) {
 	agentCA, _, _, _ := enroll.NewCA("agent CA", 365*24*time.Hour)
 	// The deployment CA (cert-init) signs a client certificate with no agent identity.
 	dk, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
@@ -420,9 +403,8 @@ func TestLegacyDeploymentCertificates(t *testing.T) {
 	for _, c := range []struct {
 		mode string
 		want int
-	}{{IdentityMixed, 200}, {IdentityEnforced, 401}} {
-		g := &identityGate{mode: c.mode, roots: agentCA.Pool(), legacyCA: true, now: time.Now,
-			keyAuth: auth.APIKeyMiddleware([]string{testFleetKey})}
+	}{{"default", 401}} {
+		g := &identityGate{roots: agentCA.Pool(), now: time.Now}
 		h := g.wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if _, ok := certIdentity(r); ok {
 				t.Error("legacy certificate produced an identity")

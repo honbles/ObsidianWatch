@@ -11,7 +11,7 @@ import (
 
 func TestNftScript(t *testing.T) {
 	allow := []netip.Addr{netip.MustParseAddr("10.0.0.5"), netip.MustParseAddr("203.0.113.7"), netip.MustParseAddr("2001:db8::1")}
-	s := nftScript(allow)
+	s := nftScript(allow, false)
 	for _, want := range []string{"policy drop", "ip daddr { 10.0.0.5, 203.0.113.7 } accept", "ip saddr { 10.0.0.5, 203.0.113.7 } accept",
 		"ip6 daddr { 2001:db8::1 } accept", `iifname "lo" accept`, "chain forward"} {
 		if !strings.Contains(s, want) {
@@ -61,5 +61,45 @@ func TestKillRefusesProtected(t *testing.T) {
 	}
 	if _, err := killProcess(2147483000, "", false); err == nil {
 		t.Fatal("nonexistent pid should error")
+	}
+}
+
+func TestBlockPageRedirectRules(t *testing.T) {
+	allow := []netip.Addr{netip.MustParseAddr("10.0.0.5"), netip.MustParseAddr("2001:db8::1")}
+	nat := nftNATScript(allow)
+	for _, want := range []string{"type nat hook output priority -100", "udp dport 53 redirect to :15353", "tcp dport 53 redirect to :15353",
+		"ip daddr != { 10.0.0.5 } tcp dport 80 redirect to :18080"} {
+		if !strings.Contains(nat, want) {
+			t.Errorf("nat: missing %q in\n%s", want, nat)
+		}
+	}
+	with, without := nftScript(allow, true), nftScript(allow, false)
+	if !strings.Contains(with, "meta nfproto ipv4 udp dport 53 accept") || strings.Contains(without, "dport 53") {
+		t.Error("DNS/HTTP may only pass the filter when the NAT table is loaded")
+	}
+	if strings.Contains(with, "ip6") && strings.Contains(with, "ip6 dport") {
+		t.Error("IPv6 DNS must stay blocked (no IPv6 redirect)")
+	}
+	if p, err := exec.LookPath("nft"); err == nil {
+		for _, s := range []string{nat, with} {
+			cmd := exec.Command(p, "-c", "-f", "-")
+			cmd.Stdin = strings.NewReader(s)
+			if out, err := cmd.CombinedOutput(); err != nil {
+				if strings.Contains(string(out), "Operation not permitted") || strings.Contains(string(out), "Permission denied") {
+					t.Skip("nft needs privileges")
+				}
+				t.Fatalf("nft rejected:\n%s\n%s", s, out)
+			}
+		}
+	}
+	cmds := iptablesNATCmds(allow)
+	joined := ""
+	for _, c := range cmds {
+		joined += strings.Join(c, " ") + "\n"
+	}
+	for _, want := range []string{"-d 10.0.0.5 -p tcp --dport 80 -j RETURN", "--dport 53 -j REDIRECT --to-ports 15353", "-I OUTPUT 1 -j OW_BLOCKPAGE"} {
+		if !strings.Contains(joined, want) {
+			t.Errorf("iptables nat: missing %q", want)
+		}
 	}
 }

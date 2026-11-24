@@ -92,7 +92,6 @@ func (c *LiveResponseCollector) runTunnel(ctx context.Context) error {
 
 	dialer := wsDialerForCA(c.caFile)
 	headers := http.Header{}
-	headers.Set("X-API-Key", c.apiKey)
 
 	conn, _, err := dialer.DialContext(ctx, wsURL, headers)
 	if err != nil {

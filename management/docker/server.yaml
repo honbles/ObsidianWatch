@@ -7,14 +7,13 @@ server:
   write_timeout: "120s"
   cors_origins:
     - "*"   # tighten to https://192.168.1.140 in production
-  agent_api_key: "changeme-generate-a-real-key-with-openssl-rand-hex-32"
+  agent_api_key: ""   # optional, not an agent credential any more (agents use certificates)
   # TLS - auto-enabled when /app/certs/server.crt + server.key exist
   tls_cert_file: "/app/certs/server.crt"
   tls_key_file:  "/app/certs/server.key"
-  # Agent tunnels (spec A2/A3). The agent listener asks for the agent
-  # certificate; the main listener never does, so browsers are not prompted.
-  agent_tunnel_auth: "mixed"     # legacy | mixed | enforced
-  agent_listen_addr: ":8445"
+  # Agents never call this server directly: they connect to the ingest
+  # backend with their certificate, which passes live-response tunnels and
+  # install-key checks here with a signed identity (same OW_SECRET_KEY).
 
 database:
   host:     "timescaledb"      # Docker service name - do not change

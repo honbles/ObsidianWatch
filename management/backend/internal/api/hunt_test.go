@@ -168,3 +168,39 @@ func TestHuntResultStates(t *testing.T) {
 		}
 	}
 }
+
+func TestValidateMoreActions(t *testing.T) {
+	sha := strings.Repeat("ab", 32)
+	good := []struct {
+		a string
+		p actionParams
+	}{
+		{"delete_file", actionParams{Path: "/tmp/x"}}, {"delete_file", actionParams{Path: `C:\x.exe`, SHA256: sha}},
+		{"delete_quarantined", actionParams{ID: "0123456789abcdef"}}, {"file_info", actionParams{Path: "/etc/hosts"}},
+		{"collect_file", actionParams{Path: "/tmp/x"}}, {"block_ip", actionParams{IP: "203.0.113.9"}}, {"unblock_ip", actionParams{IP: "2001:db8::1"}},
+		{"list_blocked_ips", actionParams{}}, {"disable_user", actionParams{User: "j.doe"}}, {"enable_user", actionParams{User: "John Smith"}},
+		{"isolate", actionParams{NoBlockPage: true}},
+	}
+	for _, c := range good {
+		if m := validateAction(c.a, c.p); m != "" {
+			t.Errorf("%s %+v refused: %s", c.a, c.p, m)
+		}
+	}
+	bad := []struct {
+		a string
+		p actionParams
+	}{
+		{"delete_file", actionParams{Path: "rel"}}, {"delete_file", actionParams{Path: "/x", SHA256: "abc"}},
+		{"delete_quarantined", actionParams{ID: "../x"}}, {"collect_file", actionParams{}},
+		{"block_ip", actionParams{IP: "10.0.0.0/8"}}, {"block_ip", actionParams{IP: "127.0.0.1"}}, {"block_ip", actionParams{IP: "evil.com"}},
+		{"disable_user", actionParams{User: "a'b"}}, {"disable_user", actionParams{User: "-r"}}, {"enable_user", actionParams{}},
+	}
+	for _, c := range bad {
+		if validateAction(c.a, c.p) == "" {
+			t.Errorf("%s %+v accepted", c.a, c.p)
+		}
+	}
+	if safeFileName(`web-01_..\evil "x".exe`) != "web-01_.._evil__x_.exe" {
+		t.Error(safeFileName(`web-01_..\evil "x".exe`))
+	}
+}

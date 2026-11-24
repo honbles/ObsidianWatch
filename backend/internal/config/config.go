@@ -14,6 +14,22 @@ type Config struct {
 	Database DatabaseConfig `yaml:"database"`
 	Auth     AuthConfig     `yaml:"auth"`
 	Log      LogConfig      `yaml:"log"`
+	Tunnel   TunnelConfig   `yaml:"tunnel"`
+}
+
+// TunnelConfig passes agents' live-response tunnels through this server to
+// the management server, so agents need only the ingest port.
+type TunnelConfig struct {
+	// ManagementURL is the management API as seen from this server, e.g.
+	// https://mgmt-api:8443. Empty turns the pass-through off.
+	ManagementURL string `yaml:"management_url"`
+	// ManagementCAFile verifies the management certificate (the deployment CA).
+	ManagementCAFile string `yaml:"management_ca_file"`
+	// ManagementServerName is a name or IP in the management certificate's
+	// SANs, when it differs from the URL host (127.0.0.1 with cert-init).
+	ManagementServerName string `yaml:"management_server_name"`
+	// InsecureSkipVerify disables management certificate checks. Lab only.
+	InsecureSkipVerify bool `yaml:"insecure_skip_verify"`
 }
 
 type ServerConfig struct {
@@ -58,11 +74,10 @@ func (d DatabaseConfig) DSN() string {
 }
 
 type AuthConfig struct {
-	// APIKeys is the list of accepted X-API-Key values.
-	// In production, use a secrets manager rather than plain text here.
+	// APIKeys is no longer used: agents authenticate with their own
+	// certificate. A value here is ignored (and logged at start).
 	APIKeys []string `yaml:"api_keys"`
-	// MTLSEnabled - if true, require a valid client certificate.
-	// cert validation is done using TLSCAFile in ServerConfig.
+	// MTLSEnabled is no longer used: agent certificates are always required.
 	MTLSEnabled bool `yaml:"mtls_enabled"`
 	// AgentIdentity configures enrollment and per-agent certificates (A1-A4).
 	AgentIdentity AgentIdentityConfig `yaml:"agent_identity"`
@@ -70,19 +85,12 @@ type AuthConfig struct {
 
 // AgentIdentityConfig controls agent enrollment.
 type AgentIdentityConfig struct {
-	// Mode: "legacy" (fleet key everywhere), "mixed" (certificate when
-	// presented, fleet key still accepted; default) or "enforced"
-	// (certificate required; fleet key only on /api/v1/enroll).
-	Mode string `yaml:"mode"`
 	// CACertFile / CAKeyFile hold the agent CA. Created on first start when
 	// both are missing. Keep the key on a private volume and back it up.
 	CACertFile string `yaml:"ca_cert_file"`
 	CAKeyFile  string `yaml:"ca_key_file"`
 	// CertTTL is the lifetime of an agent certificate (default 720h = 30 days).
 	CertTTL time.Duration `yaml:"cert_ttl"`
-	// AllowFleetKeyEnrollment lets agents that only carry the fleet key
-	// enroll. Migration aid for existing installs; off by default.
-	AllowFleetKeyEnrollment bool `yaml:"allow_fleet_key_enrollment"`
 }
 
 type LogConfig struct {
@@ -128,7 +136,6 @@ func defaults() *Config {
 		},
 		Auth: AuthConfig{
 			AgentIdentity: AgentIdentityConfig{
-				Mode:       "mixed",
 				CACertFile: "agent-ca/agent-ca.crt",
 				CAKeyFile:  "agent-ca/agent-ca.key",
 				CertTTL:    30 * 24 * time.Hour,
@@ -158,26 +165,11 @@ func validate(cfg *Config) error {
 	if cfg.Database.Password == "" || isPlaceholderSecret(cfg.Database.Password) {
 		return fmt.Errorf("database.password is required and must not be a placeholder value")
 	}
-	switch cfg.Auth.AgentIdentity.Mode {
-	case "legacy", "mixed", "enforced":
-	case "":
-		cfg.Auth.AgentIdentity.Mode = "mixed"
-	default:
-		return fmt.Errorf("auth.agent_identity.mode must be legacy, mixed or enforced")
-	}
 	if ttl := cfg.Auth.AgentIdentity.CertTTL; ttl != 0 && (ttl < time.Hour || ttl > 366*24*time.Hour) {
 		return fmt.Errorf("auth.agent_identity.cert_ttl must be between 1h and 366 days")
 	}
 	if cfg.Auth.AgentIdentity.CertTTL == 0 {
 		cfg.Auth.AgentIdentity.CertTTL = 30 * 24 * time.Hour
-	}
-	if !cfg.Auth.MTLSEnabled && cfg.Auth.AgentIdentity.Mode != "enforced" && len(cfg.Auth.APIKeys) == 0 {
-		return fmt.Errorf("auth: at least one api_key or mtls_enabled must be set")
-	}
-	for _, k := range cfg.Auth.APIKeys {
-		if isPlaceholderSecret(k) {
-			return fmt.Errorf("auth.api_keys: must not contain a placeholder value")
-		}
 	}
 	return nil
 }
@@ -189,15 +181,7 @@ func applyEnvOverrides(cfg *Config) {
 	if v := os.Getenv("DB_PASSWORD"); v != "" && isPlaceholderSecret(cfg.Database.Password) {
 		cfg.Database.Password = v
 	}
-	if v := os.Getenv("AGENT_API_KEY"); v != "" {
-		placeholder := len(cfg.Auth.APIKeys) == 0
-		for _, k := range cfg.Auth.APIKeys {
-			if isPlaceholderSecret(k) {
-				placeholder = true
-			}
-		}
-		if placeholder {
-			cfg.Auth.APIKeys = []string{v}
-		}
+	if v := os.Getenv("OW_MANAGEMENT_URL"); v != "" && cfg.Tunnel.ManagementURL == "" {
+		cfg.Tunnel.ManagementURL = v
 	}
 }

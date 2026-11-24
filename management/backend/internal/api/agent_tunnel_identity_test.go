@@ -5,20 +5,13 @@ package api
 
 import (
 	"context"
-	"crypto/ecdsa"
-	"crypto/elliptic"
-	"crypto/rand"
-	"crypto/tls"
-	"crypto/x509"
-	"crypto/x509/pkix"
 	"encoding/json"
-	"encoding/pem"
 	"io"
 	"log/slog"
-	"math/big"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -27,54 +20,15 @@ import (
 	"obsidianwatch/management/internal/agentid"
 )
 
-type testCA struct {
-	cert *x509.Certificate
-	key  *ecdsa.PrivateKey
-	pem  string
-}
-
-func newTestCA(t *testing.T) *testCA {
+func newTestTunnelAuth(t *testing.T, revoked ...string) *tunnelAuth {
 	t.Helper()
-	k, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	tmpl := &x509.Certificate{SerialNumber: big.NewInt(1), Subject: pkix.Name{CommonName: "ca"},
-		NotBefore: time.Now().Add(-time.Hour), NotAfter: time.Now().Add(24 * time.Hour),
-		IsCA: true, BasicConstraintsValid: true, KeyUsage: x509.KeyUsageCertSign}
-	der, _ := x509.CreateCertificate(rand.Reader, tmpl, tmpl, &k.PublicKey, k)
-	c, _ := x509.ParseCertificate(der)
-	return &testCA{cert: c, key: k, pem: string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}))}
-}
-
-func (ca *testCA) issue(t *testing.T, id string, serial int64) *x509.Certificate {
-	t.Helper()
-	k, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	u, _ := url.Parse(agentid.URIPrefix + id)
-	tmpl := &x509.Certificate{SerialNumber: big.NewInt(serial), Subject: pkix.Name{CommonName: id}, URIs: []*url.URL{u},
-		NotBefore: time.Now().Add(-time.Minute), NotAfter: time.Now().Add(time.Hour),
-		KeyUsage: x509.KeyUsageDigitalSignature, ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth}}
-	der, err := x509.CreateCertificate(rand.Reader, tmpl, ca.cert, &k.PublicKey, ca.key)
-	if err != nil {
-		t.Fatal(err)
-	}
-	c, _ := x509.ParseCertificate(der)
-	return c
-}
-
-func newTestTunnelAuth(t *testing.T, mode string, ca *testCA, revoked ...string) *tunnelAuth {
-	t.Helper()
-	pool := &agentCAPool{load: func(context.Context) (string, error) { return ca.pem, nil }}
-	if err := pool.Refresh(context.Background()); err != nil {
-		t.Fatal(err)
-	}
 	rev := agentid.NewRevocations(func(context.Context) ([]string, error) { return revoked, nil })
 	_ = rev.Refresh(context.Background())
-	return &tunnelAuth{mode: mode, ca: pool, rev: rev, apiKey: "fleet-key", now: time.Now}
+	return &tunnelAuth{rev: rev, now: time.Now, fwdKey: tunnelIdentityKey("secret")}
 }
 
-func tunnelReq(cert *x509.Certificate, claimed, key string) *http.Request {
+func tunnelReq(claimed, key string) *http.Request {
 	r := httptest.NewRequest("GET", "/api/v1/live-response/agent-tunnel?agent_id="+url.QueryEscape(claimed), nil)
-	if cert != nil {
-		r.TLS = &tls.ConnectionState{PeerCertificates: []*x509.Certificate{cert}}
-	}
 	if key != "" {
 		r.Header.Set("X-API-Key", key)
 	}
@@ -91,41 +45,13 @@ func authCode(err error) int {
 	return -1
 }
 
-func TestTunnelAuthenticatesByCertificate(t *testing.T) {
-	ca, attacker := newTestCA(t), newTestCA(t)
-	me, other, gone := agentid.New(), agentid.New(), agentid.New()
-	ta := newTestTunnelAuth(t, tunnelAuthMixed, ca, gone)
-	mine := ca.issue(t, me, 10)
-
-	cases := []struct {
-		name string
-		r    *http.Request
-		want int
-		id   string
-	}{
-		{"own cert, no claim", tunnelReq(mine, "", ""), 200, me},
-		{"own cert, own claim", tunnelReq(mine, me, ""), 200, me},
-		{"own cert, other agent's id", tunnelReq(mine, other, ""), 403, ""},
-		{"own cert, hostname", tunnelReq(mine, "web-01", "fleet-key"), 403, ""},
-		{"foreign CA", tunnelReq(attacker.issue(t, me, 11), me, ""), 401, ""},
-		{"revoked identity", tunnelReq(ca.issue(t, gone, 12), gone, ""), 401, ""},
-		{"fleet key, legacy host id", tunnelReq(nil, "web-01", "fleet-key"), 200, "web-01"},
-		{"fleet key, enrolled id", tunnelReq(nil, me, "fleet-key"), 403, ""},
-		{"wrong fleet key", tunnelReq(nil, "web-01", "nope"), 401, ""},
-	}
-	for _, c := range cases {
-		got, err := ta.authenticate(c.r)
-		if authCode(err) != c.want || (c.want == 200 && got.agentID != c.id) {
-			t.Errorf("%s: got %d %q (%v), want %d %q", c.name, authCode(err), got.agentID, err, c.want, c.id)
+// No API key, no direct connection: only an identity the backend signed.
+func TestTunnelNeedsForwardedIdentity(t *testing.T) {
+	ta := newTestTunnelAuth(t)
+	for _, r := range []*http.Request{tunnelReq("web-01", "fleet-key"), tunnelReq(agentid.New(), ""), tunnelReq("", "")} {
+		if _, err := ta.authenticate(r); authCode(err) != 401 {
+			t.Errorf("%s accepted: %v", r.URL, err)
 		}
-	}
-
-	enforced := newTestTunnelAuth(t, tunnelAuthEnforced, ca)
-	if _, err := enforced.authenticate(tunnelReq(nil, "web-01", "fleet-key")); authCode(err) != 401 {
-		t.Errorf("enforced mode accepted the fleet key: %v", err)
-	}
-	if got, err := enforced.authenticate(tunnelReq(mine, "", "")); err != nil || got.agentID != me {
-		t.Errorf("enforced mode refused a valid certificate: %v", err)
 	}
 }
 
@@ -219,5 +145,52 @@ func TestEnrollmentTokenFormat(t *testing.T) {
 	// Must match backend api.TokenHash (sha256 hex of the trimmed token).
 	if enrollmentTokenHash(" x ") != "2d711642b726b04401627ca9fbac32f5c8530fb1903cc4db02258717921a4881" {
 		t.Fatal("token hash differs from the ingest backend's")
+	}
+}
+
+func TestForwardedTunnelIdentity(t *testing.T) {
+	// Same vector as the ingest backend's test.
+	if got := signTunnelIdentity(tunnelIdentityKey("secret"), "ag-00000000000000000000000000000000", "ab", 1700000000); got != "6c91d6533660a7a8649d0b38a700c1c75500dadae5478d47e4cb1c7cbac4b06b" {
+		t.Fatalf("signature differs from the backend's: %s", got)
+	}
+	me, other, gone := agentid.New(), agentid.New(), agentid.New()
+	ta := newTestTunnelAuth(t, gone)
+	now := time.Now()
+	fwd := func(key []byte, id, claimed string, at time.Time, sig string) *http.Request {
+		r := tunnelReq(claimed, "")
+		ts := at.Unix()
+		r.Header.Set(hdrAgentID, id)
+		r.Header.Set(hdrAgentSerial, "5e1a")
+		r.Header.Set(hdrAgentTime, strconv.FormatInt(ts, 10))
+		if sig == "" {
+			sig = signTunnelIdentity(key, id, "5e1a", ts)
+		}
+		r.Header.Set(hdrAgentSig, sig)
+		return r
+	}
+	good := tunnelIdentityKey("secret")
+	cases := []struct {
+		name string
+		r    *http.Request
+		want int
+	}{
+		{"verified by backend", fwd(good, me, me, now, ""), 200},
+		{"no claim", fwd(good, me, "", now, ""), 200},
+		{"claims another agent", fwd(good, me, other, now, ""), 403},
+		{"wrong key", fwd(tunnelIdentityKey("guess"), me, me, now, ""), 401},
+		{"forged signature", fwd(good, me, me, now, "00"), 401},
+		{"replayed later", fwd(good, me, me, now.Add(-2*time.Minute), ""), 401},
+		{"revoked", fwd(good, gone, gone, now, ""), 401},
+		{"hostname id", fwd(good, "web-01", "web-01", now, ""), 401},
+	}
+	for _, c := range cases {
+		got, err := ta.authenticate(c.r)
+		if authCode(err) != c.want || (c.want == 200 && got.agentID != me) {
+			t.Errorf("%s: got %d %q (%v) want %d", c.name, authCode(err), got.agentID, err, c.want)
+		}
+	}
+	ta.fwdKey = nil
+	if _, err := ta.authenticate(fwd(good, me, me, now, "")); authCode(err) != 401 {
+		t.Error("forwarded identity accepted without OW_SECRET_KEY")
 	}
 }

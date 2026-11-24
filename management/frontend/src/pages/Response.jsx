@@ -3,7 +3,7 @@
 // Isolation and release queue for offline hosts; other actions need the host's live tunnel.
 import { useEffect, useMemo, useState, useCallback } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { ShieldAlert, ShieldCheck, Skull, Ban, RotateCcw, FileX2, ArchiveRestore, ListChecks, RefreshCw, Terminal } from 'lucide-react'
+import { ShieldAlert, ShieldCheck, Skull, Ban, RotateCcw, FileX2, ArchiveRestore, ListChecks, RefreshCw, Terminal, Trash2, FileSearch, Download, Globe, UserX, UserCheck } from 'lucide-react'
 import api from '../api/client'
 import { runAction, isAdminUser } from '../components/ResponseActions.jsx'
 import { ProcessPicker } from '../components/ProcessList.jsx'
@@ -16,25 +16,48 @@ import {
 
 // What each action does, what it needs, and whether it can reach an offline host.
 export const ACTIONS = [
-  { id: 'isolate', label: 'Isolate', icon: ShieldAlert, multi: true, queues: true, danger: true,
-    help: 'Cuts the host off from every other machine and the internet. ObsidianWatch stays reachable, so you can keep investigating.' },
-  { id: 'release', label: 'Release isolation', icon: ShieldCheck, multi: true, queues: true,
+  // Network
+  { id: 'isolate', group: 'Network', label: 'Isolate', icon: ShieldAlert, multi: true, queues: true, danger: true,
+    help: 'Cuts the host off from every other machine and the internet. ObsidianWatch stays reachable, so you can keep investigating. People who try to browse see a “contact your administrator” page.' },
+  { id: 'release', group: 'Network', label: 'Release isolation', icon: ShieldCheck, multi: true, queues: true,
     help: 'Restores normal networking.' },
-  { id: 'kill_process', label: 'Kill process', icon: Skull, multi: false, danger: true,
+  { id: 'block_ip', group: 'Network', label: 'Block IP address', icon: Globe, multi: true, danger: true,
+    help: 'Drops all traffic to and from one address (a C2 server, a scanner) without isolating the host. Survives restarts. The ObsidianWatch servers cannot be blocked.' },
+  { id: 'unblock_ip', group: 'Network', label: 'Unblock IP address', icon: RotateCcw, multi: true,
+    help: 'Lifts an address block.' },
+  { id: 'list_blocked_ips', group: 'Network', label: 'Blocked IPs', icon: ListChecks, multi: true, readOnly: true,
+    help: 'Shows the addresses blocked on each selected host.' },
+  // Processes
+  { id: 'kill_process', group: 'Processes', label: 'Kill process', icon: Skull, multi: false, danger: true,
     help: 'Ends one process (and optionally its children) on one host. Pick it from the live process list. The expected image guards against PID reuse.' },
-  { id: 'block_process', label: 'Block program', icon: Ban, multi: true, danger: true,
+  { id: 'block_process', group: 'Processes', label: 'Block program', icon: Ban, multi: true, danger: true,
     help: 'Makes the program non-executable and ends it every time it starts, until unblocked. System files and the agent itself cannot be blocked.' },
-  { id: 'unblock_process', label: 'Unblock program', icon: RotateCcw, multi: true,
+  { id: 'unblock_process', group: 'Processes', label: 'Unblock program', icon: RotateCcw, multi: true,
     help: 'Lets a blocked program run again.' },
-  { id: 'quarantine_file', label: 'Quarantine file', icon: FileX2, multi: true, danger: true,
-    help: 'Moves the file into a locked vault on the host, recording its SHA-256. It can be restored.' },
-  { id: 'restore_file', label: 'Restore file', icon: ArchiveRestore, multi: false,
-    help: 'Puts a quarantined file back where it was. Choose it from the host\'s vault.' },
-  { id: 'list_blocked', label: 'List blocked programs', icon: ListChecks, multi: true, readOnly: true,
+  { id: 'list_blocked', group: 'Processes', label: 'Blocked programs', icon: ListChecks, multi: true, readOnly: true,
     help: 'Shows what is currently blocked on each selected host.' },
-  { id: 'list_quarantine', label: 'List quarantine vault', icon: ListChecks, multi: true, readOnly: true,
+  // Files
+  { id: 'quarantine_file', group: 'Files', label: 'Quarantine file', icon: FileX2, multi: true, danger: true,
+    help: 'Moves the file into a locked vault on the host, recording its SHA-256. It can be restored or deleted from the vault later.' },
+  { id: 'delete_file', group: 'Files', label: 'Delete file', icon: Trash2, multi: true, danger: true,
+    help: 'Permanently deletes the file. Give its SHA-256 to delete it only if it is still the same file. Prefer quarantine when you may need it back. System files cannot be deleted.' },
+  { id: 'restore_file', group: 'Files', label: 'Restore from vault', icon: ArchiveRestore, multi: false,
+    help: 'Puts a quarantined file back where it was. Choose it from the host\'s vault.' },
+  { id: 'delete_quarantined', group: 'Files', label: 'Delete from vault', icon: Trash2, multi: false, danger: true,
+    help: 'Permanently destroys a quarantined file. Choose it from the host\'s vault. This cannot be undone.' },
+  { id: 'file_info', group: 'Files', label: 'File details', icon: FileSearch, multi: true, readOnly: true,
+    help: 'Size, permissions, modification time and SHA-256 of a file on each selected host. Changes nothing.' },
+  { id: 'collect_file', group: 'Files', label: 'Collect file', icon: Download, multi: false,
+    help: 'Brings a copy of a file (up to 2 MB) back for analysis. Only administrators can download it, and each download is audited.' },
+  { id: 'list_quarantine', group: 'Files', label: 'Quarantine vault', icon: ListChecks, multi: true, readOnly: true,
     help: 'Shows the quarantined files on each selected host.' },
+  // Accounts
+  { id: 'disable_user', group: 'Accounts', label: 'Disable account', icon: UserX, multi: true, danger: true,
+    help: 'Locks a local account and ends its running processes. On Linux the account is also expired, which stops SSH key logins. Domain accounts must be disabled in the directory.' },
+  { id: 'enable_user', group: 'Accounts', label: 'Enable account', icon: UserCheck, multi: true,
+    help: 'Unlocks a local account disabled here.' },
 ]
+const GROUPS = ['Network', 'Processes', 'Files', 'Accounts']
 const BY_ID = Object.fromEntries(ACTIONS.map(a => [a.id, a]))
 const TTLS = [['Until released', 0], ['1 hour', 60], ['4 hours', 240], ['24 hours', 1440], ['7 days', 10080]]
 const isAbs = (p) => /^([A-Za-z]:[\\/]|\/|\\\\)/.test(p || '')
@@ -47,10 +70,45 @@ export function ActionStatus({ status }) {
 export function describeParams(a) {
   const p = typeof a.params === 'string' ? (() => { try { return JSON.parse(a.params) } catch { return {} } })() : (a.params || {})
   if (p.pid) return `PID ${p.pid}${p.image ? ' · ' + p.image : ''}${p.tree ? ' · with children' : ''}`
-  if (p.path) return p.path
+  if (p.path) return p.path + (p.sha256 ? ` · sha256 ${p.sha256.slice(0, 12)}…` : '')
   if (p.id) return `vault item ${p.id}`
-  if (a.action === 'isolate') return p.ttl_minutes ? `for ${p.ttl_minutes >= 1440 ? p.ttl_minutes / 1440 + ' d' : p.ttl_minutes / 60 + ' h'}` : 'until released'
+  if (p.ip) return p.ip
+  if (p.user) return `account ${p.user}`
+  if (a.action === 'isolate') return (p.ttl_minutes ? `for ${p.ttl_minutes >= 1440 ? p.ttl_minutes / 1440 + ' d' : p.ttl_minutes / 60 + ' h'}` : 'until released') + (p.no_block_page ? ' · no block page' : '')
   return ''
+}
+
+const PATH_ACTIONS = ['block_process', 'unblock_process', 'quarantine_file', 'delete_file', 'file_info', 'collect_file']
+const VAULT_ACTIONS = ['restore_file', 'delete_quarantined']
+const IP_ACTIONS = ['block_ip', 'unblock_ip']
+const USER_ACTIONS = ['disable_user', 'enable_user']
+const isIP = (s) => /^\s*(\d{1,3}(\.\d{1,3}){3}|[0-9A-Fa-f:]*:[0-9A-Fa-f:.]*)\s*$/.test(s || '')
+
+function FileFactsView({ f }) {
+  return (
+    <div className="mono t2" style={{ fontSize: 11.5, marginTop: 4, display: 'grid', gridTemplateColumns: '70px 1fr', gap: '2px 8px' }}>
+      <span className="t3">sha256</span><span style={{ wordBreak: 'break-all' }}>{f.sha256}</span>
+      <span className="t3">size</span><span>{f.size?.toLocaleString()} bytes</span>
+      {f.mode && <><span className="t3">mode</span><span>{f.mode}</span></>}
+      {f.modified && <><span className="t3">modified</span><span>{new Date(f.modified).toLocaleString()}</span></>}
+      {f.deleted && <><span className="t3">state</span><span className="c-crit">deleted</span></>}
+    </div>
+  )
+}
+
+// Downloads go through the API client so the session token is sent.
+export function CollectedDownload({ id, name }) {
+  const [err, setErr] = useState('')
+  const get = async () => {
+    setErr('')
+    try {
+      const r = await api.get(`/api/v1/response/actions/${encodeURIComponent(id)}/file`, { responseType: 'blob' })
+      const a = document.createElement('a'); a.href = URL.createObjectURL(r.data)
+      a.download = ((name || 'collected').split(/[\\/]/).pop() || 'collected') + '.collected'; a.click()
+      setTimeout(() => URL.revokeObjectURL(a.href), 5000)
+    } catch { setErr('Download failed') }
+  }
+  return <div style={{ marginTop: 6 }}><button className="ow-btn" style={{ height: 26 }} onClick={get}><Download size={12}/>Download copy</button>{err && <span className="c-crit" style={{ marginLeft: 8, fontSize: 12 }}>{err}</span>}</div>
 }
 
 // ── Run action ────────────────────────────────────────────────────────────────
@@ -60,7 +118,7 @@ function RunAction({ hosts, preselect, onDone }) {
   const [facets, setFacets] = useState({})
   const [q, setQ] = useState('')
   const [action, setAction] = useState('isolate')
-  const [params, setParams] = useState({ ttl_minutes: 0, pid: '', image: '', tree: true, path: '', id: '' })
+  const [params, setParams] = useState({ ttl_minutes: 0, block_page: true, pid: '', image: '', tree: true, path: '', id: '', sha256: '', ip: '', user: '' })
   const [reason, setReason] = useState('')
   const [review, setReview] = useState(false)
   const [running, setRunning] = useState(false)
@@ -90,8 +148,11 @@ function RunAction({ hosts, preselect, onDone }) {
     if (!chosen.length) return 'Select at least one host'
     if (!def.multi && chosen.length > 1) return `${def.label} works on one host at a time`
     if (action === 'kill_process' && !(+params.pid > 1)) return 'Pick a process or enter its PID'
-    if (['block_process', 'unblock_process', 'quarantine_file'].includes(action) && !isAbs(params.path)) return 'Enter the full path'
-    if (action === 'restore_file' && !/^[0-9a-f]{16}$/.test(params.id)) return 'Choose a file from the vault'
+    if (PATH_ACTIONS.includes(action) && !isAbs(params.path)) return 'Enter the full path'
+    if (action === 'delete_file' && params.sha256 && !/^[0-9a-fA-F]{64}$/.test(params.sha256.trim())) return 'SHA-256 must be 64 hex characters'
+    if (VAULT_ACTIONS.includes(action) && !/^[0-9a-f]{16}$/.test(params.id)) return 'Choose a file from the vault'
+    if (IP_ACTIONS.includes(action) && !isIP(params.ip)) return 'Enter one IPv4 or IPv6 address'
+    if (USER_ACTIONS.includes(action) && !/^[A-Za-z0-9_][A-Za-z0-9._@ -]{0,63}$/.test(params.user.trim())) return 'Enter the local account name'
     if (def.danger && !reason.trim()) return 'Give a reason. It is kept with the action and in the audit log'
     if (!runnable.length) return 'None of the selected hosts can be reached for this action'
     return ''
@@ -99,11 +160,13 @@ function RunAction({ hosts, preselect, onDone }) {
 
   const payload = () => {
     switch (action) {
-      case 'isolate': return { ttl_minutes: +params.ttl_minutes }
+      case 'isolate': return { ttl_minutes: +params.ttl_minutes, ...(params.block_page ? {} : { no_block_page: true }) }
       case 'kill_process': return { pid: +params.pid, image: params.image, tree: params.tree }
-      case 'block_process': case 'unblock_process': case 'quarantine_file': return { path: params.path }
-      case 'restore_file': return { id: params.id }
-      default: return {}
+      case 'delete_file': return { path: params.path, ...(params.sha256.trim() ? { sha256: params.sha256.trim().toLowerCase() } : {}) }
+      case 'restore_file': case 'delete_quarantined': return { id: params.id }
+      case 'block_ip': case 'unblock_ip': return { ip: params.ip.trim() }
+      case 'disable_user': case 'enable_user': return { user: params.user.trim() }
+      default: return PATH_ACTIONS.includes(action) ? { path: params.path } : {}
     }
   }
 
@@ -113,7 +176,7 @@ function RunAction({ hosts, preselect, onDone }) {
     await Promise.all(chosen.map(async h => {
       if (reach(h) === 'skip') { out.push({ host: h, status: 'skipped', text: 'Host offline or its response tunnel is not connected' }); return }
       const r = await runAction(h.id, action, payload(), { reason: reason.trim() })
-      out.push({ host: h, status: r.ok ? (r.data?.status || 'ok') : 'failed', text: r.data?.message || r.error || '', result: r.data?.result })
+      out.push({ host: h, status: r.ok ? (r.data?.status || 'ok') : 'failed', text: r.data?.message || r.error || '', result: r.data?.result, actionId: r.data?.id })
     }))
     out.sort((a, b) => a.host.hostname.localeCompare(b.host.hostname))
     setResults(out); setRunning(false); setReview(false); onDone()
@@ -164,24 +227,41 @@ function RunAction({ hosts, preselect, onDone }) {
         <section className="ow-card" style={{ overflow: 'hidden' }}>
           <div className="ow-card-bar"><span style={{ fontWeight: 600 }}>2 · Action</span></div>
           <div style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 12 }}>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: 6 }}>
-              {ACTIONS.map(a => {
-                const Icon = a.icon
-                const disabled = !a.multi && chosen.length > 1
-                return (
-                  <button key={a.id} onClick={() => { setAction(a.id); setResults(null) }} disabled={disabled}
-                    title={disabled ? 'One host at a time' : a.help}
-                    className={`ow-fc ${action === a.id ? 'on' : ''}`} style={{ height: 32, justifyContent: 'flex-start', gap: 8, opacity: disabled ? 0.4 : 1, border: '1px solid var(--line)' }}>
-                    <Icon size={13}/><span>{a.label}</span>
-                  </button>
-                )
-              })}
-            </div>
+            {GROUPS.map(g => (
+              <div key={g}>
+                <div className="t3" style={{ fontSize: 11, fontWeight: 600, letterSpacing: '.06em', textTransform: 'uppercase', marginBottom: 6 }}>{g}</div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: 6 }}>
+                  {ACTIONS.filter(a => a.group === g).map(a => {
+                    const Icon = a.icon
+                    const disabled = !a.multi && chosen.length > 1
+                    return (
+                      <button key={a.id} onClick={() => { setAction(a.id); setResults(null) }} disabled={disabled}
+                        title={disabled ? 'One host at a time' : a.help}
+                        className={`ow-fc ${action === a.id ? 'on' : ''}`} style={{ height: 32, justifyContent: 'flex-start', gap: 8, opacity: disabled ? 0.4 : 1, border: '1px solid var(--line)' }}>
+                        <Icon size={13}/><span>{a.label}</span>
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            ))}
             <div className="t2" style={{ fontSize: 12.5, lineHeight: 1.5 }}>{def.help}{def.queues ? ' Offline hosts get it when they reconnect.' : def.readOnly ? '' : ' Needs a live response tunnel on each host.'}</div>
 
             {action === 'isolate' && (
-              <Field label="Duration"><select className="input" value={params.ttl_minutes} onChange={e => setParams(p => ({ ...p, ttl_minutes: e.target.value }))}>
-                {TTLS.map(([l, v]) => <option key={v} value={v}>{l}</option>)}</select></Field>
+              <>
+                <Field label="Duration"><select className="input" value={params.ttl_minutes} onChange={e => setParams(p => ({ ...p, ttl_minutes: e.target.value }))}>
+                  {TTLS.map(([l, v]) => <option key={v} value={v}>{l}</option>)}</select></Field>
+                <label className="t2" style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 12.5 }}>
+                  <input type="checkbox" className="ow-check" checked={params.block_page} onChange={e => setParams(p => ({ ...p, block_page: e.target.checked }))}/>
+                  <span>Show the “contact your administrator” page when someone browses. Web addresses lead to the page; secure (https) sites that cannot show it fail straight away instead of hanging.</span>
+                </label>
+              </>
+            )}
+            {IP_ACTIONS.includes(action) && (
+              <Field label="IP address" hint="One IPv4 or IPv6 address."><input className="input mono" value={params.ip} onChange={e => setParams(p => ({ ...p, ip: e.target.value }))} placeholder="203.0.113.9"/></Field>
+            )}
+            {USER_ACTIONS.includes(action) && (
+              <Field label="Local account" hint="The account name on the host. System accounts and uid 0 are refused."><input className="input mono" value={params.user} onChange={e => setParams(p => ({ ...p, user: e.target.value }))} placeholder="jdoe"/></Field>
             )}
             {action === 'kill_process' && (
               <>
@@ -194,12 +274,17 @@ function RunAction({ hosts, preselect, onDone }) {
                 <label className="t2" style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 12.5 }}><input type="checkbox" className="ow-check" checked={params.tree} onChange={e => setParams(p => ({ ...p, tree: e.target.checked }))}/>Also kill its child processes</label>
               </>
             )}
-            {['block_process', 'unblock_process', 'quarantine_file'].includes(action) && (
-              <Field label={action === 'quarantine_file' ? 'File path' : 'Program path'} hint="Full path. On Windows, include the drive letter.">
+            {PATH_ACTIONS.includes(action) && (
+              <Field label={['block_process', 'unblock_process'].includes(action) ? 'Program path' : 'File path'} hint="Full path. On Windows, include the drive letter.">
                 <input className="input mono" value={params.path} onChange={e => setParams(p => ({ ...p, path: e.target.value }))} placeholder="/tmp/payload or C:\Users\x\evil.exe"/>
               </Field>
             )}
-            {action === 'restore_file' && (
+            {action === 'delete_file' && (
+              <Field label="Expected SHA-256 (optional)" hint="If given, the file is deleted only when its content still has this hash.">
+                <input className="input mono" value={params.sha256} onChange={e => setParams(p => ({ ...p, sha256: e.target.value }))} placeholder="64 hex characters"/>
+              </Field>
+            )}
+            {VAULT_ACTIONS.includes(action) && (
               single ? (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                   <button className="ow-btn" style={{ alignSelf: 'flex-start' }} disabled={!single.tunnel_online} onClick={loadVault}>Read {single.hostname}'s vault</button>
@@ -229,8 +314,10 @@ function RunAction({ hosts, preselect, onDone }) {
                 <div style={{ whiteSpace: 'normal' }}>
                   <Link to={`/agents?host=${encodeURIComponent(r.host.hostname)}`} className="mono t1">{r.host.hostname}</Link>
                   {r.text && <div className="t2" style={{ fontSize: 12 }}>{r.text}</div>}
-                  {Array.isArray(r.result) && <div className="mono t2" style={{ fontSize: 11.5, marginTop: 4 }}>{r.result.length ? r.result.map(x => x.orig_path || x).join('\n') : 'Empty'}</div>}
+                  {Array.isArray(r.result) && <div className="mono t2" style={{ fontSize: 11.5, marginTop: 4 }}>{r.result.length ? r.result.map(x => x.orig_path || x.ip || String(x)).join('\n') : 'Empty'}</div>}
                   {r.result?.rows && <div className="mono t2" style={{ fontSize: 11.5, marginTop: 4, whiteSpace: 'pre-wrap' }}>{r.result.rows.length ? r.result.rows.map(x => x[0]).join('\n') : 'Nothing blocked'}</div>}
+                  {r.result?.sha256 && <FileFactsView f={r.result}/>}
+                  {action === 'collect_file' && r.status === 'ok' && r.actionId && <CollectedDownload id={r.actionId} name={r.result?.path}/>}
                 </div>
                 <div>{r.status === 'skipped' ? <StatePill state="none">Skipped</StatePill> : <ActionStatus status={r.status}/>}</div>
               </div>

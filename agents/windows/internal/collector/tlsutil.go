@@ -23,6 +23,8 @@ import (
 
 	"github.com/gorilla/websocket"
 	"obsidianwatch/agent/internal/config"
+
+	"obsidianwatch/agent/internal/identity"
 )
 
 // tlsConfigForCA builds a *tls.Config that trusts the given CA cert file.
@@ -37,7 +39,9 @@ func tlsConfigForCA(caFile string) *tls.Config {
 	}
 	pool := x509.NewCertPool()
 	pool.AppendCertsFromPEM(caCert)
-	return &tls.Config{RootCAs: pool}
+	cfg := &tls.Config{RootCAs: pool}
+	identity.ApplyActive(cfg)
+	return cfg
 }
 
 // resolveCAFile returns the management CA file, falling back to the backend

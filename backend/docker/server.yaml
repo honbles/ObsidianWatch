@@ -22,23 +22,22 @@ database:
   conn_max_lifetime: "5m"
 
 auth:
-  # Generate a strong key: openssl rand -hex 32
-  # Paste the same value into agent.yaml forwarder.api_key
-  api_keys:
-    - "changeme-generate-a-real-key-with-openssl-rand-hex-32"
-  mtls_enabled: false
 
-  # Agent identity (spec A1-A4). Agents enroll with a token from the console
-  # (Settings > Agent enrollment) and then use a per-agent certificate.
-  #   legacy   - fleet api_key on every route (behaviour before enrollment)
-  #   mixed    - certificate when presented, fleet key still accepted (default)
-  #   enforced - certificate required; fleet key only on /api/v1/enroll
+  # Agents authenticate with their own certificate (spec A1-A4); there is no
+  # shared API key. The Agent builder embeds an enrollment token; on first
+  # start the agent enrolls at /api/v1/enroll and gets a 30-day certificate.
   agent_identity:
-    mode: "mixed"
     ca_cert_file: "agent-ca/agent-ca.crt"   # created on first start
     ca_key_file:  "agent-ca/agent-ca.key"   # 0600; back it up with the volume
     cert_ttl: "720h"                        # 30 days; agents renew at half life
-    allow_fleet_key_enrollment: false       # migration aid for existing installs
+
+# Live-response tunnels ride on this port: agents connect here (same
+# certificate as ingest) and the WebSocket is passed to the management API.
+tunnel:
+  management_url: "https://mgmt-api:8443"
+  management_ca_file: "certs/ca.crt"      # deployment CA from cert-init
+  management_server_name: "127.0.0.1"     # a SAN of the cert-init server certificate
+  insecure_skip_verify: false
 
 log:
   level:  "info"

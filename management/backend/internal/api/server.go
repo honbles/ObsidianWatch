@@ -32,7 +32,6 @@ type Server struct {
 	vtEngine     *VirusTotalEngine
 	lrRegistry   *TunnelRegistry
 	tunnelAuth   *tunnelAuth
-	agentHTTP    *http.Server // agent-certificate listener (A2), nil when off
 }
 
 func New(cfg *config.Config, db *store.DB, backendDB *store.DB, logger *slog.Logger) *Server {
@@ -80,8 +79,6 @@ func New(cfg *config.Config, db *store.DB, backendDB *store.DB, logger *slog.Log
 
 	// Public
 	mux.HandleFunc("GET /health", handleHealth(db))
-	mux.HandleFunc("POST /api/v1/verify-install-key", handleVerifyInstallKey(db, cfg.Server.AgentAPIKey))
-	mux.HandleFunc("POST /api/v1/agent/register-key", handleAgentRegisterKey(db, cfg.Server.AgentAPIKey))
 	mux.HandleFunc("POST /auth/login", handleLogin(db, jwt, logger))
 	mux.HandleFunc("POST /api/v1/devops/webhook/{id}", handleGitHubWebhook(db, backendDB, logger))
 	mux.HandleFunc("POST /api/v1/devops/webhook-gitlab/{id}", handleGitLabWebhook(db, backendDB, logger))
@@ -177,34 +174,21 @@ func New(cfg *config.Config, db *store.DB, backendDB *store.DB, logger *slog.Log
 	if idDB == nil {
 		idDB = db
 	}
-	tunnelMode := cfg.Server.AgentTunnelAuth
-	switch tunnelMode {
-	case tunnelAuthLegacy, tunnelAuthMixed, tunnelAuthEnforced:
-	default:
-		logger.Warn("server.agent_tunnel_auth not recognised, using mixed", "value", tunnelMode)
-		tunnelMode = tunnelAuthMixed
-	}
 	s.tunnelAuth = &tunnelAuth{
-		mode:   tunnelMode,
-		ca:     &agentCAPool{load: idDB.AgentCACert},
 		rev:    agentid.NewRevocations(idDB.RevokedAgentIDs),
-		apiKey: cfg.Server.AgentAPIKey,
 		now:    time.Now,
+		fwdKey: tunnelIdentityKey(os.Getenv("OW_SECRET_KEY")),
+	}
+	if s.tunnelAuth.fwdKey == nil {
+		logger.Error("OW_SECRET_KEY is not set: agents cannot reach live response or install-key checks")
 	}
 	s.tunnelAuth.rev.OnLoad(func(rv map[string]bool) { lrRegistry.closeRevokedTunnels(rv, logger) })
 	tunnelHandler := handleAgentTunnel(db, lrRegistry, logger, s.tunnelAuth)
 	mux.HandleFunc("GET /api/v1/live-response/agent-tunnel", tunnelHandler)
-	if cfg.Server.AgentListenAddr != "" {
-		agentMux := http.NewServeMux()
-		agentMux.HandleFunc("GET /api/v1/live-response/agent-tunnel", tunnelHandler)
-		s.agentHTTP = &http.Server{
-			Addr:              cfg.Server.AgentListenAddr,
-			Handler:           loggingMiddleware(logger)(limitRequestBody(maxRequestBody)(agentMux)),
-			ReadHeaderTimeout: 10 * time.Second,
-			IdleTimeout:       120 * time.Second,
-			MaxHeaderBytes:    64 << 10,
-		}
-	}
+	// Install-key registration and uninstall check, called by agents through
+	// the ingest backend with their certificate identity.
+	mux.HandleFunc("POST /api/v1/verify-install-key", handleVerifyInstallKey(db, s.tunnelAuth))
+	mux.HandleFunc("POST /api/v1/agent/register-key", handleAgentRegisterKey(db, s.tunnelAuth))
 	// Agent enrollment administration (A1, A4). Admin only.
 	protected.HandleFunc("GET /api/v1/enrollment-tokens", adminOnly(handleListEnrollmentTokens(idDB)))
 	protected.HandleFunc("POST /api/v1/enrollment-tokens", adminOnly(handleCreateEnrollmentToken(idDB)))
@@ -224,6 +208,7 @@ func New(cfg *config.Config, db *store.DB, backendDB *store.DB, logger *slog.Log
 	protected.HandleFunc("GET /api/v1/agents/{id}/processes", adminOnly(handleAgentProcesses(db, lrRegistry)))
 	protected.HandleFunc("GET /api/v1/response/isolated", handleIsolatedAgents(db))
 	protected.HandleFunc("GET /api/v1/response/actions", handleResponseActions(db))
+	protected.HandleFunc("GET /api/v1/response/actions/{id}/file", adminOnly(handleCollectedFile(db)))
 	protected.HandleFunc("POST /api/v1/hunt/live", adminOnly(handleStartFleetHunt(db, lrRegistry, logger)))
 	protected.HandleFunc("GET /api/v1/hunt/live", handleListFleetHunts(db))
 	protected.HandleFunc("GET /api/v1/hunt/live/{id}", handleGetFleetHunt(db))
@@ -343,9 +328,9 @@ func New(cfg *config.Config, db *store.DB, backendDB *store.DB, logger *slog.Log
 
 	// Agent Builder
 	protected.HandleFunc("GET /api/v1/agent-builder/status", handleAgentBuildStatus())
-	protected.HandleFunc("POST /api/v1/agent-builder/build", adminOnly(handleAgentBuild(db)))
+	protected.HandleFunc("POST /api/v1/agent-builder/build", adminOnly(handleAgentBuild(db, idDB)))
 	protected.HandleFunc("GET /api/v1/agent-builder/settings", adminOnly(handleAgentBuilderSettings(db)))
-	protected.HandleFunc("POST /api/v1/agent-builder/download", adminOnly(handleAgentBuilderDownload(db)))
+	protected.HandleFunc("POST /api/v1/agent-builder/download", adminOnly(handleAgentBuilderDownload(db, idDB)))
 	protected.HandleFunc("GET /api/v1/agent-builder/download/{platform}", adminOnly(handleAgentDownloadCached()))
 
 	// Settings - SMTP email notifications
@@ -410,20 +395,6 @@ func (s *Server) Start(ctx context.Context) error {
 	}()
 	// A4: revocations and the agent CA are re-read well inside 60 s.
 	go s.tunnelAuth.rev.Run(ctx, agentid.DefaultRefresh)
-	go func() {
-		tk := time.NewTicker(time.Minute)
-		defer tk.Stop()
-		for {
-			if err := s.tunnelAuth.ca.Refresh(ctx); err != nil {
-				s.logger.Warn("agent CA: refresh failed", "err", err)
-			}
-			select {
-			case <-ctx.Done():
-				return
-			case <-tk.C:
-			}
-		}
-	}()
 	engine := NewAlertEngine(s.db, s.mailer, s.logger)
 	go engine.Run(ctx)
 	detection := NewDetectionEngine(s.db, s.mailer, s.logger)
@@ -475,31 +446,13 @@ func (s *Server) Start(ctx context.Context) error {
 				tls.TLS_AES_128_GCM_SHA256,
 			},
 		}
-		if s.agentHTTP != nil {
-			// Agent listener: asks for (does not require) a client
-			// certificate; tunnelAuth verifies it against the agent CA.
-			// The handshake proves the agent holds the private key.
-			s.agentHTTP.TLSConfig = &tls.Config{MinVersion: tls.VersionTLS12, ClientAuth: tls.RequestClientCert}
-			go func() {
-				s.logger.Info("agent tunnel listener starting (TLS, client certificates)", "addr", s.agentHTTP.Addr)
-				if err := s.agentHTTP.ListenAndServeTLS(certFile, keyFile); err != nil && err != http.ErrServerClosed {
-					s.logger.Error("agent tunnel listener stopped", "err", err)
-				}
-			}()
-		}
 		return s.http.ListenAndServeTLS(certFile, keyFile)
-	}
-	if s.agentHTTP != nil {
-		s.logger.Warn("agent_listen_addr ignored: TLS is off, certificates cannot be presented")
 	}
 	s.logger.Info("management server starting (HTTP)", "addr", s.cfg.Server.ListenAddr)
 	return s.http.ListenAndServe()
 }
 
 func (s *Server) Shutdown(ctx context.Context) error {
-	if s.agentHTTP != nil {
-		_ = s.agentHTTP.Shutdown(ctx)
-	}
 	return s.http.Shutdown(ctx)
 }
 

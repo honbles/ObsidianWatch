@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"gopkg.in/yaml.v3"
+
+	"obsidianwatch/agent/internal/identity"
 )
 
 type Config struct {
@@ -117,6 +119,11 @@ type ForwarderConfig struct {
 	CACertPEM           string        `yaml:"ca_cert_pem"`            // CA cert PEM inline (used when config is embedded in binary)
 	ManagementCAFile    string        `yaml:"management_ca_file"`     // CA cert for management :443 (if HTTPS; falls back to ca_file if empty)
 	ManagementCACertPEM string        `yaml:"management_ca_cert_pem"` // inline PEM for management CA (embedded binary)
+	// EnrollToken is the enrollment token built in by the Agent builder. The
+	// agent uses it once to get its own certificate; there is no API key.
+	EnrollToken string `yaml:"enroll_token"`
+	// APIKey is no longer accepted by the servers. Kept only so an old
+	// configuration fails with a clear message instead of a parse error.
 	APIKey              string        `yaml:"api_key"`
 	// AllowInsecureTLS (W-05): must be explicitly opted into. Without a CA
 	// configured, BuildTLSConfig now hard-fails rather than silently
@@ -288,6 +295,14 @@ func InstallKeyFile() string { return installKeyFile }
 // If caPEM is empty and allowInsecure is false, it HARD-FAILS instead of
 // the old behavior of silently setting InsecureSkipVerify: true.
 func BuildTLSConfig(caPEM []byte, allowInsecure bool) (*tls.Config, error) {
+	cfg, err := buildTLSConfig(caPEM, allowInsecure)
+	if err == nil {
+		identity.ApplyActive(cfg) // present the agent's enrolled certificate
+	}
+	return cfg, err
+}
+
+func buildTLSConfig(caPEM []byte, allowInsecure bool) (*tls.Config, error) {
 	if len(caPEM) > 0 {
 		pool := x509.NewCertPool()
 		if !pool.AppendCertsFromPEM(caPEM) {

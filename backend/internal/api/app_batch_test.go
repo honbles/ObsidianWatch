@@ -42,7 +42,7 @@ func (f *appFakeStore) InsertEvents(_ context.Context, ev []schema.Event) error 
 func appPost(t *testing.T, h http.HandlerFunc, body string) *httptest.ResponseRecorder {
 	t.Helper()
 	rec := httptest.NewRecorder()
-	h(rec, httptest.NewRequest(http.MethodPost, "/api/v1/app/batch", strings.NewReader(body)))
+	h(rec, asClaimedAgent(httptest.NewRequest(http.MethodPost, "/api/v1/app/batch", strings.NewReader(body))))
 	return rec
 }
 
@@ -203,7 +203,7 @@ func TestAppAgentConfigEndpoint(t *testing.T) {
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 	get := func(f appFakeConfigStore, q string) *httptest.ResponseRecorder {
 		rec := httptest.NewRecorder()
-		appHandleAgentConfig(f, log)(rec, httptest.NewRequest("GET", "/api/v1/app/agent-config"+q, nil))
+		appHandleAgentConfig(f, log)(rec, asClaimedAgent(httptest.NewRequest("GET", "/api/v1/app/agent-config"+q, nil)))
 		return rec
 	}
 	svcs := []store.AppRemoteService{{Service: "api", Environment: "prod", StoreClientIP: "off", CleartextUsers: true, LatencyTargetMs: 250}}

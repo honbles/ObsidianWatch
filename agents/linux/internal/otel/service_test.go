@@ -109,7 +109,7 @@ func TestServiceEndToEnd(t *testing.T) {
 	}
 	var routes, instances int
 	for i, b := range fb.batches {
-		if fb.apiKeys[i] != "key-123" || b.AgentID != "agent-1" {
+		if fb.apiKeys[i] != "" || b.AgentID != "agent-1" { // no API key: the agent certificate authenticates
 			t.Fatalf("headers/agent: %q %q", fb.apiKeys[i], b.AgentID)
 		}
 		routes += len(b.Routes)

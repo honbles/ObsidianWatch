@@ -57,7 +57,11 @@ func (db *DB) ListResponseActions(ctx context.Context, agentID string, limit int
 	if limit <= 0 || limit > 500 {
 		limit = 50
 	}
-	q := `SELECT id, agent_id, hostname, action, params, status, message, result, requested_by, reason, alert_id, requested_at, completed_at
+	// Collected file contents are never part of a list: they are fetched one
+	// at a time by admins (CollectedFile).
+	q := `SELECT id, agent_id, hostname, action, params, status, message,
+	             CASE WHEN action = 'collect_file' THEN result - 'content_b64' ELSE result END,
+	             requested_by, reason, alert_id, requested_at, completed_at
 	      FROM response_actions`
 	var args []interface{}
 	if agentID != "" {
@@ -88,6 +92,15 @@ func (db *DB) ListResponseActions(ctx context.Context, agentID string, limit int
 		out = append(out, a)
 	}
 	return out, rows.Err()
+}
+
+// CollectedFile returns the file a successful collect_file action brought
+// back: host, original path, SHA-256 and the base64 content.
+func (db *DB) CollectedFile(ctx context.Context, id string) (host, path, sha, contentB64 string, err error) {
+	err = db.QueryRowContext(ctx, `
+		SELECT hostname, COALESCE(result->>'path',''), COALESCE(result->>'sha256',''), COALESCE(result->>'content_b64','')
+		FROM response_actions WHERE id = $1 AND action = 'collect_file' AND status = 'ok'`, id).Scan(&host, &path, &sha, &contentB64)
+	return
 }
 
 // RespState is the desired vs reported isolation state of an agent.

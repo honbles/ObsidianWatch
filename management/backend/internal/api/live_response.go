@@ -5,7 +5,6 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -141,12 +140,7 @@ func handleAgentTunnel(db *store.DB, registry *TunnelRegistry, logger *slog.Logg
 	return func(w http.ResponseWriter, r *http.Request) {
 		caller, err := ta.authenticate(r)
 		if err != nil {
-			var ae *authError
-			if errors.As(err, &ae) {
-				http.Error(w, ae.msg, ae.code)
-			} else {
-				http.Error(w, "unauthorized", 401)
-			}
+			writeAuthError(w, err)
 			return
 		}
 		agentID := caller.agentID

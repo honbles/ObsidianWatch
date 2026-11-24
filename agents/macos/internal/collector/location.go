@@ -129,7 +129,6 @@ func (c *LocationCollector) postLocation(loc locationResult) {
 		return
 	}
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-API-Key", c.apiKey)
 	resp, err := client.Do(req)
 	if err != nil {
 		c.logger.Warn("location: post failed", "err", err)

@@ -198,7 +198,6 @@ func (c *LocationCollector) postLocation(loc locationResult) {
 		req, err := http.NewRequest("POST", backend+"/api/v1/agents/location", strings.NewReader(string(body)))
 		if err == nil {
 			req.Header.Set("Content-Type", "application/json")
-			req.Header.Set("X-API-Key", c.apiKey)
 			resp, err := client.Do(req)
 			if err != nil {
 				c.logger.Warn("location: backend post failed", "err", err)

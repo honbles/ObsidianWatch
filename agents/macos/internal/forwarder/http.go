@@ -16,6 +16,8 @@ import (
 	"time"
 
 	"obsidianwatch/macos-agent/pkg/schema"
+
+	"obsidianwatch/macos-agent/internal/identity"
 )
 
 // HTTPForwarder reads from the Queue and delivers batches to the backend.
@@ -41,8 +43,6 @@ type ForwarderConfig struct {
 	KeyFile  string
 	CAFile      string
 	CACertPEM  string
-	// API key (fallback when mTLS not configured)
-	APIKey string
 }
 
 // NewHTTPForwarder creates the forwarder and builds the TLS-aware HTTP client.
@@ -168,9 +168,6 @@ func (f *HTTPForwarder) send(ctx context.Context, batch schema.Batch) error {
 
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("User-Agent", "obsidianwatch-agent/"+f.ver)
-	if f.cfg.APIKey != "" {
-		req.Header.Set("X-API-Key", f.cfg.APIKey)
-	}
 
 	resp, err := f.client.Do(req)
 	if err != nil {
@@ -228,6 +225,8 @@ func buildHTTPClient(cfg ForwarderConfig) (*http.Client, error) {
 		tlsCfg.RootCAs = pool
 	}
 
+	// Every connection presents the agent's enrolled certificate.
+	identity.ApplyActive(tlsCfg)
 	transport := &http.Transport{
 		TLSClientConfig: tlsCfg,
 		// HTTP/2 is automatically negotiated via ALPN when TLS is present.

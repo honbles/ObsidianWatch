@@ -38,19 +38,11 @@ type ServerConfig struct {
 	ReadTimeout  time.Duration `yaml:"read_timeout"`
 	WriteTimeout time.Duration `yaml:"write_timeout"`
 	CORSOrigins  []string      `yaml:"cors_origins"`
-	AgentAPIKey  string        `yaml:"agent_api_key"` // shared key agents use for tunnel auth
+	AgentAPIKey  string        `yaml:"agent_api_key"` // no longer authenticates agents (they use certificates); only seeds application user hashing
 	// TLS - auto-detected from /app/certs/ if present
 	TLSCertFile string `yaml:"tls_cert_file"` // default: /app/certs/server.crt
 	TLSKeyFile  string `yaml:"tls_key_file"`  // default: /app/certs/server.key
 	TLSEnabled  bool   `yaml:"tls_enabled"`   // auto-set to true if cert files exist
-	// AgentTunnelAuth (spec A2): "legacy" (fleet key), "mixed" (agent
-	// certificate when presented, else fleet key; default) or "enforced"
-	// (agent certificate required).
-	AgentTunnelAuth string `yaml:"agent_tunnel_auth"`
-	// AgentListenAddr is a separate TLS listener for agent tunnels that asks
-	// for the agent certificate (e.g. ":8445"). The main listener never asks
-	// for client certificates, so browsers are not prompted. Empty = off.
-	AgentListenAddr string `yaml:"agent_listen_addr"`
 }
 
 type DatabaseConfig struct {
@@ -112,11 +104,10 @@ func Load(path string) (*Config, error) {
 func defaults() *Config {
 	return &Config{
 		Server: ServerConfig{
-			ListenAddr:      ":8080",
-			ReadTimeout:     30 * time.Second,
-			WriteTimeout:    30 * time.Second,
-			CORSOrigins:     []string{"*"},
-			AgentTunnelAuth: "mixed",
+			ListenAddr:   ":8080",
+			ReadTimeout:  30 * time.Second,
+			WriteTimeout: 30 * time.Second,
+			CORSOrigins:  []string{"*"},
 		},
 		Database: DatabaseConfig{
 			Host:            "localhost",
@@ -168,7 +159,9 @@ func validate(cfg *Config) error {
 		return fmt.Errorf("auth.jwt_secret must be at least 32 characters (HS256 key strength); generate one with `openssl rand -hex 32`")
 	}
 	if cfg.Server.AgentAPIKey != "" && isPlaceholderSecret(cfg.Server.AgentAPIKey) {
-		return fmt.Errorf("agent_api_key must not be a placeholder value")
+		// No longer an agent credential (agents use certificates): a leftover
+		// placeholder is simply ignored instead of blocking start-up.
+		cfg.Server.AgentAPIKey = ""
 	}
 	return nil
 }

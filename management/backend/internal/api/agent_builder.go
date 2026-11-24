@@ -382,7 +382,7 @@ func handleAgentBuildStatus() http.HandlerFunc {
 
 // handleAgentBuild triggers a fresh compile + zip save in the background.
 // Requires the full config params so the YAML can be embedded.
-func handleAgentBuild(db *store.DB) http.HandlerFunc {
+func handleAgentBuild(db, idDB *store.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var cfg AgentBuilderConfig
 		if err := json.NewDecoder(r.Body).Decode(&cfg); err != nil || cfg.Platform == "" {
@@ -391,6 +391,14 @@ func handleAgentBuild(db *store.DB) http.HandlerFunc {
 		}
 		if _, ok := platforms[cfg.Platform]; !ok {
 			writeJSON(w, 400, map[string]string{"error": "unknown platform"})
+			return
+		}
+		if builds.isBuilding(cfg.Platform) {
+			writeJSON(w, 409, map[string]string{"error": "build already in progress"})
+			return
+		}
+		if msg := prepareEnrollment(r, idDB, &cfg); msg != "" {
+			writeJSON(w, 400, map[string]string{"error": msg})
 			return
 		}
 
@@ -412,7 +420,7 @@ func handleAgentBuild(db *store.DB) http.HandlerFunc {
 }
 
 // handleAgentBuilderDownload compiles + saves zip (if not cached), then streams it.
-func handleAgentBuilderDownload(db *store.DB) http.HandlerFunc {
+func handleAgentBuilderDownload(db, idDB *store.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var cfg AgentBuilderConfig
 		if err := json.NewDecoder(r.Body).Decode(&cfg); err != nil {
@@ -423,12 +431,8 @@ func handleAgentBuilderDownload(db *store.DB) http.HandlerFunc {
 			writeJSON(w, 400, map[string]string{"error": "platform required"})
 			return
 		}
-		if cfg.BackendURL == "" || cfg.ManagementURL == "" || cfg.AgentAPIKey == "" {
-			writeJSON(w, 400, map[string]string{"error": "backend_url, management_url, and agent_api_key are required"})
-			return
-		}
-		if !validHTTPURL(cfg.BackendURL, true) || !validHTTPURL(cfg.ManagementURL, true) {
-			writeJSON(w, 400, map[string]string{"error": "backend_url and management_url must be https URLs"})
+		if msg := prepareEnrollment(r, idDB, &cfg); msg != "" {
+			writeJSON(w, 400, map[string]string{"error": msg})
 			return
 		}
 
@@ -526,21 +530,63 @@ func handleAgentBuilderSettings(db *store.DB) http.HandlerFunc {
 			"has_threatfox_key": hasThreatFox,
 			"has_otx_key":       hasOTX,
 			// Pre-filled Agent Builder defaults
-			"default_backend_url":    setup["backend_url"],
-			"default_management_url": setup["management_url"],
-			"default_ca_cert":        setup["ca_cert"],
-			"default_agent_api_key":  setup["agent_api_key"],
+			"default_backend_url":      setup["backend_url"],
+			"default_management_url":   setup["management_url"],
+			"default_ca_cert":          setup["ca_cert"],
+			"default_enroll_ttl_hours": 720,
+			"default_enroll_max_uses":  500,
 		})
 	}
+}
+
+// prepareEnrollment validates the URLs and mints the enrollment token this
+// build will carry. It returns an error message for the client, "" on success.
+func prepareEnrollment(r *http.Request, idDB *store.DB, cfg *AgentBuilderConfig) string {
+	if cfg.BackendURL == "" || !validHTTPURL(cfg.BackendURL, true) {
+		return "backend_url is required and must be an https URL"
+	}
+	if cfg.ManagementURL != "" && !validHTTPURL(cfg.ManagementURL, true) {
+		return "management_url must be an https URL"
+	}
+	if cfg.EnrollTTLHours == 0 {
+		cfg.EnrollTTLHours = 720
+	}
+	if cfg.EnrollMaxUses == 0 {
+		cfg.EnrollMaxUses = 500
+	}
+	if cfg.EnrollTTLHours < 1 || time.Duration(cfg.EnrollTTLHours)*time.Hour > maxTokenTTL {
+		return "enroll_ttl_hours must be between 1 and 2160 (90 days)"
+	}
+	if cfg.EnrollMaxUses < 1 || cfg.EnrollMaxUses > maxTokenUses {
+		return "enroll_max_uses must be between 1 and 100000"
+	}
+	by := actor(r)
+	tok := newEnrollmentToken()
+	label := fmt.Sprintf("Agent builder: %s build by %s, %s", cfg.Platform, by, time.Now().UTC().Format("2006-01-02 15:04"))
+	if _, err := idDB.CreateEnrollmentToken(r.Context(), enrollmentTokenHash(tok), label, by,
+		time.Now().Add(time.Duration(cfg.EnrollTTLHours)*time.Hour), cfg.EnrollMaxUses); err != nil {
+		return "could not create the enrollment token"
+	}
+	cfg.EnrollToken = tok
+	cfg.UserHashSeed = os.Getenv("OW_SECRET_KEY")
+	return ""
 }
 
 // ── Config types and helpers ──────────────────────────────────────────────────
 
 type AgentBuilderConfig struct {
-	Platform         string `json:"platform"`
-	BackendURL       string `json:"backend_url"`
-	ManagementURL    string `json:"management_url"`
-	AgentAPIKey      string `json:"agent_api_key"`
+	Platform      string `json:"platform"`
+	BackendURL    string `json:"backend_url"`
+	ManagementURL string `json:"management_url"`
+	// Enrollment (spec A1): every build embeds a fresh enrollment token, so
+	// agents carry no long-lived secret. Lifetime and host limit are chosen
+	// in the builder; the token itself is minted server-side.
+	EnrollTTLHours int    `json:"enroll_ttl_hours"` // default 720 (30 days), max 2160
+	EnrollMaxUses  int    `json:"enroll_max_uses"`  // default 500
+	EnrollToken    string `json:"-"`                // set by the server, never from the request
+	// UserHashSeed keys the hashing of application user names, the same for
+	// every agent of the organisation (derived from OW_SECRET_KEY).
+	UserHashSeed     string `json:"-"`
 	CACert           string `json:"ca_cert"`
 	GroqAPIKey       string `json:"groq_api_key"`
 	AnthropicAPIKey  string `json:"anthropic_api_key"`
@@ -549,7 +595,7 @@ type AgentBuilderConfig struct {
 	ManagementCACert string `json:"management_ca_cert"` // CA for management HTTPS (self-signed); leave empty if HTTP or trusted cert
 	SiteName         string `json:"site_name"`          // Network probe site name
 	// [APP-FIELDS-BEGIN]
-	EnableAppProfile bool `json:"enable_app_profile"` // app-server profile: eBPF sensor + OTLP receiver
+	EnableAppProfile bool   `json:"enable_app_profile"` // app-server profile: eBPF sensor + OTLP receiver
 	AppOTLPSocket    string `json:"app_otlp_socket"`    // optional Unix socket path for the OTLP receiver (containers)
 	AppClientIPMode  string `json:"app_client_ip_mode"` // full | truncated | off (default full)
 	AppSensorMode    string `json:"app_sensor_mode"`    // host sensor tier: auto | procevent | poll (default auto)
@@ -632,7 +678,7 @@ func buildNetworkProbeYAML(cfg AgentBuilderConfig) string {
 forwarder:
   backend_url: %q
   management_url: %q
-  api_key: %q
+  enroll_token: %q
   ca_cert_pem: %s
   batch_size: 200
   flush_interval: "10s"
@@ -678,7 +724,7 @@ store:
 log:
   level: "info"
   format: "json"
-`, cfg.SiteName, cfg.BackendURL, cfg.ManagementURL, cfg.AgentAPIKey, yamlLiteral(cfg.CACert))
+`, cfg.SiteName, cfg.BackendURL, cfg.ManagementURL, cfg.EnrollToken, yamlLiteral(cfg.CACert))
 }
 
 // [NET-OWNED-END]
@@ -694,7 +740,7 @@ forwarder:
   ca_file: ""
   ca_cert_pem: %s
   management_ca_cert_pem: %s
-  api_key: %q
+  enroll_token: %q
   install_key: ""
   batch_size: 200
   flush_interval: 5s
@@ -753,7 +799,7 @@ collector:
 log:
   level: "info"
   format: "json"
-`, cfg.BackendURL, cfg.ManagementURL, yamlLiteral(cfg.CACert), yamlLiteral(cfg.ManagementCACert), cfg.AgentAPIKey)
+`, cfg.BackendURL, cfg.ManagementURL, yamlLiteral(cfg.CACert), yamlLiteral(cfg.ManagementCACert), cfg.EnrollToken)
 }
 
 func buildMacOSYAML(cfg AgentBuilderConfig) string {
@@ -767,7 +813,7 @@ forwarder:
   ca_file: ""
   ca_cert_pem: %s
   management_ca_cert_pem: %s
-  api_key: %q
+  enroll_token: %q
   install_key: ""
   batch_size: 200
   flush_interval: 5s
@@ -815,7 +861,7 @@ collector:
 log:
   level: "info"
   format: "json"
-`, cfg.BackendURL, cfg.ManagementURL, yamlLiteral(cfg.CACert), yamlLiteral(cfg.ManagementCACert), cfg.AgentAPIKey)
+`, cfg.BackendURL, cfg.ManagementURL, yamlLiteral(cfg.CACert), yamlLiteral(cfg.ManagementCACert), cfg.EnrollToken)
 }
 
 func buildWindowsYAML(cfg AgentBuilderConfig) string {
@@ -885,7 +931,7 @@ forwarder:
   ca_file: ""
   ca_cert_pem: %s
   management_ca_cert_pem: %s
-  api_key: %q
+  enroll_token: %q
   install_key: ""
   batch_size: 200
   flush_interval: 5s
@@ -897,7 +943,7 @@ queue:
 log:
   level: "info"
   format: "json"
-`, cfg.BackendURL, cfg.ManagementURL, yamlLiteral(cfg.CACert), yamlLiteral(cfg.ManagementCACert), cfg.AgentAPIKey)
+`, cfg.BackendURL, cfg.ManagementURL, yamlLiteral(cfg.CACert), yamlLiteral(cfg.ManagementCACert), cfg.EnrollToken)
 }
 
 func buildInstallReadme(platform string) string {
@@ -918,6 +964,7 @@ func buildInstallReadme(platform string) string {
 		sb.WriteString("## Install (run as Administrator)\n```powershell\n.\\obsidianwatch-win-agent.exe install\n```\n\n")
 		sb.WriteString("## Uninstall\n```powershell\n.\\obsidianwatch-win-agent.exe uninstall\n```\n")
 	}
+	sb.WriteString("\n## Enrollment\nThis build carries a one-purpose enrollment token, not an API key. On install (or first start) the agent creates its own key pair, enrolls with the token and gets a 30-day certificate that renews itself. The token has a lifetime and a host limit chosen when the agent was built; after it expires, rebuild in the Agent builder to install more hosts. Agents already enrolled are not affected.\n")
 	sb.WriteString("\nInstall key is auto-generated and visible on the dashboard: Agents → shield icon.\n")
 	return sb.String()
 }

@@ -17,6 +17,8 @@ import (
 	"strconv"
 	"sync/atomic"
 	"time"
+
+	"obsidianwatch/agent/internal/identity"
 )
 
 // SenderOptions mirrors the forwarder's connection settings.
@@ -76,6 +78,7 @@ func buildClient(o SenderOptions) (*http.Client, error) {
 		}
 		tlsCfg.RootCAs = pool
 	}
+	identity.ApplyActive(tlsCfg) // the agent's enrolled certificate
 	return &http.Client{
 		Transport: &http.Transport{TLSClientConfig: tlsCfg, ForceAttemptHTTP2: true},
 		Timeout:   30 * time.Second,
@@ -175,9 +178,6 @@ func (s *Sender) post(ctx context.Context, b *Batch) (code int, retry time.Durat
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("User-Agent", "obsidianwatch-agent/"+s.opt.Version)
-	if s.opt.APIKey != "" {
-		req.Header.Set("X-API-Key", s.opt.APIKey)
-	}
 	resp, err := s.client.Do(req)
 	if err != nil {
 		return 0, time.Second, err // network error: retry

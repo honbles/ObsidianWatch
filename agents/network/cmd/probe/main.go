@@ -13,6 +13,7 @@ package main
 
 import (
 	"context"
+	"crypto/x509"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -27,6 +28,7 @@ import (
 	"obsidianwatch/network-probe/internal/collector"
 	cfg_pkg "obsidianwatch/network-probe/internal/config"
 	"obsidianwatch/network-probe/internal/forwarder"
+	"obsidianwatch/network-probe/internal/identity"
 	"obsidianwatch/network-probe/internal/store"
 	"obsidianwatch/network-probe/pkg/schema"
 )
@@ -85,12 +87,37 @@ func runProbe() {
 	// Ensure data directory exists
 	mustMkdir(dataDir)
 
-	// Probe ID - stable across restarts
-	probeID := loadOrCreateID(filepath.Join(dataDir, "probe.id"))
 	hostname, _ := os.Hostname()
 	if cfg.Probe.SiteName != "" {
 		hostname = cfg.Probe.SiteName
 	}
+
+	// The probe's own certificate replaces the shared API key: enroll on
+	// first start with the built-in token, then keep it renewed. Its id is
+	// the enrolled agent id.
+	if cfg.Forwarder.EnrollToken == "" && cfg.Forwarder.APIKey != "" {
+		fatalf("this probe was configured with an API key, which the backend no longer accepts; set forwarder.enroll_token (Platform settings → Agent enrollment) or rebuild it in the Agent builder\n")
+	}
+	var roots *x509.CertPool
+	if cfg.Forwarder.CACertPEM != "" {
+		roots = x509.NewCertPool()
+		roots.AppendCertsFromPEM([]byte(cfg.Forwarder.CACertPEM))
+	}
+	idm, err := identity.New(identity.Options{
+		BackendURL: cfg.Forwarder.BackendURL, Token: cfg.Forwarder.EnrollToken, RootCAs: roots,
+		Dir: dataDir, Hostname: hostname, OS: "network-probe", Version: version, Logger: logger,
+	})
+	if err != nil {
+		fatalf("identity: %v\n", err)
+	}
+	idCtx, idCancel := context.WithCancel(context.Background())
+	defer idCancel()
+	if err := idm.Ensure(idCtx); err != nil {
+		fatalf("identity: %v\n", err)
+	}
+	identity.SetActive(idm)
+	go idm.Run(idCtx)
+	probeID := idm.AgentID()
 
 	logger.Info("network probe starting",
 		"id", probeID,
@@ -429,9 +456,9 @@ probe:
   location:  %q
 
 forwarder:
-  backend_url:    ""   # ← REQUIRED: e.g. https://192.168.1.140:8443
-  management_url: ""   # ← REQUIRED: e.g. http://192.168.1.140
-  api_key:        ""   # ← REQUIRED: agent API key from Agent Builder
+  backend_url:    ""   # ← REQUIRED: the backend address agents use, e.g. https://siem.example.com:8443
+  management_url: ""   # optional
+  enroll_token:   ""   # ← REQUIRED: enrollment token (Platform settings → Agent enrollment, or an Agent builder probe build)
   batch_size:     200
   flush_interval: "10s"
 

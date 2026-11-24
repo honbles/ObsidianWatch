@@ -34,13 +34,16 @@ const (
 
 type InstallConfig struct {
 	BinarySrc           string
-	ManagementURL       string
+	ManagementURL       string // unused by the agent since enrollment; kept for older configs
 	CAFile              string
 	CACertPEM           string // backend CA - inline PEM
 	ManagementCACertPEM string // management CA - inline PEM; falls back to CACertPEM if empty
-	APIKey              string // fleet API key (X-API-Key) required by register-key / verify-install-key
 	AgentID             string
 	Hostname            string
+	// Enroll gets the agent its certificate and registers the install key
+	// through the backend. Failure is not fatal: the service finishes both
+	// when it starts.
+	Enroll func(installKey string) error
 }
 
 func Install(cfg InstallConfig) error {
@@ -57,18 +60,13 @@ func Install(cfg InstallConfig) error {
 		return fmt.Errorf("generate install key: %w", err)
 	}
 
-	if cfg.ManagementURL != "" {
-		fmt.Println("Registering agent with management server...")
-		// Use management CA if provided, fall back to backend CA.
-		mgmtCA := cfg.ManagementCACertPEM
-		if mgmtCA == "" {
-			mgmtCA = cfg.CACertPEM
-		}
-		if err := registerInstallKey(cfg.ManagementURL, cfg.CAFile, mgmtCA, cfg.APIKey, cfg.AgentID, cfg.Hostname, installKey); err != nil {
-			fmt.Printf("Warning: could not register with management server: %v\n", err)
-			fmt.Println("The key is saved locally and will sync when the server is reachable.")
+	if cfg.Enroll != nil {
+		fmt.Println("Enrolling the agent (getting its certificate) and registering it...")
+		if err := cfg.Enroll(installKey); err != nil {
+			fmt.Printf("Warning: %v\n", err)
+			fmt.Println("The service will enroll and register as soon as it can reach the server.")
 		} else {
-			fmt.Println("Agent registered on dashboard OK.")
+			fmt.Println("Agent enrolled and registered on the dashboard.")
 		}
 	}
 
@@ -131,7 +129,10 @@ func removeTamper() {
 	run("chflags", "nouchg", config.InstallKeyFile())
 }
 
-func Uninstall(managementURL, caFile, caCertPEM, apiKey, agentID string) error {
+// Uninstall removes the agent after the install key is verified. backendURL
+// and caCertPEM reach the backend, which checks the agent certificate and
+// passes the verification to the management server.
+func Uninstall(backendURL, caFile, caCertPEM, agentID string) error {
 	// Read the persisted install key from the state file.
 	installKey, err := config.ReadInstallKey()
 	if err != nil || installKey == "" {
@@ -153,11 +154,11 @@ func Uninstall(managementURL, caFile, caCertPEM, apiKey, agentID string) error {
 	fmt.Scanln(&inputKey)
 	inputKey = strings.TrimSpace(inputKey)
 
-	// F-02: the management server is the authority - it verifies the key and
+	// F-02: the server is the authority - it verifies the key and
 	// rotates it (single-use), so "Regenerate key" on the dashboard actually
 	// works. The local copy is consulted only when the server cannot be
 	// reached at all; a server rejection is final.
-	accepted, reachable := verifyInstallKey(managementURL, caFile, caCertPEM, apiKey, inputKey)
+	accepted, reachable := verifyInstallKey(backendURL, caFile, caCertPEM, inputKey)
 	if reachable {
 		if !accepted {
 			fmt.Println()
@@ -166,7 +167,7 @@ func Uninstall(managementURL, caFile, caCertPEM, apiKey, agentID string) error {
 		}
 	} else if subtle.ConstantTimeCompare([]byte(inputKey), []byte(installKey)) != 1 {
 		fmt.Println()
-		fmt.Println("  ✗ Incorrect key (management server unreachable; checked against local copy). Uninstall blocked.")
+		fmt.Println("  ✗ Incorrect key (server could not verify; checked against local copy). Uninstall blocked.")
 		return fmt.Errorf("tamper protection: incorrect install key")
 	}
 	fmt.Println("  ✓ Key accepted. Proceeding with uninstall...")
@@ -223,7 +224,9 @@ func generateInstallKey() (string, error) {
 	return hex.EncodeToString(b), nil
 }
 
-func registerInstallKey(managementURL, caFile, caCertPEM, apiKey, agentID, hostname, installKey string) error {
+// RegisterInstallKey posts the agent's install key through the backend,
+// authenticated by the agent certificate.
+func RegisterInstallKey(backendURL, caFile, caCertPEM, agentID, hostname, installKey string) error {
 	payload, _ := json.Marshal(map[string]string{
 		"agent_id":    agentID,
 		"hostname":    hostname,
@@ -234,16 +237,15 @@ func registerInstallKey(managementURL, caFile, caCertPEM, apiKey, agentID, hostn
 	if err != nil {
 		return err
 	}
-	req, err := http.NewRequest(http.MethodPost, managementURL+"/api/v1/agent/register-key",
+	req, err := http.NewRequest(http.MethodPost, strings.TrimRight(backendURL, "/")+"/api/v1/agent/register-key",
 		strings.NewReader(string(payload)))
 	if err != nil {
 		return err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-API-Key", apiKey)
 	resp, err := client.Do(req)
 	if err != nil {
-		return fmt.Errorf("management server unreachable: %w", err)
+		return fmt.Errorf("server unreachable: %w", err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != 200 {
@@ -302,11 +304,12 @@ func run(name string, args ...string) {
 	exec.Command(name, args...).Run()
 }
 
-// verifyInstallKey (F-02) asks the management server to verify the key via
-// POST body + X-API-Key. reachable=false means the server could not be
-// contacted at all (as opposed to contacted-and-rejected).
-func verifyInstallKey(managementURL, caFile, caCertPEM, apiKey, key string) (accepted, reachable bool) {
-	if managementURL == "" {
+// verifyInstallKey (F-02) asks the server to verify the key. The request
+// goes to the backend with the agent certificate. reachable=false means the
+// server could not give an answer about this agent (unreachable, or the
+// identity is gone), so the local copy decides.
+func verifyInstallKey(backendURL, caFile, caCertPEM, key string) (accepted, reachable bool) {
+	if backendURL == "" {
 		return false, false
 	}
 	client, err := buildHTTPClient(caFile, caCertPEM)
@@ -314,17 +317,19 @@ func verifyInstallKey(managementURL, caFile, caCertPEM, apiKey, key string) (acc
 		return false, false
 	}
 	payload, _ := json.Marshal(map[string]string{"key": key})
-	req, err := http.NewRequest(http.MethodPost, managementURL+"/api/v1/verify-install-key",
+	req, err := http.NewRequest(http.MethodPost, strings.TrimRight(backendURL, "/")+"/api/v1/verify-install-key",
 		strings.NewReader(string(payload)))
 	if err != nil {
 		return false, false
 	}
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-API-Key", apiKey)
 	resp, err := client.Do(req)
 	if err != nil {
 		return false, false
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode == 401 { // no valid agent certificate: the server cannot judge
+		return false, false
+	}
 	return resp.StatusCode == 200, true
 }

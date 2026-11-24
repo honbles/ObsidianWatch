@@ -65,8 +65,7 @@ services:
         condition: service_healthy
     environment:
       DB_PASSWORD: "${DB_PASSWORD:?DB_PASSWORD must be set, see .env.example}"
-      AGENT_API_KEY: "${AGENT_API_KEY:?AGENT_API_KEY must be set (openssl rand -hex 32), see .env.example}"
-      OW_SECRET_KEY: "${OW_SECRET_KEY:?set OW_SECRET_KEY in .env}"   # must equal the management service's key: it reads the sealed agent API key from the settings table
+      OW_SECRET_KEY: "${OW_SECRET_KEY:?set OW_SECRET_KEY in .env}"   # must equal the management service's key: signs the identity of agent calls it passes to management
     ports:
       - "8443:8443"
     volumes:
@@ -101,11 +100,10 @@ services:
         condition: service_healthy
     ports:
       - "8444:8443"
-      - "8445:8445"   # A2: agent tunnel listener (asks for the agent certificate)
     environment:
       DB_PASSWORD: "${DB_PASSWORD:?DB_PASSWORD must be set, see .env.example}"
       JWT_SECRET: "${JWT_SECRET:?JWT_SECRET must be set (openssl rand -hex 32), see .env.example}"
-      AGENT_API_KEY: "${AGENT_API_KEY:?AGENT_API_KEY must be set (openssl rand -hex 32), see .env.example}"
+      AGENT_API_KEY: "${AGENT_API_KEY:-}"   # optional: no longer authenticates agents (they use certificates); seeds application user hashing
       OW_SECRET_KEY: "${OW_SECRET_KEY:?set OW_SECRET_KEY in .env}"   # M-12/CC-07: encrypts stored connector credentials + API keys. BACK THIS UP.
       OW_ALLOWED_ORIGINS: "${OW_ALLOWED_ORIGINS:-}"   # M-10: extra browser origins allowed to open WebSockets
     volumes:
