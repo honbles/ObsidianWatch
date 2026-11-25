@@ -43,6 +43,11 @@ export const appApi = {
   loadOpenapi: (id, body) => api.post(`/api/v1/app/services/${id}/openapi`, body).then(x => x.data),
   removeOpenapi: (id) => api.delete(`/api/v1/app/services/${id}/openapi`).then(x => x.data),
   payloads: (id, range, extra = {}) => get(`/api/v1/app/services/${id}/payloads`, { ...r(range), ...extra }),
+  hosts: () => get('/api/v1/app/hosts'),
+  host: (agent) => get(`/api/v1/app/hosts/${encodeURIComponent(agent)}`),
+  code: (id) => get(`/api/v1/app/services/${id}/code`),
+  addCodeLink: (id, body) => api.post(`/api/v1/app/services/${id}/code-links`, body).then(x => x.data),
+  removeCodeLink: (id, link) => api.delete(`/api/v1/app/services/${id}/code-links/${link}`).then(x => x.data),
   ruleMeta: () => get('/api/v1/rules/meta'),
   ruleStatus: () => get('/api/v1/app/rules/status'),
 }

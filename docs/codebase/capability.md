@@ -14,7 +14,9 @@ Feature map:
 | Runtime reachability of dependency vulnerabilities | 4.11 | Linux agent with the host sensor on the servers |
 | Triage that learns from decisions | 4.12 | – |
 | Fix suggestions (dependency upgrades; AI for code) | 4.13 | AI provider and source-sharing opt-in for code fixes |
-| Posture checks | 5 | A connector |
+| Issues from findings | 4.14 | A token that can create issues |
+| Code linked to a monitored service (findings checked against what that service runs; host view) | 4.15 | Application Monitoring service; Linux agent inventories for runtime matching |
+| Posture checks, with checks the token could not run listed as not assessed | 5 | A connector; owner/admin rights for full coverage (deployment.md section 3.1) |
 
 See also [deployment.md](deployment.md) and [configuration.md](configuration.md).
 
@@ -52,7 +54,7 @@ Three result paths exist:
 - **Findings.** Results of the scanners (code scan, SAST/SCA, posture). They are shown on the Code pages and Insights → Code findings, labelled with runtime reachability and triage. They are not alerts.
 - **Pull-request checks.** Findings a change introduces go back to the platform as a status, a summary and inline comments.
 
-Implemented in: `devops_engine.go`, `devops_*.go`, `codescan.go`, `sast_*.go`, `code_automation.go`, `code_reporters.go`, `code_reachability.go`, `code_triage.go`, `code_fix.go`, `devops_posture.go`, `findings_unified.go`, `detection_engine.go`, `devops_sigs.go`, `devops_detect_more.go`.
+Implemented in: `devops_engine.go`, `devops_*.go`, `codescan.go`, `sast_*.go`, `code_automation.go`, `code_reporters.go`, `code_reachability.go`, `code_triage.go`, `code_fix.go`, `app_code.go`, `devops_posture.go`, `findings_unified.go`, `detection_engine.go`, `devops_sigs.go`, `devops_detect_more.go`.
 
 ---
 
@@ -612,7 +614,7 @@ Notes on the rule set:
 
 The vulnerability databases ship in the image (`/var/cache/trivy`). With network access Trivy refreshes them when they are stale; `OW_SCANNER_DB_UPDATE=false` keeps them frozen (fully offline). Checks use the set embedded in the binary (`--skip-check-update`), and `--offline-scan` stops Trivy from calling package registries.
 
-**SBOM.** The packages Trivy found become a CycloneDX 1.5 JSON document (components with purl, licences, `transitive` flag and source file; vulnerabilities linked to their component). It is stored with the repository's result. **View SBOM** in the SAST tab opens the SBOM page (`/devops/sbom/{connector}?repo=&branch=`): header counts (components, transitive, vulnerable, running, deployed), facets (vulnerabilities by worst severity, runtime, direct/transitive, ecosystem, licence, manifest), a component table sorted by worst vulnerability then runtime, and a detail panel per component with its vulnerabilities and where it runs (hosts, services). The page offers **Export CSV** of the filtered components and **Download CycloneDX**. API: `GET /api/v1/devops-connectors/{id}/sast/sbom?repo=<full name>[&branch=]` returns the CycloneDX file; with `&view=1` it returns the flattened components with vulnerabilities and runtime status. Without Trivy the SBOM is built from the built-in manifest parser below. Scans of all repositories at once store no SBOM.
+**SBOM.** The packages Trivy found become a CycloneDX 1.5 JSON document (components with purl, licences, `transitive` flag and source file; vulnerabilities linked to their component, each with its rating, detail, `recommendation` (the fix) and an `advisories` URL). A vulnerability is listed once per component, even when several manifests declare the same version (for example the same Go module in five `go.mod` files); SBOMs stored before this rule are de-duplicated when shown. It is stored with the repository's result. **View SBOM** in the SAST tab opens the SBOM page (`/devops/sbom/{connector}?repo=&branch=`): header counts (components, transitive, vulnerable, running, deployed), facets (vulnerabilities by worst severity, runtime, direct/transitive, ecosystem, licence, manifest), and a component table sorted by worst vulnerability then runtime. The **Vulnerabilities** column shows the two worst IDs as tags (coloured by severity) and "+N"; a tag opens that vulnerability, a row or "+N" opens the component. The component drawer shows ecosystem, direct or transitive, every manifest that declares the version, licences, where it runs (hosts, services), counts by severity, the fix, and each vulnerability with its severity, description, triage decision, links to **NVD** (CVE IDs), **GitHub advisory** (GHSA) or **OSV** (GO-, PYSEC-, RUSTSEC-), the scanner's **Advisory**, and the **Issue** created from it; a filter appears for more than six vulnerabilities. Manifests, fix, triage and issue links come from the same scan's findings. The page offers **Export CSV** of the filtered components and **Download CycloneDX**. API: `GET /api/v1/devops-connectors/{id}/sast/sbom?repo=<full name>[&branch=]` returns the CycloneDX file; with `&view=1` it returns the flattened components with vulnerabilities and runtime status. Without Trivy the SBOM is built from the built-in manifest parser below. Scans of all repositories at once store no SBOM.
 
 **Without Trivy**, or when its vulnerability database is unavailable, the built-in parser and OSV are used as before: lockfiles in the checkout (up to 50 files, 8 MiB each), exact `name + version` pairs:
 
@@ -726,9 +728,13 @@ Nothing is executed and nothing is written; at most 5 000 packages per process. 
 | `not_running` | hosts report inventories and none has this version |
 | `unknown` | no host has reported an inventory in the last 24 hours |
 
-Names are matched case-insensitively (PyPI also treats `-`, `_` and `.` alike) and Go versions with or without the leading `v`. The match is fleet-wide: a version running on any monitored host counts, and the label lists where. Findings of equal severity sort running ones first; the Code overview has a **Runtime** facet.
+Names are matched case-insensitively (PyPI also treats `-`, `_` and `.` alike) and Go versions with or without the leading `v`. On the Code pages the match is fleet-wide: a version running on any monitored host counts, and the label lists where. On a service's **Code** tab (section 4.15) the same data is narrowed to that service's own processes.
 
-**Alert CODE-RT-001 "Vulnerable dependency running".** When a critical or high dependency finding from the latest SAST result of any repository (last 30 days) is **loaded** on a host, an alert is raised on that host (severity 5 for critical, 4 for high; MITRE T1190), one per vulnerability, package, version and host per day. The check runs when new inventories arrive and every 10 minutes.
+**Attribution to a service.** Each inventory row records the agent, process id (`pid`, migration `080`), container and discovered service name. A row belongs to a monitored service when, on the same agent, its pid is a live instance's pid; else its container id matches an instance's container (full or shortened id); else its discovered name is the service's name. The executable alone is never used, because every Java service on a host shares `/usr/bin/java`. Rows indexed before migration `080` have pid 0 and fall back to container and name.
+
+Findings of equal severity sort running ones first; the Code overview has a **Runtime** facet.
+
+**Alert CODE-RT-001 "Vulnerable dependency running".** When a critical or high dependency finding from the latest SAST result of any repository (last 30 days) is **loaded** on a host, an alert is raised on that host (severity 5 for critical, 4 for high; MITRE T1190), one per vulnerability, package, version and host per day. The check runs when new inventories arrive and every 10 minutes. When the loading process belongs to a monitored service, the alert names it ("service orders (prod) on web-01"), its severity is weighted like application alerts (one level up for an internet-facing service, one for high or critical criticality, capped at 5), and it is linked to every service on that host that loads the package, so it shows on those services' **Alerts** tab and on the host page.
 
 **Lookup.** `GET /api/v1/runtime-packages?name=<package>[&ecosystem=&version=&hours=]` answers "is this package running anywhere?" with every host, service and process it was seen in, and the number of hosts reporting inventories.
 
@@ -772,6 +778,46 @@ AI suggestions need an AI provider (Settings → AI, Groq or Anthropic) **and** 
 
 Implemented in: `code_fix.go`, `code_reporters.go` (`fixBlock`), `sast_engine.go` (`handleSASTAI`).
 
+### 4.14 Creating issues from findings
+
+**Create issues** (button next to **Run SAST Scan** and **AI Triage** in the SAST tab, shown once a repository's result is loaded) turns that repository's latest result for the branch into issues on its platform: GitHub issues, GitLab issues (created confidential), or Azure DevOps "Bug" work items. `POST /api/v1/devops-connectors/{id}/sast/issues {repo, branch, min_severity, dry_run}`; analysts and admins.
+
+| Aspect | Behaviour |
+|---|---|
+| Grouping | One issue per problem per repository: per rule for code findings and secrets (every location listed as a checklist with links to the file and line), per package version for dependencies (every vulnerability listed). Not one issue per finding. |
+| Filter | At or above a chosen severity (default high). Findings dismissed by triage are left out. |
+| Preview | The dialog first shows what would be created (a dry run): each problem, its count, and whether an issue already exists. Nothing is written until **Create**. |
+| Repeat clicks | ObsidianWatch records which findings each issue covers (`code_finding_issues`, migration `079`). A new problem gets a new issue; new locations of a known problem are added as a comment on its issue; nothing already sent is sent again. |
+| Open / closed | Not tracked. Closing an issue does not dismiss the finding, and fixing the code does not close the issue. The SAST results stay the source of truth. Each finding with an issue shows an **issue** link. |
+| Public repositories | Skipped: an issue would disclose the vulnerability before it is fixed. If the visibility cannot be read, the repository is treated as public. |
+| Content | Severity, repository, branch, description, CWE/OWASP, runtime status when the package is running, fix, locations; secrets never include the value. Labels/tags `security`, `obsidianwatch`, `severity:<level>`. |
+| Limit | 50 new issues per click; click again for the rest. |
+| Token | Needs permission to create issues: GitHub Issues (read and write), GitLab `api`, Azure DevOps Work Items (read and write). |
+
+Implemented in: `code_issues.go`; UI `pages/code/CreateIssuesDialog.jsx`.
+
+### 4.15 Linking code to a monitored service
+
+An admin links a repository branch to an Application Monitoring service; there is no automatic linking. Services are per environment (name + environment), so a production service can follow `main` and a staging one `develop`. A service can have several links (for example a monorepo and a shared library).
+
+**Link.** Service page → **Code** tab → **Link repository**: pick the connector, the repository (from the provider) and the branch (from the provider, default marked, with the last scan time). `POST /api/v1/app/services/{id}/code-links` `{connector_id, repo, branch, is_default}` (admin). Linking again changes the branch. If the branch has no stored scan, a branch scan is queued (trigger `service-link`) and the tab refreshes while it runs. **Unlink**: `DELETE /api/v1/app/services/{id}/code-links/{link}` (admin). Links are stored in `service_code_links` (migration `080`) and are removed with their connector.
+
+**Which scan.** The latest stored result for that repository whose branch is the linked branch, or, when the linked branch is the default branch, a result stored as `HEAD` or with no branch (scheduled and manual default-branch scans).
+
+**Code tab** (`GET /api/v1/app/services/{id}/code`):
+
+| Part | What it shows |
+|---|---|
+| Linked code | each link: repository, branch, connector, last scan (or "scanning…"), counts by severity, dismissed count |
+| Findings | every not-dismissed finding of the linked scans. Dependency findings get **Running here**: `loaded` (this service's process has the version in memory), `deployed` (in its files, not seen loaded), `not_in_service` (its processes do not run this version), `unknown` (no inventory for this service). Code and secret findings show "code". Filter: running here or not known (default), dependencies, code and secrets, all |
+| Priority | the scanner severity, raised one level for an internet-facing and one for a high/critical service when the package is loaded here, lowered one level when it is not in this service (capped 5) |
+| From the host scan | per host: the OS package the platform service runs from (for example `nginx-core 1.18.0`, `postgresql-16 16.2`), host-scan port findings on the service's listening ports, and cached NVD CVEs for that package |
+| Also loaded by this service | vulnerable package versions this service loads that were found in repositories **not** linked to it (evidence for which repository it is really built from) |
+
+The page also says why runtime matching is missing when it is: no live instance, no inventory from its hosts, or inventory with nothing attributed to this service.
+
+Implemented in: `app_code.go`, `store/service_code_links.go`, frontend `pages/app/tabs/AppTabCode.jsx`.
+
 ## 5. Posture checks
 
 `POST /api/v1/devops-connectors/{id}/posture` (**Posture** tab, **Run posture check**). The result is stored as the connector's last posture result. Checks are read-only.
@@ -791,7 +837,15 @@ Implemented in: `code_fix.go`, `code_reporters.go` (`fixBlock`), `sast_engine.go
 | GitLab | `allow_force_push` on that entry | Force pushes allowed on default branch | medium | `group/project@branch` |
 | Azure DevOps | No enabled, blocking "Minimum number of reviewers" policy (type `fa4e907d-…`) with ≥ 1 approver whose scope covers the repository's default branch (exact or prefix) | Default branch has no required-reviewer policy | high | `org/project/repo@branch` |
 
-Rules for "cannot assess": if the API refuses a call (permissions, plan), the repository is skipped and no finding is raised. GitHub archived repositories and forks are skipped. GitLab empty projects, Azure DevOps disabled repositories, and repositories without a default branch are skipped. GitHub repository rulesets are not read, so a branch protected only by a ruleset is reported as "not protected" *(unverified)*. GitLab wildcard patterns other than `*` (for example `release/*`) are not matched.
+Rules for "cannot assess": if the API refuses a call (permissions, plan), no finding is raised for that check, and the check is listed under **not assessed** instead. The result has a `not_assessed` list, one entry per check and reason: `check`, `count` (repositories or projects), `reason` (for example "access denied (403)" or "setting not visible to this token (repository admins only)"), `fix` (the token rights that would let it run) and up to 5 example resources. The **Posture** tab shows these in an amber box above the findings ("A finding count of 0 does not mean these are configured"), and the summary line counts them. What lands there:
+
+| Provider | Not assessed when |
+|---|---|
+| GitHub | `GET /orgs/{org}` fails (other than 404, a personal account) or does not return `two_factor_requirement_enabled` (only org owners see it); a repository's `security_and_analysis` is absent (only repository admins see it); the branch-protection call fails with anything but 404 (403 without admin rights, or private repositories on GitHub Free); no repository is visible at all |
+| GitLab | the group call fails or hides `require_two_factor_authentication`; `protected_branches` fails for a project (Developers cannot read it); no project with a default branch is visible |
+| Azure DevOps | a project's repository list or policy configuration call fails |
+
+So a token without owner or admin rights gives an honest "N checks not assessed" instead of a clean result. GitHub archived repositories and forks are skipped. GitLab empty projects, Azure DevOps disabled repositories, and repositories without a default branch are skipped. GitHub repository rulesets are not read, so a branch protected only by a ruleset is reported as "not protected" *(unverified)*. GitLab wildcard patterns other than `*` (for example `release/*`) are not matched.
 
 Implemented in: `devops_posture.go`.
 
@@ -988,7 +1042,7 @@ The left sidebar lists connectors (organisation, provider, status, items synced)
 | **Automation** | Policy (PR checks, comments, CodeQL on PRs, AI fixes in comments, blocking level, comments per update, scan on push, schedule and hour, repositories for scheduled scans), **Scan all repositories now**, the status name to require for merge blocking with the provider-specific steps, the **Triage rules** list (delete), and the **Automated scans** list (trigger, repository, target, result, findings; a row shows what was posted, notes and the findings). Refreshes every 10 seconds. |
 | **Events** | Up to 500 events whose host equals the organisation name (all time). Events whose host is a repository (GitHub audit entries with a repository) are not listed here. |
 | **Alerts** | Up to 100 alerts whose host equals the organisation name. |
-| **Posture** | **Run posture check** and the last result: repositories checked and each finding with its fix. |
+| **Posture** | **Run posture check** and the last result: repositories checked, each finding with its fix, and the checks the token could not run (not assessed) with the rights that would fix it. |
 
 Insights → **Code findings** shows the unified list from section 7.2 with severity and scanner filters.
 

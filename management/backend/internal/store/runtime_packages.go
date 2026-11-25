@@ -19,6 +19,7 @@ type RuntimePackage struct {
 	Container string    `json:"container,omitempty"`
 	Exe       string    `json:"exe,omitempty"`
 	Evidence  string    `json:"evidence"`
+	PID       int       `json:"pid,omitempty"`
 	FirstSeen time.Time `json:"first_seen"`
 	LastSeen  time.Time `json:"last_seen"`
 }
@@ -46,11 +47,12 @@ func (db *DB) UpsertRuntimePackages(ctx context.Context, pkgs []RuntimePackage) 
 	}
 	defer tx.Rollback()
 	stmt, err := tx.PrepareContext(ctx, `
-		INSERT INTO runtime_packages (ecosystem, name_key, name, version, agent_id, host, service, container, exe, evidence, first_seen, last_seen)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$11)
+		INSERT INTO runtime_packages (ecosystem, name_key, name, version, agent_id, host, service, container, exe, evidence, first_seen, last_seen, pid)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$11,$12)
 		ON CONFLICT (ecosystem, name_key, version, agent_id, service, container, exe) DO UPDATE SET
 			last_seen = GREATEST(runtime_packages.last_seen, EXCLUDED.last_seen),
 			host = EXCLUDED.host,
+			pid = CASE WHEN EXCLUDED.last_seen >= runtime_packages.last_seen THEN EXCLUDED.pid ELSE runtime_packages.pid END,
 			evidence = CASE WHEN runtime_packages.evidence = 'loaded' AND EXCLUDED.evidence = 'deployed'
 			                 AND runtime_packages.last_seen > EXCLUDED.last_seen - INTERVAL '24 hours'
 			                THEN 'loaded' ELSE EXCLUDED.evidence END`)
@@ -60,7 +62,7 @@ func (db *DB) UpsertRuntimePackages(ctx context.Context, pkgs []RuntimePackage) 
 	defer stmt.Close()
 	for _, p := range pkgs {
 		if _, err := stmt.ExecContext(ctx, p.Ecosystem, PackageNameKey(p.Ecosystem, p.Name), p.Name, p.Version, p.AgentID,
-			p.Host, p.Service, p.Container, p.Exe, p.Evidence, p.LastSeen); err != nil {
+			p.Host, p.Service, p.Container, p.Exe, p.Evidence, p.LastSeen, p.PID); err != nil {
 			return err
 		}
 	}
@@ -146,6 +148,32 @@ func (db *DB) RuntimePackageIndex(ctx context.Context, ecosystems []string, sinc
 			return nil, err
 		}
 		out[eco+"\x00"+key+"\x00"+ver] = e
+	}
+	return out, rows.Err()
+}
+
+// RuntimePackagesOnAgents returns every package row seen since on the given
+// agents (for attributing packages to service instances).
+func (db *DB) RuntimePackagesOnAgents(ctx context.Context, agents []string, since time.Time, limit int) ([]RuntimePackage, error) {
+	if len(agents) == 0 {
+		return nil, nil
+	}
+	rows, err := db.QueryContext(ctx, `
+		SELECT ecosystem, name, version, agent_id, host, service, container, exe, evidence, pid, first_seen, last_seen
+		FROM runtime_packages WHERE agent_id = ANY($1) AND last_seen >= $2
+		ORDER BY last_seen DESC LIMIT $3`, pq.Array(agents), since, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []RuntimePackage
+	for rows.Next() {
+		var p RuntimePackage
+		if err := rows.Scan(&p.Ecosystem, &p.Name, &p.Version, &p.AgentID, &p.Host, &p.Service, &p.Container, &p.Exe,
+			&p.Evidence, &p.PID, &p.FirstSeen, &p.LastSeen); err != nil {
+			return nil, err
+		}
+		out = append(out, p)
 	}
 	return out, rows.Err()
 }

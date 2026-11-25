@@ -43,4 +43,9 @@ func registerAppRoutes(protected *http.ServeMux, db *store.DB, backendDB *store.
 	protected.HandleFunc("DELETE /api/v1/app/services/{id}/openapi", adminOnly(appHandleDeleteOpenAPI(db, backendDB)))
 	protected.HandleFunc("GET /api/v1/app/services/{id}/payloads", adminOnly(appHandleListPayloads(db, backendDB)))
 	protected.HandleFunc("PUT /api/v1/app/services/{id}/settings", adminOnly(appHandlePutServiceSettings(db, backendDB)))
+	protected.HandleFunc("GET /api/v1/app/hosts", appHandleHosts(db, backendDB))
+	protected.HandleFunc("GET /api/v1/app/hosts/{agent}", appHandleHost(db, backendDB))
+	protected.HandleFunc("GET /api/v1/app/services/{id}/code", appHandleServiceCode(db, backendDB))
+	protected.HandleFunc("POST /api/v1/app/services/{id}/code-links", adminOnly(appHandleAddCodeLink(db, backendDB)))
+	protected.HandleFunc("DELETE /api/v1/app/services/{id}/code-links/{link}", adminOnly(appHandleDeleteCodeLink(db)))
 }

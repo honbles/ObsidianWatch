@@ -239,8 +239,10 @@ func enrichFindings(ctx context.Context, db *store.DB, connID int64, findings []
 		return findings
 	}
 	ix := loadTriageIndex(ctx, db, connID)
+	issues := issueLinksByFingerprint(ctx, db, connID)
 	for i := range findings {
 		ix.apply(&findings[i])
+		findings[i].IssueURL = issues[findings[i].Repo+"\x00"+findings[i].Fingerprint]
 	}
 	return labelFindings(ctx, db, findings)
 }

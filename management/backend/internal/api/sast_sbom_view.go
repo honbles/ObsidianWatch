@@ -24,9 +24,16 @@ var purlEcosystem = map[string]string{
 }
 
 type sbomVuln struct {
-	ID       string `json:"id"`
-	Severity string `json:"severity"`
-	Detail   string `json:"detail,omitempty"`
+	ID       string   `json:"id"`
+	Severity string   `json:"severity"`
+	Title    string   `json:"title,omitempty"`  // detail without the advisory URL
+	Detail   string   `json:"detail,omitempty"` // as the scanner gave it
+	URL      string   `json:"url,omitempty"`    // advisory (scanner link)
+	DBURL    string   `json:"db_url,omitempty"` // NVD / GitHub advisory / OSV page for the ID
+	Fix      string   `json:"fix,omitempty"`
+	Files    []string `json:"files,omitempty"` // manifests that declare the affected version
+	Triage   string   `json:"triage,omitempty"`
+	IssueURL string   `json:"issue_url,omitempty"`
 }
 
 type sbomViewComponent struct {
@@ -37,6 +44,7 @@ type sbomViewComponent struct {
 	Licenses   []string   `json:"licenses,omitempty"`
 	Transitive bool       `json:"transitive"`
 	File       string     `json:"file,omitempty"`
+	Files      []string   `json:"files,omitempty"` // every manifest that declares this version (from the scan findings)
 	Vulns      []sbomVuln `json:"vulns,omitempty"`
 	Runtime    string     `json:"runtime"` // loaded | deployed | not_running | unknown
 	Hosts      []string   `json:"hosts,omitempty"`
@@ -58,10 +66,12 @@ type cdxDoc struct {
 		Properties []map[string]string `json:"properties"`
 	} `json:"components"`
 	Vulnerabilities []struct {
-		ID      string              `json:"id"`
-		Detail  string              `json:"detail"`
-		Ratings []map[string]string `json:"ratings"`
-		Affects []map[string]string `json:"affects"`
+		ID             string              `json:"id"`
+		Detail         string              `json:"detail"`
+		Recommendation string              `json:"recommendation"`
+		Advisories     []map[string]string `json:"advisories"`
+		Ratings        []map[string]string `json:"ratings"`
+		Affects        []map[string]string `json:"affects"`
 	} `json:"vulnerabilities"`
 }
 
@@ -88,8 +98,24 @@ func buildSBOMView(ctx context.Context, db *store.DB, raw []byte) ([]sbomViewCom
 		if len(v.Ratings) > 0 {
 			sev = v.Ratings[0]["severity"]
 		}
+		url := ""
+		if len(v.Advisories) > 0 {
+			url = v.Advisories[0]["url"]
+		}
+		if url == "" {
+			url = advisoryURL(v.ID, v.Detail)
+		}
+		title := strings.TrimSpace(strings.Replace(v.Detail, url, "", 1))
 		for _, a := range v.Affects {
-			vulnsByRef[a["ref"]] = append(vulnsByRef[a["ref"]], sbomVuln{ID: v.ID, Severity: sev, Detail: truncate(v.Detail, 300)})
+			dup := false // SBOMs written before de-duplication list a vulnerability once per manifest
+			for _, x := range vulnsByRef[a["ref"]] {
+				dup = dup || x.ID == v.ID
+			}
+			if dup {
+				continue
+			}
+			vulnsByRef[a["ref"]] = append(vulnsByRef[a["ref"]], sbomVuln{ID: v.ID, Severity: sev, Detail: truncate(v.Detail, 600),
+				Title: truncate(title, 400), URL: url, DBURL: vulnDBURL(v.ID), Fix: v.Recommendation})
 		}
 	}
 	out := make([]sbomViewComponent, 0, len(doc.Components))
@@ -150,11 +176,82 @@ func buildSBOMView(ctx context.Context, db *store.DB, raw []byte) ([]sbomViewCom
 	return out, nil
 }
 
-func writeSBOMView(w http.ResponseWriter, r *http.Request, db *store.DB, repo, branch string, scannedAt time.Time, raw []byte) {
+// sbomAddFindings fills fix, manifests, triage and issue links from the scan's
+// dependency findings (the SBOM holds one manifest per component).
+func sbomAddFindings(comps []sbomViewComponent, findings []SASTFinding) {
+	type info struct {
+		files    []string
+		fix      string
+		triage   string
+		issueURL string
+	}
+	byVuln := map[string]*info{}
+	filesByPkg := map[string][]string{}
+	add := func(list []string, f string) []string {
+		for _, x := range list {
+			if x == f {
+				return list
+			}
+		}
+		return append(list, f)
+	}
+	for _, f := range findings {
+		if f.Package == "" || !strings.HasPrefix(f.RuleID, "SCA-") {
+			continue
+		}
+		pk := strings.ToLower(f.Package) + "@" + strings.TrimPrefix(f.Version, "v")
+		if f.File != "" {
+			filesByPkg[pk] = add(filesByPkg[pk], f.File)
+		}
+		k := strings.TrimPrefix(f.RuleID, "SCA-") + "\x00" + pk
+		x := byVuln[k]
+		if x == nil {
+			x = &info{fix: f.Fix}
+			byVuln[k] = x
+		}
+		if f.File != "" {
+			x.files = add(x.files, f.File)
+		}
+		if f.Triage != nil && x.triage == "" {
+			x.triage = f.Triage.Status
+		}
+		if f.IssueURL != "" {
+			x.issueURL = f.IssueURL
+		}
+	}
+	for i := range comps {
+		c := &comps[i]
+		pk := strings.ToLower(c.Name) + "@" + strings.TrimPrefix(c.Version, "v")
+		c.Files = filesByPkg[pk]
+		for j := range c.Vulns {
+			v := &c.Vulns[j]
+			if x := byVuln[v.ID+"\x00"+pk]; x != nil {
+				v.Files, v.Triage, v.IssueURL = x.files, x.triage, x.issueURL
+				if v.Fix == "" {
+					v.Fix = x.fix
+				}
+			}
+		}
+	}
+}
+
+func writeSBOMView(w http.ResponseWriter, r *http.Request, db *store.DB, connID int64, repo, branch string, scannedAt time.Time, raw, findingsRaw []byte) {
 	comps, err := buildSBOMView(r.Context(), db, raw)
 	if err != nil {
 		writeJSON(w, 500, map[string]string{"error": "stored SBOM could not be read: " + err.Error()})
 		return
+	}
+	var findings []SASTFinding
+	if json.Unmarshal(findingsRaw, &findings) == nil && len(findings) > 0 {
+		if db != nil {
+			ix := loadTriageIndex(r.Context(), db, connID)
+			issues := issueLinksByFingerprint(r.Context(), db, connID)
+			for i := range findings {
+				ix.apply(&findings[i])
+				findings[i].IssueURL = issues[findings[i].Repo+"\x00"+findings[i].Fingerprint]
+			}
+		}
+		sbomAddFindings(comps, findings)
 	}
 	summary := map[string]int{"components": len(comps)}
 	for _, c := range comps {

@@ -23,16 +23,28 @@ import AppTabEvents from './tabs/AppTabEvents'
 import AppTabSecurity from './tabs/AppTabSecurity'
 import AppTabTraces from './tabs/AppTabTraces'
 import AppTabAlerts from './tabs/AppTabAlerts'
+import AppTabCode from './tabs/AppTabCode'
+import AppT0Overview from './tabs/AppT0Overview'
 
 export const appPath = '/applications/services/:key'
 
 // Tabs: the ones used most stay visible; the rest sit under "More" so the row never wraps.
+// Each tab names the lowest telemetry tier that gives it data, so a host-only
+// (Tier 0) service shows only what the host agent can see.
 const TABS = [
-  ['overview', 'Overview'], ['routes', 'Endpoints'], ['traces', 'Traces'], ['database', 'Queries'], ['errors', 'Errors'],
-  ['operations', 'Jobs and queues'], ['metrics', 'Metrics'], ['slo', 'SLO'], ['instances', 'Instances'], ['security', 'Security'], ['alerts', 'Alerts'],
+  ['overview', 'Overview', 0], ['routes', 'Endpoints', 1], ['traces', 'Traces', 1], ['database', 'Queries', 1], ['errors', 'Errors', 1],
+  ['operations', 'Jobs and queues', 1], ['metrics', 'Metrics', 1], ['slo', 'SLO', 1], ['instances', 'Instances', 0], ['security', 'Security', 2],
+  ['alerts', 'Alerts', 0], ['code', 'Code', 0],
 ]
-const MORE = [['dependencies', 'Dependencies'], ['compare', 'Compare versions'], ['events', 'Events'], ['runtime', 'Runtime'], ['settings', 'Settings']]
+const MORE = [['dependencies', 'Dependencies', 0], ['compare', 'Compare versions', 1], ['events', 'Events', 0], ['runtime', 'Runtime', 0], ['settings', 'Settings', 0]]
+// Tier 0 has few tabs, so host activity moves out of "More".
+const T0_TABS = [['overview', 'Overview', 0], ['instances', 'Instances', 0], ['runtime', 'Host activity', 0], ['events', 'Timeline', 0], ['alerts', 'Alerts', 0], ['code', 'Code', 0]]
+const T0_MORE = [['dependencies', 'Dependencies', 0], ['settings', 'Settings', 0]]
 const ALL_TABS = [...TABS, ...MORE]
+function tabsFor(tier) {
+  if (!tier) return { main: T0_TABS, more: T0_MORE }
+  return { main: TABS.filter(t => t[2] <= tier), more: MORE.filter(t => t[2] <= tier) }
+}
 
 function ChangeCard({ title, children, empty }) {
   return (
@@ -43,7 +55,8 @@ function ChangeCard({ title, children, empty }) {
   )
 }
 
-function MoreTabs({ tab, go }) {
+function MoreTabs({ tab, go, items }) {
+  const MORE = items
   const [open, setOpen] = useState(false)
   const ref = useRef(null)
   useEffect(() => {
@@ -109,7 +122,7 @@ export default function AppServiceDetail() {
     return { from: new Date(new Date(range.from).getTime() - span).toISOString(), to: range.from }
   }, [range.from, range.to])
   const [sp, setSp] = useSearchParams()
-  const tab = ALL_TABS.some(t => t[0] === sp.get('tab')) ? sp.get('tab') : 'overview'
+  const wanted = ALL_TABS.some(t => t[0] === sp.get('tab')) ? sp.get('tab') : 'overview'
   const go = (t, extra = {}) => {
     const n = new URLSearchParams(sp); n.set('tab', t)
     Object.entries(extra).forEach(([k, v]) => (v == null ? n.delete(k) : n.set(k, v)))
@@ -119,13 +132,16 @@ export default function AppServiceDetail() {
   const svcQ = useAppLoad(() => appResolveService(key), [key])
   const svc = svcQ.data
   const on = !!svc
+  const tierTabs = tabsFor(svc?.tier || 0)
+  const tab = !svc || [...tierTabs.main, ...tierTabs.more].some(t => t[0] === wanted) ? wanted : 'overview'
+  const t0 = !!svc && !svc.tier
   const detail = useAppLoad(() => appApi.service(svc.id), [svc?.id], on)
-  const samp = useAppLoad(() => appApi.sampling(svc.id, range), [svc?.id, range.from, range.to], on)
-  const red = useAppLoad(() => appApi.red(svc.id, range), [svc?.id, range.from, range.to], on)
-  const redPrev = useAppLoad(() => appApi.red(svc.id, prev), [svc?.id, prev.from, prev.to], on && tab === 'overview')
+  const samp = useAppLoad(() => appApi.sampling(svc.id, range), [svc?.id, range.from, range.to], on && !t0)
+  const red = useAppLoad(() => appApi.red(svc.id, range), [svc?.id, range.from, range.to], on && !t0)
+  const redPrev = useAppLoad(() => appApi.red(svc.id, prev), [svc?.id, prev.from, prev.to], on && !t0 && tab === 'overview')
   const edges = useAppLoad(() => appApi.edges(svc.id, range), [svc?.id, range.from, range.to], on)
-  const routes = useAppLoad(() => appApi.routes(svc.id, range), [svc?.id, range.from, range.to], on && (tab === 'overview'))
-  const slo = useAppLoad(() => appApi.slo(svc.id), [svc?.id], on)
+  const routes = useAppLoad(() => appApi.routes(svc.id, range), [svc?.id, range.from, range.to], on && !t0 && (tab === 'overview'))
+  const slo = useAppLoad(() => appApi.slo(svc.id), [svc?.id], on && !t0)
   const openAlerts = useAppLoad(() => appApi.alerts(svc.id, 'open'), [svc?.id], on)
 
   const full = detail.data?.service || svc // the detail response carries fresh settings after a save
@@ -154,7 +170,11 @@ export default function AppServiceDetail() {
   const avail = (slo.data?.slos || []).find(x => x.name === 'availability')
   const nAlerts = openAlerts.data?.alerts?.length || 0
   const target = full?.settings?.latency_target_ms
-  const st = full ? serviceState({ t, target, slo: avail, alerts: nAlerts }) : null
+  const st = !full ? null : t0
+    ? (nAlerts ? { state: 'warn', text: `${nAlerts} open alert${nAlerts === 1 ? '' : 's'}`, why: 'Open alerts on this service' }
+      : liveInst.length ? { state: 'ok', text: 'Running', why: 'Live instances, no open alerts. Request health needs OpenTelemetry.' }
+      : { state: 'none', text: 'Not running', why: 'No live instance' })
+    : serviceState({ t, target, slo: avail, alerts: nAlerts })
   const spanMin = (new Date(range.to) - new Date(range.from)) / 60000
   const rpm = (x) => (x && x.calls != null ? x.calls / spanMin : null)
   const lang = (() => { try { const a = typeof full?.attrs === 'string' ? JSON.parse(full.attrs) : full?.attrs; return a?.language } catch { return null } })()
@@ -190,23 +210,24 @@ export default function AppServiceDetail() {
           {liveAsserted > 0 && <span className="c-warn"> · {liveAsserted} instance{liveAsserted > 1 ? 's' : ''} with asserted identity</span>}
         </> : (svcQ.loading ? 'Loading…' : undefined)}
         actions={full && <>
-          <button className="ow-btn" onClick={() => go('compare')}>Compare versions</button>
+          {!t0 && <button className="ow-btn" onClick={() => go('compare')}>Compare versions</button>}
           <button className="ow-btn primary" onClick={() => go('settings')}>Settings</button>
         </>}
         tabs={full && (
           <nav className="ow-tabs" role="tablist">
-            {TABS.map(([k, label]) => (
+            {tierTabs.main.map(([k, label]) => (
               <button key={k} role="tab" aria-selected={tab === k} className={`ow-tab ${tab === k ? 'on' : ''}`} onClick={() => go(k)}>
                 {label}{k === 'alerts' && nAlerts ? <span className="ow-tab-n" style={{ color: 'var(--crit)' }}>{nAlerts}</span> : null}
               </button>))}
-            <MoreTabs tab={tab} go={go}/>
+            <MoreTabs tab={tab} go={go} items={tierTabs.more}/>
           </nav>
         )}
       />
       <div className="ow-body" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       <StateBlock loading={svcQ.loading && !svc} error={svcQ.error} empty={!svcQ.loading && !svc} emptyText="Service not found. It may not have reported in the last 90 days.">
         {full && (<>
-          {tab === 'overview' && (<>
+          {tab === 'overview' && t0 && <AppT0Overview service={full} detail={detail.data} alerts={openAlerts.data?.alerts || []} edges={edges.data?.edges || []} go={go} />}
+          {tab === 'overview' && !t0 && (<>
             <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
               <StatTile k="Apdex" v={t?.apdex != null ? t.apdex.toFixed(2) : '–'} note={dApdex?.text || (target ? `target ${appMs(target)}` : 'set a latency target for Apdex')} noteTone={dApdex?.tone}/>
               <StatTile k="p95 latency" v={t ? appMs(t.p95_ms, t.over_range).replace(/ (ms|s)$/, '') : '–'} unit={t?.p95_ms ? (t.p95_ms >= 1000 ? 's' : 'ms') : undefined}
@@ -286,6 +307,7 @@ export default function AppServiceDetail() {
           {tab === 'security' && <AppTabSecurity service={full} range={range} />}
           {tab === 'traces' && <AppTabTraces service={full} range={range} traceId={sp.get('trace')} onSelect={id => go('traces', { trace: id })} />}
           {tab === 'alerts' && <AppTabAlerts service={full} />}
+          {tab === 'code' && <AppTabCode service={full} />}
           {tab === 'settings' && (
             <div className="ow-card" style={{ padding: 16 }}><AppServiceSettingsForm key={full.settings.updated_at || full.id} service={full} requests={full.learning_calls}
               onSaved={() => { detail.reload(); svcQ.reload(); slo.reload() }} /></div>)}

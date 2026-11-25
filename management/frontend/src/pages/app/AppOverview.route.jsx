@@ -7,7 +7,7 @@ import AppStatCard from '../../components/app/AppStatCard'
 import { SeverityBadge } from '../../components/SeverityBadge'
 import { appRel, appPct } from '../../components/app/appFormat'
 
-export const appPath = '/applications'
+export const appPath = '/applications/overview'
 
 const svcLink = (s) => `/applications/services/${encodeURIComponent(s.key)}`
 const REASONS = {

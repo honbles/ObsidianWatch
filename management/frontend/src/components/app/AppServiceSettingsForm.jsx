@@ -61,6 +61,7 @@ export default function AppServiceSettingsForm({ service, requests, onSaved, com
     }
   }
   const dis = !admin || state.saving
+  const tier = service.tier || 0 // fields that only matter with OpenTelemetry (T1) or the security helper (T2) are hidden below them
   return (
     <div className="space-y-4">
       {!admin && <div className="text-[11px] text-amber-300">Read-only: changing settings needs the admin role.</div>}
@@ -76,15 +77,15 @@ export default function AppServiceSettingsForm({ service, requests, onSaved, com
             {['normal', 'sensitive', 'regulated'].map(x => <option key={x}>{x}</option>)}</select></Field>
         <Field label="Owner"><input className={inputCls} value={f.owner} onChange={set('owner')} disabled={dis} maxLength={128} /></Field>
         <Field label="Operational notification route" hint="Where operational (APM-O) alerts go."><input className={inputCls} value={f.notify_route} onChange={set('notify_route')} disabled={dis} maxLength={256} /></Field>
-        <Field label="Client IP storage" hint="Applied by agents from their build configuration; rebuild the agent for a change to take effect.">
+        {tier >= 1 && <><Field label="Client IP storage" hint="Applied by agents from their build configuration; rebuild the agent for a change to take effect.">
           <select className={inputCls} value={f.store_client_ip} onChange={set('store_client_ip')} disabled={dis}>
-            <option value="full">full address</option><option value="truncated">truncated (/24, /48)</option><option value="off">do not store</option></select></Field>
-        <Field label="Trusted proxies" hint="One CIDR or address per line. A forwarded client address is trusted only from these."><textarea rows={3} className={inputCls} value={f.trusted_proxies} onChange={set('trusted_proxies')} disabled={dis} /></Field>
-        <Field label="Login routes" hint="One route template per line, e.g. /login."><textarea rows={3} className={inputCls} value={f.login_routes} onChange={set('login_routes')} disabled={dis} /></Field>
-        <Field label="Export routes"><textarea rows={3} className={inputCls} value={f.export_routes} onChange={set('export_routes')} disabled={dis} /></Field>
-        <Field label="Public routes" hint="Routes expected to be reachable without authentication."><textarea rows={3} className={inputCls} value={f.public_routes} onChange={set('public_routes')} disabled={dis} /></Field>
-        <Field label="Latency target (ms)"><input type="number" min="0" className={inputCls} value={f.latency_target_ms} onChange={set('latency_target_ms')} disabled={dis} /></Field>
-        <Field label="Error budget (%)"><input type="number" min="0" max="100" step="0.1" className={inputCls} value={f.error_budget_pct} onChange={set('error_budget_pct')} disabled={dis} /></Field>
+            <option value="full">full address</option><option value="truncated">truncated (/24, /48)</option><option value="off">do not store</option></select></Field></>}
+        {tier >= 1 && <><Field label="Trusted proxies" hint="One CIDR or address per line. A forwarded client address is trusted only from these."><textarea rows={3} className={inputCls} value={f.trusted_proxies} onChange={set('trusted_proxies')} disabled={dis} /></Field></>}
+        {tier >= 1 && <><Field label="Login routes" hint="One route template per line, e.g. /login."><textarea rows={3} className={inputCls} value={f.login_routes} onChange={set('login_routes')} disabled={dis} /></Field></>}
+        {tier >= 1 && <><Field label="Export routes"><textarea rows={3} className={inputCls} value={f.export_routes} onChange={set('export_routes')} disabled={dis} /></Field></>}
+        {tier >= 1 && <><Field label="Public routes" hint="Routes expected to be reachable without authentication."><textarea rows={3} className={inputCls} value={f.public_routes} onChange={set('public_routes')} disabled={dis} /></Field></>}
+        {tier >= 1 && <><Field label="Latency target (ms)"><input type="number" min="0" className={inputCls} value={f.latency_target_ms} onChange={set('latency_target_ms')} disabled={dis} /></Field></>}
+        {tier >= 1 && <><Field label="Error budget (%)"><input type="number" min="0" max="100" step="0.1" className={inputCls} value={f.error_budget_pct} onChange={set('error_budget_pct')} disabled={dis} /></Field></>}
       </div>
 
       <div>
@@ -101,27 +102,28 @@ export default function AppServiceSettingsForm({ service, requests, onSaved, com
           onClick={() => setF(v => ({ ...v, maintenance: [...v.maintenance, { start: '', end: '', reason: '' }] }))}>Add window</button>
       </div>
 
-      <label className="flex items-start gap-2 text-xs text-siem-muted">
+{tier >= 2 && <>      <label className="flex items-start gap-2 text-xs text-siem-muted">
         <input type="checkbox" checked={f.cleartext_users} onChange={set('cleartext_users')} disabled={dis} />
         <span><b className="text-siem-text">Show user identifiers in clear text</b> - off by default (identifiers are hashed). Applied by agents from their build configuration.</span>
-      </label>
+      </label></>}
 
-      <label className="flex items-start gap-2 text-xs text-siem-muted">
+{tier >= 1 && <>      <label className="flex items-start gap-2 text-xs text-siem-muted">
         <select className="bg-siem-surface2 border border-siem-border rounded px-1.5 py-1 text-siem-text" value={f.db_statement_mode} onChange={set('db_statement_mode')} disabled={dis}>
           <option value="off">Database: names only</option>
           <option value="fingerprint">Database: statement fingerprints</option>
         </select>
         <span>Names only sends the operation and table (SELECT, users). Fingerprints also send the statement with every value removed on the host, so <span className="font-mono">WHERE id = 5</span> becomes <span className="font-mono">where id = ?</span>, which lets slow queries be told apart. The agent applies the change within 5 minutes.</span>
-      </label>
+      </label></>}
 
-      <label className="flex items-start gap-2 text-xs text-siem-muted">
+{tier >= 1 && <>      <label className="flex items-start gap-2 text-xs text-siem-muted">
         <select className="bg-siem-surface2 border border-siem-border rounded px-1.5 py-1 text-siem-text" value={f.error_message_mode} onChange={set('error_message_mode')} disabled={dis}>
           <option value="off">Errors: no message</option>
           <option value="masked">Errors: masked message</option>
         </select>
         <span>Error groups always show the exception type, the route and the stack frames (function and file, no values). A masked message also shows the message with numbers, quoted text, emails, ids and long tokens replaced by <span className="font-mono">?</span>. Off by default.</span>
-      </label>
+      </label></>}
 
+      {tier >= 1 && <>
       <div className="rounded-lg border border-siem-border p-3 text-xs space-y-2">
         <div className="text-siem-text font-medium">Service level objective</div>
         <div className="text-siem-muted">Leave a field empty for the default: availability is 100 minus the error budget above (99.9% when none is set), latency is 95% of requests under the latency target, over 28 days. The SLO tab shows the budget left; alert APM-O13 fires when it burns too fast.</div>
@@ -148,11 +150,13 @@ export default function AppServiceSettingsForm({ service, requests, onSaved, com
         </div>
       </div>
 
+      </>}
       <div className="rounded-lg border border-siem-border p-3 text-xs flex items-center justify-between gap-3 flex-wrap">
         <div><span className="text-siem-muted">Learning: </span>{appLearningText(learn, service.tier)}</div>
         <label className="flex items-center gap-2 text-siem-muted"><input type="checkbox" checked={f.reset_learning} onChange={set('reset_learning')} disabled={dis} /> Restart learning on save</label>
       </div>
 
+      {tier === 0 && <div className="text-[11px] text-siem-muted">Route, latency, SLO, sampling and privacy settings appear once this service sends OpenTelemetry (Tier 1); they have no effect on a host-only service.</div>}
       <div className="flex items-center gap-3">
         <button className="btn btn-primary" onClick={save} disabled={dis}>{state.saving ? 'Saving…' : 'Save settings'}</button>
         {state.ok && <span className="text-xs text-emerald-300">Saved</span>}

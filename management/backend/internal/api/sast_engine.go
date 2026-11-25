@@ -63,6 +63,7 @@ type SASTFinding struct {
 	Fingerprint string         `json:"fingerprint,omitempty"`
 	Triage      *findingTriage `json:"triage,omitempty"`
 	TriageHint  *triageHint    `json:"triage_hint,omitempty"`
+	IssueURL    string         `json:"issue_url,omitempty"` // issue created from it on the platform
 }
 
 // ── Semgrep JSON output types ─────────────────────────────────────────────────
@@ -1082,22 +1083,22 @@ func handleSASTSBOM(db *store.DB) http.HandlerFunc {
 			return
 		}
 		branch := r.URL.Query().Get("branch")
-		var sbom []byte
+		var sbom, findingsRaw []byte
 		var gotBranch string
 		var scannedAt time.Time
-		q := `SELECT sbom, COALESCE(branch,''), scanned_at FROM sast_results WHERE connector_id=$1 AND repo=$2 AND sbom IS NOT NULL`
+		q := `SELECT sbom, COALESCE(branch,''), scanned_at, findings FROM sast_results WHERE connector_id=$1 AND repo=$2 AND sbom IS NOT NULL`
 		args := []interface{}{connID, repo}
 		if branch != "" {
 			q += ` AND branch=$3`
 			args = append(args, branch)
 		}
 		q += ` ORDER BY scanned_at DESC LIMIT 1`
-		if err := db.QueryRowContext(r.Context(), q, args...).Scan(&sbom, &gotBranch, &scannedAt); err != nil || len(sbom) == 0 {
+		if err := db.QueryRowContext(r.Context(), q, args...).Scan(&sbom, &gotBranch, &scannedAt, &findingsRaw); err != nil || len(sbom) == 0 {
 			writeJSON(w, 404, map[string]string{"error": "no SBOM for this repository yet; run a SAST scan of it"})
 			return
 		}
 		if r.URL.Query().Get("view") == "1" {
-			writeSBOMView(w, r, db, repo, gotBranch, scannedAt, sbom)
+			writeSBOMView(w, r, db, connID, repo, gotBranch, scannedAt, sbom, findingsRaw)
 			return
 		}
 		name := strings.NewReplacer("/", "_", "\\", "_", "\"", "").Replace(repo)

@@ -95,12 +95,79 @@ func postureFromRepo(r ghRepoInfo) []PostureFinding {
 
 const posturMaxRepos = 100
 
-func githubPosture(ctx context.Context, c *githubClient) ([]PostureFinding, int, error) {
+// PostureGap is a check the token could not run. Without it a token that
+// lacks admin rights returns "0 findings", which reads as "all good".
+type PostureGap struct {
+	Check    string   `json:"check"`
+	Count    int      `json:"count"`
+	Reason   string   `json:"reason"`
+	Fix      string   `json:"fix"`
+	Examples []string `json:"examples,omitempty"`
+}
+
+type postureGaps struct {
+	order []string
+	byKey map[string]*PostureGap
+}
+
+func (g *postureGaps) add(check, resource, reason, fix string) {
+	if g.byKey == nil {
+		g.byKey = map[string]*PostureGap{}
+	}
+	k := check + "\x00" + reason
+	x, ok := g.byKey[k]
+	if !ok {
+		x = &PostureGap{Check: check, Reason: reason, Fix: fix}
+		g.byKey[k] = x
+		g.order = append(g.order, k)
+	}
+	x.Count++
+	if resource != "" && len(x.Examples) < 5 {
+		x.Examples = append(x.Examples, resource)
+	}
+}
+
+func (g *postureGaps) list() []PostureGap {
+	out := make([]PostureGap, 0, len(g.order))
+	for _, k := range g.order {
+		out = append(out, *g.byKey[k])
+	}
+	return out
+}
+
+// gapReason turns an API error into a short reason.
+func gapReason(err error) string {
+	m := err.Error()
+	switch {
+	case strings.HasPrefix(m, "auth error"):
+		return "access denied (" + strings.TrimSuffix(strings.TrimPrefix(m, "auth error "), ": check token permissions") + ")"
+	case strings.Contains(m, "rate limit"):
+		return "rate limited"
+	}
+	if len(m) > 160 {
+		m = m[:160]
+	}
+	return m
+}
+
+const (
+	ghFixOwner = "Use a token from an organisation owner: classic PAT with read:org (SSO-authorised for SAML orgs), or a fine-grained token owned by the organisation with Organization > Administration: read."
+	ghFixAdmin = "Use a token with admin rights on the repositories: classic PAT with repo scope from an owner/admin (SSO-authorised for SAML orgs), or a fine-grained token owned by the organisation with Repository > Administration: read and Metadata: read. On GitHub Free, private repositories have no branch protection API (403)."
+)
+
+func githubPosture(ctx context.Context, c *githubClient) ([]PostureFinding, int, []PostureGap, error) {
 	var findings []PostureFinding
+	var gaps postureGaps
 	var org struct {
 		TwoFactor *bool `json:"two_factor_requirement_enabled"`
 	}
-	if err := c.getJSON(ctx, "https://api.github.com/orgs/"+c.org, &org); err == nil && org.TwoFactor != nil && !*org.TwoFactor {
+	if err := c.getJSON(ctx, "https://api.github.com/orgs/"+c.org, &org); err != nil {
+		if !strings.HasPrefix(err.Error(), "not found") { // 404: personal account, no org 2FA setting
+			gaps.add("Organisation 2FA requirement", c.org, gapReason(err), ghFixOwner)
+		}
+	} else if org.TwoFactor == nil {
+		gaps.add("Organisation 2FA requirement", c.org, "setting not visible to this token (organisation owners only)", ghFixOwner)
+	} else if !*org.TwoFactor {
 		findings = append(findings, PostureFinding{"high", "Organisation does not require two-factor authentication",
 			"Members can access the organisation with password-only accounts.", c.org, "Enable 'Require two-factor authentication' in organisation security settings."})
 	}
@@ -114,7 +181,7 @@ func githubPosture(ctx context.Context, c *githubClient) ([]PostureFinding, int,
 				// personal account fallback
 				var up []ghRepoInfo
 				if _, e2 := c.getJSONNext(ctx, fmt.Sprintf("https://api.github.com/users/%s/repos?per_page=100", c.org), &up); e2 != nil {
-					return nil, 0, err
+					return nil, 0, nil, err
 				}
 				repos = up
 			}
@@ -133,6 +200,9 @@ func githubPosture(ctx context.Context, c *githubClient) ([]PostureFinding, int,
 		}
 		checked++
 		findings = append(findings, postureFromRepo(r)...)
+		if r.Security.SecretScanning.Status == "" && r.Security.PushProtection.Status == "" {
+			gaps.add("Secret scanning / push protection", r.FullName, "settings not visible to this token (repository admins only)", ghFixAdmin)
+		}
 		var prot ghProtection
 		err := c.getJSON(ctx, fmt.Sprintf("https://api.github.com/repos/%s/branches/%s/protection", r.FullName, r.DefaultBranch), &prot)
 		switch {
@@ -141,10 +211,14 @@ func githubPosture(ctx context.Context, c *githubClient) ([]PostureFinding, int,
 		case strings.HasPrefix(err.Error(), "not found"):
 			findings = append(findings, postureFromProtection(r.FullName, r.DefaultBranch, nil, true)...)
 		default:
-			// auth/plan limitation: cannot assess; do not report a false finding
+			// auth/plan limitation: cannot assess; no false finding, but say so
+			gaps.add("Default branch protection", r.FullName, gapReason(err), ghFixAdmin)
 		}
 	}
-	return findings, checked, nil
+	if checked == 0 {
+		gaps.add("Repository list", c.org, "no repositories visible to this token", "Grant the token access to the organisation's repositories (classic: repo + read:org, SSO-authorised; fine-grained: owned by the organisation, All repositories).")
+	}
+	return findings, checked, gaps.list(), nil
 }
 
 func handleDevOpsPosture(db *store.DB) http.HandlerFunc {
@@ -167,18 +241,19 @@ func handleDevOpsPosture(db *store.DB) http.HandlerFunc {
 		ctx, cancel := context.WithTimeout(r.Context(), 3*time.Minute)
 		defer cancel()
 		var findings []PostureFinding
+		var gaps []PostureGap
 		var checked int
 		switch conn.Provider {
 		case "github":
-			findings, checked, err = githubPosture(ctx, &githubClient{token: token, org: conn.Org})
+			findings, checked, gaps, err = githubPosture(ctx, &githubClient{token: token, org: conn.Org})
 		case "gitlab":
 			base := conn.Credentials["base_url"]
 			if base == "" {
 				base = "https://gitlab.com"
 			}
-			findings, checked, err = gitlabPosture(ctx, &gitlabClient{token: token, baseURL: base, group: conn.Org})
+			findings, checked, gaps, err = gitlabPosture(ctx, &gitlabClient{token: token, baseURL: base, group: conn.Org})
 		case "azuredevops":
-			findings, checked, err = azureDevOpsPosture(ctx, adoClientFor(conn), conn)
+			findings, checked, gaps, err = azureDevOpsPosture(ctx, adoClientFor(conn), conn)
 		default:
 			writeJSONError(w, http.StatusNotImplemented, "posture checks are implemented for GitHub, GitLab and Azure DevOps")
 			return
@@ -187,7 +262,13 @@ func handleDevOpsPosture(db *store.DB) http.HandlerFunc {
 			writeJSONError(w, http.StatusBadGateway, conn.Provider+" posture scan failed: "+err.Error())
 			return
 		}
-		out := map[string]interface{}{"findings": findings, "repos_checked": checked, "scanned_at": time.Now().UTC()}
+		if findings == nil {
+			findings = []PostureFinding{}
+		}
+		if gaps == nil {
+			gaps = []PostureGap{}
+		}
+		out := map[string]interface{}{"findings": findings, "repos_checked": checked, "not_assessed": gaps, "scanned_at": time.Now().UTC()}
 		if b, merr := json.Marshal(out); merr == nil && len(b) < 4<<20 {
 			_ = db.SetSetting(r.Context(), postureResultKey(id), string(b)) // DR-02: keep last result
 		}
@@ -255,19 +336,29 @@ func glPostureFromBranches(project, def string, pbs []glProtectedBranch) []Postu
 		"Protect the default branch and require merge requests."}}
 }
 
-func gitlabPosture(ctx context.Context, c *gitlabClient) ([]PostureFinding, int, error) {
+const (
+	glFixOwner = "Use a token from a group Owner with read_api (or api) scope."
+	glFixMaint = "Use a token with Maintainer (or higher) role on the projects and read_api scope; protected-branch settings are not visible to Developers."
+)
+
+func gitlabPosture(ctx context.Context, c *gitlabClient) ([]PostureFinding, int, []PostureGap, error) {
 	var findings []PostureFinding
+	var gaps postureGaps
 	var grp struct {
 		RequireTwoFactor *bool `json:"require_two_factor_authentication"`
 	}
-	if err := c.getJSON(ctx, "/api/v4/groups/"+gitlabID(c.group), &grp); err == nil && grp.RequireTwoFactor != nil && !*grp.RequireTwoFactor {
+	if err := c.getJSON(ctx, "/api/v4/groups/"+gitlabID(c.group), &grp); err != nil {
+		gaps.add("Group 2FA requirement", c.group, gapReason(err), glFixOwner)
+	} else if grp.RequireTwoFactor == nil {
+		gaps.add("Group 2FA requirement", c.group, "setting not visible to this token", glFixOwner)
+	} else if !*grp.RequireTwoFactor {
 		findings = append(findings, PostureFinding{"high", "Group does not require two-factor authentication",
 			"Members can access the group with password-only accounts.", c.group,
 			"Enable 'Require all users to set up two-factor authentication' in group settings."})
 	}
 	projects, err := gitlabProjects(ctx, c, c.group)
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, nil, err
 	}
 	checked := 0
 	for _, p := range projects {
@@ -280,11 +371,15 @@ func gitlabPosture(ctx context.Context, c *gitlabClient) ([]PostureFinding, int,
 		checked++
 		var pbs []glProtectedBranch
 		if err := c.getJSON(ctx, fmt.Sprintf("/api/v4/projects/%d/protected_branches", p.ID), &pbs); err != nil {
+			gaps.add("Default branch protection", p.PathWithNamespace, gapReason(err), glFixMaint)
 			continue // cannot assess (permissions); no false finding
 		}
 		findings = append(findings, glPostureFromBranches(p.PathWithNamespace, p.DefaultBranch, pbs)...)
 	}
-	return findings, checked, nil
+	if checked == 0 {
+		gaps.add("Project list", c.group, "no projects with a default branch visible to this token", glFixMaint)
+	}
+	return findings, checked, gaps.list(), nil
 }
 
 // ── Azure DevOps ─────────────────────────────────────────────────────────────
@@ -333,12 +428,15 @@ func adoDefaultBranchReviewed(repoID, defaultBranch string, policies []adoPolicy
 	return false
 }
 
-func azureDevOpsPosture(ctx context.Context, c *azureClient, conn *store.DevOpsConnector) ([]PostureFinding, int, error) {
+const adoFixPolicy = "Use a PAT with Code (Read) and Project and Team (Read) scopes from a user who can view branch policies (Project Administrators or Contributors with policy read)."
+
+func azureDevOpsPosture(ctx context.Context, c *azureClient, conn *store.DevOpsConnector) ([]PostureFinding, int, []PostureGap, error) {
 	projects, err := adoProjects(ctx, c, conn)
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, nil, err
 	}
 	var findings []PostureFinding
+	var gaps postureGaps
 	checked := 0
 	for _, prName := range projects {
 		pr := struct{ Name string }{prName}
@@ -351,12 +449,14 @@ func azureDevOpsPosture(ctx context.Context, c *azureClient, conn *store.DevOpsC
 			} `json:"value"`
 		}
 		if err := c.getJSON(ctx, fmt.Sprintf("%s/%s/_apis/git/repositories?api-version=7.0", c.baseURL, url.PathEscape(pr.Name)), &repos); err != nil {
+			gaps.add("Repository list", conn.Org+"/"+pr.Name, gapReason(err), adoFixPolicy)
 			continue
 		}
 		var pols struct {
 			Value []adoPolicy `json:"value"`
 		}
 		if err := c.getJSON(ctx, fmt.Sprintf("%s/%s/_apis/policy/configurations?api-version=7.0", c.baseURL, url.PathEscape(pr.Name)), &pols); err != nil {
+			gaps.add("Branch policies", conn.Org+"/"+pr.Name, gapReason(err), adoFixPolicy)
 			continue // cannot assess this project
 		}
 		for _, r := range repos.Value {
@@ -372,5 +472,5 @@ func azureDevOpsPosture(ctx context.Context, c *azureClient, conn *store.DevOpsC
 			}
 		}
 	}
-	return findings, checked, nil
+	return findings, checked, gaps.list(), nil
 }

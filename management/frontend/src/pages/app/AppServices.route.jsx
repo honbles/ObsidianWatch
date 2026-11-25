@@ -47,9 +47,9 @@ export default function AppServices() {
   }
 
   const [facets, setFacets] = useState({})
-  const [sort, setSort] = useState({ key: 'state', dir: 'desc' })
-  const withState = useMemo(() => all.map(x => ({ ...x, _st: serviceListState(x) })), [all])
-  const G = useMemo(() => ({ state: x => x._st.state, env: x => x.environment, exposure: x => x.settings.exposure || 'unknown', tier: x => x.tier, crit: x => x.settings.criticality || 'normal' }), [])
+  const [sort, setSort] = useState({ key: 'rank', dir: 'desc' })
+  const withState = useMemo(() => all.map((x, i) => ({ ...x, _rank: i, _st: x.tier === 0 ? { state: x.instances ? 'ok' : 'none', why: 'Host only: request health needs OpenTelemetry' } : serviceListState(x) })), [all])
+  const G = useMemo(() => ({ role: x => x.role || 'other', state: x => x._st.state, env: x => x.environment, exposure: x => x.settings.exposure || 'unknown', tier: x => x.tier, crit: x => x.settings.criticality || 'normal' }), [])
   const faceted = useFacetFilter(withState, G, facets)
   const spanMin = (new Date(range.to) - new Date(range.from)) / 60000
   const ORDER = { crit: 0, warn: 1, ok: 2, none: 3 }
@@ -57,6 +57,7 @@ export default function AppServices() {
     const t = q.trim().toLowerCase()
     const d = sort.dir === 'asc' ? 1 : -1
     const by = {
+      rank: (a, b) => b._rank - a._rank, // server order: T2, T1, then T0 platforms first
       state: (a, b) => (ORDER[b._st.state] - ORDER[a._st.state]) || ((b.red?.calls || 0) - (a.red?.calls || 0)),
       name: (a, b) => b.name.localeCompare(a.name),
       rpm: (a, b) => (a.red?.calls || 0) - (b.red?.calls || 0),
@@ -70,8 +71,10 @@ export default function AppServices() {
   const n = st => withState.filter(x => x._st.state === st).length
 
   const cols = [
-    { key: 'st', label: 'State', width: '96px', sortKey: 'state', render: x => <StatePill state={x._st.state} title={x._st.why}>{{ ok: 'OK', warn: 'Degraded', crit: 'Failing', none: 'No traffic' }[x._st.state]}</StatePill> },
-    { key: 'name', label: 'Service', width: 'minmax(160px, 1.3fr)', sortKey: 'name', render: x => <span className="mono t1">{x.name}</span> },
+    { key: 'st', label: 'State', width: '96px', sortKey: 'state', render: x => x.tier === 0
+      ? <StatePill state={x.instances ? 'ok' : 'none'} title="Host only: request health needs OpenTelemetry">{x.instances ? 'Running' : 'Stopped'}</StatePill>
+      : <StatePill state={x._st.state} title={x._st.why}>{{ ok: 'OK', warn: 'Degraded', crit: 'Failing', none: 'No traffic' }[x._st.state]}</StatePill> },
+    { key: 'name', label: 'Service', width: 'minmax(160px, 1.3fr)', sortKey: 'name', render: x => <span><span className="mono t1">{x.name}</span>{x.role_label && <span className="t3" style={{ fontSize: 11.5 }}> · {x.role_label}</span>}{x.code_links > 0 && <span className="t3" style={{ fontSize: 11.5 }} title="Repository linked"> · code</span>}</span> },
     { key: 'env', label: 'Env', width: '80px', render: x => <span className="t2">{x.environment}</span> },
     { key: 'runs', label: 'Runs on', width: 'minmax(140px, 1fr)', render: x => {
       const c = x.containers || [], u = x.units || [], h = x.hosts || []
@@ -90,7 +93,7 @@ export default function AppServices() {
       <PageHeader title="Services"
         state={loading ? undefined : n('crit') ? 'crit' : n('warn') ? 'warn' : all.length ? 'ok' : 'none'}
         stateText={n('crit') ? `${n('crit')} failing` : n('warn') ? `${n('warn')} degraded` : all.length ? 'All healthy' : 'No services yet'}
-        sub="Every service seen on a host with an application-monitoring agent, discovered or instrumented. State uses error rate and the latency target; open a service for SLO and alerts."
+        sub="Every service seen on a host with an application-monitoring agent. Instrumented services (T2, T1) come first, then host-only (T0) services with databases, caches, web servers and runtimes ahead of the rest. State uses error rate and the latency target."
         nums={<>
           <Num k="Services" v={all.length}/>
           <Num k="Failing" v={n('crit')} tone={n('crit') ? 'crit' : undefined}/>
@@ -103,6 +106,7 @@ export default function AppServices() {
           { key: 'state', label: 'State', values: countBy(withState, G.state, ['crit', 'warn', 'ok', 'none'], { crit: 'Failing', warn: 'Degraded', ok: 'OK', none: 'No traffic' }) },
           { key: 'env', label: 'Environment', values: countBy(withState, G.env) },
           { key: 'exposure', label: 'Exposure', values: countBy(withState, G.exposure, ['internet', 'internal', 'unknown'], { internet: 'Internet', internal: 'Internal', unknown: 'Unknown' }) },
+          { key: 'role', label: 'What it is', values: countBy(withState, G.role, ['app', 'database', 'cache', 'web', 'runtime', 'queue', 'search', 'other'], { app: 'Application', database: 'Database', cache: 'Cache', web: 'Web / proxy', runtime: 'App server', queue: 'Broker', search: 'Search', other: 'Other' }) },
           { key: 'tier', label: 'Telemetry tier', values: countBy(withState, G.tier, [2, 1, 0], { 2: 'T2 · security events', 1: 'T1 · OpenTelemetry', 0: 'T0 · host only' }) },
           { key: 'crit', label: 'Criticality', values: countBy(withState, G.crit, ['critical', 'high', 'normal', 'low'], { critical: 'Critical', high: 'High', normal: 'Normal', low: 'Low' }) },
         ]}/>

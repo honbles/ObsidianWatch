@@ -93,6 +93,15 @@ The form has the same flow for every provider:
 | `GET /repos/{r}/tarball/{ref}`, `GET /repos/{r}/git/trees/...`, `/contents/...` | SAST fallback; file for an AI fix suggestion | `repo` |
 | `GET /users/{login}/events` | Fallback for personal accounts | none (public events) |
 
+**Posture on an organisation.** Most posture checks read settings GitHub shows only to administrators, so a member's token returns few or no findings. The result lists those as **not assessed** (capability.md section 5). To assess an organisation fully:
+
+| Token | What to grant |
+|---|---|
+| Classic PAT | `repo` and `read:org`, created by an **organisation owner** (or a user with admin on every repository). On an org with SAML SSO, open the token's page and **Configure SSO → Authorize** for the org, otherwise its repositories return 403 or are not listed. |
+| Fine-grained token | **Resource owner: the organisation** (not your account), **All repositories**, approved by an org admin if the org requires approval. Repository permissions: **Administration: Read**, **Metadata: Read**, **Contents: Read**. Organization permissions: **Administration: Read** (2FA requirement). |
+
+On GitHub Free, private repositories have no branch-protection API (403), so that check stays "not assessed" for them whatever the token. Quick test: `curl -H "Authorization: Bearer $T" https://api.github.com/orgs/ORG` must include `two_factor_requirement_enabled`, and `.../repos/ORG/REPO/branches/main/protection` must answer 200 or 404, not 403.
+
 If the audit log call fails for any reason, the connector falls back to the public user-events feed. The connector then stores this note in its status field: "Limited coverage: org audit log unavailable (...)". The note shows as the connector's last error even when the status is `connected`.
 
 **Scope.** Only repositories owned by the connector's organisation (or, for a personal account, by that user) are polled, checked and offered for SAST. Repositories of other organisations the token can see are ignored.
@@ -283,6 +292,8 @@ The first inventory arrives about 2 minutes after the agent starts, then every 1
 
 To see what a host reports, search the events for `event_type: runtime_inventory`.
 
+**Linking a repository to a service** (capability.md section 4.15) needs a code connector with access to the repository and an Application Monitoring service. An admin opens **Applications → Services → (service) → Code → Link repository**. Linking a branch with no scan queues one, which runs on the automation worker (section 6b). Findings are matched to the service's own processes only when its host reports runtime inventories (above); otherwise they show the scanner severity with "Not known".
+
 ## 6b. Automation and pull-request checks
 
 1. **Webhook events.** Add pull request events to the webhook: GitHub `pull_request` (and `push`); GitLab Merge request events (and Push events); Azure DevOps service hooks "Pull request created" and "Pull request updated" (and "Code pushed"). Section 4 has the full lists.
@@ -388,6 +399,8 @@ Viewers are read-only everywhere (every mutating request is refused for them). A
 | Triage a finding | `POST .../{id}/findings/triage` | analyst, admin |
 | Triage rules | `GET .../{id}/triage-rules` (any); `POST`, `DELETE .../triage-rules/{rule}` (admin) | |
 | Fix suggestion | `POST .../{id}/sast/fix` | analyst, admin |
+| Create issues from findings | `POST .../{id}/sast/issues` | analyst, admin |
+| Branch list | `GET .../{id}/sast/branches` | any signed-in user |
 | Runtime package lookup | `GET /api/v1/runtime-packages` | any signed-in user |
 
 `GET .../sast/repos` calls the provider API on every request, so viewers also cause provider API traffic.
@@ -406,9 +419,11 @@ Select the connector in **Code → Repositories → Connectors and scans** and p
 | SAST results (`sast_results`, with engines and SBOM) | yes (cascade) |
 | Automated scan jobs and PR check state (`code_scan_jobs`, `code_pr_checks`) | yes (cascade) |
 | Triage decisions and rules (`code_finding_triage`, `code_triage_rules`) | yes (cascade) |
+| Record of issues created (`code_finding_issues`) | yes (cascade). The issues themselves stay on the platform. |
 | Last posture result, automation policy, last scheduled run (settings `devops.posture.last.{id}`, `code.policy.{id}`, `code.schedule.last.{id}`) | yes |
 | Cached AI fix suggestions (`code_fix_cache`) | no; they expire after 30 days |
 | Runtime package index (`runtime_packages`) | no; it belongs to the agents, not the connector |
+| Links from services to its repositories (`service_code_links`) | yes |
 | `devops.*` events already ingested | no. They age out with the event retention (see configuration.md section 8). |
 | Alerts already raised | no |
 

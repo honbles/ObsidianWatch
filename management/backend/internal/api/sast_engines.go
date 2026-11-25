@@ -741,10 +741,12 @@ func buildCycloneDX(repo string, comps []sbomComponent, findings []SASTFinding) 
 		Properties []map[string]string `json:"properties,omitempty"`
 	}
 	type vuln struct {
-		ID      string              `json:"id"`
-		Ratings []map[string]string `json:"ratings,omitempty"`
-		Detail  string              `json:"detail,omitempty"`
-		Affects []map[string]string `json:"affects,omitempty"`
+		ID             string              `json:"id"`
+		Ratings        []map[string]string `json:"ratings,omitempty"`
+		Detail         string              `json:"detail,omitempty"`
+		Recommendation string              `json:"recommendation,omitempty"`
+		Advisories     []map[string]string `json:"advisories,omitempty"`
+		Affects        []map[string]string `json:"affects,omitempty"`
 	}
 	sort.Slice(comps, func(i, j int) bool {
 		if comps[i].Name != comps[j].Name {
@@ -777,12 +779,16 @@ func buildCycloneDX(repo string, comps []sbomComponent, findings []SASTFinding) 
 		refByName[strings.ToLower(c.Name)+"@"+c.Version] = ref
 	}
 	var vulns []vuln
+	seenVuln := map[string]bool{} // one entry per vulnerability and component, not per manifest
 	for _, f := range findings {
 		if !strings.HasPrefix(f.RuleID, "SCA-") {
 			continue
 		}
-		v := vuln{ID: strings.TrimPrefix(f.RuleID, "SCA-"), Detail: f.Detail,
+		v := vuln{ID: strings.TrimPrefix(f.RuleID, "SCA-"), Detail: f.Detail, Recommendation: f.Fix,
 			Ratings: []map[string]string{{"severity": f.Severity}}}
+		if u := advisoryURL(v.ID, f.Detail); u != "" {
+			v.Advisories = []map[string]string{{"url": u}}
+		}
 		// Title is "<id> in <pkg> <version>".
 		if _, rest, ok := strings.Cut(f.Title, " in "); ok {
 			if name, ver, ok2 := strings.Cut(rest, " "); ok2 {
@@ -791,6 +797,14 @@ func buildCycloneDX(repo string, comps []sbomComponent, findings []SASTFinding) 
 				}
 			}
 		}
+		k := v.ID + "\x00"
+		if len(v.Affects) > 0 {
+			k += v.Affects[0]["ref"]
+		}
+		if seenVuln[k] {
+			continue
+		}
+		seenVuln[k] = true
 		vulns = append(vulns, v)
 	}
 	doc := map[string]interface{}{
@@ -807,6 +821,30 @@ func buildCycloneDX(repo string, comps []sbomComponent, findings []SASTFinding) 
 	}
 	b, _ := json.Marshal(doc)
 	return b
+}
+
+// advisoryURL is the advisory link of a vulnerability: the URL in the scanner
+// detail, else the public database page for the ID.
+func advisoryURL(id, detail string) string {
+	for _, f := range strings.Fields(detail) {
+		if strings.HasPrefix(f, "https://") {
+			return f
+		}
+	}
+	return vulnDBURL(id)
+}
+
+// vulnDBURL is the public page for a vulnerability ID.
+func vulnDBURL(id string) string {
+	switch {
+	case strings.HasPrefix(id, "CVE-"):
+		return "https://nvd.nist.gov/vuln/detail/" + id
+	case strings.HasPrefix(id, "GHSA-"):
+		return "https://github.com/advisories/" + id
+	case strings.HasPrefix(id, "GO-"), strings.HasPrefix(id, "PYSEC-"), strings.HasPrefix(id, "RUSTSEC-"), strings.HasPrefix(id, "OSV-"):
+		return "https://osv.dev/vulnerability/" + id
+	}
+	return ""
 }
 
 var spdxIDRe = regexp.MustCompile(`^[A-Za-z0-9.+-]+$`)

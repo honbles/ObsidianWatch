@@ -32,7 +32,8 @@ function buildNav({ alertCount, isAdmin }) {
     { id: 'prevention', label: 'Prevention', icon: ShieldCheck, to: '/prevention' },
     { id: 'response', label: 'Response', icon: Terminal, to: '/response' },
     { section: 'Application' },
-    { id: 'app-overview', label: 'Overview', icon: Gauge, to: '/applications', exact: true },
+    { id: 'app-hosts', label: 'Hosts', icon: Server, to: '/applications', exact: true, also: '/applications/hosts' },
+    { id: 'app-overview', label: 'Overview', icon: Gauge, to: '/applications/overview' },
     { id: 'app-services', label: 'Services', icon: Boxes, to: '/applications/services' },
     { id: 'app-map', label: 'Dependencies', icon: Share2, to: '/applications/map' },
     { id: 'app-coverage', label: 'Coverage', icon: ListChecks, to: '/applications/coverage' },
@@ -62,6 +63,7 @@ function buildNav({ alertCount, isAdmin }) {
 }
 
 function isActive(loc, it) {
+  if (it.also && (loc.pathname === it.also || loc.pathname.startsWith(it.also + '/'))) return true
   if (it.to === '/' || it.exact) return loc.pathname === it.to
   return loc.pathname === it.to || loc.pathname.startsWith(it.to + '/')
 }

@@ -86,6 +86,7 @@ type inventoryRaw struct {
 		Service   string `json:"service"`
 		Container string `json:"container"`
 		Exe       string `json:"exe"`
+		PID       int    `json:"pid"`
 		Packages  []struct {
 			E  string `json:"e"`
 			N  string `json:"n"`
@@ -113,7 +114,7 @@ func inventoryRows(ev store.Event) []store.RuntimePackage {
 		}
 		out = append(out, store.RuntimePackage{Ecosystem: p.E, Name: p.N, Version: normVersion(p.E, p.V),
 			AgentID: ev.AgentID, Host: ev.Host, Service: inv.Service, Container: inv.Container, Exe: inv.Exe,
-			Evidence: evd, LastSeen: ev.Time})
+			Evidence: evd, LastSeen: ev.Time, PID: inv.PID})
 	}
 	return out
 }
@@ -277,6 +278,27 @@ func (x *RuntimeIndexer) raiseRunningVulnAlerts(ctx context.Context) {
 	rows.Close()
 	since := time.Now().Add(-runtimeFresh)
 	seen := map[string]bool{}
+	alertIDs := map[string]int64{}
+	// Attribute each running package to the monitored service whose process
+	// loads it, so the alert names the service, is weighted by its exposure and
+	// criticality, and shows on its Alerts tab.
+	var attr *appAttributor
+	svcByID := map[int64]appLiveInst{}
+	var svcSettings map[int64]appServiceSettings
+	if len(hits) > 0 {
+		idb := appIngestDB(x.db, x.eventDB)
+		insts := appLiveInstances(ctx, idb, nil, "", since)
+		attr = newAppAttributor(insts)
+		var ids []int64
+		for _, i := range insts {
+			if _, ok := svcByID[i.ServiceID]; !ok {
+				svcByID[i.ServiceID] = i
+				ids = append(ids, i.ServiceID)
+			}
+		}
+		svcSettings = appSettingsByID(ctx, x.db, ids)
+		appApplyExposure(ctx, idb, ids, svcSettings)
+	}
 	for _, h := range hits {
 		running, err := x.db.FindRuntimePackage(ctx, h.f.Ecosystem, h.f.Package, normVersion(h.f.Ecosystem, h.f.Version), since, 50)
 		if err != nil {
@@ -289,6 +311,11 @@ func (x *RuntimeIndexer) raiseRunningVulnAlerts(ctx context.Context) {
 			vuln := strings.TrimPrefix(h.f.RuleID, "SCA-")
 			k := vuln + "|" + p.Ecosystem + "|" + p.Name + "|" + p.Version + "|" + p.Host
 			if seen[k] {
+				// one alert per host; every service on it that loads the package is linked
+				if sid, ok := attr.service(p); ok && alertIDs[k] > 0 {
+					si := svcByID[sid]
+					_ = x.db.LinkAlertEntity(ctx, alertIDs[k], "service", appServiceKey(si.Name, si.Env))
+				}
 				continue
 			}
 			seen[k] = true
@@ -300,13 +327,28 @@ func (x *RuntimeIndexer) raiseRunningVulnAlerts(ctx context.Context) {
 			if h.f.Severity == "critical" {
 				sev = 5
 			}
+			svcKey := ""
+			if sid, ok := attr.service(p); ok {
+				si := svcByID[sid]
+				svcKey = appServiceKey(si.Name, si.Env)
+				where = fmt.Sprintf("service %s (%s) on %s", si.Name, si.Env, p.Host)
+				if st, ok := svcSettings[sid]; ok {
+					sev = appRiskWeigh(sev, st)
+				}
+			}
 			desc := fmt.Sprintf("%s (%s) affects %s %s, which is loaded by a running process: %s (%s).\n\nFound by the dependency scan of %s in %s.\n\nFix: %s",
 				vuln, h.f.Severity, p.Name, p.Version, where, p.Exe, h.repo, h.f.File, h.f.Fix)
-			_, _, _ = x.db.CreateAlertDeduped(ctx, store.Alert{
+			aid, _, aerr := x.db.CreateAlertDeduped(ctx, store.Alert{
 				Title:       fmt.Sprintf("[T1190] Vulnerable dependency running: %s in %s %s", vuln, p.Name, p.Version),
 				Description: desc, Severity: sev, Host: p.Host, AgentID: p.AgentID, EventType: runtimeInventoryType,
 				EventID: fmt.Sprintf("CODE-RT-001:%s:%s:%s:%s:%s", vuln, p.Ecosystem, store.PackageNameKey(p.Ecosystem, p.Name), p.Version, time.Now().UTC().Format("20060102")),
 			})
+			if aerr == nil && aid > 0 {
+				alertIDs[k] = aid
+				if svcKey != "" {
+					_ = x.db.LinkAlertEntity(ctx, aid, "service", svcKey)
+				}
+			}
 		}
 	}
 }

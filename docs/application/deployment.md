@@ -131,12 +131,14 @@ The Kubernetes setup (DaemonSet, hostPath socket) is a design decision (loopback
 
 Allow one to two minutes: the agent flushes every 30 s and holds the current minute until it closes.
 
-1. **Applications → Services.** The service appears with its environment. Tier T1 (or T2 with helper events).
-2. Service page → **Endpoints** tab. Routes appear as templates (`/orders/{id}`), never raw paths. Only `(unmatched)` or `other` means the framework does not set `http.route`.
-3. Service page → **Instances** tab. The instance says **verified** with the executable. **asserted** means the agent could not match the connection to a process: see section 6.
-4. **Applications → Coverage.** The row for the service shows what is set up and what is "not set up" for the next tier. The detection-rules card shows whether the rule engine is running and per rule how often it fired, fired in observe mode, ran degraded, or was skipped and why (for example "learning", "deploy window", "no login routes configured or recognised").
-5. **Applications → Overview → Needs attention.** Lists services with `asserted_identity`, `route_overflow`, `trace_drops`, or `not_reporting`.
-6. Service page → **Traces** tab. Error and slow traces appear, plus about 1 % of ordinary ones.
+1. **Applications → Hosts** (the landing page). The host appears once one of its services has a live instance; open it to see its services and open risks. Hosts without an application-monitoring agent are not listed here (they stay under Endpoint → Fleet).
+2. **Applications → Services.** The service appears with its environment. Tier T1 (or T2 with helper events). Host-only services (T0) appear without instrumentation, with databases, caches and web servers listed first.
+3. Service page → **Endpoints** tab (T1 and up; a T0 service has no such tab). Routes appear as templates (`/orders/{id}`), never raw paths. Only `(unmatched)` or `other` means the framework does not set `http.route`.
+4. Service page → **Instances** tab. The instance says **verified** with the executable. **asserted** means the agent could not match the connection to a process: see section 6.
+5. **Applications → Coverage.** The row for the service shows what is set up and what is "not set up" for the next tier. The detection-rules card shows whether the rule engine is running and per rule how often it fired, fired in observe mode, ran degraded, or was skipped and why (for example "learning", "deploy window", "no login routes configured or recognised").
+6. **Applications → Overview → Needs attention.** Lists services with `asserted_identity`, `route_overflow`, `trace_drops`, or `not_reporting`.
+7. Service page → **Traces** tab.
+8. Service page → **Code** tab (optional): link the repository and branch the service is built from to see its code findings checked against what this service runs. Error and slow traces appear, plus about 1 % of ordinary ones.
 
 Agent log lines that help:
 
@@ -157,4 +159,4 @@ Known gaps that affect verification today (see [capability.md](capability.md) se
 - **Uninstall the agent:** use the uninstall command in section 3. The receiver stops and the Unix socket file is removed.
 - **Reinstall:** a reinstall enrolls a new agent identity. The old agent record is marked superseded and hidden from agent lists. Instances recorded under the old agent id stay in the service history; rules that need the host to be reporting (APM-O05, APP-X06) skip them because the old agent no longer reports.
 
-Data already stored is removed by retention only (section 7.3 of [capability.md](capability.md)). There is no "delete service" action.
+Data already stored is removed by retention only (section 7.3 of [capability.md](capability.md)). There is no "delete service" action: a discovered service reappears at the next discovery round while its process listens, and removing it would also stop the host rules (APP-H01–H11) that watch its processes. Lists rank services instead (instrumented first, then platform software, then the rest).

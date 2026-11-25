@@ -606,7 +606,19 @@ API: `GET /services/{id}/compare?a=&b=` (versions) or `a_from, a_to, b_from, b_t
 
 Implemented in: `app_compare.go`.
 
-### 10.14 Instances, Runtime, Events, Security, Alerts tabs
+### 10.14 Instances, Runtime, Events, Security, Alerts, Code tabs
+
+**Tabs follow the tier.** A tab shows only when the service's tier gives it data:
+
+| Tier | Tabs |
+|---|---|
+| T0 (host only) | Overview (host view), Instances, Host activity (the Runtime tab), Timeline (the Events tab), Alerts, Code; More: Dependencies, Settings |
+| T1 | adds Endpoints, Traces, Queries, Errors, Jobs and queues, Metrics, SLO; More: Compare versions, Events, Runtime |
+| T2 | adds Security |
+
+A link to a tab the tier does not have opens the Overview. The **Tier 0 Overview** shows running instances and hosts, listening ports, open alerts, linked code and outbound destinations, a "Where it runs" list (host, pid, container, ports, start time), open alerts, the host rules that run without instrumentation (APP-H01–H08, H11) and the OpenTelemetry set-up hint. It loads no request statistics. **Settings** shows on Tier 0 only exposure, criticality, data sensitivity, owner, notification route, maintenance windows and learning; route, latency, SLO, sampling, database statement, error message and client-IP settings appear from Tier 1, clear-text user identifiers from Tier 2.
+
+- **Code**: repositories linked to the service and their findings checked against what the service's processes run (Codebase capability.md section 4.15).
 
 - **Instances**: host, pid, container, version, instrumented or discovered, identity, listening ports, last seen, runtime summary.
 - **Runtime**: sensor tier per instance and host events attributed to the service through `raw.proc.ancestors` (`GET /services/{id}/runtime`).
@@ -616,10 +628,14 @@ Implemented in: `app_compare.go`.
 
 Implemented in: `app_services.go`, `app_timeline.go`, `app_overview.go`.
 
-### 10.15 Overview, Services, Coverage, Settings pages
+### 10.15 Hosts, Overview, Services, Coverage, Settings pages
 
-- **Overview** (`/applications`): counts by tier, exposure and criticality; coverage = share of services at T1 or T2; open alerts by service (top 20); changes in range (new routes, dependencies, deploys); **Needs attention** with reasons `asserted_identity`, `route_overflow`, `trace_drops`, `not_reporting` (an OTLP service with no live instance).
-- **Services** (`/applications/services`): every service with tier, exposure, criticality, request and error rate, containers, images, units, hosts; filter by text and environment; bulk exposure/criticality edit for admins.
+- **Hosts** (`/applications`, the landing page of Applications): every host with an application-monitoring agent and at least one live service instance in the last 24 hours (other agents are not listed). Per host: top risk, services by tier, open service and host alerts, the latest host vulnerability scan (critical, high, medium, cached CVEs), vulnerable code its services load, agent state. Worst first (`GET /api/v1/app/hosts`).
+- **Host page** (`/applications/hosts/{agent}`, `GET /api/v1/app/hosts/{agent}`):
+  - **Services on this host**: tier, what it is, the OS package it runs from, ports, exposure, open alerts, vulnerable code it loads, host-scan risks attributed to it, linked repositories. Ordered like the Services list.
+  - **Open risks**, one list, worst first, filterable by type and service: service alerts (alerts linked to a service on the host), host alerts (the rest of the agent's open alerts), vulnerable code (dependency findings from any repository's latest scan whose package version a service here runs; marked linked or not linked to that service), exposed ports (host-scan port findings, medium or worse, attributed to the service listening on the port), host CVEs (cached NVD results, attributed to a service whose name or OS package matches), host configuration findings. Service-attributed items are weighted by the service (internet-facing +1, high or critical criticality +1, capped at critical); vulnerable code on disk but not loaded is lowered one level.
+- **Overview** (`/applications/overview`): counts by tier, exposure and criticality; coverage = share of services at T1 or T2; open alerts by service (top 20); changes in range (new routes, dependencies, deploys); **Needs attention** with reasons `asserted_identity`, `route_overflow`, `trace_drops`, `not_reporting` (an OTLP service with no live instance).
+- **Services** (`/applications/services`): every service with tier, exposure, criticality, request and error rate, containers, images, units, hosts; filter by text and environment; bulk exposure/criticality edit for admins. Default order: Tier 2, Tier 1, then Tier 0. Tier 0 services are ranked by what they are, recognised from the process name, executable or container image: databases (PostgreSQL, MySQL/MariaDB, MongoDB, SQL Server, Oracle, ClickHouse, MinIO…), then caches (Redis, Valkey, Memcached, etcd), web servers and proxies (nginx, Apache, Caddy, HAProxy, Envoy, Traefik, IIS…), app servers and runtimes (PHP-FPM, Tomcat, JBoss/WildFly, Jetty, Gunicorn, uWSGI, Keycloak, Vault, Jenkins…), brokers and search (RabbitMQ, Kafka, NATS, Elasticsearch/OpenSearch…), then other processes with a language runtime (likely your own applications), then everything else. The name column shows the recognised product and "code" when a repository is linked; a **What it is** facet filters by kind. Tier 0 rows show **Running** or **Stopped** instead of request health. Services cannot be deleted; unneeded ones simply sort last.
 - **Coverage** (`/applications/coverage`): per service what is and is not set up; services that never sent telemetry; the application rule list with counters since the management backend started (fired, fired in observe mode, degraded, skipped by reason); whether the rule engine runs and how many host events it dropped because its queue was full.
 - **Settings** (`/applications/settings`): services with learning status (click to edit), rule catalogue with default mode, retention text.
 

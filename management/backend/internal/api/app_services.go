@@ -271,6 +271,10 @@ type appServiceRow struct {
 	Units         []string           `json:"units"`
 	Hosts         []string           `json:"hosts"`
 	Settings      appServiceSettings `json:"settings"`
+	Role          string             `json:"role"`                 // database | cache | web | runtime | queue | search | app | other
+	RoleLabel     string             `json:"role_label,omitempty"` // e.g. "PostgreSQL"
+	RoleRank      int                `json:"role_rank"`            // sort rank within Tier 0 (lower first)
+	CodeLinks     int                `json:"code_links"`           // repositories linked to the service
 }
 
 func appHandleListServices(db, backendDB *store.DB) http.HandlerFunc {
@@ -336,7 +340,19 @@ func appHandleListServices(db, backendDB *store.DB) http.HandlerFunc {
 			} else {
 				list[i].Settings = appDefaultSettings()
 			}
+			role := appServiceRole(list[i].Name, list[i].Attrs, list[i].Images, list[i].Tier)
+			list[i].Role, list[i].RoleLabel, list[i].RoleRank = role.Role, role.Label, role.Rank
 		}
+		if links, err := db.ServiceCodeLinks(r.Context(), ids); err == nil {
+			n := map[int64]int{}
+			for _, l := range links {
+				n[l.ServiceID]++
+			}
+			for i := range list {
+				list[i].CodeLinks = n[list[i].ID]
+			}
+		}
+		appSortServices(list)
 		writeJSON(w, http.StatusOK, map[string]any{"services": list, "from": from, "to": to})
 	}
 }
@@ -469,6 +485,21 @@ func appHandleGetService(db, backendDB *store.DB) http.HandlerFunc {
 			}
 		}
 		s.Versions, s.Edges = len(versions), len(edges)
+		var imgs []string
+		for _, i := range instances {
+			var ia struct {
+				Image string `json:"image"`
+				Exe   string `json:"exe"`
+			}
+			if i.StoppedAt == nil && json.Unmarshal(i.Attrs, &ia) == nil {
+				imgs = append(imgs, ia.Image, ia.Exe)
+			}
+		}
+		role := appServiceRole(s.Name, s.Attrs, imgs, s.Tier)
+		s.Role, s.RoleLabel, s.RoleRank = role.Role, role.Label, role.Rank
+		if links, err := db.ServiceCodeLinks(r.Context(), []int64{id}); err == nil {
+			s.CodeLinks = len(links)
+		}
 		writeJSON(w, http.StatusOK, map[string]any{"service": s, "instances": instances, "versions": versions, "edges": edges})
 	}
 }

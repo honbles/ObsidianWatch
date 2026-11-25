@@ -4,6 +4,7 @@ import CodeOverview from './code/CodeOverview'
 import AutomationPanel from './code/AutomationPanel'
 import ReachBadge, { REACH_ORDER, reachTitle } from './code/ReachBadge'
 import FindingActions, { TriageBadge } from './code/FindingActions'
+import CreateIssuesDialog from './code/CreateIssuesDialog'
 import { GitBranch, GitCommit, Code, Bell, Activity, Search,
          RefreshCw, Plus, Trash2, ChevronRight, AlertTriangle,
          CheckCircle, XCircle, Eye, EyeOff, Clock, User,
@@ -338,12 +339,25 @@ function PosturePanel({ conn }) {
         <button onClick={run} disabled={busy} className="px-4 py-2 text-xs font-semibold bg-siem-accent text-white rounded-xl disabled:opacity-40">
           {busy ? 'Scanning…' : 'Run posture check'}
         </button>
-        <span className="text-xs text-siem-muted">Branch protection, secret scanning, push protection and org 2FA (GitHub).</span>
+        <span className="text-xs text-siem-muted">Branch protection, secret scanning, push protection and org/group 2FA. Checks the token cannot see are listed as not assessed.</span>
       </div>
       {err && <div className="text-sm text-red-400">{err}</div>}
       {res && (
         <div className="text-xs space-y-1">
-          <div className="text-siem-muted">{res.repos_checked} repos checked · {(res.findings || []).length} findings</div>
+          <div className="text-siem-muted">{res.repos_checked} repos checked · {(res.findings || []).length} findings{(res.not_assessed || []).length > 0 && <span className="text-amber-400"> · {(res.not_assessed || []).reduce((n, g) => n + g.count, 0)} checks not assessed</span>}</div>
+          {(res.not_assessed || []).length > 0 && (
+            <div className="border border-amber-500/40 bg-amber-500/5 rounded-lg p-3 space-y-2">
+              <div className="font-semibold text-amber-300">Some checks could not run with this token. A finding count of 0 does not mean these are configured.</div>
+              {res.not_assessed.map((g, i) => (
+                <div key={i}>
+                  <span className="font-medium text-siem-text">{g.check}</span>
+                  <span className="text-siem-muted"> · {g.count} {g.count === 1 ? 'item' : 'items'} · {g.reason}</span>
+                  {(g.examples || []).length > 0 && <span className="text-siem-muted font-mono ml-1">({g.examples.join(', ')}{g.count > g.examples.length ? ', …' : ''})</span>}
+                  <div className="text-siem-muted mt-0.5">Fix: {g.fix}</div>
+                </div>
+              ))}
+            </div>
+          )}
           {(res.findings || []).map((f, i) => (
             <div key={i} className="border border-siem-border rounded-lg p-3">
               <span className={`font-semibold uppercase mr-2 ${sevCls[f.severity] || ''}`}>{f.severity}</span>
@@ -385,6 +399,7 @@ function ConnectorDetail({ conn, onSync, onDisconnect, syncing }) {
   const [sastSelRepo, setSastSelRepo] = useState('')
   const [sastSelBranch, setSastSelBranch] = useState('')
   const [sastBranches, setSastBranches] = useState([])
+  const [issuesOpen, setIssuesOpen] = useState(false)
   const loadBranches = useCallback((repo, def) => {
     setSastBranches([])
     if (!repo) return
@@ -771,6 +786,15 @@ function ConnectorDetail({ conn, onSync, onDisconnect, syncing }) {
                   <Zap size={13}/>{aiSastLoading ? 'Triaging…' : 'AI Triage'}
                 </button>
               )}
+              {sastResult && !sasting && (sastResult.repo || sastSelRepo) && (
+                <button onClick={() => setIssuesOpen(true)}
+                  title="Create one issue per problem on the platform for the findings of this repository"
+                  className="flex items-center gap-2 px-4 py-2 text-xs font-semibold border border-siem-border hover:border-siem-accent text-siem-text rounded-xl transition-colors">
+                  <Bug size={13}/>Create issues
+                </button>
+              )}
+              {issuesOpen && sastResult && <CreateIssuesDialog conn={conn} repo={sastResult.repo || sastSelRepo} branch={sastResult.branch || sastSelBranch}
+                onClose={() => setIssuesOpen(false)} onDone={reloadSAST} />}
             </div>
 
             {sastError && (
@@ -979,6 +1003,7 @@ function ConnectorDetail({ conn, onSync, onDisconnect, syncing }) {
                                     {f.cwe && <span className="text-[9px] text-violet-400/60 shrink-0">{f.cwe}</span>}
                                     <ReachBadge reach={f.reachability} />
                                     <TriageBadge f={f} />
+                                    {f.issue_url && <a href={f.issue_url} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()} className="text-[9px] px-1.5 py-0.5 rounded border border-siem-accent/40 text-siem-accent shrink-0">issue</a>}
                                     {f.engine && f.engine !== 'semgrep' && (
                                       <span className={`text-[9px] px-1 rounded shrink-0 ${
                                         f.engine === 'codeql' ? 'bg-blue-950/40 text-blue-400' :

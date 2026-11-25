@@ -44,11 +44,11 @@ func devopsJSON(ctx context.Context, method, url string, headers map[string]stri
 	if err != nil {
 		return err
 	}
-	for k, v := range headers {
-		req.Header.Set(k, v)
-	}
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
+	}
+	for k, v := range headers { // may override the content type
+		req.Header.Set(k, v)
 	}
 	resp, err := devopsHTTP.Do(req)
 	if err != nil {

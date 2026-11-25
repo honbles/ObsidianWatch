@@ -155,6 +155,7 @@ func (db *DB) DeleteDevOpsConnector(ctx context.Context, id int64) error {
 	// the last scheduled run.
 	_, _ = db.ExecContext(ctx, `DELETE FROM settings WHERE key = ANY($1)`, pq.Array([]string{
 		fmt.Sprintf("devops.posture.last.%d", id), fmt.Sprintf("code.policy.%d", id), fmt.Sprintf("code.schedule.last.%d", id)}))
+	db.DeleteServiceCodeLinksForConnector(ctx, id)
 	return nil
 }
 
