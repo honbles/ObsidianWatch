@@ -15,6 +15,7 @@ import (
 
 	"obsidianwatch/management/internal/auth"
 	"obsidianwatch/management/internal/store"
+	"obsidianwatch/management/internal/telemetry"
 )
 
 func writeJSON(w http.ResponseWriter, status int, v interface{}) {
@@ -104,6 +105,7 @@ func handleLogin(db *store.DB, jwt *auth.JWTService, logger *slog.Logger) http.H
 		}
 		ip := clientIP(r)
 		if !loginIPLimiter.Allow(ip) || !loginLimiter.Allow(strings.ToLower(body.Username)) {
+			telemetry.Event(r.Context(), "ratelimit.hit", "limit_name", "login", "user", body.Username, "client.address", ip)
 			writeJSON(w, 429, map[string]string{"error": "too many login attempts, try again later"})
 			return
 		}
@@ -462,10 +464,10 @@ func handleStats(db *store.DB) http.HandlerFunc {
 
 		var sastRepos, sastFindings, sastCritical, sastHigh, sastMedium int64
 		db.QueryRowContext(r.Context(), `SELECT COUNT(DISTINCT repo) FROM sast_results`).Scan(&sastRepos)
-		db.QueryRowContext(r.Context(), `SELECT COALESCE(SUM(finding_count),0) FROM sast_results WHERE id IN (SELECT MAX(id) FROM sast_results GROUP BY connector_id, repo)`).Scan(&sastFindings)
-		db.QueryRowContext(r.Context(), `SELECT COALESCE(SUM(critical_count),0) FROM sast_results WHERE id IN (SELECT MAX(id) FROM sast_results GROUP BY connector_id, repo)`).Scan(&sastCritical)
-		db.QueryRowContext(r.Context(), `SELECT COALESCE(SUM(high_count),0) FROM sast_results WHERE id IN (SELECT MAX(id) FROM sast_results GROUP BY connector_id, repo)`).Scan(&sastHigh)
-		db.QueryRowContext(r.Context(), `SELECT COALESCE(SUM(medium_count),0) FROM sast_results WHERE id IN (SELECT MAX(id) FROM sast_results GROUP BY connector_id, repo)`).Scan(&sastMedium)
+		db.QueryRowContext(r.Context(), `SELECT COALESCE(SUM(finding_count),0) FROM sast_results WHERE id IN (SELECT MAX(id) FROM sast_results WHERE branch NOT LIKE '@%' GROUP BY connector_id, repo)`).Scan(&sastFindings)
+		db.QueryRowContext(r.Context(), `SELECT COALESCE(SUM(critical_count),0) FROM sast_results WHERE id IN (SELECT MAX(id) FROM sast_results WHERE branch NOT LIKE '@%' GROUP BY connector_id, repo)`).Scan(&sastCritical)
+		db.QueryRowContext(r.Context(), `SELECT COALESCE(SUM(high_count),0) FROM sast_results WHERE id IN (SELECT MAX(id) FROM sast_results WHERE branch NOT LIKE '@%' GROUP BY connector_id, repo)`).Scan(&sastHigh)
+		db.QueryRowContext(r.Context(), `SELECT COALESCE(SUM(medium_count),0) FROM sast_results WHERE id IN (SELECT MAX(id) FROM sast_results WHERE branch NOT LIKE '@%' GROUP BY connector_id, repo)`).Scan(&sastMedium)
 
 		// SAST results list
 		var sastResults []map[string]interface{}

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"obsidianwatch/linux-agent/internal/ebpf"
+	"obsidianwatch/linux-agent/internal/obi"
 	"obsidianwatch/linux-agent/internal/otel"
 	"obsidianwatch/linux-agent/pkg/schema"
 )
@@ -55,6 +56,16 @@ type EbpfConfig struct {
 	Environment  string        `yaml:"environment"`   // deployment environment given to discovered services
 	WatchDirs    []string      `yaml:"watch_dirs"`    // extra web/upload directories for file events
 	SecretFiles  []string      `yaml:"secret_files"`  // extra credential files to watch for reads
+	// Requests turns on request tracing without code changes: the agent runs the
+	// bundled OpenTelemetry eBPF Instrumentation (OBI) for discovered services.
+	Requests RequestsConfig `yaml:"requests"`
+}
+
+// RequestsConfig configures eBPF request tracing (OBI).
+type RequestsConfig struct {
+	Enabled    bool          `yaml:"enabled"`
+	Path       string        `yaml:"path"`        // default /usr/local/lib/obsidianwatch/obi
+	MinRestart time.Duration `yaml:"min_restart"` // shortest time between restarts for new ports (default 10m)
 }
 
 // OTLPConfig selects where the receiver listens. Only loopback addresses and Unix
@@ -188,7 +199,7 @@ func (c *Config) StartAppMonitoring(ctx context.Context, agentID, hostname strin
 					return false
 				}
 			},
-			ServicePIDs: svc.InstrumentedPIDs, Discovered: svc.AddDiscovered, Logger: logger,
+			ServicePIDs: svc.InstrumentedPIDs, Discovered: c.discoveredSink(ctx, svc, app, logger, active), Logger: logger,
 		})
 		*active = append(*active, "app-sensor")
 		go func() {
@@ -200,5 +211,39 @@ func (c *Config) StartAppMonitoring(ctx context.Context, agentID, hostname strin
 				}
 			}
 		}()
+	}
+}
+
+// discoveredSink feeds discovered services to the aggregator and, when request
+// tracing is on and the obi binary is installed, to the OBI runner.
+func (c *Config) discoveredSink(ctx context.Context, svc *otel.Service, app AppMonitoringConfig, logger *slog.Logger, active *[]string) func([]otel.BatchInstance) {
+	rq := app.Ebpf.Requests
+	if !rq.Enabled {
+		return svc.AddDiscovered
+	}
+	path := rq.Path
+	if path == "" {
+		path = "/usr/local/lib/obsidianwatch/obi"
+	}
+	if !obi.Available(path) {
+		logger.Warn("request tracing is on but the obi binary is missing; discovered services stay host-only", "path", path)
+		return svc.AddDiscovered
+	}
+	if app.OTLP.Listen == "" {
+		logger.Warn("request tracing needs the OTLP receiver on a loopback TCP address (app_monitoring.otlp.listen)")
+		return svc.AddDiscovered
+	}
+	runner := obi.New(obi.Options{Path: path, StateDir: "/var/lib/obsidianwatch/obi", OTLPEndpoint: "http://" + app.OTLP.Listen,
+		MinRestart: rq.MinRestart, Instrumented: svc.InstrumentedPIDs, Logger: logger})
+	svc.Recv.SetProxy(runner)
+	*active = append(*active, "app-requests-ebpf")
+	go func() {
+		if err := runner.Run(ctx); err != nil {
+			logger.Warn("request tracing (OBI) stopped", "err", err)
+		}
+	}()
+	return func(list []otel.BatchInstance) {
+		svc.AddDiscovered(list)
+		runner.Update(list)
 	}
 }

@@ -137,8 +137,9 @@ Allow one to two minutes: the agent flushes every 30 s and holds the current min
 4. Service page → **Instances** tab. The instance says **verified** with the executable. **asserted** means the agent could not match the connection to a process: see section 6.
 5. **Applications → Coverage.** The row for the service shows what is set up and what is "not set up" for the next tier. The detection-rules card shows whether the rule engine is running and per rule how often it fired, fired in observe mode, ran degraded, or was skipped and why (for example "learning", "deploy window", "no login routes configured or recognised").
 6. **Applications → Overview → Needs attention.** Lists services with `asserted_identity`, `route_overflow`, `trace_drops`, or `not_reporting`.
-7. Service page → **Traces** tab.
-8. Service page → **Code** tab (optional): link the repository and branch the service is built from to see its code findings checked against what this service runs. Error and slow traces appear, plus about 1 % of ordinary ones.
+7. With **Trace requests without code changes** built in: discovered services turn "T1·eBPF" within a few minutes and their Endpoints tab fills. If they stay T0, read `/var/lib/obsidianwatch/obi/obi.log` (kernel without BTF, agent not root) and check the agent log for `request tracing (OBI) running`.
+8. Service page → **Traces** tab.
+9. Service page → **Code** tab (optional): link the repository and branch the service is built from to see its code findings checked against what this service runs. Error and slow traces appear, plus about 1 % of ordinary ones.
 
 Agent log lines that help:
 
@@ -150,7 +151,47 @@ Agent log lines that help:
 | `app batch rejected, dropping status=413` | a batch section exceeded the backend's cap |
 | `host sensor running mode=poll` | the agent is not root or the proc connector is unavailable |
 
-Known gaps that affect verification today (see [capability.md](capability.md) section 15): the Queries, Errors, Metrics and Jobs tabs stay empty with the current agent because those sections are dropped before sending (defect D1).
+Known gaps that affect verification today are listed in [capability.md](capability.md) section 15. Request tracing with eBPF has been tested with a stand-in for the OBI binary only, not with OBI on a real kernel.
+
+## 7a. Monitor the ObsidianWatch management server itself
+
+The management server (Go) is instrumented with the official OpenTelemetry Go SDK (`go.opentelemetry.io/otel` v1.46.0, `otlptracehttp`, `otelhttp` v0.71.0; the newest release that builds with Go 1.25) plus the ObsidianWatch security helper, so it reaches **Tier 2**. Code: `management/backend/internal/telemetry`. It is off until an OTLP endpoint is set:
+
+| Variable | Meaning |
+|---|---|
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | Base URL of the agent's receiver, e.g. `http://127.0.0.1:4318` (traces go to `/v1/traces`), or `unix:///run/obsidianwatch/otlp.sock` |
+| `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` | Full traces URL, used as given (overrides the above) |
+| `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT` | Full URL for the security events (default: the base URL + `/v1/logs`, or the traces URL with `/v1/traces` replaced) |
+| `OTEL_SERVICE_NAME` | Default `obsidianwatch-management` |
+| `OTEL_RESOURCE_ATTRIBUTES` | `deployment.environment=prod`; `vcs.*` keys are passed on |
+| `OW_VERSION`, `OW_BUILD_COMMIT` | `service.version` and the commit (`vcs.ref.head.revision`); without `OW_BUILD_COMMIT` the commit Go stamped into the binary is used when the build had git metadata |
+| `OTEL_SDK_DISABLED=true` | Off |
+
+What it records: a server span per API request (method, route template from the router, e.g. `/api/v1/app/services/{id}`; unknown API paths are `(unmatched)`; status; peer and forwarded client address); a client span per database statement made while serving a request (operation, table, statement text, which the agent turns into a value-free fingerprint only when the service's statement setting is on); a job span per background run (`detection.pass`, `detection.devops`, `code-scan.<kind>`, `runtime-inventory.index`, `deployed-commit.sweep`), shown on the Jobs tab; a client span per outgoing HTTP call made under a request or job through the default client, the DevOps client or the AWS client (GitHub, GitLab, Azure DevOps, NVD, AWS...), which become dependencies, with no trace headers sent to those third parties; an `exception` event with the Go stack when a handler panics, and an error status for 5xx answers. WebSocket upgrades are not traced. Spans go out as OTLP/HTTP protobuf through the SDK batch processor (every 2 s or 512 spans, queue 8 192, dropped when full); a trace keeps at most 200 child spans.
+
+Security events (Tier 2), sent as OTLP log records (JSON, `helper_version` `ow-go/1`) with the trace and span of the request, route and client address:
+
+| Event | Raised when |
+|---|---|
+| `auth.login` | sign-in succeeds or fails (`outcome`, `method=password`, `reason=invalid_credentials`) |
+| `ratelimit.hit` | the login limiter (`limit_name=login`) or the AI request limiter (`limit_name=ai`) refuses a request |
+| `authz.deny` | `adminOnly` (`policy=admin_only`) or the viewer read-only guard (`policy=read_only_role`) answers 403 |
+| `admin.action` | every audited change the handlers record (`action` = the audit action, e.g. `create_user`, `response_isolate`; `target_type`/`target_id` from the audit target). The generic `api:<method>` audit rows are not repeated |
+| `data.export` | event export, collected-file download, SBOM download, fleet-hunt CSV, agent package download (`object_type`, `format`) |
+
+User names, object ids and sessions are pseudonymised by the agent with the organisation key unless the service is set to cleartext users.
+
+**Docker, step by step** (`docker-compose.yml` already passes the variables and mounts `/run/obsidianwatch/otlp`):
+
+1. On the Docker host, install an agent built with the app-server profile and **Unix socket path** `/run/obsidianwatch/otlp/otlp.sock` (Agent builder).
+2. In the `.env` next to `docker-compose.yml` add `OTEL_EXPORTER_OTLP_ENDPOINT=unix:///run/obsidianwatch/otlp/otlp.sock`, optionally `OW_ENVIRONMENT=prod` and `OW_BUILD_COMMIT=<git rev-parse HEAD of the build>`.
+3. `docker compose up -d mgmt-api`. The management log shows `telemetry: OpenTelemetry SDK exporting traces`; within two minutes **Applications → Services** lists `obsidianwatch-management` at Tier 1, and at Tier 2 after the first security event (any sign-in).
+
+The directory is mounted (not the socket file) so an agent restart, which recreates the socket, does not break it.
+
+**Why a socket.** The management container cannot reach the host agent's loopback receiver. Build the host's agent with the OTLP Unix socket (Agent builder, "Unix socket path", e.g. `/run/obsidianwatch/otlp.sock`), mount that directory into the management container, and set `OTEL_EXPORTER_OTLP_ENDPOINT=unix:///run/obsidianwatch/otlp.sock`. On a host install without Docker, `http://127.0.0.1:4318` is enough. The service then appears as `obsidianwatch-management` at Tier 2 (sdk `opentelemetry 1.46.0`), bound to the server process (identity verified), with its database as a dependency. Linking this repository to it (Code tab) checks findings against the exact commit when `OW_BUILD_COMMIT` is set at build time.
+
+**SDK version.** OpenTelemetry Go v1.47 and later need Go 1.26. To move up, raise the Go version in `go.mod` and in `management/docker/Dockerfile` first, then run `tools/fetch-otel-sdk.ps1` (or `.sh`) with the new versions. The repository keeps only `go.mod`/`go.sum`; `vendor/` is git-ignored and the Docker build downloads the modules.
 
 ## 8. Disable or uninstall
 

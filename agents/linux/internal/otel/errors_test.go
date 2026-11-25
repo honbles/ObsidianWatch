@@ -113,3 +113,17 @@ func TestDecodeExceptionEventJSON(t *testing.T) {
 		t.Fatalf("exception fields: %+v", s)
 	}
 }
+
+func TestParseGoStack(t *testing.T) {
+	stack := "goroutine 7 [running]:\nruntime/debug.Stack()\n\t/usr/local/go/src/runtime/debug/stack.go:26 +0x5e\nobsidianwatch/management/internal/api.handleThing.func1({0x1, 0x2}, 0xc000123)\n\t/build/management/backend/internal/api/thing.go:42 +0x1d\nnet/http.HandlerFunc.ServeHTTP(0xc0, {0x1, 0x2}, 0x3)\n\t/usr/local/go/src/net/http/server.go:2220 +0x29\n"
+	f := parseStack(stack)
+	if len(f) != 3 {
+		t.Fatalf("frames: %+v", f)
+	}
+	if f[1].fn != "obsidianwatch/management/internal/api.handleThing.func1" || f[1].line != 42 || f[1].lib || f[1].file != "internal/api/thing.go" {
+		t.Fatalf("app frame: %+v", f[1])
+	}
+	if !f[0].lib || !f[2].lib {
+		t.Fatalf("library frames: %+v", f)
+	}
+}

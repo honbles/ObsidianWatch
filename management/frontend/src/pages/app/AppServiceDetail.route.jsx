@@ -204,7 +204,7 @@ export default function AppServiceDetail() {
         state={st?.state} stateText={st && (st.state === 'warn' && lastDeploy && versionsInRange.length ? `Degraded since ${lastDeploy.version}` : st.text)} stateTitle={st?.why}
         sub={full ? <>{subParts.join(' · ')}
           <span style={{ display: 'inline-flex', gap: 6, marginLeft: 10, verticalAlign: 'middle' }}>
-            <AppTierBadge tier={full.tier} /><AppExposureBadge exposure={full.settings.exposure} settings={full.settings} /><AppCriticalityBadge criticality={full.settings.criticality} />
+            <AppTierBadge tier={full.tier} instrumentation={full.instrumentation} /><AppExposureBadge exposure={full.settings.exposure} settings={full.settings} /><AppCriticalityBadge criticality={full.settings.criticality} />
           </span>
           {full.settings.owner && <> · owner <span className="t1">{full.settings.owner}</span></>}
           {liveAsserted > 0 && <span className="c-warn"> · {liveAsserted} instance{liveAsserted > 1 ? 's' : ''} with asserted identity</span>}
@@ -290,7 +290,7 @@ export default function AppServiceDetail() {
                 </div>)}
               <div style={{ width: 180 }}><Meter pct={Math.min(100, Math.round(Math.min(learn.requests / APP_LEARN_REQUESTS, 1) * 50 + Math.min(learn.days / 7, 1) * 50))} state="acc"/></div>
             </div>
-            <AppSetupHint tier={full.tier} name={full.name} environment={full.environment} />
+            <AppSetupHint tier={full.tier} name={full.name} environment={full.environment} instrumentation={full.instrumentation} />
           </>)}
 
           {tab === 'routes' && <AppTabRoutes service={full} range={range} focus={sp.get('route') || ''} />}

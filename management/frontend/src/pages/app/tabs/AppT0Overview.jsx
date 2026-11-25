@@ -48,6 +48,7 @@ export default function AppT0Overview({ service, detail, alerts, edges, go }) {
             { key: 'p', label: 'Process', width: '110px', render: i => <span className="mono t2">{i.pid || '—'}</span> },
             { key: 'c', label: 'Container', width: '130px', render: i => <span className="mono t2">{i.container_id ? i.container_id.slice(0, 12) : '—'}</span> },
             { key: 'l', label: 'Ports', width: '130px', render: i => <span className="mono t2">{ports(i.listen).join(', ') || '—'}</span> },
+            { key: 'v', label: 'Commit', width: '110px', render: i => { const a = typeof i.attrs === 'string' ? JSON.parse(i.attrs || '{}') : (i.attrs || {}); return a.vcs_revision ? <span className="mono t2" title={`${a.vcs_revision} from ${a.vcs_source}${a.vcs_repo ? ' · ' + a.vcs_repo : ''}`}>{a.vcs_revision.slice(0, 7)}</span> : <span className="t3">—</span> } },
             { key: 's', label: 'Started', width: '110px', render: i => <span className="t2">{relTime(i.proc_start)}</span> },
           ]}/>
       </div>

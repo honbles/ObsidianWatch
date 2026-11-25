@@ -6,6 +6,8 @@ import (
 	"strings"
 	"sync/atomic"
 	"time"
+
+	"obsidianwatch/management/internal/telemetry"
 )
 
 // AW-09: the hand-written AWS clients had no retry/backoff for throttling or
@@ -72,6 +74,6 @@ func (t awsRetryTransport) RoundTrip(req *http.Request) (*http.Response, error) 
 }
 
 var awsClient = &http.Client{
-	Transport: awsRetryTransport{base: newGuardedTransport()},
+	Transport: telemetry.Transport(awsRetryTransport{base: newGuardedTransport()}),
 	Timeout:   2 * time.Minute,
 }

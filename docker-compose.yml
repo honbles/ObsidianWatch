@@ -106,8 +106,14 @@ services:
       AGENT_API_KEY: "${AGENT_API_KEY:-}"   # optional: no longer authenticates agents (they use certificates); seeds application user hashing
       OW_SECRET_KEY: "${OW_SECRET_KEY:?set OW_SECRET_KEY in .env}"   # M-12/CC-07: encrypts stored connector credentials + API keys. BACK THIS UP.
       OW_ALLOWED_ORIGINS: "${OW_ALLOWED_ORIGINS:-}"   # M-10: extra browser origins allowed to open WebSockets
+      # Self-monitoring (off when empty): traces of this server to the host's agent, e.g.
+      # unix:///run/obsidianwatch/otlp/otlp.sock (see docs/application/deployment.md 7a)
+      OTEL_EXPORTER_OTLP_ENDPOINT: "${OTEL_EXPORTER_OTLP_ENDPOINT:-}"
+      OTEL_RESOURCE_ATTRIBUTES: "deployment.environment=${OW_ENVIRONMENT:-prod}"
+      OW_BUILD_COMMIT: "${OW_BUILD_COMMIT:-}"
     volumes:
       - ./management/docker/server.yaml:/app/server.yaml
+      - /run/obsidianwatch/otlp:/run/obsidianwatch/otlp   # the host agent's OTLP socket directory (self-monitoring)
       - ./backend/docker/server.yaml:/app/backend-server.yaml
       - certs:/app/certs:ro
       - agent-cache:/var/lib/obsidianwatch/agent-cache

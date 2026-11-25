@@ -6,8 +6,11 @@ const TIER = {
   1: ['T1', 'info', 'OpenTelemetry received'],
   2: ['T2', 'info', 'Security helper events received'],
 }
-export function AppTierBadge({ tier }) {
+export function AppTierBadge({ tier, instrumentation }) {
   const [label, cls, title] = TIER[tier] || TIER[0]
+  if (tier >= 1 && instrumentation === 'ebpf') {
+    return <span className={`${base} ${cls}`} title="Request data from the agent's eBPF instrumentation (no code change)">{label}·eBPF</span>
+  }
   return <span className={`${base} ${cls}`} title={title}>{label}</span>
 }
 

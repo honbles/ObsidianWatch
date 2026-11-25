@@ -275,6 +275,48 @@ type appServiceRow struct {
 	RoleLabel     string             `json:"role_label,omitempty"` // e.g. "PostgreSQL"
 	RoleRank      int                `json:"role_rank"`            // sort rank within Tier 0 (lower first)
 	CodeLinks     int                `json:"code_links"`           // repositories linked to the service
+	// Instrumentation is how request data arrives: sdk (OpenTelemetry in the
+	// app), ebpf (the agent's eBPF instrumentation, no code change) or host
+	// (discovered only, no request data).
+	Instrumentation string `json:"instrumentation"`
+}
+
+// appInstrumentation tells sdk from ebpf instrumentation by the sdk the live
+// instances report ("ebpf ..." when the agent's OBI runner sent the data).
+func appInstrumentation(ctx context.Context, idb *store.DB, ids []int64) map[int64]string {
+	out := map[int64]string{}
+	if len(ids) == 0 {
+		return out
+	}
+	rows, err := idb.QueryContext(ctx, `SELECT service_id, bool_or(attrs->>'sdk' LIKE 'ebpf%'), bool_or(instrumented AND COALESCE(attrs->>'sdk','') NOT LIKE 'ebpf%')
+		FROM service_instances WHERE service_id = ANY($1) AND stopped_at IS NULL GROUP BY service_id`, pq.Array(ids))
+	if err != nil {
+		return out
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id int64
+		var ebpf, sdk bool
+		if rows.Scan(&id, &ebpf, &sdk) == nil {
+			switch {
+			case sdk:
+				out[id] = "sdk"
+			case ebpf:
+				out[id] = "ebpf"
+			}
+		}
+	}
+	return out
+}
+
+func instrumentationOf(m map[int64]string, id int64, tier int) string {
+	if v := m[id]; v != "" {
+		return v
+	}
+	if tier >= 1 {
+		return "sdk"
+	}
+	return "host"
 }
 
 func appHandleListServices(db, backendDB *store.DB) http.HandlerFunc {
@@ -351,6 +393,10 @@ func appHandleListServices(db, backendDB *store.DB) http.HandlerFunc {
 			for i := range list {
 				list[i].CodeLinks = n[list[i].ID]
 			}
+		}
+		inst := appInstrumentation(r.Context(), idb, ids)
+		for i := range list {
+			list[i].Instrumentation = instrumentationOf(inst, list[i].ID, list[i].Tier)
 		}
 		appSortServices(list)
 		writeJSON(w, http.StatusOK, map[string]any{"services": list, "from": from, "to": to})
@@ -500,6 +546,7 @@ func appHandleGetService(db, backendDB *store.DB) http.HandlerFunc {
 		if links, err := db.ServiceCodeLinks(r.Context(), []int64{id}); err == nil {
 			s.CodeLinks = len(links)
 		}
+		s.Instrumentation = instrumentationOf(appInstrumentation(r.Context(), idb, []int64{id}), id, s.Tier)
 		writeJSON(w, http.StatusOK, map[string]any{"service": s, "instances": instances, "versions": versions, "edges": edges})
 	}
 }

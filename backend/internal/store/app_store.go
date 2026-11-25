@@ -46,6 +46,10 @@ type AppInstance struct {
 	Unit          string          `json:"unit"`
 	ContainerName string          `json:"container_name"`
 	Image         string          `json:"image"`
+	VCSRevision   string          `json:"vcs_revision"` // commit the process was built from
+	VCSRepo       string          `json:"vcs_repo"`
+	VCSBranch     string          `json:"vcs_branch"`
+	VCSSource     string          `json:"vcs_source"` // otel | oci | git
 }
 
 // AppRouteStat is one per-minute aggregate for a route template.
@@ -371,7 +375,8 @@ func (db *DB) AppIngestBatch(ctx context.Context, agentID, host string, b AppBat
 			procStart = time.Unix(0, 0).UTC()
 		}
 		attrs, _ := json.Marshal(map[string]string{"language": in.Language, "sdk": in.SDK, "exe": in.Exe, "sensor": in.Sensor,
-			"unit": in.Unit, "container_name": in.ContainerName, "image": in.Image})
+			"unit": in.Unit, "container_name": in.ContainerName, "image": in.Image,
+			"vcs_revision": in.VCSRevision, "vcs_repo": in.VCSRepo, "vcs_branch": in.VCSBranch, "vcs_source": in.VCSSource})
 		identity := in.Identity
 		if identity != "verified" {
 			identity = "asserted" // default to the weaker claim

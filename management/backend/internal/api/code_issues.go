@@ -405,6 +405,8 @@ func handleCreateIssues(db *store.DB) http.HandlerFunc {
 		if body.Branch != "" {
 			q += ` AND (branch=$3 OR ($3='HEAD' AND branch=''))`
 			args = append(args, body.Branch)
+		} else {
+			q += ` AND branch NOT LIKE '@%'`
 		}
 		if err := db.QueryRowContext(r.Context(), q+` ORDER BY scanned_at DESC LIMIT 1`, args...).Scan(&raw, &branch); err != nil {
 			writeJSON(w, 404, map[string]string{"error": "no scan result for this repository and branch; run a SAST scan first"})

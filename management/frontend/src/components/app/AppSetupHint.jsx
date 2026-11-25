@@ -1,6 +1,13 @@
 // What to do next for a service that has not reached the next tier (spec 11.6).
-export default function AppSetupHint({ tier, name, environment }) {
+export default function AppSetupHint({ tier, name, environment, instrumentation }) {
   if (tier >= 2) return null
+  if (instrumentation === 'ebpf') {
+    return (
+      <div className="rounded-xl border border-sky-800/40 bg-sky-950/20 p-3 text-xs text-sky-200/90 space-y-1">
+        <div><b>Requests are traced with eBPF</b>, without changes to the application: rate, errors, latency, endpoints and traces. Add the OpenTelemetry SDK for exception details, custom spans and runtime metrics, and the security helper for Tier 2.</div>
+      </div>
+    )
+  }
   const env = environment && environment !== 'default' ? environment : '<environment>'
   const lines = [
     'OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:4318',

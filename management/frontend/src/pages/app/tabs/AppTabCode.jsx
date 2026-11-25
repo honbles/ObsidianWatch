@@ -91,6 +91,46 @@ function weighText(w = {}) {
     + ', and lowered one level when not in this service'
 }
 
+const SRC = { otel: 'OpenTelemetry vcs attributes', oci: 'container image label', git: 'git checkout on the host' }
+const SCAN_STATE = {
+  scanned: ['scanned', 'c-ok'], queued: ['scan queued', 'c-warn'], running: ['scanning…', 'c-warn'], failed: ['scan failed', 'c-crit'],
+  short_id: ['short commit id, cannot fetch', 't3'], repo_mismatch: ['different repository', 'c-crit'], none: ['not scanned yet', 't3'],
+}
+
+// What runs: the commits the instances report and the scan of each.
+function Deployments({ link }) {
+  const deps = link.deployments || []
+  if (!deps.length) {
+    return <div className="t3" style={{ padding: '8px 14px', fontSize: 12.5 }}>
+      <span className="mono">{link.repo}</span>: no instance reports the commit it runs, so findings are from the latest scan of <span className="mono">{link.branch || 'the default branch'}</span>. Add the commit as an OpenTelemetry resource attribute (<span className="mono">vcs.ref.head.revision</span>) or an image label (<span className="mono">org.opencontainers.image.revision</span>) to see exactly what runs.
+    </div>
+  }
+  return (
+    <div style={{ padding: '8px 14px', display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12.5 }}>
+      {deps.map(d => {
+        const [label, cls] = SCAN_STATE[d.scan.status] || SCAN_STATE.none
+        return (
+          <div key={d.revision}>
+            <span className="t2">{d.primary ? 'Running' : 'Also running'}</span> <span className="mono t1" title={d.revision}>{d.short}</span>
+            {d.branch && <span className="t3"> ({d.branch})</span>}
+            <span className="t2"> · {d.instances} instance{d.instances === 1 ? '' : 's'} on {d.hosts.join(', ')}</span>
+            <span className="t3"> · from {SRC[d.source] || d.source}</span>
+            <span className={cls}> · {label}{d.scan.scanned_at ? ' ' + relTime(d.scan.scanned_at) : ''}</span>
+            {d.scan.counts && <span style={{ marginLeft: 8 }}><Counts parts={[[d.scan.counts.critical, 'crit', 'var(--crit)'], [d.scan.counts.high, 'high', 'var(--warn)'], [d.scan.counts.medium, 'med']]}/></span>}
+            {d.repo_mismatch && <div className="c-crit" style={{ fontSize: 12 }}>This instance reports <span className="mono">{d.repo}</span>, not <span className="mono">{link.repo}</span>. Check the link.</div>}
+            {d.scan.error && <div className="c-crit" style={{ fontSize: 12 }}>{d.scan.error}</div>}
+          </div>
+        )
+      })}
+      <div className="t3" style={{ fontSize: 12 }}>
+        {link.showing === 'commit'
+          ? <>Findings below are from the scan of the running commit <span className="mono">{link.showing_revision.slice(0, 12)}</span>.</>
+          : <>Findings below are from the latest scan of <span className="mono">{link.branch || 'the default branch'}</span> until the running commit is scanned.</>}
+      </div>
+    </div>
+  )
+}
+
 // Code: the repositories linked to this service and their findings, each
 // dependency finding labelled against what this service's processes run.
 export default function AppTabCode({ service }) {
@@ -100,7 +140,7 @@ export default function AppTabCode({ service }) {
   const [filter, setFilter] = useState('running')
   const links = data?.links || []
   const findings = data?.findings || []
-  const scanning = links.some(l => l.scanning)
+  const scanning = links.some(l => l.scanning || (l.deployments || []).some(d => d.scan.status === 'queued' || d.scan.status === 'running'))
   useEffect(() => {
     if (!scanning) return
     const t = setTimeout(reload, 10000)
@@ -142,10 +182,11 @@ export default function AppTabCode({ service }) {
               { key: 'r', label: 'Repository', width: 'minmax(180px, 1.4fr)', render: l => <Link className="mono t1" to={`/devops/repos/${l.connector_id}/${encodeURIComponent(l.repo)}`}>{l.repo}</Link> },
               { key: 'b', label: 'Branch', width: '130px', render: l => <span className="mono t2">{l.branch || 'default'}{l.is_default && l.branch ? <span className="t3"> (default)</span> : null}</span> },
               { key: 'c', label: 'Connector', width: '140px', render: l => <span className="t2">{l.connector || '—'} <span className="t3">{l.provider}</span></span> },
-              { key: 's', label: 'Last scan', width: '130px', render: l => l.scanning ? <span className="c-warn">scanning…</span> : l.scanned_at ? <span className="t2">{relTime(l.scanned_at)}</span> : <span className="t3">not scanned</span> },
+              { key: 's', label: 'Findings from', width: '150px', render: l => l.scanning && !l.scanned_at ? <span className="c-warn">scanning…</span> : l.scanned_at ? <span className="t2">{l.showing === 'commit' ? <>commit <span className="mono">{l.showing_revision.slice(0, 7)}</span></> : 'branch head'} · {relTime(l.scanned_at)}</span> : <span className="t3">not scanned</span> },
               { key: 'n', label: 'Findings', width: 'minmax(170px, 1fr)', render: l => <Counts parts={[[l.counts.critical, 'crit', 'var(--crit)'], [l.counts.high, 'high', 'var(--warn)'], [l.counts.medium, 'med'], [l.counts.low, 'low'], [l.dismissed, 'dismissed']]}/> },
               ...(admin ? [{ key: 'x', label: '', width: '70px', render: l => <button className="ow-btn quiet" onClick={e => { e.stopPropagation(); remove(l) }}>Unlink</button> }] : []),
             ]}/>
+          {links.map(l => <div key={l.id} style={{ borderTop: '1px solid var(--line)' }}><Deployments link={l}/></div>)}
         </div>
 
         {links.length > 0 && <div className="ow-card" style={{ overflow: 'hidden' }}>

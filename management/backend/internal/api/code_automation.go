@@ -35,6 +35,7 @@ import (
 
 	"obsidianwatch/management/internal/config"
 	"obsidianwatch/management/internal/store"
+	"obsidianwatch/management/internal/telemetry"
 )
 
 // ── Policy ────────────────────────────────────────────────────────────────────
@@ -181,6 +182,8 @@ type codeJobResult struct {
 func (a *CodeAutomation) runJob(ctx context.Context, job *store.CodeScanJob) {
 	jctx, cancel := context.WithTimeout(ctx, 40*time.Minute)
 	defer cancel()
+	jctx, span := telemetry.StartJob(jctx, "code-scan."+job.Kind)
+	defer span.End()
 	conn, err := a.db.GetDevOpsConnectorRaw(jctx, job.ConnectorID)
 	if err != nil || conn == nil {
 		_ = a.db.FinishCodeScanJob(ctx, job.ID, "failed", false, 0, "connector not found", nil)
@@ -196,6 +199,7 @@ func (a *CodeAutomation) runJob(ctx context.Context, job *store.CodeScanJob) {
 	status, msg := "done", ""
 	if err != nil {
 		status, msg = "failed", err.Error()
+		span.SetError(msg)
 	}
 	b, _ := json.Marshal(res)
 	_ = a.db.FinishCodeScanJob(ctx, job.ID, status, blocked, len(res.Findings), msg, b)
@@ -229,15 +233,21 @@ func runBranchScan(ctx context.Context, db *store.DB, conn *store.DevOpsConnecto
 	if !history {
 		depth = 1
 	}
-	if err := cloneRepo(ctx, conn, job.Repo, branch, dir, depth); err != nil {
+	if job.Kind == "commit" { // one exact (deployed) commit, stored as branch "@<sha>"
+		if err := cloneCommit(ctx, conn, job.Repo, job.HeadSHA, dir, depth); err != nil {
+			return res, err
+		}
+		branch = "@" + job.HeadSHA
+	} else if err := cloneRepo(ctx, conn, job.Repo, branch, dir, depth); err != nil {
 		return res, err
 	}
+	sha := gitHeadSHA(ctx, dir)
 	res.Engines.set("source", "git")
 	findings, sbom := scanCheckout(ctx, conn, job.Repo, dir, scanOpts{History: history, Semgrep: semgrepAvailable(), CodeQL: codeqlAvailable()}, res.Engines, logger)
 	findings = deduplicateSASTFindings(findings)
 	res.Findings, res.Counts = findings, countBySeverity(findings)
 	// The stored result is what the Code pages show for this repository.
-	if err := saveSASTResult(ctx, db, conn.ID, job.Repo, branch, res.Engines, findings, sbom, 1, countSourceFiles(dir)); err != nil {
+	if err := saveSASTResult(ctx, db, conn.ID, job.Repo, branch, sha, res.Engines, findings, sbom, 1, countSourceFiles(dir)); err != nil {
 		res.Notes = append(res.Notes, "could not store the result: "+err.Error())
 	}
 	return res, nil

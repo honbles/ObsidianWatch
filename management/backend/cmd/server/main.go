@@ -15,6 +15,7 @@ import (
 	"obsidianwatch/management/internal/config"
 	"obsidianwatch/management/internal/store"
 	"obsidianwatch/management/internal/store/migrations"
+	"obsidianwatch/management/internal/telemetry"
 )
 
 func main() {
@@ -28,6 +29,10 @@ func main() {
 	}
 
 	logger := buildLogger(cfg.Log.Level, cfg.Log.Format)
+	// Traces of this server to the local agent (off unless OTEL_EXPORTER_OTLP_ENDPOINT is set).
+	telemetryCtx, stopTelemetry := context.WithCancel(context.Background())
+	defer stopTelemetry()
+	telemetry.Init(telemetryCtx, os.Getenv("OW_VERSION"), logger)
 
 	// Management database
 	if err := store.RequireSecretsKey(); err != nil {

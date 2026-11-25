@@ -596,6 +596,7 @@ func handleSAST(cfg *config.Config, db *store.DB, logger *slog.Logger) http.Hand
 		engines := engineReport{}
 		var sbom []byte
 		lastSourceErr := ""
+		commitSHA := ""
 		engine := "builtin"
 
 		logger.Info("sast: starting scan",
@@ -649,6 +650,9 @@ func handleSAST(cfg *config.Config, db *store.DB, logger *slog.Logger) http.Hand
 			}
 			if cloneErr == nil {
 				scannedFiles += countSourceFiles(repoDir)
+				if filterRepo != "" {
+					commitSHA = gitHeadSHA(ctx, repoDir)
+				}
 			} else {
 				_ = os.RemoveAll(repoDir)
 				logger.Warn("sast: git clone failed, using the provider API", "repo", repo, "err", cloneErr)
@@ -686,7 +690,7 @@ func handleSAST(cfg *config.Config, db *store.DB, logger *slog.Logger) http.Hand
 
 		saveBranch := filterBranch
 		if saveBranch == "" { saveBranch = "HEAD" }
-		dbErr := saveSASTResult(ctx, db, connID, filterRepo, saveBranch, engines, allFindings, sbom, scannedRepos, scannedFiles)
+		dbErr := saveSASTResult(ctx, db, connID, filterRepo, saveBranch, commitSHA, engines, allFindings, sbom, scannedRepos, scannedFiles)
 		if dbErr != nil {
 			logger.Warn("sast: failed to save", "err", dbErr)
 		}
@@ -1002,6 +1006,7 @@ func handleGetSASTResults(db *store.DB) http.HandlerFunc {
 				FROM sast_results
 				WHERE connector_id = $1 AND repo = $2
 				  AND ($3 = '' OR branch = $3 OR ($4 AND branch IN ('', 'HEAD')))
+				  AND (branch NOT LIKE '@%' OR branch = $3)
 				ORDER BY scanned_at DESC LIMIT 1`, connID, filterRepo, filterBranch,
 				// The default branch is stored as "HEAD" when it was scanned without a name.
 				filterBranch == "HEAD" || (filterBranch != "" && filterBranch == r.URL.Query().Get("default")),
@@ -1017,7 +1022,7 @@ func handleGetSASTResults(db *store.DB) http.HandlerFunc {
 				       scanned_at, repo_count, file_count, finding_count,
 				       critical_count, high_count, medium_count, findings, ai_summary,
 				       COALESCE(engines, '{}'::jsonb), sbom IS NOT NULL
-				FROM sast_results WHERE connector_id = $1
+				FROM sast_results WHERE connector_id = $1 AND branch NOT LIKE '@%'
 				ORDER BY scanned_at DESC LIMIT 1`, connID,
 			).Scan(&result.ID, &result.ConnectorID, &result.Repo, &result.Branch, &result.Engine,
 				&result.ScannedAt, &result.RepoCount, &result.FileCount, &result.FindingCount,
@@ -1055,7 +1060,7 @@ type sastRepoScan struct {
 func latestSASTPerRepo(ctx context.Context, db *store.DB, connID int64) []sastRepoScan {
 	rows, err := db.QueryContext(ctx, `
 		SELECT DISTINCT ON (COALESCE(repo,'')) COALESCE(repo,''), COALESCE(branch,''), COALESCE(engine,'semgrep'), scanned_at, findings
-		FROM sast_results WHERE connector_id = $1
+		FROM sast_results WHERE connector_id = $1 AND branch NOT LIKE '@%'
 		ORDER BY COALESCE(repo,''), scanned_at DESC
 		LIMIT 1000`, connID)
 	if err != nil {
@@ -1091,6 +1096,8 @@ func handleSASTSBOM(db *store.DB) http.HandlerFunc {
 		if branch != "" {
 			q += ` AND branch=$3`
 			args = append(args, branch)
+		} else {
+			q += ` AND branch NOT LIKE '@%'`
 		}
 		q += ` ORDER BY scanned_at DESC LIMIT 1`
 		if err := db.QueryRowContext(r.Context(), q, args...).Scan(&sbom, &gotBranch, &scannedAt, &findingsRaw); err != nil || len(sbom) == 0 {
@@ -1102,6 +1109,7 @@ func handleSASTSBOM(db *store.DB) http.HandlerFunc {
 			return
 		}
 		name := strings.NewReplacer("/", "_", "\\", "_", "\"", "").Replace(repo)
+		exportEvent(r, "sbom", repo, "cyclonedx")
 		w.Header().Set("Content-Type", "application/vnd.cyclonedx+json")
 		w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s.cdx.json"`, name))
 		_, _ = w.Write(sbom)

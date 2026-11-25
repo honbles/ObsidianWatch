@@ -27,6 +27,10 @@ type BatchInstance struct {
 	Unit          string          `json:"unit,omitempty"`           // systemd service the process runs under
 	ContainerName string          `json:"container_name,omitempty"` // docker container name
 	Image         string          `json:"image,omitempty"`          // docker image
+	VCSRevision   string          `json:"vcs_revision,omitempty"`   // commit the process was built from
+	VCSRepo       string          `json:"vcs_repo,omitempty"`
+	VCSBranch     string          `json:"vcs_branch,omitempty"`
+	VCSSource     string          `json:"vcs_source,omitempty"` // otel | oci | git
 }
 
 type BatchRoute struct {

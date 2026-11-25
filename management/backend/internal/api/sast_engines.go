@@ -1131,7 +1131,7 @@ func scanCheckout(ctx context.Context, conn *store.DevOpsConnector, repo, repoDi
 
 // saveSASTResult upserts the stored result of a scan: one row per
 // (connector, repository or '' for all, branch).
-func saveSASTResult(ctx context.Context, db *store.DB, connID int64, repo, branch string, engines engineReport, findings []SASTFinding, sbom []byte, repos, files int) error {
+func saveSASTResult(ctx context.Context, db *store.DB, connID int64, repo, branch, commitSHA string, engines engineReport, findings []SASTFinding, sbom []byte, repos, files int) error {
 	counts := map[string]int{}
 	for _, f := range findings {
 		counts[f.Severity]++
@@ -1144,8 +1144,8 @@ func saveSASTResult(ctx context.Context, db *store.DB, connID int64, repo, branc
 	_, err := db.ExecContext(ctx, `
 		INSERT INTO sast_results
 			(connector_id, repo, branch, engine, repo_count, file_count, finding_count,
-			 critical_count, high_count, medium_count, findings, engines, sbom)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+			 critical_count, high_count, medium_count, findings, engines, sbom, commit_sha)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
 		ON CONFLICT (connector_id, repo, branch)
 		DO UPDATE SET
 			scanned_at    = NOW(),
@@ -1159,12 +1159,73 @@ func saveSASTResult(ctx context.Context, db *store.DB, connID int64, repo, branc
 			findings      = EXCLUDED.findings,
 			engines       = EXCLUDED.engines,
 			sbom          = EXCLUDED.sbom,
+			commit_sha    = EXCLUDED.commit_sha,
 			ai_summary    = NULL,
 			ai_analysed_at= NULL`,
 		connID, repo, branch, engines.names(), repos, files, len(findings),
 		counts["critical"], counts["high"], counts["medium"],
-		findingsJSON, enginesJSON, nullJSON(sbom))
+		findingsJSON, enginesJSON, nullJSON(sbom), commitSHA)
+	if err == nil && strings.HasPrefix(branch, "@") {
+		// keep the 20 newest commit scans of a repository
+		_, _ = db.ExecContext(ctx, `DELETE FROM sast_results WHERE connector_id=$1 AND repo=$2 AND branch LIKE '@%' AND id NOT IN (
+			SELECT id FROM sast_results WHERE connector_id=$1 AND repo=$2 AND branch LIKE '@%' ORDER BY scanned_at DESC LIMIT 20)`, connID, repo)
+	}
 	return err
+}
+
+// gitHeadSHA is the commit checked out in dir ("" when unknown).
+func gitHeadSHA(ctx context.Context, dir string) string {
+	out, err := exec.CommandContext(ctx, "git", "-C", dir, "rev-parse", "HEAD").Output()
+	if err != nil {
+		return ""
+	}
+	sha := strings.TrimSpace(string(out))
+	if !fullSHARe.MatchString(sha) {
+		return ""
+	}
+	return sha
+}
+
+var fullSHARe = regexp.MustCompile(`^[0-9a-f]{40}([0-9a-f]{24})?$`)
+
+// cloneCommit fetches one exact commit into dir (depth 0 = its whole history).
+func cloneCommit(ctx context.Context, conn *store.DevOpsConnector, repo, sha, dir string, depth int) error {
+	if toolPath("git") == "" {
+		return fmt.Errorf("git not installed")
+	}
+	if !fullSHARe.MatchString(sha) {
+		return fmt.Errorf("not a full commit id: %q", sha)
+	}
+	remote, auth, err := gitRemote(conn, repo)
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return err
+	}
+	cctx, cancel := context.WithTimeout(ctx, sastCloneTimeout)
+	defer cancel()
+	if _, err := gitIn(cctx, dir, auth, "init", "-q"); err != nil {
+		return err
+	}
+	args := []string{"fetch", "--quiet", "--no-tags"}
+	if depth > 0 {
+		args = append(args, "--depth", fmt.Sprint(depth))
+	}
+	args = append(args, remote, sha)
+	if _, err := gitIn(cctx, dir, auth, args...); err != nil {
+		if strings.Contains(err.Error(), "provider rejected the token") {
+			return err
+		}
+		return fmt.Errorf("%v (the provider may not allow fetching this commit, or it is not in the repository)", err)
+	}
+	if _, err := gitIn(cctx, dir, auth, "checkout", "-q", "--detach", "FETCH_HEAD"); err != nil {
+		return err
+	}
+	if mb := dirSizeMB(dir); mb > sastMaxRepoMB() {
+		return fmt.Errorf("repository is %d MB, above the %d MB limit (OW_SAST_MAX_REPO_MB)", mb, sastMaxRepoMB())
+	}
+	return nil
 }
 
 // gitErrHint turns git's prompt failure into the likely cause.

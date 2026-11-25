@@ -99,7 +99,7 @@ func handleListSASTBranches(db *store.DB) http.HandlerFunc {
 		// Last scan per branch; "HEAD" is the default branch.
 		scanned := map[string]time.Time{}
 		if rows, err := db.QueryContext(r.Context(), `SELECT COALESCE(branch,''), MAX(scanned_at) FROM sast_results
-			WHERE connector_id=$1 AND repo=$2 GROUP BY 1`, connID, repo); err == nil {
+			WHERE connector_id=$1 AND repo=$2 AND branch NOT LIKE '@%' GROUP BY 1`, connID, repo); err == nil {
 			for rows.Next() {
 				var b string
 				var t time.Time

@@ -167,7 +167,7 @@ func loadUnifiedFindings(ctx context.Context, db *store.DB) []UnifiedFinding {
 	// Latest SAST result per connector+repo.
 	if rows, err := db.QueryContext(ctx, `
 		SELECT DISTINCT ON (connector_id, COALESCE(repo,'')) connector_id, scanned_at, findings
-		FROM sast_results ORDER BY connector_id, COALESCE(repo,''), scanned_at DESC`); err == nil {
+		FROM sast_results WHERE branch NOT LIKE '@%' ORDER BY connector_id, COALESCE(repo,''), scanned_at DESC`); err == nil {
 		for rows.Next() {
 			var id int64
 			var at time.Time

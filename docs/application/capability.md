@@ -53,10 +53,25 @@ Telemetry tiers:
 | Tier | Condition (code) | What you get |
 |---|---|---|
 | T0 | Service known only from the host sensor (`services.source = 'discovered'`) | Service, host, listening ports, container, runtime events, host rules |
-| T1 | Service has sent OTLP (`source = 'otel'`) | Routes, RED metrics, dependencies, traces, errors, request-based rules |
+| T1 | Service has sent OTLP (`source = 'otel'`), from an SDK in the app or from the agent's eBPF instrumentation (shown "T1·eBPF") | Routes, RED metrics, dependencies, traces, errors, request-based rules |
 | T2 | T1 and at least one `app.security` event in the last 14 days | Security tab, hashed user ids on events |
 
 Implemented in: `management/backend/internal/api/app_tier.go`, `app_services.go` (`appTier`).
+
+### 1.1 Request tracing without code changes (eBPF)
+
+When the Agent builder option **Trace requests without code changes (eBPF, Linux)** is on, the package carries OpenTelemetry eBPF Instrumentation (OBI, Apache-2.0) and the agent runs it as a child process (`app_monitoring.ebpf.requests.enabled: true`; binary `/usr/local/lib/obsidianwatch/obi`, installed by `install`).
+
+- **What it instruments.** The listening ports of discovered services, except processes that already send OpenTelemetry from an SDK (they would be counted twice). The agent writes `/var/lib/obsidianwatch/obi/obi.yaml` (OBI config v1: `discovery.instrument.open_ports`, `attributes.instance_id.override_hostname: ow`, `routes.unmatched: heuristic`, traces to `http://<receiver>/v1/traces` over OTLP/HTTP) and restarts OBI when the set of ports changes, at most every 10 minutes (`min_restart`). A crash is restarted with backoff (10 s doubling to 30 min). OBI's output goes to `/var/lib/obsidianwatch/obi/obi.log`. OBI runs without the Docker API (`DOCKER_HOST` points nowhere) so its instance ids stay `ow:<pid>`.
+- **Attribution.** The receiver recognises a connection from the OBI child (pid and executable), reads the target pid from `service.instance.id` (`ow:<pid>`), and rewrites the telemetry to the discovered service of that process (its name, environment, pid, start time, container, commit). The binding is therefore to the real application process, verified. Telemetry about a process the sensor does not know is dropped. The receiver counts both (`Proxied`, `ProxyDropped`).
+- **Result.** The discovered service moves to Tier 1 under the same name and keeps its history; its instances report sdk `ebpf opentelemetry-ebpf-instrumentation`, and the service shows `instrumentation: ebpf` (badge "T1·eBPF"). Endpoints come from OBI's route heuristic, so they are templates such as `/items/{id}`. Exception details, custom spans and runtime metrics still need an SDK; the security helper is still needed for Tier 2.
+- **Requirements.** Linux 5.8 or later with BTF (`/sys/kernel/btf/vmlinux`), or RHEL/CentOS 4.18 kernels with eBPF backports; the agent as root. Not available on Windows and macOS.
+
+Implemented in: `agents/linux/internal/obi`, `agents/linux/internal/otel/receiver.go` (`ProxyRewriter`), `agents/linux/internal/config/config_app.go`, `agents/linux/internal/service/service.go`, management `agent_builder.go`, `app_agent_profile.go`, `management/docker/Dockerfile` (downloads OBI `v1.0.0`, `OBI_VERSION` build argument, optional SHA-256 arguments).
+
+### 1.2 The commit an instance runs
+
+Each instance reports the commit it was built from when it is known, in this order: OpenTelemetry resource attributes `vcs.ref.head.revision` (or `vcs.repository.ref.revision`, `git.commit.sha`) with `vcs.repository.url.full` / `git.repository_url` and `vcs.ref.head.name` / `git.branch`; for discovered processes in Docker containers the image labels `org.opencontainers.image.revision` and `org.opencontainers.image.source` (or the label-schema equivalents); otherwise a `.git` directory in the process's working directory or executable directory, or up to four parents (HEAD, loose or packed ref, `origin` URL), read through `/proc/<pid>/`. Credentials in a remote URL are removed before it leaves the host. The values are stored on the instance (`vcs_revision`, `vcs_repo`, `vcs_branch`, `vcs_source` = `otel`, `oci` or `git`) and shown in the Instances tab and the Tier 0 overview. Codebase capability.md section 4.15 says how linked services use them.
 
 ---
 
@@ -296,7 +311,7 @@ Implemented in: `otel/diagnose.go`.
 
 For every span in a completed trace that carries an exception:
 
-1. **Stack parsing.** Lines in these formats are recognised: Python (`File "x.py", line N, in f`), Java/Kotlin/Scala/Groovy (`at pkg.Cls.m(File.java:N)`), .NET with file information (`at Ns.Cls.M() in /p/F.cs:line N`), Node.js (`at f (/p/f.js:N:C)`). Other formats (Go, Ruby, PHP, .NET without PDB line info) give no frames.
+1. **Stack parsing.** Lines in these formats are recognised: Python (`File "x.py", line N, in f`), Java/Kotlin/Scala/Groovy (`at pkg.Cls.m(File.java:N)`), .NET with file information (`at Ns.Cls.M() in /p/F.cs:line N`), Node.js (`at f (/p/f.js:N:C)`), Go (a `pkg.Func(...)` line followed by a tab-indented `/p/file.go:N +0x..` line, as `runtime/debug.Stack` and panics print them; frames in GOROOT, `vendor/`, the module cache, `runtime.`, `net/`, `sync.`, `reflect.` and well-known module hosts count as library frames). Other formats (Ruby, PHP, .NET without PDB line info) give no frames.
 2. **Library frames**: paths containing `node_modules/`, `site-packages/`, `dist-packages/`, `/lib/python`, `node:` or `internal/`, or functions starting with `java.`, `javax.`, `jdk.`, `sun.`, `kotlin.`, `System.`, `Microsoft.`.
 3. **File paths** are shortened to the last three segments; function names to 80 characters; columns and arguments are dropped.
 4. **Fingerprint**: SHA-256 over exception type, the owning route (nearest routed server ancestor) and the top five in-app frames as `function@file` (line numbers excluded, so a deploy that shifts lines keeps the group). With no in-app frame, the top three frames of any kind. With no frames, type and route only. First 8 bytes, 16 hex characters.
@@ -841,7 +856,7 @@ The settings endpoint gives every agent the settings and reviewed routes of all 
 - OTLP over gRPC; OTLP to a non-loopback address; an OpenTelemetry Collector in between is fine only if it exports OTLP/HTTP to the local agent (process identity is then that of the Collector).
 - Exponential histograms and summaries; metrics outside the allowlist.
 - Response bodies, request headers, cookies.
-- Stack-frame parsing for Go, Ruby, PHP, Rust, and .NET stacks without line information.
+- Stack-frame parsing for Ruby, PHP, Rust, and .NET stacks without line information.
 - Runtime summaries for Python, .NET and Go (their metrics are stored but not summarised).
 - Merging a distributed trace across hosts: each agent keeps its own part, and the backend stores the first part that arrives for a trace id.
 - Kubernetes pod-to-service mapping. Pods reach the agent only through a shared hostPath Unix socket; `k8s.*` attributes are discarded.
@@ -858,13 +873,15 @@ The settings endpoint gives every agent the settings and reviewed routes of all 
 
 | Id | Where | Effect |
 |---|---|---|
-| D1 | `agents/{linux,windows,macos}/internal/otel/batch.go` `(*Batch).Split` | Copies only instances, routes, edges, traces, clients, params, payloads and notes into the pieces it sends. `children`, `queries`, `n_plus_one`, `errors`, `metrics`, `sampling`, `operations` and `schema_version` are dropped. Confirmed with a test on a copy of the package. Consequence: the Queries, Errors, Metrics and Jobs tabs, the sampling counters, top downstream calls and N+1 counts on the Endpoints tab stay empty, and APM-O06, O07, O08, O09, O10, O11 cannot fire. Trace skeletons (with self time and N+1 flags) are not affected. `samples/app/verify.sh` reads the aggregator directly and does not catch this |
+| D1 | `agents/{linux,windows,macos}/internal/otel/batch.go` `(*Batch).Split` | **Fixed.** `Split` now carries queries, errors, metrics and operations into the pieces it sends (`splitInto`); the Queries, Errors, Metrics and Jobs tabs fill when the application sends that data |
 | D2 | `otel/otlp.go` `clip` (`maxStringBytes = 4096`) | Every attribute string is cut to 4 096 bytes before use. A helper body (`ow.request.body`) over 4 KiB becomes invalid JSON and yields no field names at all (confirmed), although the helpers and docs allow 32 KiB. Stack traces and statements are also cut to 4 KiB (the code intends 16 KiB and 4 KiB) |
 | D3 | `agents/*/internal/otel/aggregate.go` (`seen` map) | The per-service route set is never reset, so once 500 routes were seen, new routes go to `other` until the agent restarts |
 | D4 | `backend/internal/api/app_batch.go:685`, `app_agentconfig.go:28` | A batch whose `agent_id` differs from the certificate is refused (403) while the event endpoint now re-attributes. Today the agent passes its certificate's id to the application service (`cmd/agent/main.go:106`), so this only bites if the id and the certificate ever diverge in a running agent; then all application statistics are dropped as non-retryable |
 | D5 | `management/backend/cmd/server/main.go:91` | The purge runs on the management database. When `backend_db` points at a separate database the application tables are not there and the purge fails with a warning every 6 hours. The bundled docker-compose uses one database, where it works |
 
 ### 15.2 Not verified on a real host
+
+- Request tracing with OBI (section 1.1): the runner, configuration, attribution and ingest were tested end to end with a stand-in binary that posts OBI-shaped OTLP; OBI itself has not been run on a kernel, so its route templates and span attributes are taken from its source (v1.0.0).
 
 - The eBPF kernel tier: not built, not run.
 - Windows and macOS: OTLP receiver, peer resolution and polling sensor are unit tested and cross-compiled only.

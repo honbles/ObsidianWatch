@@ -339,6 +339,10 @@ export default function AgentBuilder() {
                           <option value="full">Full address</option><option value="truncated">Truncated (/24, /48)</option><option value="off">Do not store</option>
                         </select>
                       </div>
+                      <label className="md:col-span-2 flex items-start gap-2 text-xs text-siem-muted">
+                        <input type="checkbox" checked={!!form.app_requests_ebpf} onChange={e => setForm(f => ({ ...f, app_requests_ebpf: e.target.checked }))} />
+                        <span><b className="text-siem-text">Trace requests without code changes (eBPF, Linux)</b> - bundles OpenTelemetry eBPF Instrumentation (OBI). Discovered services get request rate, errors, latency, endpoints and traces (Tier 1) with nothing added to the application. Needs Linux 5.8+ with BTF and the agent running as root.</span>
+                      </label>
                     </div>
                   )}
                 </div>

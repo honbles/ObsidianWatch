@@ -16,6 +16,8 @@ import (
 	"os"
 	"syscall"
 	"time"
+
+	"obsidianwatch/management/internal/telemetry"
 )
 
 // devopsAddrAllowed applies the same rules as validateDevOpsBaseURL to a
@@ -55,7 +57,7 @@ func newDevOpsHTTPClient() *http.Client {
 		tr.DialContext = dialer.DialContext
 	}
 	return &http.Client{
-		Transport: tr,
+		Transport: telemetry.Transport(tr),
 		Timeout:   60 * time.Second,
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			if len(via) >= 5 {

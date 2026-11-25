@@ -44,13 +44,18 @@ type appLiveInst struct {
 	ContainerID string
 	Exe         string
 	Ports       []int
+	VCSRevision string // commit the instance was built from, when reported
+	VCSRepo     string
+	VCSBranch   string
+	VCSSource   string
 }
 
 // appLiveInstances lists live instances seen since, for the given services
 // (ids) or on the given agent. Both empty: every live instance.
 func appLiveInstances(ctx context.Context, idb *store.DB, ids []int64, agent string, since time.Time) []appLiveInst {
 	q := `SELECT i.service_id, s.name, s.environment, s.source, i.agent_id, i.host, i.pid, i.container_id,
-		  COALESCE(i.attrs->>'exe',''), i.listen
+		  COALESCE(i.attrs->>'exe',''), i.listen,
+		  COALESCE(i.attrs->>'vcs_revision',''), COALESCE(i.attrs->>'vcs_repo',''), COALESCE(i.attrs->>'vcs_branch',''), COALESCE(i.attrs->>'vcs_source','')
 		FROM service_instances i JOIN services s ON s.id = i.service_id
 		WHERE i.stopped_at IS NULL AND i.last_seen >= $1`
 	args := []interface{}{since}
@@ -72,7 +77,8 @@ func appLiveInstances(ctx context.Context, idb *store.DB, ids []int64, agent str
 	for rows.Next() {
 		var x appLiveInst
 		var listen []byte
-		if rows.Scan(&x.ServiceID, &x.Name, &x.Env, &x.Source, &x.AgentID, &x.Host, &x.PID, &x.ContainerID, &x.Exe, &listen) == nil {
+		if rows.Scan(&x.ServiceID, &x.Name, &x.Env, &x.Source, &x.AgentID, &x.Host, &x.PID, &x.ContainerID, &x.Exe, &listen,
+			&x.VCSRevision, &x.VCSRepo, &x.VCSBranch, &x.VCSSource) == nil {
 			x.Ports = appListenPorts(listen)
 			out = append(out, x)
 		}
@@ -778,6 +784,12 @@ type appCodeLinkView struct {
 	Counts     map[string]int  `json:"counts"`
 	Dismissed  int             `json:"dismissed"`
 	Scanning   bool            `json:"scanning"`
+	// What runs: the commits the service's instances report, and which scan the
+	// findings come from ("commit": the primary deployed commit; "branch": the
+	// linked branch, while no commit is reported or its scan is pending).
+	Deployments     []appDeployment `json:"deployments"`
+	Showing         string          `json:"showing"`
+	ShowingRevision string          `json:"showing_revision,omitempty"`
 }
 
 type appCodeFinding struct {
@@ -887,6 +899,7 @@ func appHandleServiceCode(db, backendDB *store.DB) http.HandlerFunc {
 				conns[c.ID] = c
 			}
 		}
+		deps := appDeployments(insts)
 		views := []appCodeLinkView{}
 		findings := []appCodeFinding{}
 		linkedRepo := map[string]bool{}
@@ -903,7 +916,15 @@ func appHandleServiceCode(db, backendDB *store.DB) http.HandlerFunc {
 			_ = db.QueryRowContext(ctx, `SELECT COUNT(*) FROM code_scan_jobs WHERE connector_id=$1 AND repo=$2 AND status IN ('queued','running')`,
 				l.ConnectorID, l.Repo).Scan(&pending)
 			v.Scanning = pending > 0
+			v.Deployments = appResolveDeployments(ctx, db, l, deps)
 			fs, br, at, eng, ok := appLinkedScan(ctx, db, l)
+			v.Showing = "branch"
+			for _, d := range v.Deployments {
+				if d.Primary && d.Scan.Status == "scanned" {
+					fs, at, br, ok = d.findings, *d.Scan.ScannedAt, "@"+d.Revision, true
+					v.Showing, v.ShowingRevision = "commit", d.Revision
+				}
+			}
 			if ok {
 				t := at
 				v.ScannedAt, v.ScanBranch, v.Engines = &t, br, eng
@@ -1070,6 +1091,9 @@ func appHandleAddCodeLink(db, backendDB *store.DB) http.HandlerFunc {
 		}
 		link.ID = lid
 		appInvalidateCodeIndex()
+		// Deployed commits are scanned exactly; the branch scan below covers
+		// services that report no commit.
+		deployedQueued := NewDeployedCommitWatcher(db, backendDB, nil).sweep(ctx, []int64{id})
 		// Scan the branch now when there is no result for it yet.
 		queued := false
 		if _, _, _, _, ok := appLinkedScan(ctx, db, link); !ok {
@@ -1081,7 +1105,7 @@ func appHandleAddCodeLink(db, backendDB *store.DB) http.HandlerFunc {
 				Repo: body.Repo, Ref: ref, HeadSHA: "link:" + time.Now().UTC().Format(time.RFC3339)}, nil)
 			queued = true
 		}
-		writeJSON(w, http.StatusOK, map[string]any{"link": link, "scan_queued": queued})
+		writeJSON(w, http.StatusOK, map[string]any{"link": link, "scan_queued": queued, "commit_scans_queued": deployedQueued})
 	}
 }
 

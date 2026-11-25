@@ -15,6 +15,7 @@ import (
 	"obsidianwatch/management/internal/config"
 	"obsidianwatch/management/internal/notify"
 	"obsidianwatch/management/internal/store"
+	"obsidianwatch/management/internal/telemetry"
 )
 
 type Server struct {
@@ -384,7 +385,20 @@ func New(cfg *config.Config, db *store.DB, backendDB *store.DB, logger *slog.Log
 	mux.Handle("/auth/ws-ticket", guard(readOnlyRole(protected))) // not audited: one per socket open
 	mux.Handle("/ws/", guard(readOnlyRole(protected)))
 
-	handler := securityHeaders(corsMiddleware(cfg.Server.CORSOrigins)(loggingMiddleware(logger)(limitRequestBody(maxRequestBody)(mux))))
+	// Route template for traces: the outer mux, then the protected mux for /api/ and /auth/ paths.
+	route := func(r *http.Request) string {
+		_, p := mux.Handler(r)
+		switch p {
+		case "/api/", "/auth/me", "/auth/password", "/auth/logout", "/auth/ws-ticket", "/ws/":
+			_, p2 := protected.Handler(r)
+			if p2 == "" {
+				return "(unmatched)"
+			}
+			p = p2
+		}
+		return telemetry.RouteOf(p)
+	}
+	handler := securityHeaders(corsMiddleware(cfg.Server.CORSOrigins)(loggingMiddleware(logger)(telemetry.Middleware(route)(limitRequestBody(maxRequestBody)(mux)))))
 	s.http = &http.Server{
 		Addr:         cfg.Server.ListenAddr,
 		Handler:      handler,
@@ -425,6 +439,7 @@ func (s *Server) Start(ctx context.Context) error {
 	go s.devopsEngine.Run(ctx)
 	go NewCodeAutomation(s.cfg, s.db, s.logger).Run(ctx)
 	go NewRuntimeIndexer(s.db, s.backendDB, s.logger).Run(ctx)
+	go NewDeployedCommitWatcher(s.db, s.backendDB, s.logger).Run(ctx)
 	dnsCatWorker := NewDomainCategorizationWorker(s.db, s.logger)
 	go dnsCatWorker.Run(ctx)
 	go s.hub.Run(ctx)

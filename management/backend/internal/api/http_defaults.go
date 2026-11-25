@@ -4,6 +4,8 @@ import (
 	"io"
 	"net/http"
 	"time"
+
+	"obsidianwatch/management/internal/telemetry"
 )
 
 // outboundTimeout bounds every outbound call made through http.DefaultClient
@@ -46,6 +48,6 @@ func init() {
 		if next == nil {
 			next = newGuardedTransport() // SSRF guard, see outbound_guard.go
 		}
-		http.DefaultClient.Transport = cappedBodyTransport{next: next, limit: maxOutboundBody}
+		http.DefaultClient.Transport = cappedBodyTransport{next: telemetry.Transport(next), limit: maxOutboundBody}
 	}
 }

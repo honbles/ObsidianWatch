@@ -81,7 +81,7 @@ export default function AppServices() {
       const v = c.length ? c : u.length ? u : h
       return <span className="mono t2" title={[...c, ...u, ...h].join(', ')}>{v.length ? v.slice(0, 2).join(', ') + (v.length > 2 ? ` +${v.length - 2}` : '') : '—'}</span>
     } },
-    { key: 'tier', label: 'Tier', width: '56px', render: x => <AppTierBadge tier={x.tier}/> },
+    { key: 'tier', label: 'Tier', width: '56px', render: x => <AppTierBadge tier={x.tier} instrumentation={x.instrumentation}/> },
     { key: 'exp', label: 'Exposure', width: '96px', render: x => <AppExposureBadge exposure={x.settings.exposure} settings={x.settings}/> },
     { key: 'rpm', label: 'req/min', width: '84px', align: 'right', sortKey: 'rpm', render: x => <span className="mono">{x.red ? (x.red.calls / spanMin).toFixed(x.red.calls / spanMin < 10 ? 1 : 0) : '—'}</span> },
     { key: 'err', label: 'Errors', width: '76px', align: 'right', sortKey: 'err', render: x => <span className="mono" style={{ color: x.red?.error_rate >= 0.05 ? 'var(--crit)' : x.red?.error_rate >= 0.01 ? 'var(--warn)' : undefined }}>{x.red ? appPct(x.red.error_rate) : '—'}</span> },
@@ -107,7 +107,7 @@ export default function AppServices() {
           { key: 'env', label: 'Environment', values: countBy(withState, G.env) },
           { key: 'exposure', label: 'Exposure', values: countBy(withState, G.exposure, ['internet', 'internal', 'unknown'], { internet: 'Internet', internal: 'Internal', unknown: 'Unknown' }) },
           { key: 'role', label: 'What it is', values: countBy(withState, G.role, ['app', 'database', 'cache', 'web', 'runtime', 'queue', 'search', 'other'], { app: 'Application', database: 'Database', cache: 'Cache', web: 'Web / proxy', runtime: 'App server', queue: 'Broker', search: 'Search', other: 'Other' }) },
-          { key: 'tier', label: 'Telemetry tier', values: countBy(withState, G.tier, [2, 1, 0], { 2: 'T2 · security events', 1: 'T1 · OpenTelemetry', 0: 'T0 · host only' }) },
+          { key: 'tier', label: 'Telemetry tier', values: countBy(withState, G.tier, [2, 1, 0], { 2: 'T2 · security events', 1: 'T1 · requests (SDK or eBPF)', 0: 'T0 · host only' }) },
           { key: 'crit', label: 'Criticality', values: countBy(withState, G.crit, ['critical', 'high', 'normal', 'low'], { critical: 'Critical', high: 'High', normal: 'Normal', low: 'Low' }) },
         ]}/>
         <div className="ow-card" style={{ flex: 1, minWidth: 0, overflow: 'hidden' }}>

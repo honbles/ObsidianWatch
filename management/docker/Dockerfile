@@ -82,6 +82,23 @@ RUN mkdir -p certs
 #   /agent-src/windows/  - obsidianwatch/agent  (windows)
 #   /agent-src/macos/    - obsidianwatch/macos-agent
 #   /agent-src/network/  - obsidianwatch/network-probe
+# OpenTelemetry eBPF Instrumentation (Apache-2.0), bundled into Linux agent
+# packages built with "Trace requests without code changes". Optional: when the
+# download fails the image still builds and the Agent builder reports it.
+ARG OBI_VERSION=v1.0.0
+ARG OBI_SHA256_AMD64=""
+ARG OBI_SHA256_ARM64=""
+RUN for arch in amd64 arm64; do \
+      d=/agent-src/obi/linux-$arch; mkdir -p $d; \
+      url="https://github.com/open-telemetry/opentelemetry-ebpf-instrumentation/releases/download/${OBI_VERSION}/obi-${OBI_VERSION}-linux-${arch}.tar.gz"; \
+      if wget -q --timeout=300 "$url" -O /tmp/obi.tgz; then \
+        sum=$([ "$arch" = amd64 ] && echo "$OBI_SHA256_AMD64" || echo "$OBI_SHA256_ARM64"); \
+        if [ -n "$sum" ] && ! echo "$sum  /tmp/obi.tgz" | sha256sum -c -; then echo "OBI $arch checksum mismatch"; rm -rf $d/*; \
+        else tar -xzf /tmp/obi.tgz -C $d obi LICENSE NOTICE 2>/dev/null || tar -xzf /tmp/obi.tgz -C $d; chmod 0755 $d/obi 2>/dev/null; echo "OBI $arch installed"; fi; \
+      else echo "OBI $arch download failed - request tracing packages unavailable"; fi; \
+      rm -f /tmp/obi.tgz; \
+    done
+
 COPY agents/linux/   /agent-src/linux/
 COPY agents/windows/ /agent-src/windows/
 COPY agents/macos/   /agent-src/macos/

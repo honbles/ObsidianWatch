@@ -133,17 +133,18 @@ type instKey struct {
 }
 
 type instVal struct {
-	res          Resource
-	peer         Peer
-	identity     string
-	lastSeen     time.Time
-	lastSent     time.Time
-	dirty        bool
-	source       string // otel | discovered
-	listen       json.RawMessage
-	sensor       string
-	exe          string
-	instrumented bool
+	res                        Resource
+	peer                       Peer
+	identity                   string
+	lastSeen                   time.Time
+	lastSent                   time.Time
+	dirty                      bool
+	source                     string // otel | discovered
+	listen                     json.RawMessage
+	sensor                     string
+	exe                        string
+	instrumented               bool
+	unit, containerName, image string // discovered instances: where they run
 }
 
 type openTrace struct {
@@ -284,7 +285,7 @@ func (a *Aggregator) touchInstance(svc svcKey, res Resource, p Peer, identity st
 		v = &instVal{}
 		a.in[k] = v
 	}
-	if v.res.Version != res.Version || v.res.InstanceRef != res.InstanceRef || v.identity != identity {
+	if v.res.Version != res.Version || v.res.InstanceRef != res.InstanceRef || v.identity != identity || v.res.VCSRevision != res.VCSRevision {
 		v.dirty = true
 	}
 	if v.identity == IdentityVerified {
@@ -322,10 +323,12 @@ func (a *Aggregator) AddDiscovered(list []BatchInstance) {
 			v.lastSeen = now
 			continue
 		}
-		if v.sensor != d.Sensor || string(v.listen) != string(d.Listen) {
+		if v.sensor != d.Sensor || string(v.listen) != string(d.Listen) || v.res.VCSRevision != d.VCSRevision {
 			v.dirty = true
 		}
-		v.res = Resource{Service: d.Service, Environment: d.Environment, Language: d.Language}
+		v.res = Resource{Service: d.Service, Environment: d.Environment, Language: d.Language,
+			VCSRevision: d.VCSRevision, VCSRepo: d.VCSRepo, VCSBranch: d.VCSBranch, VCSSource: d.VCSSource}
+		v.unit, v.containerName, v.image = d.Unit, d.ContainerName, d.Image
 		v.peer = Peer{Resolved: true, PID: d.PID, ProcStart: d.ProcStart, ContainerID: d.ContainerID, Exe: d.Exe}
 		v.identity, v.lastSeen, v.source = IdentityVerified, now, "discovered"
 		v.listen, v.sensor, v.exe, v.instrumented = d.Listen, d.Sensor, d.Exe, false
@@ -868,7 +871,9 @@ func (a *Aggregator) Flush(agentID string, final bool) *Batch {
 			Service: k.svc.name, Environment: k.svc.env, Source: src, InstanceRef: v.res.InstanceRef,
 			Version: v.res.Version, PID: v.peer.PID, ProcStart: v.peer.ProcStart, ContainerID: v.peer.ContainerID,
 			Identity: v.identity, Instrumented: v.instrumented, Listen: v.listen, Sensor: v.sensor,
-			Language: v.res.Language, SDK: v.res.SDK, Exe: v.peer.Exe})
+			Language: v.res.Language, SDK: v.res.SDK, Exe: v.peer.Exe,
+			Unit: v.unit, ContainerName: v.containerName, Image: v.image,
+			VCSRevision: v.res.VCSRevision, VCSRepo: v.res.VCSRepo, VCSBranch: v.res.VCSBranch, VCSSource: v.res.VCSSource})
 		v.lastSent, v.dirty = now, false
 	}
 

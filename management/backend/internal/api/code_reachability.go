@@ -30,6 +30,7 @@ import (
 	"time"
 
 	"obsidianwatch/management/internal/store"
+	"obsidianwatch/management/internal/telemetry"
 )
 
 // findingReach is attached to a dependency finding when it is read.
@@ -120,6 +121,8 @@ func inventoryRows(ev store.Event) []store.RuntimePackage {
 }
 
 func (x *RuntimeIndexer) indexOnce(ctx context.Context) {
+	ctx, span := telemetry.StartJob(ctx, "runtime-inventory.index")
+	defer span.End()
 	for i := 0; i < 20; i++ { // drain a backlog in pages
 		events, err := pageEventCursor(ctx, x.eventDB, "runtime-inventory", store.EventFilter{EventType: runtimeInventoryType}, 24*time.Hour, 2000)
 		if err != nil {

@@ -15,6 +15,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -38,6 +39,7 @@ type ReceiverOptions struct {
 // RecvStats are counters for health reporting.
 type RecvStats struct {
 	Requests, BadRequests, Spans, Logs, SecurityEvents, Asserted, Unresolved, EmitDropped, MetricPoints, MetricsDropped, MetricsRejected atomic.Int64
+	Proxied, ProxyDropped                                                                                                                atomic.Int64 // eBPF instrumentation telemetry attributed / dropped
 }
 
 type Receiver struct {
@@ -53,6 +55,45 @@ type Receiver struct {
 	lns        []net.Listener
 	Stats      RecvStats
 	resolveSem chan struct{}
+	proxy      atomic.Pointer[proxyHolder]
+}
+
+// ProxyRewriter recognises telemetry sent by a trusted local exporter on behalf
+// of another process (the agent's own OpenTelemetry eBPF Instrumentation child)
+// and returns the process it describes. handled=false: not from the proxy,
+// leave it as is. handled=true, keep=false: from the proxy but about no known
+// service process; drop it.
+type ProxyRewriter interface {
+	Rewrite(sender Peer, res Resource) (peer Peer, out Resource, handled, keep bool)
+}
+
+type proxyHolder struct{ p ProxyRewriter }
+
+// SetProxy installs the proxy rewriter (nil removes it).
+func (r *Receiver) SetProxy(p ProxyRewriter) {
+	if p == nil {
+		r.proxy.Store(nil)
+		return
+	}
+	r.proxy.Store(&proxyHolder{p})
+}
+
+// viaProxy applies the proxy rewriter to one resource.
+func (r *Receiver) viaProxy(sender Peer, res Resource) (Peer, Resource, bool) {
+	h := r.proxy.Load()
+	if h == nil {
+		return sender, res, true
+	}
+	p, out, handled, keep := h.p.Rewrite(sender, res)
+	if !handled {
+		return sender, res, true
+	}
+	if keep {
+		r.Stats.Proxied.Add(1)
+	} else {
+		r.Stats.ProxyDropped.Add(1)
+	}
+	return p, out, keep
 }
 
 func NewReceiver(opt ReceiverOptions, agg *Aggregator, binder *Binder, resolver PeerResolver, ec EventContext,
@@ -263,13 +304,19 @@ func (r *Receiver) handle(kind string) http.HandlerFunc {
 				http.Error(w, "invalid OTLP traces", http.StatusBadRequest)
 				return
 			}
-			ids := map[svcKey]string{}
+			ids := map[string]string{}
 			for _, s := range spans {
+				sp, res, keep := r.viaProxy(peer, s.Res)
+				if !keep {
+					continue
+				}
+				s.Res = res
 				k := svcKey{s.Res.Service, envOf(s.Res.Environment)}
-				id, ok := ids[k]
+				ik := k.name + "\x00" + k.env + "\x00" + strconv.Itoa(sp.PID)
+				id, ok := ids[ik]
 				if !ok {
-					id = r.binder.Bind(k.name, k.env, peer)
-					ids[k] = id
+					id = r.binder.Bind(k.name, k.env, sp)
+					ids[ik] = id
 					if id == IdentityAsserted {
 						r.Stats.Asserted.Add(1)
 					}
@@ -277,7 +324,7 @@ func (r *Receiver) handle(kind string) http.HandlerFunc {
 				if s.EndUnset() {
 					continue
 				}
-				r.agg.Ingest(s, peer, id)
+				r.agg.Ingest(s, sp, id)
 			}
 			r.Stats.Spans.Add(int64(len(spans)))
 		case "metrics":
@@ -292,15 +339,21 @@ func (r *Receiver) handle(kind string) http.HandlerFunc {
 				http.Error(w, "invalid OTLP metrics", http.StatusBadRequest)
 				return
 			}
-			ids := map[svcKey]string{}
+			ids := map[string]string{}
 			for _, p := range md.Points {
-				k := svcKey{p.Res.Service, envOf(p.Res.Environment)}
-				id, ok := ids[k]
-				if !ok {
-					id = r.binder.Bind(k.name, k.env, peer)
-					ids[k] = id
+				pp, res, keep := r.viaProxy(peer, p.Res)
+				if !keep {
+					continue
 				}
-				r.agg.IngestMetrics(p, peer, id)
+				p.Res = res
+				k := svcKey{p.Res.Service, envOf(p.Res.Environment)}
+				ik := k.name + "\x00" + k.env + "\x00" + strconv.Itoa(pp.PID)
+				id, ok := ids[ik]
+				if !ok {
+					id = r.binder.Bind(k.name, k.env, pp)
+					ids[ik] = id
+				}
+				r.agg.IngestMetrics(p, pp, id)
 			}
 			r.Stats.MetricPoints.Add(int64(len(md.Points)))
 			r.Stats.MetricsDropped.Add(md.Dropped)

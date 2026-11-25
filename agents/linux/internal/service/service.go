@@ -30,6 +30,10 @@ const (
 	UnitFile    = "/etc/systemd/system/obsidianwatch-agent.service"
 	QueueDir    = "/var/lib/obsidianwatch"
 	ServiceName = "obsidianwatch-agent"
+	// OBIDst is where the bundled OpenTelemetry eBPF Instrumentation binary is
+	// installed when the package carries one (app-server profile with request
+	// tracing). The agent starts it; nothing else runs it.
+	OBIDst = "/usr/local/lib/obsidianwatch/obi"
 )
 
 type InstallConfig struct {
@@ -84,6 +88,15 @@ func Install(cfg InstallConfig) error {
 	fmt.Printf("Installing binary to %s...\n", BinaryDst)
 	if err := copyFile(cfg.BinarySrc, BinaryDst, 0700); err != nil {
 		return fmt.Errorf("copy binary: %w", err)
+	}
+	if src := filepath.Join(filepath.Dir(cfg.BinarySrc), "obi"); fileExists(src) {
+		fmt.Printf("Installing OpenTelemetry eBPF Instrumentation to %s...\n", OBIDst)
+		if err := os.MkdirAll(filepath.Dir(OBIDst), 0o700); err != nil {
+			return fmt.Errorf("create %s: %w", filepath.Dir(OBIDst), err)
+		}
+		if err := copyFile(src, OBIDst, 0700); err != nil {
+			return fmt.Errorf("copy obi: %w", err)
+		}
 	}
 
 	// Persist the install key to a state file (config is embedded, not on disk).
@@ -171,6 +184,7 @@ func Uninstall(backendURL, caFile, caCertPEM, agentID string) error {
 	run("systemctl", "daemon-reload")
 	run("systemctl", "reset-failed")
 	os.Remove(BinaryDst)
+	os.RemoveAll(filepath.Dir(OBIDst))
 	os.RemoveAll(ConfigDir)
 	os.RemoveAll(QueueDir)
 
@@ -348,3 +362,8 @@ func copyFile(src, dst string, mode os.FileMode) error {
 }
 
 func init() { _ = filepath.Join }
+
+func fileExists(p string) bool {
+	fi, err := os.Stat(p)
+	return err == nil && fi.Mode().IsRegular()
+}

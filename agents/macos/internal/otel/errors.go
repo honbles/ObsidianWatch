@@ -35,6 +35,9 @@ var (
 	reNetFrame  = regexp.MustCompile(`^\s*at ([^(]+)\(.*?\)(?: in (.+?):line (\d+))?\s*$`)
 	reJavaFrame = regexp.MustCompile(`^\s*at ([\w$.<>/]+)\(((?:[\w$.-]+\.(?:java|kt|scala|groovy))|Native Method|Unknown Source)(?::(\d+))?\)\s*$`)
 	reNodeFrame = regexp.MustCompile(`^\s*at (?:(.+?) \()?(.+?):(\d+)(?::\d+)?\)?\s*$`)
+	// Go (runtime/debug.Stack, panics): a function line, then "\t/path/file.go:N +0x1d"
+	reGoFunc = regexp.MustCompile(`^([^\s(][^\s]*?)\(.*\)\s*$`)
+	reGoFile = regexp.MustCompile(`^\t(.+\.go):(\d+)(?: \+0x[0-9a-f]+)?\s*$`)
 
 	reEmail  = regexp.MustCompile(`[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}`)
 	reQuoted = regexp.MustCompile(`"[^"]*"|'[^']*'|` + "`[^`]*`")
@@ -43,11 +46,29 @@ var (
 
 func parseStack(stack string) []errFrame {
 	var out []errFrame
+	goFn := ""
 	for _, ln := range strings.Split(stack, "\n") {
 		if len(out) >= 200 {
 			break
 		}
 		var f errFrame
+		if goFn != "" {
+			if m := reGoFile.FindStringSubmatch(ln); m != nil {
+				f.fn, f.file = goFn, m[1]
+				f.line, _ = strconv.Atoi(m[2])
+				goFn = ""
+				f.lib = isGoLibFrame(f)
+				f.file = shortPath(f.file)
+				f.fn = clipN(f.fn, 80)
+				out = append(out, f)
+				continue
+			}
+		}
+		goFn = ""
+		if m := reGoFunc.FindStringSubmatch(ln); m != nil && !strings.HasPrefix(ln, "at ") {
+			goFn = m[1]
+			continue
+		}
 		switch {
 		case rePyFrame.MatchString(ln):
 			m := rePyFrame.FindStringSubmatch(ln)
@@ -74,6 +95,21 @@ func parseStack(stack string) []errFrame {
 		out = append(out, f)
 	}
 	return out
+}
+
+// isGoLibFrame: the Go runtime and standard library (GOROOT) and third-party
+// modules are library code; the application's own packages are not.
+func isGoLibFrame(f errFrame) bool {
+	p := strings.ReplaceAll(f.file, "\\", "/")
+	if strings.Contains(p, "/go/src/") || strings.Contains(p, "/vendor/") || strings.Contains(p, "/pkg/mod/") {
+		return true
+	}
+	first := f.fn
+	if i := strings.Index(first, "/"); i >= 0 {
+		first = first[:i]
+	}
+	return strings.Contains(first, ".") && (strings.HasPrefix(f.fn, "github.com/") || strings.HasPrefix(f.fn, "golang.org/") || strings.HasPrefix(f.fn, "google.golang.org/") || strings.HasPrefix(f.fn, "go.opentelemetry.io/")) ||
+		!strings.Contains(f.fn, "/") && (strings.HasPrefix(f.fn, "runtime.") || strings.HasPrefix(f.fn, "net/") || strings.HasPrefix(f.fn, "sync.") || strings.HasPrefix(f.fn, "reflect.") || strings.HasPrefix(f.fn, "testing."))
 }
 
 func isLibFrame(f errFrame) bool {

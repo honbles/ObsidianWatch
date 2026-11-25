@@ -336,6 +336,7 @@ func handleFleetHuntCSV(db *store.DB) http.HandlerFunc {
 			http.Error(w, "hunt not found", 404)
 			return
 		}
+		exportEvent(r, "hunt_results", h.ID, "csv")
 		w.Header().Set("Content-Type", "text/csv; charset=utf-8")
 		w.Header().Set("Content-Disposition", `attachment; filename="hunt-`+h.ID+`.csv"`)
 		cw := csv.NewWriter(w)

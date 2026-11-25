@@ -234,6 +234,16 @@ func appSanitizeBatch(b *store.AppBatch, now time.Time) (dropped int) {
 		in.Language, in.SDK = appClean(in.Language, 32), appClean(in.SDK, 64)
 		in.ContainerID, in.Exe = appClean(in.ContainerID, 128), appClean(in.Exe, 512)
 		in.Unit, in.ContainerName, in.Image = appClean(in.Unit, 128), appClean(in.ContainerName, 128), appClean(in.Image, 256)
+		in.VCSRevision = appCleanRevision(in.VCSRevision)
+		in.VCSRepo, in.VCSBranch = appClean(in.VCSRepo, 300), appClean(in.VCSBranch, 200)
+		switch in.VCSSource {
+		case "otel", "oci", "git":
+		default:
+			in.VCSSource = ""
+		}
+		if in.VCSRevision == "" {
+			in.VCSSource = ""
+		}
 		if in.PID < 0 {
 			in.PID = 0
 		}
@@ -785,4 +795,18 @@ func appFinite(vs ...float64) bool {
 		}
 	}
 	return true
+}
+
+// appCleanRevision keeps a commit id of 7 to 64 lower-case hex characters.
+func appCleanRevision(s string) string {
+	s = strings.ToLower(strings.TrimSpace(s))
+	if len(s) < 7 || len(s) > 64 {
+		return ""
+	}
+	for _, c := range s {
+		if !(c >= '0' && c <= '9' || c >= 'a' && c <= 'f') {
+			return ""
+		}
+	}
+	return s
 }

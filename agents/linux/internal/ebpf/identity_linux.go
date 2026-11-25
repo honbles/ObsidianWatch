@@ -51,6 +51,9 @@ type ContainerInfo struct {
 	Image   string
 	Project string // docker compose project
 	Service string // docker compose service
+	// Build provenance from the image labels (merged into the container's labels by Docker).
+	Revision string // org.opencontainers.image.revision
+	Source   string // org.opencontainers.image.source
 }
 
 type dockerConfig struct {
@@ -89,8 +92,11 @@ func (c *containerCache) Lookup(id string) (ContainerInfo, bool) {
 	if err == nil {
 		var cfg dockerConfig
 		if json.Unmarshal(b, &cfg) == nil {
+			l := cfg.Config.Labels
 			ci = ContainerInfo{Name: strings.TrimPrefix(cfg.Name, "/"), Image: cfg.Config.Image,
-				Project: cfg.Config.Labels["com.docker.compose.project"], Service: cfg.Config.Labels["com.docker.compose.service"]}
+				Project: l["com.docker.compose.project"], Service: l["com.docker.compose.service"],
+				Revision: firstLabel(l, "org.opencontainers.image.revision", "org.label-schema.vcs-ref", "vcs-ref"),
+				Source:   firstLabel(l, "org.opencontainers.image.source", "org.label-schema.vcs-url", "vcs-url")}
 		}
 	}
 	if len(c.m) > 2000 {
@@ -115,4 +121,13 @@ func BetterName(derived, unit string, ci ContainerInfo, haveContainer bool) stri
 		return n
 	}
 	return derived
+}
+
+func firstLabel(l map[string]string, keys ...string) string {
+	for _, k := range keys {
+		if v := strings.TrimSpace(l[k]); v != "" {
+			return v
+		}
+	}
+	return ""
 }

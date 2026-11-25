@@ -321,7 +321,7 @@ func buildAndSaveZip(platform string, cfg AgentBuilderConfig) (err error) {
 	}
 	defer f.Close()
 
-	if err := writeAgentZip(f, platform); err != nil {
+	if err := writeAgentZip(f, platform, cfg.EnableAppProfile && cfg.AppRequestsEBPF); err != nil {
 		os.Remove(zipPath)
 		return fmt.Errorf("write zip: %w", err)
 	}
@@ -329,7 +329,7 @@ func buildAndSaveZip(platform string, cfg AgentBuilderConfig) (err error) {
 }
 
 // writeAgentZip writes the agent zip (binary + INSTALL.md) to any writer.
-func writeAgentZip(w io.Writer, platform string) error {
+func writeAgentZip(w io.Writer, platform string, withOBI bool) error {
 	p := platforms[platform]
 	binaryPath := cachedBinaryPath(platform)
 
@@ -351,8 +351,38 @@ func writeAgentZip(w io.Writer, platform string) error {
 	// F-24: hash the binary while copying so a SHA256SUMS file can ship with it.
 	hasher := sha256.New()
 	io.Copy(io.MultiWriter(bw, hasher), binaryFile)
+	sumLines := fmt.Sprintf("%s  %s\n", hex.EncodeToString(hasher.Sum(nil)), p.BinaryName)
+	if withOBI && platform == "linux" {
+		// OpenTelemetry eBPF Instrumentation, installed next to the agent by
+		// "install" (Apache-2.0; its licence and notices ship with it).
+		dir := obiBundleDir(p.GOARCH)
+		for _, name := range []string{"obi", "LICENSE", "NOTICE"} {
+			src, err := os.Open(filepath.Join(dir, name))
+			if err != nil {
+				if name == "obi" {
+					return fmt.Errorf("request tracing was requested but OBI is not in this server image (%s): %w", dir, err)
+				}
+				continue
+			}
+			zname := name
+			if name != "obi" {
+				zname = "obi-" + name
+			}
+			h := &zip.FileHeader{Name: zname, Method: zip.Deflate}
+			if name == "obi" {
+				h.SetMode(0755)
+			} else {
+				h.SetMode(0644)
+			}
+			ow, _ := zw.CreateHeader(h)
+			oh := sha256.New()
+			io.Copy(io.MultiWriter(ow, oh), src)
+			src.Close()
+			sumLines += fmt.Sprintf("%s  %s\n", hex.EncodeToString(oh.Sum(nil)), zname)
+		}
+	}
 	sums, _ := zw.Create("SHA256SUMS")
-	fmt.Fprintf(sums, "%s  %s\n", hex.EncodeToString(hasher.Sum(nil)), p.BinaryName)
+	sums.Write([]byte(sumLines))
 
 	if platform == "macos" || platform == "macos-arm64" {
 		// A-04: MDM profile granting Full Disk Access. UUIDs are fixed so
@@ -363,7 +393,11 @@ func writeAgentZip(w io.Writer, platform string) error {
 
 	// INSTALL.md
 	rw, _ := zw.Create("INSTALL.md")
-	rw.Write([]byte(buildInstallReadme(platform)))
+	readme := buildInstallReadme(platform)
+	if withOBI && platform == "linux" {
+		readme += "\n## Request tracing (eBPF)\nThis package includes OpenTelemetry eBPF Instrumentation (`obi`, Apache-2.0, see `obi-LICENSE`). Keep it in the same folder as the agent when you run `install`: it is copied to /usr/local/lib/obsidianwatch/obi and started by the agent for the services it discovers, so they report requests, errors, latency and routes without code changes. It needs Linux 5.8 or later with BTF (/sys/kernel/btf/vmlinux), or RHEL/CentOS 4.18 kernels with eBPF backports.\n"
+	}
+	rw.Write([]byte(readme))
 
 	return nil
 }
@@ -495,6 +529,7 @@ func serveZip(w http.ResponseWriter, r *http.Request, platform string) {
 	ts := info.ModTime().Format("20060102")
 	zipName := fmt.Sprintf("obsidianwatch-%s-agent-%s.zip", platform, ts)
 
+	exportEvent(r, "agent_package", platform, "zip")
 	w.Header().Set("Content-Type", "application/zip")
 	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, zipName))
 	if info != nil {
@@ -600,6 +635,7 @@ type AgentBuilderConfig struct {
 	AppClientIPMode  string `json:"app_client_ip_mode"` // full | truncated | off (default full)
 	AppSensorMode    string `json:"app_sensor_mode"`    // host sensor tier: auto | procevent | poll (default auto)
 	AppEnvironment   string `json:"app_environment"`    // deployment environment given to discovered services
+	AppRequestsEBPF  bool   `json:"app_requests_ebpf"`  // request tracing without code changes: bundle OBI (Linux)
 	// [APP-FIELDS-END]
 	EnableLiveResponse bool `json:"enable_live_response"` // H-2: opt-in remote shell (default off)
 }
@@ -1055,4 +1091,13 @@ func readBackendAPIKey(path string) string {
 		return cfg.Auth.APIKeys[0]
 	}
 	return ""
+}
+
+// obiBundleDir is where the server image keeps the OBI release for an
+// architecture (see management/docker/Dockerfile).
+func obiBundleDir(goarch string) string {
+	if d := os.Getenv("OW_OBI_DIR"); d != "" {
+		return filepath.Join(d, "linux-"+goarch)
+	}
+	return filepath.Join("/agent-src/obi", "linux-"+goarch)
 }

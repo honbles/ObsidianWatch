@@ -350,6 +350,7 @@ Implemented in: `management/backend/internal/store/secrets.go`, `store/credmask.
 | `OW_SAST_MAX_REPO_MB` | `2048` | Largest checkout scanned |
 | `OW_SEMGREP_RULES` | – | Directory of pattern rules to use instead of the bundled opengrep-rules |
 | `OW_TRIVY_CACHE_DIR` | `/var/cache/trivy` | Trivy databases |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | – (off) | Self-monitoring of the management server (OpenTelemetry Go SDK, Tier 2 with security events). `http://127.0.0.1:4318` or `unix:///run/obsidianwatch/otlp/otlp.sock`. Details and the other `OTEL_*` variables: [application/deployment.md](../application/deployment.md) section 7a |
 | `OW_SCANNER_DB_UPDATE` | `true` | `false`: never refresh the Trivy databases (fully offline) |
 | `OW_CODE_SCAN_WORKERS` | `1` | Automated scan jobs run in parallel (1-4) |
 | `OW_SAST_HEAVY_SLOTS` | `1` | Pattern-rule and CodeQL runs allowed at the same time across all scans (1-8). Each needs 1-2 GB of memory; other scans wait. Raise only with memory to match. |

@@ -36,6 +36,12 @@ type Resource struct {
 	Version     string // service.version
 	Language    string // telemetry.sdk.language
 	SDK         string // telemetry.sdk.name + version
+	// The commit the process was built from: OpenTelemetry vcs.* (or git.*)
+	// resource attributes, or what the host sensor read for a discovered process.
+	VCSRevision string
+	VCSRepo     string
+	VCSBranch   string
+	VCSSource   string // otel | oci | git
 }
 
 // Span is one decoded span, allowlisted.
@@ -116,6 +122,10 @@ var resourceAllow = map[string]bool{
 	"service.name": true, "deployment.environment": true, "deployment.environment.name": true,
 	"service.instance.id": true, "service.version": true,
 	"telemetry.sdk.language": true, "telemetry.sdk.name": true, "telemetry.sdk.version": true,
+	// the commit the service was built from (OpenTelemetry VCS semantic conventions, older names, git.* tags)
+	"vcs.ref.head.revision": true, "vcs.repository.ref.revision": true, "vcs.repository.url.full": true,
+	"vcs.ref.head.name": true, "vcs.repository.ref.name": true,
+	"git.commit.sha": true, "git.repository_url": true, "git.branch": true,
 }
 
 var spanAllow = map[string]bool{
@@ -197,7 +207,55 @@ func (r *Resource) set(k string, v attrValue) {
 		}
 	case "telemetry.sdk.version":
 		r.SDK = strings.TrimSpace(r.SDK + " " + v.str())
+	case "vcs.ref.head.revision", "vcs.repository.ref.revision", "git.commit.sha":
+		if rev := CleanRevision(v.str()); rev != "" {
+			r.VCSRevision, r.VCSSource = rev, "otel"
+		}
+	case "vcs.repository.url.full", "git.repository_url":
+		r.VCSRepo = CleanRepoURL(v.str())
+	case "vcs.ref.head.name", "vcs.repository.ref.name", "git.branch":
+		r.VCSBranch = clipString(strings.TrimPrefix(v.str(), "refs/heads/"), 200)
 	}
+}
+
+// CleanRevision returns a commit id (7 to 64 hex characters, lower case) or "".
+func CleanRevision(s string) string {
+	s = strings.ToLower(strings.TrimSpace(s))
+	if len(s) < 7 || len(s) > 64 {
+		return ""
+	}
+	for _, c := range s {
+		if !(c >= '0' && c <= '9' || c >= 'a' && c <= 'f') {
+			return ""
+		}
+	}
+	return s
+}
+
+// CleanRepoURL drops credentials and query from a repository URL, so a token
+// embedded in a remote ("https://user:token@host/x.git") never leaves the host.
+func CleanRepoURL(s string) string {
+	s = strings.TrimSpace(s)
+	if i := strings.IndexAny(s, "?#"); i >= 0 {
+		s = s[:i]
+	}
+	if i := strings.Index(s, "://"); i >= 0 {
+		rest := s[i+3:]
+		if at := strings.LastIndex(strings.SplitN(rest, "/", 2)[0], "@"); at >= 0 {
+			rest = rest[at+1:]
+		}
+		s = s[:i+3] + rest
+	} else if at := strings.Index(s, "@"); at >= 0 && strings.Contains(s[at:], ":") { // git@github.com:org/repo.git
+		s = s[at+1:]
+	}
+	return clipString(s, 300)
+}
+
+func clipString(s string, n int) string {
+	if len(s) > n {
+		return s[:n]
+	}
+	return s
 }
 
 func (s *Span) set(k string, v attrValue) {

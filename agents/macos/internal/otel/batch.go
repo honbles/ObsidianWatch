@@ -9,21 +9,28 @@ import (
 )
 
 type BatchInstance struct {
-	Service      string          `json:"service"`
-	Environment  string          `json:"environment"`
-	Source       string          `json:"source"`
-	InstanceRef  string          `json:"instance_ref"`
-	Version      string          `json:"version"`
-	PID          int             `json:"pid"`
-	ProcStart    time.Time       `json:"proc_start"`
-	ContainerID  string          `json:"container_id"`
-	Identity     string          `json:"identity"`
-	Instrumented bool            `json:"instrumented"`
-	Listen       json.RawMessage `json:"listen,omitempty"`
-	Language     string          `json:"language"`
-	SDK          string          `json:"sdk"`
-	Exe          string          `json:"exe"`
-	Sensor       string          `json:"sensor,omitempty"` // host sensor tier that saw it: ebpf | procevent | poll
+	Service       string          `json:"service"`
+	Environment   string          `json:"environment"`
+	Source        string          `json:"source"`
+	InstanceRef   string          `json:"instance_ref"`
+	Version       string          `json:"version"`
+	PID           int             `json:"pid"`
+	ProcStart     time.Time       `json:"proc_start"`
+	ContainerID   string          `json:"container_id"`
+	Identity      string          `json:"identity"`
+	Instrumented  bool            `json:"instrumented"`
+	Listen        json.RawMessage `json:"listen,omitempty"`
+	Language      string          `json:"language"`
+	SDK           string          `json:"sdk"`
+	Exe           string          `json:"exe"`
+	Sensor        string          `json:"sensor,omitempty"` // host sensor tier that saw it: ebpf | procevent | poll
+	Unit          string          `json:"unit,omitempty"`
+	ContainerName string          `json:"container_name,omitempty"`
+	Image         string          `json:"image,omitempty"`
+	VCSRevision   string          `json:"vcs_revision,omitempty"` // commit the process was built from
+	VCSRepo       string          `json:"vcs_repo,omitempty"`
+	VCSBranch     string          `json:"vcs_branch,omitempty"`
+	VCSSource     string          `json:"vcs_source,omitempty"` // otel | oci | git
 }
 
 type BatchRoute struct {

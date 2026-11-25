@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"log/slog"
+	"obsidianwatch/management/internal/telemetry"
 	"time"
 
 	_ "github.com/lib/pq"
@@ -18,7 +19,7 @@ type DB struct {
 }
 
 func Connect(cfg config.DatabaseConfig, logger *slog.Logger) (*DB, error) {
-	db, err := sql.Open("postgres", cfg.DSN())
+	db, err := sql.Open(telemetry.DriverName, cfg.DSN()) // lib/pq with spans for traced requests
 	if err != nil {
 		return nil, fmt.Errorf("store: open: %w", err)
 	}

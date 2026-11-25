@@ -62,6 +62,9 @@ func appProfileYAML(cfg AgentBuilderConfig) string {
 	if env := strings.TrimSpace(cfg.AppEnvironment); appEnvRe.MatchString(env) {
 		fmt.Fprintf(&b, "    environment: %q\n", env)
 	}
+	if cfg.AppRequestsEBPF {
+		b.WriteString("    requests:\n      enabled: true\n")
+	}
 	b.WriteString("  slow_ms: 1000\n")
 	b.WriteString("  baseline_sample_pct: 1\n")
 	return b.String()

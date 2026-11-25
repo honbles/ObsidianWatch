@@ -114,3 +114,37 @@ func TestPostureGaps(t *testing.T) {
 		t.Fatalf("gaps: %+v", l)
 	}
 }
+
+func TestDeployedCommits(t *testing.T) {
+	cases := []struct {
+		link, url string
+		ok        bool
+	}{
+		{"acme/orders", "https://github.com/acme/orders.git", true},
+		{"acme/orders", "github.com:acme/orders.git", true},
+		{"Acme/Orders", "https://github.com/acme/orders", true},
+		{"acme/orders", "https://github.com/acme/orders-ui", false},
+		{"acme/orders", "", true},
+		{"org/proj/api", "https://dev.azure.com/org/proj/_git/api", true},
+		{"grp/sub/app", "https://gitlab.example.com/grp/sub/app.git", true},
+	}
+	for _, c := range cases {
+		if repoMatches(c.link, c.url) != c.ok {
+			t.Errorf("repoMatches(%q, %q) want %v", c.link, c.url, c.ok)
+		}
+	}
+	a := "1111111111111111111111111111111111111111"
+	b := "2222222222222222222222222222222222222222"
+	deps := appDeployments([]appLiveInst{
+		{Host: "h1", VCSRevision: a, VCSSource: "oci"},
+		{Host: "h2", VCSRevision: b, VCSSource: "oci"},
+		{Host: "h3", VCSRevision: b, VCSSource: "oci"},
+		{Host: "h4"}, // reports nothing
+	})
+	if len(deps) != 2 || deps[0].Revision != b || deps[0].Instances != 2 || len(deps[0].Hosts) != 2 || deps[0].Short != "222222222222" {
+		t.Fatalf("deployments: %+v", deps)
+	}
+	if !fullRevision(a) || fullRevision("abc1234") {
+		t.Fatal("full revision")
+	}
+}

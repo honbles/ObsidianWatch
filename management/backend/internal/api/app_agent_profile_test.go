@@ -103,3 +103,13 @@ func TestBuilderYAMLCarriesEnrollmentToken(t *testing.T) {
 		}
 	}
 }
+
+func TestAppProfileRequestsEBPF(t *testing.T) {
+	if y := appProfileYAML(AgentBuilderConfig{EnableAppProfile: true}); strings.Contains(y, "requests:") {
+		t.Fatal("request tracing must be off unless asked for")
+	}
+	y := appProfileYAML(AgentBuilderConfig{EnableAppProfile: true, AppRequestsEBPF: true})
+	if !strings.Contains(y, "  ebpf:\n    enabled: true\n") || !strings.Contains(y, "    requests:\n      enabled: true\n") {
+		t.Fatalf("yaml:\n%s", y)
+	}
+}

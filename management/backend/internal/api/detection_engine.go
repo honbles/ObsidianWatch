@@ -43,6 +43,7 @@ import (
 
 	"obsidianwatch/management/internal/notify"
 	"obsidianwatch/management/internal/store"
+	"obsidianwatch/management/internal/telemetry"
 )
 
 // ── Signature type ────────────────────────────────────────────────────────────
@@ -1547,6 +1548,8 @@ const detectionPage = 5000
 // catchUp reads and evaluates pages until the cursor reaches the newest
 // event (bounded, so one huge backlog cannot starve the other cursors).
 func (e *DetectionEngine) catchUp(ctx context.Context) {
+	ctx, span := telemetry.StartJob(ctx, "detection.pass")
+	defer span.End()
 	for i := 0; i < 20 && ctx.Err() == nil; i++ {
 		if e.runCursor(ctx) < detectionPage {
 			return
@@ -1559,6 +1562,8 @@ func (e *DetectionEngine) catchUp(ctx context.Context) {
 // hours or days old - a wall-clock window on `time` would miss those
 // entirely. Its own cursor + a generous 7-day initial lookback covers it.
 func (e *DetectionEngine) runDevOpsCursor(ctx context.Context) {
+	ctx, span := telemetry.StartJob(ctx, "detection.devops")
+	defer span.End()
 	events, err := pageEventCursor(ctx, e.db, "detection-devops", store.EventFilter{OS: "devops"}, 7*24*time.Hour, 2000)
 	if err != nil {
 		e.logger.Warn("detection: devops cursor query failed", "err", err)
