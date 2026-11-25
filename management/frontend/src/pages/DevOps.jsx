@@ -1,6 +1,9 @@
 import { useState, useEffect, useCallback } from 'react'
 import { safeHref } from '../utils/safeHref'
 import CodeOverview from './code/CodeOverview'
+import AutomationPanel from './code/AutomationPanel'
+import ReachBadge, { REACH_ORDER, reachTitle } from './code/ReachBadge'
+import FindingActions, { TriageBadge } from './code/FindingActions'
 import { GitBranch, GitCommit, Code, Bell, Activity, Search,
          RefreshCw, Plus, Trash2, ChevronRight, AlertTriangle,
          CheckCircle, XCircle, Eye, EyeOff, Clock, User,
@@ -22,7 +25,8 @@ const PROVIDERS = {
         help: 'Needs: repo, read:org, admin:org (audit_log), read:user' },
     ],
     pulls: ['Org audit log (member changes, repo visibility, webhooks)', 'Commit history + diffs', 'Pipeline runs', 'Secret scanning on push'],
-    webhookEvents: ['push', 'repository', 'member', 'org', 'workflow_run', 'team'],
+    webhookEvents: ['push', 'pull_request', 'repository', 'member', 'organization', 'workflow_run', 'team', 'deploy_key', 'branch_protection_rule', 'repository_ruleset', 'public', 'create', 'delete'],
+    webhookHelp: 'Organisation settings → Webhooks → Add webhook. Content type application/json; paste the secret above.',
   },
   gitlab: {
     label: 'GitLab',
@@ -36,7 +40,8 @@ const PROVIDERS = {
         help: 'Leave blank for gitlab.com. Use your self-hosted URL otherwise.' },
     ],
     pulls: ['Group audit events', 'Commit history + diffs', 'Pipeline runs', 'Secret scanning on push'],
-    webhookEvents: ['push', 'merge_request', 'member', 'group'],
+    webhookEvents: ['Push events', 'Merge request events', 'Pipeline events', 'Member events', 'Project events'],
+    webhookHelp: 'Group settings → Webhooks → Add new webhook. Put the secret in the "Secret token" field.',
   },
   azuredevops: {
     label: 'Azure DevOps',
@@ -48,7 +53,8 @@ const PROVIDERS = {
       { key: 'project',  label: 'Project (Optional)',    placeholder: 'MyProject', help: 'Leave blank to sync all projects in the organization.' },
       { key: 'base_url', label: 'Azure DevOps URL (Optional)', placeholder: 'https://dev.azure.com/myorg', help: 'Leave blank to auto-build from organization name.' },
     ],
-    webhookEvents: [],
+    webhookEvents: ['Code pushed', 'Pull request created', 'Pull request updated', 'Pull request merged', 'Build completed', 'Run state changed'],
+    webhookHelp: 'Project settings → Service hooks → Web Hooks. Use the secret as the Basic authentication password (any user name), or send it in an X-Webhook-Token header.',
     pulls: ['Commit history + diffs', 'Secret scanning on push', 'SAST across all repos'],
   },
 }
@@ -95,7 +101,9 @@ function ConnectorForm({ provider, onSaved, onCancel }) {
   }
 
   if (webhookInfo) {
-    const webhookURL = `${window.location.protocol}//${window.location.host}/api/v1/devops/webhook/${webhookInfo.id}`
+    // Each provider has its own route and signing scheme.
+    const route = provider === 'gitlab' ? 'webhook-gitlab' : provider === 'azuredevops' ? 'webhook-azuredevops' : 'webhook'
+    const webhookURL = `${window.location.protocol}//${window.location.host}/api/v1/devops/${route}/${webhookInfo.id}`
     return (
       <div className="space-y-4">
         <div className="flex items-center gap-2 text-emerald-400">
@@ -116,8 +124,9 @@ function ConnectorForm({ provider, onSaved, onCancel }) {
             </div>
           </div>
           <p className="text-[11px] text-siem-muted">
-            Add these in your {cfg.label} org settings → Webhooks → Add webhook.<br/>
-            Events to subscribe: <span className="text-siem-text">{cfg.webhookEvents.join(', ')}</span>
+            {cfg.webhookHelp}<br/>
+            {cfg.webhookEvents.length > 0 && <>Events to subscribe: <span className="text-siem-text">{cfg.webhookEvents.join(', ')}</span><br/></>}
+            Saving this connector again keeps the same secret.
           </p>
         </div>
         <button onClick={onSaved}
@@ -368,6 +377,7 @@ function ConnectorDetail({ conn, onSync, onDisconnect, syncing }) {
   const [aiSast, setAiSast]         = useState(null)
   const [aiSastLoading, setAiSastLoading] = useState(false)
   const [sastFilter, setSastFilter] = useState('all')
+  const [showDismissed, setShowDismissed] = useState(false)
   const [expandedFindings, setExpandedFindings] = useState({})
   const [sastRepos, setSastRepos]   = useState([])
   const [sastSelRepo, setSastSelRepo] = useState('')
@@ -434,6 +444,12 @@ function ConnectorDetail({ conn, onSync, onDisconnect, syncing }) {
       }
     } catch {}
   }, [conn.id])
+
+  // After a triage decision: reload the result on screen (with fresh triage).
+  const reloadSAST = () => {
+    const repo = sastResult?.repo || sastSelRepo
+    if (repo) loadSASTForRepo(repo, sastResult?.branch || sastSelBranch)
+  }
 
   const loadSAST = useCallback(async () => {
     // Load available repos for the selector
@@ -512,6 +528,7 @@ function ConnectorDetail({ conn, onSync, onDisconnect, syncing }) {
     { id: 'events',    label: 'Events',        icon: Activity  },
     { id: 'alerts',    label: 'Alerts',        icon: Bell      },
     ...((['github', 'gitlab', 'azuredevops'].includes(conn.provider)) ? [{ id: 'posture', label: 'Posture', icon: Shield }] : []),
+    { id: 'automation', label: 'Automation', icon: Zap },
   ]
 
   return (
@@ -636,6 +653,7 @@ function ConnectorDetail({ conn, onSync, onDisconnect, syncing }) {
         )}
 
         {tab === 'posture' && <PosturePanel conn={conn} />}
+        {tab === 'automation' && <AutomationPanel conn={conn} />}
 
         {/* SAST - Static Analysis */}
         {tab === 'sast' && (
@@ -700,8 +718,8 @@ function ConnectorDetail({ conn, onSync, onDisconnect, syncing }) {
                   if (sastSelRepo) params.set('repo', sastSelRepo)
                   if (sastSelBranch) params.set('branch', sastSelBranch)
                   const url = `/api/v1/devops-connectors/${conn.id}/sast${params.toString() ? '?' + params.toString() : ''}`
-                  const { data } = await runScan(url)
-                  setSastResult(data); setAiSast(null)
+                  const { data } = await runScan(url, { maxWaitMs: 42 * 60 * 1000 })
+                  setSastResult(data); setAiSast(null); if (data.warning) setSastError(data.warning)
                 } catch (e) { setSastError(e.response?.data?.error || 'SAST scan failed') }
                 finally { setSasting(false) }
               }} disabled={sasting}
@@ -709,7 +727,7 @@ function ConnectorDetail({ conn, onSync, onDisconnect, syncing }) {
                 <Code size={13} className={sasting ? 'animate-pulse' : ''}/>
                 {sasting ? 'Scanning source code…' : 'Run SAST Scan'}
               </button>
-              {sasting && <span className="text-[10px] text-siem-muted">Large repos can take 2-5 min - results saved automatically, refresh if page times out</span>}
+              {sasting && <span className="text-[10px] text-siem-muted">Clones the repository and runs every installed engine; large repositories can take 10-30 min. Results are saved automatically.</span>}
               {!sasting && sastResult?.scanned_at && (
                 <span className="text-[10px] text-siem-muted/60 flex items-center gap-1">
                   <Clock size={10}/>
@@ -721,7 +739,7 @@ function ConnectorDetail({ conn, onSync, onDisconnect, syncing }) {
                 <button onClick={async () => {
                   setAiSastLoading(true)
                   try {
-                    const { data } = await api.post(`/api/v1/devops-connectors/${conn.id}/sast/ai`, {}, { timeout: 60000 })
+                    const { data } = await api.post(`/api/v1/devops-connectors/${conn.id}/sast/ai${(sastResult?.repo || sastSelRepo) ? `?repo=${encodeURIComponent(sastResult?.repo || sastSelRepo)}` : ''}`, {}, { timeout: 60000 })
                     const text = data.content?.find(b => b.type === 'text')?.text || ''
                     const clean = text.replace(/```json\n?|```\n?/g, '').trim()
                     try { setAiSast(JSON.parse(clean)) } catch { setAiSast({ executive_summary: clean }) }
@@ -755,7 +773,7 @@ function ConnectorDetail({ conn, onSync, onDisconnect, syncing }) {
 
             {sasting && (
               <div className="bg-siem-bg border border-siem-accent/20 rounded-xl p-5 space-y-3">
-                {['Fetching repository file tree', 'Downloading source files', 'Running security rules', 'Analysing patterns', 'Deduplicating findings'].map((msg, i) => (
+                {['Cloning the repository', 'Scanning history for secrets', 'Checking dependencies, IaC and licences', 'Running code analysis', 'Deduplicating findings'].map((msg, i) => (
                   <div key={i} className="flex items-center gap-2">
                     <div className="w-1.5 h-1.5 rounded-full bg-siem-accent/60 animate-pulse" style={{animationDelay:`${i*400}ms`}}/>
                     <span className="text-[11px] text-siem-muted">{msg}…</span>
@@ -782,6 +800,39 @@ function ConnectorDetail({ conn, onSync, onDisconnect, syncing }) {
                     </div>
                   ))}
                 </div>
+
+                {/* Engines and SBOM */}
+                {(sastResult.engines || sastResult.sbom_available) && (
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {Object.entries(sastResult.engines || {}).filter(([k]) => k !== 'codeql-languages').map(([name, status]) => {
+                      const ok = status === 'ran' || name === 'source'
+                      const label = name === 'source' ? `source: ${status === 'git' ? 'git clone' : 'API download'}` : name
+                      return (
+                        <span key={name} title={status}
+                          className={`text-[10px] px-2 py-0.5 rounded-full border ${ok ? 'border-emerald-800/50 text-emerald-400/90' : 'border-siem-border text-siem-muted/60 line-through'}`}>
+                          {label}{name === 'codeql' && sastResult.engines?.['codeql-languages'] ? ` (${sastResult.engines['codeql-languages']})` : ''}
+                        </span>
+                      )
+                    })}
+                    {sastResult.sbom_available && (sastResult.repo || sastSelRepo) && (
+                      <button onClick={async () => {
+                        const repo = sastResult.repo || sastSelRepo
+                        try {
+                          const params = new URLSearchParams({ repo })
+                          if (sastResult.branch) params.set('branch', sastResult.branch)
+                          const res = await api.get(`/api/v1/devops-connectors/${conn.id}/sast/sbom?${params}`, { responseType: 'blob' })
+                          const a = document.createElement('a')
+                          a.href = URL.createObjectURL(res.data)
+                          a.download = `${repo.replace(/\//g, '_')}.cdx.json`
+                          a.click()
+                          URL.revokeObjectURL(a.href)
+                        } catch (e) { setSastError('SBOM download failed') }
+                      }} className="ml-auto text-[10px] px-3 py-1 rounded-lg border border-siem-accent/40 text-siem-accent hover:bg-siem-accent/10">
+                        Download SBOM (CycloneDX)
+                      </button>
+                    )}
+                  </div>
+                )}
 
                 {/* AI Triage */}
                 {aiSast && (
@@ -867,13 +918,20 @@ function ConnectorDetail({ conn, onSync, onDisconnect, syncing }) {
                       <span className="text-[10px] uppercase tracking-wider text-siem-muted font-semibold">
                         Findings ({sastResult.findings.filter(f => sastFilter === 'all' || f.severity === sastFilter).length})
                       </span>
+                      <label className="ml-auto flex items-center gap-1.5 text-[10px] text-siem-muted cursor-pointer">
+                        <input type="checkbox" checked={showDismissed} onChange={e => setShowDismissed(e.target.checked)} className="accent-siem-accent"/>
+                        Show dismissed ({sastResult.findings.filter(f => f.triage && ['false_positive','accepted_risk'].includes(f.triage.status)).length})
+                      </label>
                     </div>
                     <div className="max-h-[500px] overflow-y-auto divide-y divide-siem-border/20">
                       {sastResult.findings
+                        .filter(f => showDismissed || !(f.triage && ['false_positive','accepted_risk'].includes(f.triage.status)))
                         .filter(f => sastFilter === 'all' || f.severity === sastFilter)
                         .sort((a, b) => {
                           const o = {critical:0,high:1,medium:2,low:3,info:4}
-                          return (o[a.severity]??5)-(o[b.severity]??5)
+                          // Same severity: running dependencies first.
+                          return (o[a.severity]??5)-(o[b.severity]??5) ||
+                            (REACH_ORDER[a.reachability?.level] ?? 2) - (REACH_ORDER[b.reachability?.level] ?? 2)
                         })
                         .map((f, i) => {
                           const sevColor = {critical:'text-red-400',high:'text-orange-400',medium:'text-yellow-400',low:'text-blue-400',info:'text-siem-muted'}[f.severity]||'text-siem-muted'
@@ -889,6 +947,8 @@ function ConnectorDetail({ conn, onSync, onDisconnect, syncing }) {
                                     <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded border shrink-0 ${sevBg} ${sevColor}`}>{f.severity}</span>
                                     <span className="text-xs font-semibold text-siem-text">{f.title}</span>
                                     {f.cwe && <span className="text-[9px] text-violet-400/60 shrink-0">{f.cwe}</span>}
+                                    <ReachBadge reach={f.reachability} />
+                                    <TriageBadge f={f} />
                                     {f.engine && f.engine !== 'semgrep' && (
                                       <span className={`text-[9px] px-1 rounded shrink-0 ${
                                         f.engine === 'codeql' ? 'bg-blue-950/40 text-blue-400' :
@@ -970,6 +1030,7 @@ function ConnectorDetail({ conn, onSync, onDisconnect, syncing }) {
                                       <p className="text-[11px] text-emerald-300/80 leading-relaxed">{f.fix}</p>
                                     </div>
                                   )}
+                                  <FindingActions conn={conn} f={f} repo={sastResult.repo || sastSelRepo} branch={sastResult.branch || sastSelBranch} onChanged={reloadSAST} />
                                 </div>
                               )}
                             </div>

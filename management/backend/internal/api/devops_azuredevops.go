@@ -4,10 +4,12 @@ package api
 //
 // Azure DevOps REST API v7.0
 // Auth: Personal Access Token (PAT) via Basic auth (base64 encoded ":PAT")
-// Base URL: https://dev.azure.com/{organization}
+// Base URL: https://dev.azure.com/{organization}, or the connector base_url
+// (full collection URL) for Azure DevOps Server.
 
 import (
 	"context"
+	"net/url"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -30,9 +32,50 @@ type azureClient struct {
 func newAzureClient(token, org string) *azureClient {
 	return &azureClient{
 		token:   token,
-		baseURL: fmt.Sprintf("https://dev.azure.com/%s", org),
+		baseURL: fmt.Sprintf("https://dev.azure.com/%s", url.PathEscape(org)),
 		org:     org,
 	}
+}
+
+// adoClientFor builds the client for a connector. base_url, when set, is the
+// full organisation/collection URL (https://dev.azure.com/myorg, or
+// https://tfs.example.com/tfs/DefaultCollection for Azure DevOps Server); it
+// used to be validated on save and then ignored, so on-premises servers could
+// never sync.
+func adoClientFor(conn *store.DevOpsConnector) *azureClient {
+	c := newAzureClient(conn.Credentials["token"], conn.Org)
+	if bu := strings.TrimRight(conn.Credentials["base_url"], "/"); bu != "" {
+		c.baseURL = bu
+	}
+	return c
+}
+
+// adoIsCloud reports whether the client talks to Azure DevOps Services (the
+// audit log API only exists there).
+func (c *azureClient) adoIsCloud() bool {
+	return strings.HasPrefix(c.baseURL, "https://dev.azure.com/")
+}
+
+// adoProjects lists the projects to sync: the one named in the connector's
+// "project" credential when set (it used to be ignored and every project in
+// the organisation synced), otherwise all of them.
+func adoProjects(ctx context.Context, c *azureClient, conn *store.DevOpsConnector) ([]string, error) {
+	if p := strings.TrimSpace(conn.Credentials["project"]); p != "" {
+		return []string{p}, nil
+	}
+	var resp struct {
+		Value []struct {
+			Name string `json:"name"`
+		} `json:"value"`
+	}
+	if err := c.getJSON(ctx, c.baseURL+"/_apis/projects?$top=500&api-version=7.0", &resp); err != nil {
+		return nil, err
+	}
+	out := make([]string, 0, len(resp.Value))
+	for _, p := range resp.Value {
+		out = append(out, p.Name)
+	}
+	return out, nil
 }
 
 func (c *azureClient) do(ctx context.Context, url string) (*http.Response, error) {
@@ -45,7 +88,7 @@ func (c *azureClient) do(ctx context.Context, url string) (*http.Response, error
 	req.Header.Set("Authorization", "Basic "+auth)
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("Content-Type", "application/json")
-	return http.DefaultClient.Do(req)
+	return devopsHTTP.Do(req)
 }
 
 func (c *azureClient) getJSON(ctx context.Context, url string, out interface{}) error {
@@ -83,7 +126,7 @@ func syncAzureDevOps(ctx context.Context, conn *store.DevOpsConnector, db *store
 		return 0, "", fmt.Errorf("missing Azure DevOps PAT token")
 	}
 
-	client := newAzureClient(token, org)
+	client := adoClientFor(conn)
 	total := 0
 
 	// First sync: go back 30 days; subsequent: from last sync
@@ -96,19 +139,21 @@ func syncAzureDevOps(ctx context.Context, conn *store.DevOpsConnector, db *store
 	sinceStr := since.UTC().Format(time.RFC3339)
 
 	// ── 1. List projects ──────────────────────────────────────────────────────
-	var projectsResp struct {
-		Value []struct {
-			ID   string `json:"id"`
-			Name string `json:"name"`
-		} `json:"value"`
-	}
-	projectsURL := fmt.Sprintf("%s/_apis/projects?api-version=7.0", client.baseURL)
-	if err := client.getJSON(ctx, projectsURL, &projectsResp); err != nil {
+	projects, err := adoProjects(ctx, client, conn)
+	if err != nil {
 		return 0, "", fmt.Errorf("failed to list projects: %w", err)
+	}
+	type adoProject struct{ Name string }
+	projectsResp := struct{ Value []adoProject }{}
+	for _, p := range projects {
+		projectsResp.Value = append(projectsResp.Value, adoProject{Name: p})
 	}
 
 	// DO-11: organisation audit log (needs auditing enabled and the Auditing scope).
-	if entries, aerr := fetchADOAudit(ctx, client, org, since); aerr == nil {
+	// The audit API exists only on Azure DevOps Services, not on Server.
+	if !client.adoIsCloud() {
+		setCoverageNote(conn.ID, "Azure DevOps Server has no audit log API; audit-based detections are unavailable for this connector.")
+	} else if entries, aerr := fetchADOAudit(ctx, client, org, since); aerr == nil {
 		if evs := adoAuditToEvents(entries, conn); len(evs) > 0 {
 			n, _ := ingestCloudEvents(ctx, eventDB, evs)
 			total += n
@@ -132,7 +177,7 @@ func syncAzureDevOps(ctx context.Context, conn *store.DevOpsConnector, db *store
 				RemoteURL     string `json:"remoteUrl"`
 			} `json:"value"`
 		}
-		reposURL := fmt.Sprintf("%s/%s/_apis/git/repositories?api-version=7.0", client.baseURL, proj.Name)
+		reposURL := fmt.Sprintf("%s/%s/_apis/git/repositories?api-version=7.0", client.baseURL, url.PathEscape(proj.Name))
 		if err := client.getJSON(ctx, reposURL, &reposResp); err != nil {
 			continue
 		}
@@ -160,7 +205,7 @@ func syncAzureDevOps(ctx context.Context, conn *store.DevOpsConnector, db *store
 			}
 			commitsURL := fmt.Sprintf(
 				"%s/%s/_apis/git/repositories/%s/commits?searchCriteria.fromDate=%s&searchCriteria.$top=20&api-version=7.0",
-				client.baseURL, proj.Name, repo.ID, sinceStr,
+				client.baseURL, url.PathEscape(proj.Name), repo.ID, url.QueryEscape(sinceStr),
 			)
 			if err := client.getJSON(ctx, commitsURL, &commitsResp); err != nil {
 				continue
@@ -304,20 +349,19 @@ func syncAzureDevOps(ctx context.Context, conn *store.DevOpsConnector, db *store
 
 // ── SAST helpers for Azure DevOps ────────────────────────────────────────────
 
-func fetchAzureTree(ctx context.Context, token, org, project, repoID, branch string) ([]ghTreeEntry, error) {
-	client := newAzureClient(token, org)
+func fetchAzureTree(ctx context.Context, client *azureClient, project, repoID, branch string) ([]ghTreeEntry, error) {
 	var itemsResp struct {
 		Value []struct {
-			Path         string `json:"path"`
-			IsFolder     bool   `json:"isFolder"`
-			ContentLength int64 `json:"contentLength"`
+			Path          string `json:"path"`
+			IsFolder      bool   `json:"isFolder"`
+			ContentLength int64  `json:"contentLength"`
 		} `json:"value"`
 	}
-	url := fmt.Sprintf(
-		"https://dev.azure.com/%s/%s/_apis/git/repositories/%s/items?recursionLevel=full&versionDescriptor.version=%s&versionDescriptor.versionType=branch&api-version=7.0",
-		org, project, repoID, branch,
+	u := fmt.Sprintf(
+		"%s/%s/_apis/git/repositories/%s/items?recursionLevel=full&versionDescriptor.version=%s&versionDescriptor.versionType=branch&api-version=7.0",
+		client.baseURL, url.PathEscape(project), url.PathEscape(repoID), url.QueryEscape(branch),
 	)
-	if err := client.getJSON(ctx, url, &itemsResp); err != nil {
+	if err := client.getJSON(ctx, u, &itemsResp); err != nil {
 		return nil, err
 	}
 	var out []ghTreeEntry
@@ -334,13 +378,12 @@ func fetchAzureTree(ctx context.Context, token, org, project, repoID, branch str
 	return out, nil
 }
 
-func fetchAzureFileContent(ctx context.Context, token, org, project, repoID, path, branch string) (string, error) {
-	client := newAzureClient(token, org)
-	url := fmt.Sprintf(
-		"https://dev.azure.com/%s/%s/_apis/git/repositories/%s/items?path=%s&versionDescriptor.version=%s&versionDescriptor.versionType=branch&$format=text&api-version=7.0",
-		org, project, repoID, path, branch,
+func fetchAzureFileContent(ctx context.Context, client *azureClient, project, repoID, path, branch string) (string, error) {
+	u := fmt.Sprintf(
+		"%s/%s/_apis/git/repositories/%s/items?path=%s&versionDescriptor.version=%s&versionDescriptor.versionType=branch&$format=text&api-version=7.0",
+		client.baseURL, url.PathEscape(project), url.PathEscape(repoID), url.QueryEscape("/"+strings.TrimPrefix(path, "/")), url.QueryEscape(branch),
 	)
-	resp, err := client.do(ctx, url)
+	resp, err := client.do(ctx, u)
 	if err != nil {
 		return "", err
 	}
@@ -348,15 +391,16 @@ func fetchAzureFileContent(ctx context.Context, token, org, project, repoID, pat
 	if resp.StatusCode != 200 {
 		return "", fmt.Errorf("Azure API %d for %s", resp.StatusCode, path)
 	}
-	body, _ := io.ReadAll(resp.Body)
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
 	return string(body), nil
 }
 
 // testAzureDevOpsConnection verifies the token and org are valid
 func testAzureDevOpsConnection(ctx context.Context, token, org, baseURL string) (string, error) {
 	if baseURL == "" {
-		baseURL = fmt.Sprintf("https://dev.azure.com/%s", org)
+		baseURL = fmt.Sprintf("https://dev.azure.com/%s", url.PathEscape(org))
 	}
+	baseURL = strings.TrimRight(baseURL, "/")
 	client := &azureClient{token: token, baseURL: baseURL, org: org}
 	var result struct {
 		Value []struct {

@@ -43,3 +43,10 @@ func (db *DB) ListenEvents(ctx context.Context, wake chan<- struct{}) error {
 		}
 	}
 }
+
+// NotifyEventsInserted wakes the detection engine after the management server
+// itself writes events (cloud and DevOps connectors, webhooks), so they are
+// evaluated as quickly as agent events instead of on the next poll.
+func (db *DB) NotifyEventsInserted(ctx context.Context) {
+	_, _ = db.ExecContext(ctx, `SELECT pg_notify($1, '')`, EventsChannel)
+}

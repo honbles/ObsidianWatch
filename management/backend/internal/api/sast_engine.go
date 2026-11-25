@@ -17,7 +17,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"io/fs"
 	"log/slog"
 	"net/http"
 	neturl "net/url"
@@ -55,6 +54,15 @@ type SASTFinding struct {
 	EndLine  int    `json:"end_line,omitempty"`
 	Snippet  string `json:"snippet,omitempty"`
 	Engine   string `json:"engine"` // "semgrep" | "builtin"
+	// Dependency findings: the package, for runtime reachability (step 4).
+	Ecosystem    string        `json:"ecosystem,omitempty"`
+	Package      string        `json:"package,omitempty"`
+	Version      string        `json:"version,omitempty"`
+	Reachability *findingReach `json:"reachability,omitempty"`
+	// Triage (step 5), set when findings are read.
+	Fingerprint string         `json:"fingerprint,omitempty"`
+	Triage      *findingTriage `json:"triage,omitempty"`
+	TriageHint  *triageHint    `json:"triage_hint,omitempty"`
 }
 
 // ── Semgrep JSON output types ─────────────────────────────────────────────────
@@ -100,8 +108,8 @@ type semgrepError struct {
 
 // semgrepAvailable checks if semgrep is installed in the container
 func semgrepAvailable() bool {
-	_, err := exec.LookPath("semgrep")
-	return err == nil
+	bin, _ := semgrepEngine()
+	return bin != ""
 }
 
 // extractFileLines reads actual source lines from a file for snippet display
@@ -130,85 +138,6 @@ func extractFileLines(filePath string, startLine, endLine int) string {
 func codeqlAvailable() bool {
 	_, err := exec.LookPath("codeql")
 	return err == nil
-}
-
-// runCodeQL creates a CodeQL database and runs security queries on a directory
-// Returns findings in the same SASTFinding format as Semgrep
-func runCodeQL(ctx context.Context, repoDir, repoName string, logger *slog.Logger) ([]SASTFinding, error) {
-	// Detect primary language in repo
-	lang := detectLanguage(repoDir)
-	if lang == "" {
-		return nil, nil // unsupported language - skip silently
-	}
-
-	// Create CodeQL database
-	dbDir, err := os.MkdirTemp("", "codeql-db-*")
-	if err != nil {
-		return nil, err
-	}
-	defer os.RemoveAll(dbDir)
-
-	// Build CodeQL database
-	createCtx, cancel := context.WithTimeout(ctx, 5*time.Minute)
-	defer cancel()
-	createCmd := exec.CommandContext(createCtx, "codeql", "database", "create",
-		dbDir,
-		"--language="+lang,
-		"--source-root="+repoDir,
-		"--overwrite",
-		"--no-tracing",
-	)
-	createCmd.Env = scannerEnv() // H-4: no app secrets in scanner env
-	if out, err := createCmd.CombinedOutput(); err != nil {
-		logger.Warn("sast: codeql database create failed", "repo", repoName, "lang", lang, "err", string(out))
-		return nil, err
-	}
-
-	// Run security queries using the correct pack name
-	// Pack format: codeql/{lang}-queries (security suite within the pack)
-	resultsFile := filepath.Join(dbDir, "results.sarif")
-	analyzeCtx, cancel2 := context.WithTimeout(ctx, 5*time.Minute)
-	defer cancel2()
-	packName := fmt.Sprintf("codeql/%s-queries", lang)
-	analyzeCmd := exec.CommandContext(analyzeCtx, "codeql", "database", "analyze",
-		dbDir,
-		"--format=sarifv2.1.0",
-		"--output="+resultsFile,
-		"--sarif-add-snippets",
-		packName,
-	)
-	analyzeCmd.Env = scannerEnv()
-	if out, err := analyzeCmd.CombinedOutput(); err != nil {
-		logger.Warn("sast: codeql analyze failed", "repo", repoName, "err", string(out))
-		return nil, err
-	}
-
-	// Parse SARIF output
-	return parseSARIF(resultsFile, repoName, repoDir)
-}
-
-// detectLanguage detects the primary programming language in a directory
-func detectLanguage(dir string) string {
-	counts := map[string]int{}
-	filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
-		if err != nil || d.IsDir() { return nil }
-		switch strings.ToLower(filepath.Ext(path)) {
-		case ".go":              counts["go"]++
-		case ".js", ".jsx":      counts["javascript"]++
-		case ".ts", ".tsx":      counts["javascript"]++ // CodeQL uses javascript for TS
-		case ".py":              counts["python"]++
-		case ".java":            counts["java"]++
-		case ".cs":              counts["csharp"]++
-		case ".rb":              counts["ruby"]++
-		}
-		return nil
-	})
-	// Return language with most files
-	best, bestCount := "", 0
-	for lang, count := range counts {
-		if count > bestCount { best, bestCount = lang, count }
-	}
-	return best
 }
 
 // parseSARIF parses a SARIF file from CodeQL and returns SASTFindings
@@ -240,9 +169,14 @@ func parseSARIF(sarifFile, repoName, baseDir string) ([]SASTFinding, error) {
 						ID               string `json:"id"`
 						Name             string `json:"name"`
 						ShortDescription struct{ Text string `json:"text"` } `json:"shortDescription"`
+						DefaultConfiguration struct {
+							Level string `json:"level"`
+						} `json:"defaultConfiguration"`
 						Properties       struct {
 							Tags     []string `json:"tags"`
-							Severity string   `json:"severity"`
+							Severity string   `json:"problem.severity"`
+							LegacySev string  `json:"severity"`
+							SecuritySeverity string `json:"security-severity"`
 							Precision string  `json:"precision"`
 						} `json:"properties"`
 					} `json:"rules"`
@@ -257,9 +191,11 @@ func parseSARIF(sarifFile, repoName, baseDir string) ([]SASTFinding, error) {
 		// Build rule map for metadata lookup
 		ruleMap := map[string]struct{ Name, Desc, Sev string }{}
 		for _, r := range run.Tool.Driver.Rules {
-			sev := r.Properties.Severity
-			if sev == "" { sev = "medium" }
-			ruleMap[r.ID] = struct{ Name, Desc, Sev string }{r.Name, r.ShortDescription.Text, strings.ToLower(sev)}
+			problem := r.Properties.Severity
+			if problem == "" { problem = r.Properties.LegacySev }
+			if problem == "" { problem = r.DefaultConfiguration.Level }
+			ruleMap[r.ID] = struct{ Name, Desc, Sev string }{r.Name, r.ShortDescription.Text,
+				sarifSeverity(r.Properties.SecuritySeverity, problem)}
 		}
 		for _, result := range run.Results {
 			if len(result.Locations) == 0 { continue }
@@ -269,14 +205,15 @@ func parseSARIF(sarifFile, repoName, baseDir string) ([]SASTFinding, error) {
 			filePath = strings.TrimPrefix(filePath, "/")
 
 			rule := ruleMap[result.RuleID]
+			// The rule's rating wins; without rule metadata the result's own
+			// SARIF level decides. (The rule default used to be forced to
+			// "medium", so this fallback never ran and every CodeQL finding
+			// without a "severity" property showed as medium.)
 			sev := rule.Sev
 			if sev == "" {
-				switch result.Level {
-				case "error":   sev = "critical"
-				case "warning": sev = "high"
-				default:        sev = "medium"
-				}
+				sev = sarifSeverity("", result.Level)
 			}
+			if sev == "" { sev = "medium" }
 
 			snippet := extractFileLines(filepath.Join(baseDir, filePath), loc.Region.StartLine, loc.Region.EndLine)
 			findings = append(findings, SASTFinding{
@@ -296,28 +233,53 @@ func parseSARIF(sarifFile, repoName, baseDir string) ([]SASTFinding, error) {
 	return findings, nil
 }
 
-// runSemgrep runs semgrep on a directory and returns findings
-func runSemgrep(ctx context.Context, dir string, logger *slog.Logger) ([]semgrepResult, error) {
-	// Prefer bundled rules (offline), fall back to p/default (requires internet once)
-	configFlag := "p/default"
-	if _, err := os.Stat("/semgrep-rules"); err == nil {
-		configFlag = "/semgrep-rules"
-	} else {
-		logger.Info("sast: using semgrep p/default ruleset (internet required first run)")
+// sarifSeverity rates a finding. CodeQL security queries carry a CVSS-style
+// "security-severity" score, which maps to the GitHub code-scanning bands;
+// otherwise the problem severity / SARIF level is used
+// (error -> high, warning -> medium, note/recommendation -> low).
+func sarifSeverity(securitySeverity, level string) string {
+	if f, err := strconv.ParseFloat(strings.TrimSpace(securitySeverity), 64); err == nil {
+		switch {
+		case f >= 9.0:
+			return "critical"
+		case f >= 7.0:
+			return "high"
+		case f >= 4.0:
+			return "medium"
+		case f > 0:
+			return "low"
+		}
 	}
+	switch strings.ToLower(strings.TrimSpace(level)) {
+	case "critical":
+		return "critical"
+	case "error", "high":
+		return "high"
+	case "warning", "medium":
+		return "medium"
+	case "note", "recommendation", "low", "none":
+		return "low"
+	}
+	return ""
+}
 
-	cmd := exec.CommandContext(ctx, "semgrep",
-		"--config", configFlag,
-		"--json",
-		"--no-rewrite-rule-ids",
-		"--quiet",
-		"--metrics=off", // SA-05: no telemetry about customer code
-		"--max-memory", "1000", // 1GB max
-		"--timeout", "30",      // 30s per file
-		"--jobs", "2",          // 2 parallel workers
-		dir,
-	)
-
+// runSemgrep runs the Semgrep-compatible engine (opengrep or semgrep) with the
+// locally bundled rules. Nothing is downloaded at scan time.
+func runSemgrep(ctx context.Context, dir string, logger *slog.Logger) ([]semgrepResult, error) {
+	bin, rules := semgrepEngine()
+	if bin == "" {
+		return nil, errToolMissing
+	}
+	args := []string{"scan", "--config", rules, "--json", "--quiet", "--no-rewrite-rule-ids",
+		"--max-memory", "1000", "--timeout", "30", "--jobs", "2"}
+	if filepath.Base(bin) == "semgrep" {
+		args = append(args, "--metrics=off", "--disable-version-check") // SA-05
+	} else {
+		args = append(args, "--taint-intrafile") // opengrep: cross-function taint inside a file
+	}
+	args = append(args, dir)
+	cmd := exec.CommandContext(ctx, bin, args...)
+	_ = logger
 	cmd.Env = scannerEnv()
 	out, err := cmd.Output()
 	if err != nil {
@@ -476,7 +438,7 @@ func fetchGitHubTree(ctx context.Context, token, owner, repo, branch string) ([]
 	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("Accept", "application/vnd.github+json")
 	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := devopsHTTP.Do(req)
 	if err != nil { return nil, err }
 	defer resp.Body.Close()
 	if resp.StatusCode != 200 {
@@ -498,7 +460,7 @@ func fetchGitHubFileContent(ctx context.Context, token, owner, repo, path, ref s
 	req, _ := http.NewRequestWithContext(ctx, "GET", url, nil)
 	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("Accept", "application/vnd.github+json")
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := devopsHTTP.Do(req)
 	if err != nil { return "", err }
 	defer resp.Body.Close()
 	if resp.StatusCode != 200 { return "", fmt.Errorf("HTTP %d", resp.StatusCode) }
@@ -514,8 +476,9 @@ func fetchGitHubFileContent(ctx context.Context, token, owner, repo, path, ref s
 }
 
 func gitlabEncodeProject(projectID string) string {
-	// GitLab API requires namespace/project to be URL-encoded as namespace%2Fproject
-	return strings.ReplaceAll(projectID, "/", "%2F")
+	// GitLab needs namespace/project encoded as one path segment; the old
+	// ReplaceAll only handled "/", so names with spaces, "+" or "#" broke.
+	return gitlabID(projectID)
 }
 
 func fetchGitLabTree(ctx context.Context, token, baseURL, projectID, branch string) ([]ghTreeEntry, error) {
@@ -527,10 +490,10 @@ func fetchGitLabTree(ctx context.Context, token, baseURL, projectID, branch stri
 	page := 1
 	for {
 		url := fmt.Sprintf("%s/api/v4/projects/%s/repository/tree?recursive=true&per_page=100&page=%d&ref=%s",
-			baseURL, encoded, page, branch)
+			strings.TrimRight(baseURL, "/"), encoded, page, neturl.QueryEscape(branch))
 		req, _ := http.NewRequestWithContext(ctx, "GET", url, nil)
 		req.Header.Set("PRIVATE-TOKEN", token)
-		resp, err := http.DefaultClient.Do(req)
+		resp, err := devopsHTTP.Do(req)
 		if err != nil { return nil, err }
 		var entries []struct {
 			Path string `json:"path"`
@@ -553,12 +516,12 @@ func fetchGitLabFileContent(ctx context.Context, token, baseURL, projectID, file
 	if baseURL == "" { baseURL = "https://gitlab.com" }
 	if branch == "" || branch == "unknown" { branch = "HEAD" }
 	encoded := gitlabEncodeProject(projectID)
-	escapedPath := strings.ReplaceAll(filePath, "/", "%2F")
+	escapedPath := neturl.PathEscape(filePath)
 	url := fmt.Sprintf("%s/api/v4/projects/%s/repository/files/%s/raw?ref=%s",
-		baseURL, encoded, escapedPath, branch)
+		strings.TrimRight(baseURL, "/"), encoded, escapedPath, neturl.QueryEscape(branch))
 	req, _ := http.NewRequestWithContext(ctx, "GET", url, nil)
 	req.Header.Set("PRIVATE-TOKEN", token)
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := devopsHTTP.Do(req)
 	if err != nil { return "", err }
 	defer resp.Body.Close()
 	if resp.StatusCode != 200 { return "", fmt.Errorf("GitLab API %d for %s", resp.StatusCode, filePath) }
@@ -629,18 +592,15 @@ func handleSAST(cfg *config.Config, db *store.DB, logger *slog.Logger) http.Hand
 
 		useSemgrep := semgrepAvailable()
 		useCodeQL  := codeqlAvailable()
-		engine := "semgrep+builtin"
-		if useSemgrep && useCodeQL {
-			engine = "semgrep+codeql+builtin"
-		} else if !useSemgrep {
-			engine = "builtin"
-			logger.Warn("sast: semgrep not found, using built-in rules only")
-		}
+		engines := engineReport{}
+		var sbom []byte
+		lastSourceErr := ""
+		engine := "builtin"
 
 		logger.Info("sast: starting scan",
 			"connector", conn.Org,
 			"repos", len(repoSet),
-			"engine", engine,
+			"semgrep", useSemgrep,
 			"codeql", useCodeQL,
 		)
 
@@ -668,180 +628,64 @@ func handleSAST(cfg *config.Config, db *store.DB, logger *slog.Logger) http.Hand
 			// HEAD always resolves to the repo's default branch (main/master/etc)
 			if branch == "" || branch == "unknown" { branch = "HEAD" }
 
-			// Fetch file tree
-			var tree []ghTreeEntry
-			var treeErr error
-			if conn.Provider == "gitlab" {
-				tree, treeErr = fetchGitLabTree(ctx, token, conn.Credentials["base_url"], repo, branch)
-			} else if conn.Provider == "azuredevops" {
-				// Azure repo format: org/project/repoName
-				azParts := strings.SplitN(repo, "/", 3)
-				azOrg, azProj, azRepo := conn.Org, "", repo
-				if len(azParts) == 3 { azOrg, azProj, azRepo = azParts[0], azParts[1], azParts[2] }
-				tree, treeErr = fetchAzureTree(ctx, token, azOrg, azProj, azRepo, branch)
-			} else {
-				tree, treeErr = fetchGitHubTree(ctx, token, owner, repoName, branch)
-			}
-			if treeErr != nil {
-				logger.Warn("sast: failed to fetch tree", "repo", repo, "err", treeErr)
-				continue
-			}
-
-			// Filter source files
-			var sourceFiles []ghTreeEntry
-			for _, f := range tree {
-				if f.Type != "blob" { continue }
-				if f.Size > sastSizeLimit(f.Path) { continue }
-				if isVendorPath(f.Path) { continue }
-				if isSourceFile(f.Path) {
-					sourceFiles = append(sourceFiles, f)
-				}
-			}
-			if len(sourceFiles) > maxFilesPerRepo {
-				sort.SliceStable(sourceFiles, func(i, j int) bool {
-					return sastFilePriority(sourceFiles[i].Path) < sastFilePriority(sourceFiles[j].Path)
-				})
-				logger.Warn("sast: repo exceeds file cap; scanning highest-risk files only",
-					"repo", repo, "total", len(sourceFiles), "scanned", maxFilesPerRepo)
-				sourceFiles = sourceFiles[:maxFilesPerRepo]
-			}
-
-			// Create repo dir in temp
 			repoSlug := strings.ReplaceAll(repo, "/", "-")
 			repoDir := filepath.Join(tmpDir, repoSlug)
-			if err := os.MkdirAll(repoDir, 0755); err != nil { continue }
 
-			logger.Info("sast: fetching repo", "repo", repo, "files", len(sourceFiles))
-
-			// SA-02: GitHub repos come down as a single tarball; fall back to
-			// per-file fetching only if that fails.
-			if conn.Provider != "gitlab" && conn.Provider != "azuredevops" {
-				want := make(map[string]bool, len(sourceFiles))
-				for _, f := range sourceFiles {
-					want[f.Path] = true
-				}
-				if n, tarErr := fetchGitHubTarballFiles(ctx, token, owner, repoName, branch, repoDir, want); tarErr == nil && n > 0 {
-					scannedFiles += n
-					sourceFiles = nil
-				} else if tarErr != nil {
-					logger.Warn("sast: tarball fetch failed, falling back to per-file", "repo", repo, "err", tarErr)
-				}
+			// Source: git clone (every file, full branch history for the
+			// secrets scan); the provider API is the fallback.
+			source, historyOK := "git", false
+			depth := 0
+			if !sastHistoryEnabled() {
+				depth = 1
 			}
-
-			// Fetch and write all files to disk
-			for _, f := range sourceFiles {
-				select { case <-ctx.Done(): goto done; default: }
-
-				var content string
-				var fetchErr error
-				if conn.Provider == "gitlab" {
-					content, fetchErr = fetchGitLabFileContent(ctx, token,
-						conn.Credentials["base_url"], repo, f.Path, branch)
-				} else if conn.Provider == "azuredevops" {
-					azParts2 := strings.SplitN(repo, "/", 3)
-					azOrg2, azProj2, azRepo2 := conn.Org, "", repo
-					if len(azParts2) == 3 { azOrg2, azProj2, azRepo2 = azParts2[0], azParts2[1], azParts2[2] }
-					content, fetchErr = fetchAzureFileContent(ctx, token,
-						azOrg2, azProj2, azRepo2, f.Path, branch)
-				} else {
-					content, fetchErr = fetchGitHubFileContent(ctx, token, owner, repoName, f.Path, branch)
+			cloneErr := cloneRepo(ctx, conn, repo, branch, repoDir, depth)
+			if cloneErr != nil && depth == 0 {
+				_ = os.RemoveAll(repoDir)
+				logger.Warn("sast: full clone failed, trying shallow", "repo", repo, "err", cloneErr)
+				cloneErr = cloneRepo(ctx, conn, repo, branch, repoDir, 1)
+			} else if cloneErr == nil {
+				historyOK = depth == 0
+			}
+			if cloneErr == nil {
+				scannedFiles += countSourceFiles(repoDir)
+			} else {
+				_ = os.RemoveAll(repoDir)
+				logger.Warn("sast: git clone failed, using the provider API", "repo", repo, "err", cloneErr)
+				lastSourceErr = repo + ": " + cloneErr.Error()
+				source = "api"
+				n, ok := fetchRepoViaAPI(ctx, conn, token, repo, owner, repoName, branch, repoDir, logger)
+				if !ok && ctx.Err() != nil {
+					goto done
 				}
-				if fetchErr != nil { continue }
-
-				// Write file preserving directory structure
-				filePath := filepath.Join(repoDir, f.Path)
-				// SA-03: paths come from a provider API (possibly a self-hosted
-				// server we don't control) - never write outside repoDir.
-				if rel, relErr := filepath.Rel(repoDir, filePath); relErr != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) || filepath.IsAbs(f.Path) {
-					logger.Warn("sast: skipping file with unsafe path", "path", f.Path)
+				if !ok {
 					continue
 				}
-				if err := os.MkdirAll(filepath.Dir(filePath), 0755); err != nil { continue }
-				if err := os.WriteFile(filePath, []byte(content), 0644); err != nil { continue }
-				scannedFiles++
+				scannedFiles += n
 			}
-
+			engines.set("source", source)
 			scannedRepos++
 
-			// Scan 1: Semgrep (or built-in fallback)
-			if useSemgrep {
-				semgrepCtx, cancel := context.WithTimeout(ctx, 3*time.Minute)
-				results, err := runSemgrep(semgrepCtx, repoDir, logger)
-				cancel()
-				if err != nil {
-					logger.Warn("sast: semgrep failed", "repo", repo, "err", err)
-				} else {
-					findings := convertSemgrepFindings(results, repo, repoDir)
-					allFindings = append(allFindings, findings...)
-				}
+			repoFindings, repoSBOM := scanCheckout(ctx, conn, repo, repoDir, scanOpts{History: historyOK, CodeQL: useCodeQL, Semgrep: useSemgrep}, engines, logger)
+			allFindings = append(allFindings, repoFindings...)
+			if repoSBOM != nil {
+				sbom = repoSBOM
 			}
-
-			// Scan 1b (SA-06): dependency scan of manifests/lockfiles against OSV.
-			if scaFindingsList, scaErr := runSCAOnDir(ctx, repo, repoDir); scaErr != nil {
-				logger.Warn("sast: dependency scan failed", "repo", repo, "err", scaErr)
-			} else if len(scaFindingsList) > 0 {
-				logger.Info("sast: dependency findings", "repo", repo, "count", len(scaFindingsList))
-				allFindings = append(allFindings, scaFindingsList...)
-			}
-
-			// Scan 2: Built-in regex rules - always run (catches secrets, hardcoded creds, etc.)
-			builtinFindings := runBuiltinRulesOnDir(repo, repoDir)
-			if len(builtinFindings) > 0 {
-				logger.Info("sast: built-in rules findings", "repo", repo, "count", len(builtinFindings))
-				allFindings = append(allFindings, builtinFindings...)
-			}
-
-			// Run CodeQL alongside Semgrep for deeper dataflow analysis
-			// CodeQL supports: Go, JavaScript/TypeScript, Python, Java, C#, Ruby
-			// PHP is not supported - Semgrep handles it
-			if useCodeQL {
-				codeqlCtx, cancelCQ := context.WithTimeout(ctx, 10*time.Minute)
-				codeqlFindings, codeqlErr := runCodeQL(codeqlCtx, repoDir, repo, logger)
-				cancelCQ()
-				if codeqlErr != nil {
-					logger.Warn("sast: codeql failed", "repo", repo, "err", codeqlErr)
-				} else if len(codeqlFindings) > 0 {
-					logger.Info("sast: codeql findings", "repo", repo, "count", len(codeqlFindings))
-					allFindings = append(allFindings, codeqlFindings...)
-				}
-			}
+			_ = os.RemoveAll(repoDir)
 		}
 
 	done:
 		allFindings = deduplicateSASTFindings(allFindings)
+		engine = engines.names()
+		if filterRepo == "" {
+			sbom = nil // an SBOM belongs to one repository
+		}
 
 		counts := map[string]int{}
 		for _, f := range allFindings { counts[f.Severity]++ }
 
-		findingsJSON, _ := json.Marshal(allFindings)
-		// Store results per repo - upsert so rescanning overwrites previous result
-		// If filterRepo is set, store for that specific repo; otherwise store summary
-		saveRepo := filterRepo
 		saveBranch := filterBranch
 		if saveBranch == "" { saveBranch = "HEAD" }
-		_, dbErr := db.ExecContext(ctx, `
-			INSERT INTO sast_results
-				(connector_id, repo, branch, engine, repo_count, file_count, finding_count,
-				 critical_count, high_count, medium_count, findings)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
-			ON CONFLICT (connector_id, repo, branch)
-			DO UPDATE SET
-				scanned_at    = NOW(),
-				engine        = EXCLUDED.engine,
-				repo_count    = EXCLUDED.repo_count,
-				file_count    = EXCLUDED.file_count,
-				finding_count = EXCLUDED.finding_count,
-				critical_count= EXCLUDED.critical_count,
-				high_count    = EXCLUDED.high_count,
-				medium_count  = EXCLUDED.medium_count,
-				findings      = EXCLUDED.findings,
-				ai_summary    = NULL,
-				ai_analysed_at= NULL`,
-			connID, saveRepo, saveBranch, engine,
-			scannedRepos, scannedFiles, len(allFindings),
-			counts["critical"], counts["high"], counts["medium"],
-			findingsJSON,
-		)
+		dbErr := saveSASTResult(ctx, db, connID, filterRepo, saveBranch, engines, allFindings, sbom, scannedRepos, scannedFiles)
 		if dbErr != nil {
 			logger.Warn("sast: failed to save", "err", dbErr)
 		}
@@ -855,6 +699,9 @@ func handleSAST(cfg *config.Config, db *store.DB, logger *slog.Logger) http.Hand
 
 		writeJSON(w, 200, map[string]interface{}{
 			"engine":        engine,
+			"engines":       engines,
+			"sbom_available": sbom != nil,
+			"warning":       sastSourceWarning(scannedRepos, lastSourceErr),
 			"scanned_repos": scannedRepos,
 			"scanned_files": scannedFiles,
 			"finding_count": len(allFindings),
@@ -862,9 +709,109 @@ func handleSAST(cfg *config.Config, db *store.DB, logger *slog.Logger) http.Hand
 			"high_count":    counts["high"],
 			"medium_count":  counts["medium"],
 			"low_count":     counts["low"],
-			"findings":      allFindings,
+			"findings":      enrichFindings(ctx, db, connID, allFindings),
 		})
 	}
+}
+
+
+// fetchRepoViaAPI is the fallback source download when git clone is not
+// possible: the provider's tree API plus per-file fetches (GitHub: one
+// tarball), capped at maxFilesPerRepo files. Returns the files written.
+func fetchRepoViaAPI(ctx context.Context, conn *store.DevOpsConnector, token, repo, owner, repoName, branch, repoDir string, logger *slog.Logger) (files int, ok bool) {
+	// Fetch file tree
+	var tree []ghTreeEntry
+	var treeErr error
+	if conn.Provider == "gitlab" {
+		tree, treeErr = fetchGitLabTree(ctx, token, conn.Credentials["base_url"], repo, branch)
+	} else if conn.Provider == "azuredevops" {
+		// Azure repo format: org/project/repoName
+		azParts := strings.SplitN(repo, "/", 3)
+		azOrg, azProj, azRepo := conn.Org, "", repo
+		if len(azParts) == 3 { azOrg, azProj, azRepo = azParts[0], azParts[1], azParts[2] }
+		_ = azOrg
+		tree, treeErr = fetchAzureTree(ctx, adoClientFor(conn), azProj, azRepo, branch)
+	} else {
+		tree, treeErr = fetchGitHubTree(ctx, token, owner, repoName, branch)
+	}
+	if treeErr != nil {
+		logger.Warn("sast: failed to fetch tree", "repo", repo, "err", treeErr)
+		return 0, false
+	}
+
+	// Filter source files
+	var sourceFiles []ghTreeEntry
+	for _, f := range tree {
+		if f.Type != "blob" { continue }
+		if f.Size > sastSizeLimit(f.Path) { continue }
+		if isVendorPath(f.Path) { continue }
+		if isSourceFile(f.Path) {
+			sourceFiles = append(sourceFiles, f)
+		}
+	}
+	if len(sourceFiles) > maxFilesPerRepo {
+		sort.SliceStable(sourceFiles, func(i, j int) bool {
+			return sastFilePriority(sourceFiles[i].Path) < sastFilePriority(sourceFiles[j].Path)
+		})
+		logger.Warn("sast: repo exceeds file cap; scanning highest-risk files only",
+			"repo", repo, "total", len(sourceFiles), "scanned", maxFilesPerRepo)
+		sourceFiles = sourceFiles[:maxFilesPerRepo]
+	}
+
+	if err := os.MkdirAll(repoDir, 0755); err != nil { return 0, false }
+
+	logger.Info("sast: fetching repo", "repo", repo, "files", len(sourceFiles))
+
+	// SA-02: GitHub repos come down as a single tarball; fall back to
+	// per-file fetching only if that fails.
+	if conn.Provider != "gitlab" && conn.Provider != "azuredevops" {
+		want := make(map[string]bool, len(sourceFiles))
+		for _, f := range sourceFiles {
+			want[f.Path] = true
+		}
+		if n, tarErr := fetchGitHubTarballFiles(ctx, token, owner, repoName, branch, repoDir, want); tarErr == nil && n > 0 {
+			files += n
+			sourceFiles = nil
+		} else if tarErr != nil {
+			logger.Warn("sast: tarball fetch failed, falling back to per-file", "repo", repo, "err", tarErr)
+		}
+	}
+
+	// Fetch and write all files to disk
+	for _, f := range sourceFiles {
+		select { case <-ctx.Done(): return files, false; default: }
+
+		var content string
+		var fetchErr error
+		if conn.Provider == "gitlab" {
+			content, fetchErr = fetchGitLabFileContent(ctx, token,
+				conn.Credentials["base_url"], repo, f.Path, branch)
+		} else if conn.Provider == "azuredevops" {
+			azParts2 := strings.SplitN(repo, "/", 3)
+			azOrg2, azProj2, azRepo2 := conn.Org, "", repo
+			if len(azParts2) == 3 { azOrg2, azProj2, azRepo2 = azParts2[0], azParts2[1], azParts2[2] }
+			_ = azOrg2
+			content, fetchErr = fetchAzureFileContent(ctx, adoClientFor(conn),
+				azProj2, azRepo2, f.Path, branch)
+		} else {
+			content, fetchErr = fetchGitHubFileContent(ctx, token, owner, repoName, f.Path, branch)
+		}
+		if fetchErr != nil { continue }
+
+		// Write file preserving directory structure
+		filePath := filepath.Join(repoDir, f.Path)
+		// SA-03: paths come from a provider API (possibly a self-hosted
+		// server we don't control) - never write outside repoDir.
+		if rel, relErr := filepath.Rel(repoDir, filePath); relErr != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) || filepath.IsAbs(f.Path) {
+			logger.Warn("sast: skipping file with unsafe path", "path", f.Path)
+			continue
+		}
+		if err := os.MkdirAll(filepath.Dir(filePath), 0755); err != nil { continue }
+		if err := os.WriteFile(filePath, []byte(content), 0644); err != nil { continue }
+		files++
+	}
+
+	return files, true
 }
 
 // runBuiltinRulesOnDir runs our regex-based SAST rules on files in a directory
@@ -913,24 +860,22 @@ func handleListSASTRepos(db *store.DB, logger *slog.Logger) http.HandlerFunc {
 			// Azure DevOps: list repos across all projects
 			org := conn.Org
 			token := conn.Credentials["token"]
-			client := newAzureClient(token, org)
-			var projectsResp struct {
-				Value []struct{ Name string `json:"name"` } `json:"value"`
-			}
-			if err := client.getJSON(ctx, fmt.Sprintf("https://dev.azure.com/%s/_apis/projects?api-version=7.0", org), &projectsResp); err == nil {
-				for _, proj := range projectsResp.Value {
+			_ = token
+			client := adoClientFor(conn)
+			if projects, err := adoProjects(ctx, client, conn); err == nil {
+				for _, projName := range projects {
 					var reposResp struct {
 						Value []struct {
 							Name          string `json:"name"`
 							DefaultBranch string `json:"defaultBranch"`
 						} `json:"value"`
 					}
-					repoURL := fmt.Sprintf("https://dev.azure.com/%s/%s/_apis/git/repositories?api-version=7.0", org, proj.Name)
+					repoURL := fmt.Sprintf("%s/%s/_apis/git/repositories?api-version=7.0", client.baseURL, neturl.PathEscape(projName))
 					if err2 := client.getJSON(ctx, repoURL, &reposResp); err2 == nil {
 						for _, rp := range reposResp.Value {
 							branch := strings.TrimPrefix(rp.DefaultBranch, "refs/heads/")
 							if branch == "" { branch = "main" }
-							out = append(out, repoInfo{Repo: fmt.Sprintf("%s/%s/%s", org, proj.Name, rp.Name), Branch: branch})
+							out = append(out, repoInfo{Repo: fmt.Sprintf("%s/%s/%s", org, projName, rp.Name), Branch: branch})
 						}
 					}
 				}
@@ -938,17 +883,14 @@ func handleListSASTRepos(db *store.DB, logger *slog.Logger) http.HandlerFunc {
 		} else if conn.Provider == "gitlab" {
 			baseURL := conn.Credentials["base_url"]
 			if baseURL == "" { baseURL = "https://gitlab.com" }
-			var projects []struct {
-				PathWithNamespace string `json:"path_with_namespace"`
-				DefaultBranch     string `json:"default_branch"`
-			}
-			url := fmt.Sprintf("%s/api/v4/projects?membership=true&per_page=100&order_by=last_activity_at", baseURL)
-			req, _ := http.NewRequestWithContext(ctx, "GET", url, nil)
-			req.Header.Set("PRIVATE-TOKEN", token)
-			if resp, err := http.DefaultClient.Do(req); err == nil {
-				defer resp.Body.Close()
-				json.NewDecoder(resp.Body).Decode(&projects)
+			// The connector's own group/namespace, paged. membership=true used
+			// to list every project the token could see, outside the group too.
+			glc := &gitlabClient{token: token, baseURL: baseURL, group: conn.Org}
+			if projects, err := gitlabProjects(ctx, glc, conn.Org); err == nil {
 				for _, p := range projects {
+					if p.EmptyRepo || p.Archived {
+						continue
+					}
 					branch := p.DefaultBranch
 					if branch == "" { branch = "HEAD" }
 					out = append(out, repoInfo{Repo: p.PathWithNamespace, Branch: branch})
@@ -963,10 +905,7 @@ func handleListSASTRepos(db *store.DB, logger *slog.Logger) http.HandlerFunc {
 			// Fetch from BOTH org endpoint AND authenticated user endpoint then merge+deduplicate
 			// so we get org repos + personal public + personal private all in one list
 			seen := map[string]bool{}
-			for _, apiURL := range []string{
-				fmt.Sprintf("https://api.github.com/orgs/%s/repos?per_page=100&sort=pushed&type=all", conn.Org),
-				"https://api.github.com/user/repos?per_page=100&sort=pushed&type=all",
-			} {
+			for _, apiURL := range githubRepoListURLs(conn.Org) {
 				var batch []struct {
 					FullName      string `json:"full_name"`
 					DefaultBranch string `json:"default_branch"`
@@ -974,7 +913,7 @@ func handleListSASTRepos(db *store.DB, logger *slog.Logger) http.HandlerFunc {
 				req, _ := http.NewRequestWithContext(ctx, "GET", apiURL, nil)
 				req.Header.Set("Authorization", "Bearer "+token)
 				req.Header.Set("Accept", "application/vnd.github+json")
-				if resp, err := http.DefaultClient.Do(req); err == nil {
+				if resp, err := devopsHTTP.Do(req); err == nil {
 					json.NewDecoder(resp.Body).Decode(&batch)
 					resp.Body.Close()
 					// Log what each endpoint returned for debugging
@@ -983,6 +922,9 @@ func handleListSASTRepos(db *store.DB, logger *slog.Logger) http.HandlerFunc {
 					logger.Info("sast: repo list endpoint", "url", apiURL, "status", resp.StatusCode, "count", len(batch), "repos", names)
 					if resp.StatusCode == 200 {
 						for _, r := range batch {
+							// Only the connector's own org/account (the token
+							// owner's other repos used to be scanned too).
+							if !githubRepoBelongs(r.FullName, conn.Org) { continue }
 							if !seen[r.FullName] {
 								seen[r.FullName] = true
 								repos = append(repos, r)
@@ -1042,6 +984,8 @@ func handleGetSASTResults(db *store.DB) http.HandlerFunc {
 			MediumCount   int             `json:"medium_count"`
 			Findings      json.RawMessage `json:"findings"`
 			AISummary     *string         `json:"ai_summary,omitempty"`
+			Engines       json.RawMessage `json:"engines,omitempty"`
+			HasSBOM       bool            `json:"sbom_available"`
 		}
 
 		var queryErr error
@@ -1052,33 +996,105 @@ func handleGetSASTResults(db *store.DB) http.HandlerFunc {
 			queryErr = db.QueryRowContext(r.Context(), `
 				SELECT id, connector_id, COALESCE(repo,''), COALESCE(branch,''), COALESCE(engine,'semgrep'),
 				       scanned_at, repo_count, file_count, finding_count,
-				       critical_count, high_count, medium_count, findings, ai_summary
+				       critical_count, high_count, medium_count, findings, ai_summary,
+				       COALESCE(engines, '{}'::jsonb), sbom IS NOT NULL
 				FROM sast_results
 				WHERE connector_id = $1 AND repo = $2
 				ORDER BY scanned_at DESC LIMIT 1`, connID, filterRepo,
 			).Scan(&result.ID, &result.ConnectorID, &result.Repo, &result.Branch, &result.Engine,
 				&result.ScannedAt, &result.RepoCount, &result.FileCount, &result.FindingCount,
 				&result.CriticalCount, &result.HighCount, &result.MediumCount,
-				&result.Findings, &result.AISummary)
+				&result.Findings, &result.AISummary, &result.Engines, &result.HasSBOM)
 			_ = branch
 		} else {
 			// No repo filter - fetch most recent scan for this connector
 			queryErr = db.QueryRowContext(r.Context(), `
 				SELECT id, connector_id, COALESCE(repo,''), COALESCE(branch,''), COALESCE(engine,'semgrep'),
 				       scanned_at, repo_count, file_count, finding_count,
-				       critical_count, high_count, medium_count, findings, ai_summary
+				       critical_count, high_count, medium_count, findings, ai_summary,
+				       COALESCE(engines, '{}'::jsonb), sbom IS NOT NULL
 				FROM sast_results WHERE connector_id = $1
 				ORDER BY scanned_at DESC LIMIT 1`, connID,
 			).Scan(&result.ID, &result.ConnectorID, &result.Repo, &result.Branch, &result.Engine,
 				&result.ScannedAt, &result.RepoCount, &result.FileCount, &result.FindingCount,
 				&result.CriticalCount, &result.HighCount, &result.MediumCount,
-				&result.Findings, &result.AISummary)
+				&result.Findings, &result.AISummary, &result.Engines, &result.HasSBOM)
 		}
 		if queryErr != nil {
-			writeJSON(w, 200, map[string]interface{}{"scan": nil})
+			writeJSON(w, 200, map[string]interface{}{"scan": nil, "scans": []interface{}{}})
 			return
 		}
-		writeJSON(w, 200, map[string]interface{}{"scan": result})
+		result.Findings = enrichFindingsJSON(r.Context(), db, connID, result.Findings)
+		resp := map[string]interface{}{"scan": result}
+		if filterRepo == "" {
+			// SAST runs one repository at a time, so "the latest scan" is only
+			// the last repo scanned. scans carries the latest result for every
+			// repository so the overview counts all of them.
+			scans := latestSASTPerRepo(r.Context(), db, connID)
+			for i := range scans {
+				scans[i].Findings = enrichFindingsJSON(r.Context(), db, connID, scans[i].Findings)
+			}
+			resp["scans"] = scans
+		}
+		writeJSON(w, 200, resp)
+	}
+}
+
+type sastRepoScan struct {
+	Repo      string          `json:"repo"`
+	Branch    string          `json:"branch"`
+	Engine    string          `json:"engine"`
+	ScannedAt time.Time       `json:"scanned_at"`
+	Findings  json.RawMessage `json:"findings"`
+}
+
+func latestSASTPerRepo(ctx context.Context, db *store.DB, connID int64) []sastRepoScan {
+	rows, err := db.QueryContext(ctx, `
+		SELECT DISTINCT ON (COALESCE(repo,'')) COALESCE(repo,''), COALESCE(branch,''), COALESCE(engine,'semgrep'), scanned_at, findings
+		FROM sast_results WHERE connector_id = $1
+		ORDER BY COALESCE(repo,''), scanned_at DESC
+		LIMIT 1000`, connID)
+	if err != nil {
+		return []sastRepoScan{}
+	}
+	defer rows.Close()
+	out := []sastRepoScan{}
+	for rows.Next() {
+		var s sastRepoScan
+		if rows.Scan(&s.Repo, &s.Branch, &s.Engine, &s.ScannedAt, &s.Findings) == nil {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
+// handleSASTSBOM serves the CycloneDX SBOM stored with a repository's latest
+// SAST result: GET /api/v1/devops-connectors/{id}/sast/sbom?repo=&branch=
+func handleSASTSBOM(db *store.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		connID, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+		repo := r.URL.Query().Get("repo")
+		if err != nil || repo == "" {
+			writeJSON(w, 400, map[string]string{"error": "connector id and repo are required"})
+			return
+		}
+		branch := r.URL.Query().Get("branch")
+		var sbom []byte
+		q := `SELECT sbom FROM sast_results WHERE connector_id=$1 AND repo=$2 AND sbom IS NOT NULL`
+		args := []interface{}{connID, repo}
+		if branch != "" {
+			q += ` AND branch=$3`
+			args = append(args, branch)
+		}
+		q += ` ORDER BY scanned_at DESC LIMIT 1`
+		if err := db.QueryRowContext(r.Context(), q, args...).Scan(&sbom); err != nil || len(sbom) == 0 {
+			writeJSON(w, 404, map[string]string{"error": "no SBOM for this repository yet; run a SAST scan of it"})
+			return
+		}
+		name := strings.NewReplacer("/", "_", "\\", "_", "\"", "").Replace(repo)
+		w.Header().Set("Content-Type", "application/vnd.cyclonedx+json")
+		w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s.cdx.json"`, name))
+		_, _ = w.Write(sbom)
 	}
 }
 
@@ -1109,10 +1125,19 @@ func handleSASTAI(cfg *config.Config, db *store.DB) http.HandlerFunc {
 
 		var findingsJSON []byte
 		var scanID int64
-		err = db.QueryRowContext(r.Context(), `
-			SELECT id, findings FROM sast_results
-			WHERE connector_id = $1 ORDER BY scanned_at DESC LIMIT 1`, connID,
-		).Scan(&scanID, &findingsJSON)
+		// The selected repository's result (the latest of the connector used
+		// to be analysed whatever repository was on screen).
+		if repo := r.URL.Query().Get("repo"); repo != "" {
+			err = db.QueryRowContext(r.Context(), `
+				SELECT id, findings FROM sast_results
+				WHERE connector_id = $1 AND repo = $2 ORDER BY scanned_at DESC LIMIT 1`, connID, repo,
+			).Scan(&scanID, &findingsJSON)
+		} else {
+			err = db.QueryRowContext(r.Context(), `
+				SELECT id, findings FROM sast_results
+				WHERE connector_id = $1 ORDER BY scanned_at DESC LIMIT 1`, connID,
+			).Scan(&scanID, &findingsJSON)
+		}
 		if err != nil {
 			writeJSON(w, 404, map[string]string{"error": "no scan results"})
 			return
@@ -1120,6 +1145,8 @@ func handleSASTAI(cfg *config.Config, db *store.DB) http.HandlerFunc {
 
 		var findings []SASTFinding
 		json.Unmarshal(findingsJSON, &findings)
+		// Dismissed findings (false positive, accepted risk) are not sent.
+		findings, _ = withoutDismissed(enrichFindings(r.Context(), db, connID, findings))
 
 		type cf struct {
 			Rule    string `json:"rule"`

@@ -2,7 +2,7 @@
 
 Defects found by reading the code while writing these docs (November 2026). None is fixed yet unless marked. Paths are relative to the repository root; line numbers are approximate.
 
-Fixed since: the agent queue is at-least-once with fsync and health reports its depth; Linux has an eBPF process sensor; Windows enables 4688 auditing; detection is woken by ingest and sees process lineage. Already fixed in the same pass: APM batches dropped queries, errors, metrics, jobs and N+1 sections; OTLP attribute values were cut at 4 KiB; the APM route cap never reset; `PUT /api/v1/rules/settings` without `enabled` disabled the rule; the Linux unit's sandbox made live response and response actions read-only; SAST deduplication merged findings across repositories.
+Fixed since: the agent queue is at-least-once with fsync and health reports its depth; Linux has an eBPF process sensor; Windows enables 4688 auditing; detection is woken by ingest and sees process lineage. Already fixed in the same pass: APM batches dropped queries, errors, metrics, jobs and N+1 sections; OTLP attribute values were cut at 4 KiB; the APM route cap never reset; `PUT /api/v1/rules/settings` without `enabled` disabled the rule; the Linux unit's sandbox made live response and response actions read-only; SAST deduplication merged findings across repositories. Code (November 2026): GitHub sync and SAST list only the connector's own repositories; the `organization` webhook is handled; Azure DevOps honours `base_url` and `project` and its audit events reach the rules (new DEV-022); GitLab lists are paged, paths encoded and audit entries parsed from `details`; re-saving keeps the webhook secret; deleting a connector removes its posture result; CodeQL severity uses `security-severity` then the SARIF level; the job lock includes the query; the Code overview reads the latest SAST row of every repository; the base URL check also runs on the resolved address; each webhook route checks the connector type and the UI shows the right URL; DEV-005 and DEV-007 match what their names say; DevOps events go through one detection path with a per-repository key; the code-scan dedup key includes the repository.
 
 ## Endpoint
 
@@ -51,16 +51,6 @@ Fixed since: the agent queue is at-least-once with fsync and health reports its 
 
 ## Codebase
 
-- Code scanning reads the redacted and truncated patch text rather than the file.
-- The code-scan dedup key does not include the repository.
-- Azure DevOps ignores `base_url` and `project`, and its audit events never raise alerts.
-- GitHub sync lists `/user/repos` rather than the organisation's repositories; organisation events use the wrong branch.
-- DEV-005 and DEV-007 logic is wrong; detection runs twice on the same events.
-- GitLab paging and path encoding are wrong for large or nested projects.
-- Saving a connector again regenerates its webhook secret.
-- Posture settings are not removed when a connector is deleted.
-- CodeQL findings default to the wrong severity.
-- The job lock ignores the query.
-- The Code overview shows only the latest SAST row.
-- The base URL private-host check can be bypassed.
-- The GitHub webhook route does not check the connector type, and the UI always shows the GitHub webhook URL.
+- The **Code Scan** tab still reads the redacted and truncated stored patches. The SAST scan now covers secrets over the full history of a cloned branch, so prefer it; the Code Scan tab is kept for connectors where cloning is not possible.
+- Runtime reachability comes from Linux agents only; Windows and macOS agents do not report runtime inventories yet. Pure Python and JavaScript modules can only be shown as deployed, not loaded, and APM stack traces are not yet used as evidence of execution.
+- SAST runs scanners in the management container, as the same user, with its network access (no separate sandbox).

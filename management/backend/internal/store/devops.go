@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"github.com/lib/pq"
 	"time"
 )
 
@@ -92,26 +93,32 @@ func (db *DB) GetDevOpsConnectorRaw(ctx context.Context, id int64) (*DevOpsConne
 	return &c, nil
 }
 
-func (db *DB) UpsertDevOpsConnector(ctx context.Context, provider, org, label string, creds map[string]string, webhookSecret string) (int64, error) {
+// UpsertDevOpsConnector creates a connector, or updates the credentials of an
+// existing one for the same provider+org. The webhook secret is only set when
+// the connector has none: re-saving a connector (to rotate its token, say)
+// used to replace the secret, silently breaking every webhook already
+// configured in GitHub/GitLab/Azure DevOps. Returns the effective secret.
+func (db *DB) UpsertDevOpsConnector(ctx context.Context, provider, org, label string, creds map[string]string, webhookSecret string) (int64, string, error) {
 	credsJSON, _ := json.Marshal(sealCreds(creds)) // CC-07 / DO-10: encrypt at rest
-	webhookSecret = sealString(webhookSecret)
+	sealed := sealString(webhookSecret)
 	var id int64
+	var stored string
 	err := db.QueryRowContext(ctx, `
 		INSERT INTO devops_connectors (provider, org, label, credentials, status, webhook_secret)
 		VALUES ($1, $2, $3, $4, 'pending', $5)
-		ON CONFLICT (provider, org) DO NOTHING
-		RETURNING id`,
-		provider, org, label, credsJSON, webhookSecret,
-	).Scan(&id)
+		ON CONFLICT (provider, org) DO UPDATE SET
+			credentials = EXCLUDED.credentials,
+			label = EXCLUDED.label,
+			status = 'pending',
+			webhook_secret = CASE WHEN COALESCE(devops_connectors.webhook_secret, '') = ''
+			                      THEN EXCLUDED.webhook_secret ELSE devops_connectors.webhook_secret END
+		RETURNING id, COALESCE(webhook_secret, '')`,
+		provider, org, label, credsJSON, sealed,
+	).Scan(&id, &stored)
 	if err != nil {
-		// Try update if exists
-		err = db.QueryRowContext(ctx, `
-			UPDATE devops_connectors SET credentials=$1, label=$2, webhook_secret=$3, status='pending'
-			WHERE provider=$4 AND org=$5 RETURNING id`,
-			credsJSON, label, webhookSecret, provider, org,
-		).Scan(&id)
+		return 0, "", err
 	}
-	return id, err
+	return id, openString(stored), nil
 }
 
 func (db *DB) UpdateDevOpsConnectorStatus(ctx context.Context, id int64, status, errMsg string, ingested int64, cursor string) {
@@ -135,9 +142,20 @@ func (db *DB) SetDevOpsConnectorNote(ctx context.Context, id int64, note string)
 	db.ExecContext(ctx, `UPDATE devops_connectors SET last_error=$1 WHERE id=$2`, note, id)
 }
 
+// DeleteDevOpsConnector removes a connector. Commits and code-scan rows go
+// with it through ON DELETE CASCADE; per-connector settings (the stored
+// posture result) are keyed by id and have to be removed explicitly, or a new
+// connector that reuses nothing but the page would show a stale result.
 func (db *DB) DeleteDevOpsConnector(ctx context.Context, id int64) error {
 	_, err := db.ExecContext(ctx, `DELETE FROM devops_connectors WHERE id=$1`, id)
-	return err
+	if err != nil {
+		return err
+	}
+	// Per-connector settings: last posture result, scan automation policy and
+	// the last scheduled run.
+	_, _ = db.ExecContext(ctx, `DELETE FROM settings WHERE key = ANY($1)`, pq.Array([]string{
+		fmt.Sprintf("devops.posture.last.%d", id), fmt.Sprintf("code.policy.%d", id), fmt.Sprintf("code.schedule.last.%d", id)}))
+	return nil
 }
 
 // ── DevOps Commits ────────────────────────────────────────────────────────────
@@ -264,8 +282,12 @@ func (db *DB) ListDevOpsConnectorsRaw(ctx context.Context) ([]DevOpsConnector, e
 			&c.EventCount, &c.SyncCursor, &c.WebhookSecret, &c.CreatedAt); err != nil {
 			return nil, err
 		}
-		if lastSync.Valid { c.LastSync = &lastSync.Time }
-		if lastError.Valid { c.LastError = &lastError.String }
+		if lastSync.Valid {
+			c.LastSync = &lastSync.Time
+		}
+		if lastError.Valid {
+			c.LastError = &lastError.String
+		}
 		json.Unmarshal(credsJSON, &c.Credentials)
 		openCreds(c.Credentials)
 		c.WebhookSecret = openString(c.WebhookSecret)

@@ -448,7 +448,7 @@ Implemented in: `otel/remoteconfig.go`, `otel/service.go`, `backend/internal/api
 
 ## 9. Host runtime sensor and service discovery
 
-Enabled by the app-server profile (`app_monitoring.ebpf.enabled: true`). Linux tiers, chosen by `app_monitoring.ebpf.mode`:
+Enabled by the app-server profile (`app_monitoring.ebpf.enabled: true`). Besides process, network and file events, the sensor reports a `runtime_inventory` event per service process every 15 minutes (re-sent every 6 hours when unchanged): the third-party packages loaded into it or installed for it. Code uses these for runtime reachability of dependency vulnerabilities (see [codebase capability 4.11](../codebase/capability.md)). Linux tiers, chosen by `app_monitoring.ebpf.mode`:
 
 | Tier | Needs | Process starts | Connections | File events | Privilege changes | DNS before connect | Escape signals |
 |---|---|---|---|---|---|---|---|

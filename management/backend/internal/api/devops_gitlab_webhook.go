@@ -184,6 +184,7 @@ func handleGitLabWebhook(db *store.DB, eventDB *store.DB, logger *slog.Logger) h
 		if len(events) > 0 {
 			ingestCloudEvents(r.Context(), eventDB, events)
 		}
+		gitlabCodeTriggers(r.Context(), db, conn, payload, logger)
 		w.WriteHeader(204)
 	}
 }

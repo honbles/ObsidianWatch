@@ -31,6 +31,46 @@ func adoAuditSeverity(actionID string) int {
 	return 0
 }
 
+// adoAuditCanonical maps an Azure DevOps audit actionId to the event name the
+// DEV-* rules already know from GitHub (repo.destroy, protected_branch.destroy,
+// ...), plus a role for membership changes into an admin group and the new
+// visibility for project visibility changes. Unmapped actions keep their own
+// lower-cased name and are covered by DEV-022.
+func adoAuditCanonical(actionID string, e map[string]interface{}) (event, role, visibility string) {
+	a := strings.ToLower(actionID)
+	data, _ := e["data"].(map[string]interface{})
+	dataStr := strings.ToLower(fmt.Sprint(data))
+	switch {
+	case strings.HasPrefix(a, "git.repositorydeleted"), strings.HasPrefix(a, "git.repositorydestroyed"):
+		return "repo.destroy", "", ""
+	case strings.HasPrefix(a, "token.patcreate"):
+		return "personal_access_token.created", "", ""
+	case strings.HasPrefix(a, "token.sshcreate"):
+		return "public_key.create", "", ""
+	case strings.HasPrefix(a, "policy.policyconfigremoved"):
+		return "protected_branch.destroy", "", ""
+	case strings.HasPrefix(a, "auditlog.streamdeleted"), strings.HasPrefix(a, "auditlog.streamdisabled"):
+		return "audit_log_streaming.destroy", "", ""
+	case strings.HasPrefix(a, "extension.installed"):
+		return "integration_installation.create", "", ""
+	case strings.HasPrefix(a, "group.updategroupmembership.add"):
+		if containsAny(dataStr, "administrators", "project collection admin", "owner") {
+			role = "admin"
+		}
+		return "org.add_member", role, ""
+	case strings.HasPrefix(a, "project.updatevisibility"):
+		if strings.Contains(dataStr, "public") {
+			visibility = "public"
+		}
+		return "repo.access", "", visibility
+	case strings.Contains(a, "serviceconnection") && containsAny(a, "create", "modif", "shared"):
+		return "service_connection.change", "", ""
+	case strings.Contains(a, "agentpool") && containsAny(a, "create", "agentadded", "add"):
+		return "runners.create", "", ""
+	}
+	return a, "", ""
+}
+
 func adoAuditToEvents(entries []map[string]interface{}, conn *store.DevOpsConnector) []CloudEvent {
 	var out []CloudEvent
 	for _, e := range entries {
@@ -53,7 +93,24 @@ func adoAuditToEvents(entries []map[string]interface{}, conn *store.DevOpsConnec
 		if id == "" {
 			id = action + "@" + ts
 		}
-		raw, _ := json.Marshal(e)
+		// The raw entry names the change in actionId; the detection rules read
+		// "event"/"action", so add the canonical name (shared with the GitHub
+		// audit vocabulary) next to it. Without this no DEV-* rule could match
+		// an Azure DevOps audit entry.
+		enriched := make(map[string]interface{}, len(e)+3)
+		for k, v := range e {
+			enriched[k] = v
+		}
+		canon, role, vis := adoAuditCanonical(action, e)
+		enriched["event"] = canon
+		enriched["action"] = strings.ToLower(action)
+		if role != "" {
+			enriched["role"] = role
+		}
+		if vis != "" {
+			enriched["visibility"] = vis
+		}
+		raw, _ := json.Marshal(enriched)
 		out = append(out, CloudEvent{
 			ID: fmt.Sprintf("ado-audit:%d:%s", conn.ID, id), Time: t,
 			AgentID: fmt.Sprintf("devops:%d", conn.ID), Host: conn.Org, OS: "devops",

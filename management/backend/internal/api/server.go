@@ -282,6 +282,21 @@ func New(cfg *config.Config, db *store.DB, backendDB *store.DB, logger *slog.Log
 	protected.HandleFunc("GET /api/v1/findings", handleUnifiedFindings(db))
 	protected.HandleFunc("GET /api/v1/devops-connectors/{id}/sast", handleGetSASTResults(db))
 	protected.HandleFunc("GET /api/v1/devops-connectors/{id}/sast/repos", handleListSASTRepos(db, logger))
+	protected.HandleFunc("GET /api/v1/devops-connectors/{id}/sast/sbom", handleSASTSBOM(db))
+	// Code step 3: scan automation (push, schedule, PR checks).
+	protected.HandleFunc("GET /api/v1/devops-connectors/{id}/scan-policy", handleGetCodeScanPolicy(db))
+	protected.HandleFunc("PUT /api/v1/devops-connectors/{id}/scan-policy", adminOnly(handlePutCodeScanPolicy(db)))
+	protected.HandleFunc("GET /api/v1/devops-connectors/{id}/scan-jobs", handleListCodeScanJobs(db))
+	protected.HandleFunc("POST /api/v1/devops-connectors/{id}/scan-jobs", adminOnly(handleEnqueueCodeScan(db, logger)))
+	protected.HandleFunc("GET /api/v1/scan-jobs/{job}", handleGetCodeScanJob(db))
+	// Code step 4: runtime reachability.
+	protected.HandleFunc("GET /api/v1/runtime-packages", handleRuntimePackages(db))
+	// Code step 5: fix suggestions and triage.
+	protected.HandleFunc("POST /api/v1/devops-connectors/{id}/sast/fix", handleSuggestFix(cfg, db))
+	protected.HandleFunc("POST /api/v1/devops-connectors/{id}/findings/triage", handleTriageFinding(db))
+	protected.HandleFunc("GET /api/v1/devops-connectors/{id}/triage-rules", handleListTriageRules(db))
+	protected.HandleFunc("POST /api/v1/devops-connectors/{id}/triage-rules", adminOnly(handleCreateTriageRule(db)))
+	protected.HandleFunc("DELETE /api/v1/devops-connectors/{id}/triage-rules/{rule}", adminOnly(handleDeleteTriageRule(db)))
 	protected.HandleFunc("POST /api/v1/devops-connectors/{id}/sast/ai", handleSASTAI(cfg, db))
 
 	protected.HandleFunc("GET /api/v1/agents/{host}/vuln", handleGetVulnScan(cfg, db, backendDB))
@@ -406,6 +421,8 @@ func (s *Server) Start(ctx context.Context) error {
 	go s.vtEngine.Run(ctx)
 	go s.cloudEngine.Run(ctx)
 	go s.devopsEngine.Run(ctx)
+	go NewCodeAutomation(s.cfg, s.db, s.logger).Run(ctx)
+	go NewRuntimeIndexer(s.db, s.backendDB, s.logger).Run(ctx)
 	dnsCatWorker := NewDomainCategorizationWorker(s.db, s.logger)
 	go dnsCatWorker.Run(ctx)
 	go s.hub.Run(ctx)

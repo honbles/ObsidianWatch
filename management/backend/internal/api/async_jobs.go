@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"obsidianwatch/management/internal/auth"
+	"strings"
 	"sync"
 	"time"
 )
@@ -63,7 +64,7 @@ func asyncJob(next http.HandlerFunc) http.HandlerFunc {
 			next(w, r)
 			return
 		}
-		key := r.Method + " " + r.URL.Path
+		key := asyncJobKey(r)
 		jobsMu.Lock()
 		pruneJobsLocked()
 		if id, running := jobsByKey[key]; running {
@@ -80,7 +81,7 @@ func asyncJob(next http.HandlerFunc) http.HandlerFunc {
 		jobsByKey[key] = j.ID
 		jobsMu.Unlock()
 
-		ctx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), jobMaxRuntime)
+		ctx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), jobRuntimeFor(r.URL.Path))
 		r2 := r.Clone(ctx)
 		go func() {
 			defer cancel()
@@ -112,6 +113,29 @@ func asyncJob(next http.HandlerFunc) http.HandlerFunc {
 		}()
 		writeJSON(w, http.StatusAccepted, map[string]interface{}{"job_id": j.ID, "status": "running"})
 	}
+}
+
+// jobRuntimeFor: a SAST scan clones the repository and runs up to five
+// engines (secrets, pattern rules, Trivy, CodeQL per language), so it gets
+// longer than the other jobs.
+func jobRuntimeFor(path string) time.Duration {
+	if strings.HasSuffix(path, "/sast") {
+		return 40 * time.Minute
+	}
+	return jobMaxRuntime
+}
+
+// asyncJobKey identifies "the same job": method, path and every query
+// parameter except async itself. The key used to be the path only, so a SAST
+// scan of repo B started while repo A was scanning got repo A's job back.
+func asyncJobKey(r *http.Request) string {
+	q := r.URL.Query()
+	q.Del("async")
+	key := r.Method + " " + r.URL.Path
+	if enc := q.Encode(); enc != "" { // Encode sorts by key
+		key += "?" + enc
+	}
+	return key
 }
 
 type jsonRaw []byte

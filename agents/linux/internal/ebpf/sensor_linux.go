@@ -121,6 +121,7 @@ func (s *Sensor) Run(ctx context.Context) error {
 		go s.runFanotify(ctx) // file events; logs and stops quietly when the host does not allow it
 	}
 	s.o.Logger.Info("host sensor running", "mode", s.Mode())
+	go s.runInventory(ctx) // runtime package inventory of service processes
 
 	t := time.NewTicker(s.o.PollInterval)
 	defer t.Stop()

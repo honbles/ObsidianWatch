@@ -148,10 +148,19 @@ func handleSaveDevOpsConnector(db *store.DB) http.HandlerFunc {
 		} else if bu != "" {
 			req.Credentials["base_url"] = bu
 		}
-		// Generate webhook secret
-		webhookSecret := generateToken(16)
-		id, err := db.UpsertDevOpsConnector(r.Context(),
-			req.Provider, req.Org, req.Label, req.Credentials, webhookSecret)
+		switch req.Provider {
+		case "github", "gitlab", "azuredevops":
+		default:
+			writeJSON(w, 400, map[string]string{"error": "unknown provider"})
+			return
+		}
+		if req.Credentials == nil {
+			req.Credentials = map[string]string{}
+		}
+		// A new secret is only used for a new connector; re-saving keeps the
+		// existing one so configured webhooks keep verifying.
+		id, webhookSecret, err := db.UpsertDevOpsConnector(r.Context(),
+			req.Provider, req.Org, req.Label, req.Credentials, generateToken(16))
 		if err != nil {
 			writeJSON(w, 500, map[string]string{"error": err.Error()})
 			return

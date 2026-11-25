@@ -442,6 +442,9 @@ func ingestCloudEvents(ctx context.Context, db *store.DB, events []CloudEvent) (
 			inserted += int(n)
 		}
 	}
+	if inserted > 0 {
+		db.NotifyEventsInserted(ctx)
+	}
 	if failed > 0 {
 		return inserted, fmt.Errorf("cloud ingest: %d of %d events failed to insert", failed, len(events))
 	}

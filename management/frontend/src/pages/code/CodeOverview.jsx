@@ -6,6 +6,7 @@ import { useNavigate } from 'react-router-dom'
 import api from '../../api/client'
 import { PageHeader, Num, Tabs, StatePill, SevPill, Facets, countBy, useFacetFilter, DenseTable, parseFilter, relTime, downloadCSV } from '../../components/ui'
 import { Search, X, Download, RefreshCw } from 'lucide-react'
+import ReachBadge, { REACH_ORDER, reachTitle } from './ReachBadge'
 
 // Findings have no server id, so the page URL carries a short stable key built from what identifies one.
 function hash32(str) { let h = 2166136261; for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619) } return (h >>> 0).toString(36) }
@@ -38,9 +39,11 @@ async function loadConnector(c) {
     ...base, source: 'scan', type: f.category || 'config', sev: SEV_N[f.severity] || 1, title: f.title, detail: f.detail,
     repo: repoKey(f.repo) || '(unknown)', where: f.file ? `${f.file}${f.line ? ':' + f.line : ''}` : '', at: scan.scan.scanned_at, fix: f.remediation, commit: f.commit, author: f.author,
   })
-  if (sast?.scan) for (const f of parseJSON(sast.scan.findings)) findings.push({
-    ...base, source: 'sast', type: 'sast', sev: SEV_N[f.severity] || 1, title: f.title, detail: f.detail, branch: sast.scan.branch,
-    repo: repoKey(f.repo || sast.scan.repo) || '(unknown)', where: f.file ? `${f.file}${f.line ? ':' + f.line : ''}` : '', at: sast.scan.scanned_at, fix: f.fix, rule: f.rule_id,
+  // Latest result per repository (older servers only send the single latest scan).
+  const sastScans = Array.isArray(sast?.scans) && sast.scans.length ? sast.scans : (sast?.scan ? [sast.scan] : [])
+  for (const sc of sastScans) for (const f of parseJSON(sc.findings)) findings.push({
+    ...base, source: 'sast', type: 'sast', sev: SEV_N[f.severity] || 1, title: f.title, detail: f.detail, branch: sc.branch,
+    repo: repoKey(f.repo || sc.repo) || '(unknown)', where: f.file ? `${f.file}${f.line ? ':' + f.line : ''}` : '', at: sc.scanned_at, fix: f.fix, rule: f.rule_id, reach: f.reachability?.level, reachInfo: f.reachability, triage: f.triage?.status || (f.triage_hint ? 'hint_' + f.triage_hint.suggestion : 'open'),
   })
   const pf = posture && !posture._err ? posture : null
   if (pf) for (const f of (pf.findings || [])) {
@@ -167,7 +170,9 @@ function RepositoriesTab({ repos, multiOrg }) {
   )
 }
 
-const F_GET = { severity: f => N_SEV[f.sev], type: f => f.type, source: f => f.source, repo: f => f.repo }
+const REACH_LABEL = { loaded: 'Running (loaded)', deployed: 'Deployed', not_running: 'Not running', unknown: 'Runtime unknown' }
+const TRIAGE_LABEL = { open: 'Open', confirmed: 'Confirmed', false_positive: 'False positive', accepted_risk: 'Accepted risk', hint_likely_false_positive: 'Likely false positive', hint_likely_true_positive: 'Likely real' }
+const F_GET = { severity: f => N_SEV[f.sev], type: f => f.type, source: f => f.source, repo: f => f.repo, runtime: f => f.reach, triage: f => f.triage }
 function FindingsTab({ findings, initialRepo }) {
   const [sel, setSel] = useState(() => initialRepo ? { repo: new Set([initialRepo]) } : {})
   useEffect(() => { if (initialRepo) setSel({ repo: new Set([initialRepo]) }) }, [initialRepo])
@@ -176,17 +181,19 @@ function FindingsTab({ findings, initialRepo }) {
   const faceted = useFacetFilter(findings, F_GET, sel)
   const rows = useMemo(() => {
     const { text } = parseFilter(q)
-    return faceted.filter(f => !text || `${f.title} ${f.repo} ${f.where} ${f.detail || ''}`.toLowerCase().includes(text)).sort((a, b) => b.sev - a.sev || a.repo.localeCompare(b.repo))
+    return faceted.filter(f => !text || `${f.title} ${f.repo} ${f.where} ${f.detail || ''}`.toLowerCase().includes(text)).sort((a, b) => b.sev - a.sev || (REACH_ORDER[a.reach] ?? 2) - (REACH_ORDER[b.reach] ?? 2) || a.repo.localeCompare(b.repo))
   }, [faceted, q])
   const groups = [
     { key: 'severity', label: 'Severity', values: countBy(findings, F_GET.severity, SEV_ORDER, SEV_LABEL) },
     { key: 'type', label: 'Finding type', values: countBy(findings, F_GET.type, Object.keys(TYPE_LABEL), TYPE_LABEL) },
     { key: 'source', label: 'Source', values: countBy(findings, F_GET.source, ['scan', 'sast', 'posture'], SOURCE_LABEL) },
+    { key: 'triage', label: 'Triage', values: countBy(findings.filter(f => f.triage), F_GET.triage, Object.keys(TRIAGE_LABEL), TRIAGE_LABEL) },
+    { key: 'runtime', label: 'Runtime (dependencies)', values: countBy(findings.filter(f => f.reach), F_GET.runtime, Object.keys(REACH_LABEL), REACH_LABEL) },
     { key: 'repo', label: 'Repository', values: countBy(findings, F_GET.repo).slice(0, 15) },
   ]
   const cols = [
     { key: 's', label: 'Severity', width: '96px', render: f => <SevPill sev={f.sev}/> },
-    { key: 't', label: 'Finding', width: '1.7fr', render: f => <span className="t1">{f.title}</span>, title: f => f.detail || f.title },
+    { key: 't', label: 'Finding', width: '1.7fr', render: f => <span className="t1">{f.title} {f.reach && <ReachBadge reach={f.reachInfo}/>}</span>, title: f => f.reachInfo ? `${f.detail || f.title}\n${reachTitle(f.reachInfo)}` : (f.detail || f.title) },
     { key: 'r', label: 'Repository', width: '1fr', render: f => <span className="mono">{f.orgLevel ? f.org : f.repo}</span> },
     { key: 'w', label: 'Where', width: '1.4fr', render: f => <span className="mono t2">{f.where || '—'}</span>, title: f => f.where },
     { key: 'o', label: 'Source', width: '120px', render: f => <span className="t2">{SOURCE_LABEL[f.source]}</span> },

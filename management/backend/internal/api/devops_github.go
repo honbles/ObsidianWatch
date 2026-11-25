@@ -25,6 +25,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strconv"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -94,7 +95,7 @@ func (c *githubClient) get(ctx context.Context, url string) (*http.Response, err
 		req.Header.Set("Authorization", "Bearer "+c.token)
 		req.Header.Set("Accept", "application/vnd.github+json")
 		req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
-		resp, err := http.DefaultClient.Do(req)
+		resp, err := devopsHTTP.Do(req)
 		if err != nil {
 			return nil, err
 		}
@@ -261,12 +262,12 @@ func syncGitHub(ctx context.Context, conn *store.DevOpsConnector, db *store.DB, 
 		PushedAt      string `json:"pushed_at"`
 		DefaultBranch string `json:"default_branch"`
 	}
-	// Fetch from BOTH endpoints and merge - ensures org repos + personal public + private all included
+	// Only this connector's repositories: the organisation's, or, for a
+	// personal account, the repositories that account owns. The token
+	// owner's other repositories (other orgs, personal) are not this
+	// connector's and used to be merged in.
 	seen := map[string]bool{}
-	for _, url := range []string{
-		fmt.Sprintf("https://api.github.com/orgs/%s/repos?per_page=100&sort=pushed&type=all", conn.Org),
-		"https://api.github.com/user/repos?per_page=100&sort=pushed&type=all",
-	} {
+	for _, url := range githubRepoListURLs(conn.Org) {
 		var batch []struct {
 			FullName      string `json:"full_name"`
 			Private       bool   `json:"private"`
@@ -291,6 +292,9 @@ func syncGitHub(ctx context.Context, conn *store.DevOpsConnector, db *store.DB, 
 		}
 		if pageErr == nil || len(batch) > 0 {
 			for _, r := range batch {
+				if !githubRepoBelongs(r.FullName, conn.Org) {
+					continue
+				}
 				if !seen[r.FullName] {
 					seen[r.FullName] = true
 					repos = append(repos, struct {
@@ -431,8 +435,13 @@ func syncGitHub(ctx context.Context, conn *store.DevOpsConnector, db *store.DB, 
 					for _, cicd := range cicdFiles {
 						if strings.HasPrefix(f.Filename, cicd) || f.Filename == cicd {
 							cicdModified = true
-							if r := riskyPipelineContent(f.Patch); r != "" {
-								cicdRisky = r
+							for _, r := range pipelineRisks(f.Patch) {
+								if !strings.Contains(cicdRisky, r) {
+									if cicdRisky != "" {
+										cicdRisky += "; "
+									}
+									cicdRisky += r
+								}
 							}
 						}
 					}
@@ -549,10 +558,10 @@ func syncGitHub(ctx context.Context, conn *store.DevOpsConnector, db *store.DB, 
 						OS:        "devops",
 						EventType: "devops.cicd_modified",
 						Severity: func() int {
-							if cicdRisky != "" {
-								return 4
+							if sev := pipelineRiskSeverity(strings.Split(cicdRisky, "; ")); cicdRisky != "" && sev > 0 {
+								return sev
 							}
-							return 3
+							return 2
 						}(),
 						Source: "github",
 						Username:  authorLogin,
@@ -597,21 +606,28 @@ func syncGitHub(ctx context.Context, conn *store.DevOpsConnector, db *store.DB, 
 						Username: authorLogin, Raw: raw,
 					})
 				}
-				var manifests []string
+				var manifests, depRisks []string
 				for _, f := range detail.Files {
-					if isDependencyManifest(f.Filename) && !isRemovedStatus(f.Status) {
+					if (isDependencyManifest(f.Filename) || isPackageConfig(f.Filename)) && !isRemovedStatus(f.Status) {
 						manifests = append(manifests, f.Filename)
+						for _, r := range dependencyRisks(f.Filename, f.Patch) {
+							depRisks = append(depRisks, f.Filename+": "+r)
+						}
 					}
 				}
 				if len(manifests) > 0 {
 					raw, _ := json.Marshal(map[string]interface{}{
 						"event": "dependency_change", "sha": c.SHA, "repo": repo.FullName, "author": authorLogin,
-						"files": manifests, "message": c.Commit.Message, "url": c.HTMLURL,
+						"files": manifests, "risks": depRisks, "message": c.Commit.Message, "url": c.HTMLURL,
 					})
+					depSev := 1
+					if len(depRisks) > 0 {
+						depSev = 3
+					}
 					events = append(events, CloudEvent{
 						ID: "devops:" + c.SHA + ":deps", Time: commitEventTime(pushedAt),
 						AgentID: fmt.Sprintf("devops:%d", conn.ID), Host: conn.Org, OS: "devops",
-						EventType: "devops.dependency_change", Severity: 2, Source: "github",
+						EventType: "devops.dependency_change", Severity: depSev, Source: "github",
 						Username: authorLogin, Raw: raw,
 					})
 				}
@@ -663,7 +679,9 @@ func githubAuditToEvents(entries []map[string]interface{}, conn *store.DevOpsCon
 			host = repoName
 		}
 
+		actorIP, _ := entry["actor_ip"].(string)
 		events = append(events, CloudEvent{
+			SrcIP:     actorIP,
 			ID:        fmt.Sprintf("gh-audit:%s:%s:%.0f", conn.Org, action, ts),
 			Time:      eventTime,
 			AgentID:   fmt.Sprintf("devops:%d", conn.ID),
@@ -676,6 +694,9 @@ func githubAuditToEvents(entries []map[string]interface{}, conn *store.DevOpsCon
 			Raw:       raw,
 		})
 	}
+	// Clones and archive downloads are not stored one by one (very high
+	// volume); one summary per actor feeds DEV-028.
+	events = append(events, cloneSummaries(entries, conn)...)
 	return events, lastCursor
 }
 
@@ -767,7 +788,9 @@ func handleGitHubWebhook(db *store.DB, eventDB *store.DB, logger *slog.Logger) h
 				conn, _ = db.GetDevOpsConnectorRaw(r.Context(), id)
 			}
 		}
-		if conn == nil {
+		// This route verifies GitHub's HMAC; GitLab and Azure DevOps have their
+		// own routes and secrets formats.
+		if conn == nil || conn.Provider != "github" {
 			http.Error(w, "unknown connector", 404)
 			return
 		}
@@ -822,6 +845,7 @@ func handleGitHubWebhook(db *store.DB, eventDB *store.DB, logger *slog.Logger) h
 		if len(events) > 0 {
 			ingestCloudEvents(r.Context(), eventDB, events)
 		}
+		githubCodeTriggers(r.Context(), db, conn, event, payload, logger)
 
 		w.WriteHeader(204)
 	}
@@ -920,26 +944,67 @@ func processGitHubWebhookEvent(event string, payload map[string]interface{}, con
 		events = append(events, makeEvent("devops.member_"+action, sev, raw))
 
 	case "workflow_run":
+		action, _ := payload["action"].(string)
 		wf, _ := payload["workflow_run"].(map[string]interface{})
-		conclusion := ""
-		headBranch := ""
+		conclusion, headBranch, trigger, headRepo, wfName, path := "", "", "", "", "", ""
 		if wf != nil {
 			conclusion, _ = wf["conclusion"].(string)
 			headBranch, _ = wf["head_branch"].(string)
+			trigger, _ = wf["event"].(string)
+			wfName, _ = wf["name"].(string)
+			path, _ = wf["path"].(string)
+			if hr, _ := wf["head_repository"].(map[string]interface{}); hr != nil {
+				headRepo, _ = hr["full_name"].(string)
+			}
 		}
+		// A run is "from a fork" when its head commit lives in a different
+		// repository. Combined with a trigger that runs with the base repo's
+		// secrets (pull_request_target, workflow_run) that is the classic
+		// pwn-request pattern DEV-005 looks for.
+		fromFork := headRepo != "" && repoName != "" && !strings.EqualFold(headRepo, repoName)
 		raw := map[string]interface{}{
-			"event": "workflow_run", "repo": repoName,
+			"event": "workflow_run", "action": action, "repo": repoName,
 			"actor": actor, "conclusion": conclusion, "branch": headBranch,
+			"trigger": trigger, "head_repo": headRepo, "from_fork": fromFork,
+			"workflow": wfName, "path": path,
 		}
-		events = append(events, makeEvent("devops.workflow_run", 1, raw))
+		sev := 1
+		if fromFork && workflowTriggerHasSecrets(trigger) {
+			sev = 4
+		}
+		events = append(events, makeEvent("devops.workflow_run", sev, raw))
 
-	case "org":
+	case "organization":
+		// GitHub names this webhook "organization" (there is no "org" event), so
+		// the branch used to be dead and member changes fell through to the
+		// generic mapper. Webhook actions are translated to their audit-log names
+		// so both sources share one severity table.
 		action, _ := payload["action"].(string)
-		sev := githubAuditSeverity("org." + action)
+		auditName := map[string]string{
+			"member_added": "org.add_member", "member_removed": "org.remove_member",
+			"member_invited": "org.invite_member", "renamed": "org.rename", "deleted": "org.delete",
+		}[action]
+		if auditName == "" {
+			auditName = "org." + action
+		}
+		sev := githubAuditSeverity(auditName)
+		if action == "deleted" {
+			sev = 5
+		}
 		if sev == 0 {
 			sev = 2
 		}
-		raw := map[string]interface{}{"event": "org." + action, "actor": actor}
+		raw := map[string]interface{}{"event": auditName, "action": action, "actor": actor}
+		if m, _ := payload["membership"].(map[string]interface{}); m != nil {
+			if u, _ := m["user"].(map[string]interface{}); u != nil {
+				raw["member"], _ = u["login"].(string)
+			}
+			raw["role"], _ = m["role"].(string)
+		}
+		if inv, _ := payload["invitation"].(map[string]interface{}); inv != nil {
+			raw["member"], _ = inv["login"].(string)
+			raw["role"], _ = inv["role"].(string)
+		}
 		events = append(events, makeEvent("devops.org_"+action, sev, raw))
 
 	default:
@@ -996,19 +1061,34 @@ func githubWebhookExtra(event string, payload map[string]interface{}, actor, rep
 		return name, 1, raw, true
 	case "pull_request_review", "pull_request_review_comment", "workflow_job":
 		return name, 1, raw, true
-	case "deploy_key", "team", "team_add", "membership", "organization", "installation", "installation_repositories", "github_app_authorization":
+	case "deploy_key", "team", "team_add", "membership", "installation", "installation_repositories", "github_app_authorization":
 		sev := 3
 		if action == "created" || action == "added" {
 			sev = 4
 		}
 		return name, sev, raw, true
 	case "branch_protection_rule", "branch_protection_configuration", "repository_ruleset", "security_and_analysis", "repository_import":
+		if event == "security_and_analysis" {
+			if d := disabledSecurityFeatures(payload); len(d) > 0 {
+				raw["disabled"] = d
+				return "devops.security_and_analysis", 4, raw, true
+			}
+		}
 		sev := 3
 		if action == "deleted" || action == "disabled" {
 			sev = 4
 		}
 		return name, sev, raw, true
 	case "secret_scanning_alert", "secret_scanning_alert_location", "code_scanning_alert", "dependabot_alert", "repository_vulnerability_alert", "repository_advisory", "security_advisory":
+		if alert, _ := payload["alert"].(map[string]interface{}); alert != nil {
+			if b, _ := alert["push_protection_bypassed"].(bool); b {
+				raw["push_protection_bypassed"] = true
+				raw["secret_type"], _ = alert["secret_type"].(string)
+				if by, _ := alert["push_protection_bypassed_by"].(map[string]interface{}); by != nil {
+					raw["bypassed_by"], _ = by["login"].(string)
+				}
+			}
+		}
 		sev := 3
 		if action == "created" || action == "reopened" {
 			sev = 4
@@ -1130,28 +1210,11 @@ func isRemovedStatus(status string) bool {
 	return status == "removed" || status == "deleted" || status == "delete"
 }
 
-// riskyPipelineContent inspects ADDED lines of a pipeline-file patch for
-// constructs that commonly enable secret exfiltration or code execution
-// (DS-04). Returns a short reason, or "" if nothing risky was added.
-func riskyPipelineContent(patch string) string {
-	for _, line := range strings.Split(patch, "\n") {
-		if !strings.HasPrefix(line, "+") {
-			continue
-		}
-		l := strings.ToLower(line)
-		switch {
-		case strings.Contains(l, "pull_request_target"):
-			return "pull_request_target trigger"
-		case strings.Contains(l, "secrets: inherit"):
-			return "secrets: inherit"
-		case strings.Contains(l, "self-hosted"):
-			return "self-hosted runner"
-		case (strings.Contains(l, "curl") || strings.Contains(l, "wget")) &&
-			(strings.Contains(l, "| bash") || strings.Contains(l, "|bash") || strings.Contains(l, "| sh")):
-			return "download piped to shell"
-		}
-	}
-	return ""
+// isPackageConfig: package-manager configuration that can redirect where
+// dependencies come from.
+func isPackageConfig(path string) bool {
+	base := strings.ToLower(path[strings.LastIndex(path, "/")+1:])
+	return base == ".npmrc" || base == ".yarnrc.yml" || base == ".yarnrc" || base == "pip.conf" || base == "nuget.config"
 }
 
 // webhookDeliverySeen records a delivery ID and reports whether it was
@@ -1218,4 +1281,49 @@ func isDependencyManifest(path string) bool {
 		base = base[i+1:]
 	}
 	return dependencyManifests[base]
+}
+
+// githubRepoListURLs: the organisation's repositories, then (for a personal
+// account, where the org endpoint answers 404) the repositories the token
+// owner owns. githubRepoBelongs filters the second list to the account.
+// workflowTriggerHasSecrets reports whether a GitHub Actions trigger runs in the
+// context of the base repository (with its secrets and a write token) even when
+// the code came from a fork.
+func workflowTriggerHasSecrets(trigger string) bool {
+	switch trigger {
+	case "pull_request_target", "workflow_run", "issue_comment", "pull_request_review_comment":
+		return true
+	}
+	return false
+}
+
+func githubRepoListURLs(org string) []string {
+	return []string{
+		fmt.Sprintf("https://api.github.com/orgs/%s/repos?per_page=100&sort=pushed&type=all", url.PathEscape(org)),
+		"https://api.github.com/user/repos?per_page=100&sort=pushed&affiliation=owner",
+	}
+}
+
+func githubRepoBelongs(fullName, org string) bool {
+	owner, _, ok := strings.Cut(fullName, "/")
+	return ok && strings.EqualFold(owner, org)
+}
+
+// disabledSecurityFeatures lists security_and_analysis features that the
+// webhook's change turned from enabled to disabled.
+func disabledSecurityFeatures(payload map[string]interface{}) []string {
+	from, _ := payload["changes"].(map[string]interface{})
+	from, _ = from["from"].(map[string]interface{})
+	before, _ := from["security_and_analysis"].(map[string]interface{})
+	repo, _ := payload["repository"].(map[string]interface{})
+	now, _ := repo["security_and_analysis"].(map[string]interface{})
+	var out []string
+	for feature, v := range now {
+		cur, _ := v.(map[string]interface{})
+		prev, _ := before[feature].(map[string]interface{})
+		if cur["status"] == "disabled" && (prev == nil || prev["status"] == "enabled") {
+			out = append(out, feature)
+		}
+	}
+	return out
 }

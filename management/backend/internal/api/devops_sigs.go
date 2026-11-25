@@ -31,10 +31,14 @@ var devopsSignatures = []ThreatSig{
 	// ── Pipeline / CI-CD ──────────────────────────────────────────────────────
 	{
 		ID: "DEV-003", Name: "CI/CD Pipeline Configuration Modified",
-		Description: "A workflow or pipeline file was modified (.github/workflows/, .gitlab-ci.yml, azure-pipelines.yml, Jenkinsfile). Pipeline changes can redirect secrets, modify deployments, or execute arbitrary code in the build environment.",
-		Severity: 4, MITRE: "T1195.002", Category: "Supply Chain",
+		Description: "A workflow or pipeline file was modified (.github/workflows/, .gitlab-ci.yml, azure-pipelines.yml, Jenkinsfile) without any of the dangerous constructs DEV-023 looks for. Informational: review who changes pipelines.",
+		Severity: 2, MITRE: "T1195.002", Category: "Supply Chain",
 		Match: func(ev store.Event) bool {
-			return ev.EventType == "devops.cicd_modified"
+			if ev.EventType != "devops.cicd_modified" {
+				return false
+			}
+			r, _ := rawField(ev, "risky").(string)
+			return r == "" // risky changes are DEV-023
 		},
 	},
 	{
@@ -52,18 +56,24 @@ var devopsSignatures = []ThreatSig{
 		},
 	},
 	{
-		ID: "DEV-005", Name: "Pipeline Secret or Variable Accessed from Unexpected Branch",
-		Description: "A pipeline job ran and accessed secrets from a branch other than main/master/develop. This is the classic fork PR attack - untrusted code accessing privileged secrets.",
+		ID: "DEV-005", Name: "Fork Code Ran in a Privileged Pipeline",
+		Description: "A workflow triggered by pull_request_target, workflow_run or a comment ran code from a fork with the base repository's secrets and write token. This is the classic pwn-request supply-chain attack.",
 		Severity: 4, MITRE: "T1195.002", Category: "Supply Chain",
 		Match: func(ev store.Event) bool {
 			if ev.EventType != "devops.workflow_run" {
 				return false
 			}
-			raw := strings.ToLower(rawStr(ev))
-			// Flag if ran from a fork or unexpected branch
-			return containsAny(raw, "fork", "pull_request") &&
-				!containsAny(raw, "\"branch\":\"main\"", "\"branch\":\"master\"",
-					"\"branch\":\"develop\"")
+			// Only the run's first webhook (requested) or its completion; GitHub
+			// sends requested/in_progress/completed for every run.
+			var m struct {
+				Action   string `json:"action"`
+				Trigger  string `json:"trigger"`
+				FromFork bool   `json:"from_fork"`
+			}
+			if json.Unmarshal(ev.Raw, &m) != nil || m.Action == "in_progress" {
+				return false
+			}
+			return m.FromFork && workflowTriggerHasSecrets(m.Trigger)
 		},
 	},
 
@@ -72,15 +82,7 @@ var devopsSignatures = []ThreatSig{
 		ID: "DEV-006", Name: "Private Repository Made Public",
 		Description: "A repository was changed from private to public - all code, commit history, and any hardcoded secrets are now publicly accessible.",
 		Severity: 5, MITRE: "T1530", Category: "Exfiltration",
-		Match: func(ev store.Event) bool {
-			if !isDevOpsEvent(ev) {
-				return false
-			}
-			t := devopsParse(ev)
-			return t.is(ev, "repo_publicized", "repo.publicized", "repository.publicized", "made_public",
-				"publicized", "visibility_change", "changed_visibility_to_public") ||
-				(t.is(ev, "repo.access", "repository.access") && t.Visibility == "public")
-		},
+		Match: matchRepoPublicized,
 	},
 	{
 		ID: "DEV-007", Name: "Repository Deleted",
@@ -89,7 +91,8 @@ var devopsSignatures = []ThreatSig{
 		Match: func(ev store.Event) bool {
 			return isDevOpsEvent(ev) &&
 				devopsParse(ev).is(ev, "repo.destroy", "repo_destroy", "repository.deleted",
-					"repository_deleted", "repo_deleted", "deleted")
+					"repository_deleted", "repo_deleted", "project_destroy", "project.destroy",
+					"project_deleted", "project_destroyed", "git.repositorydeleted", "git.repositorydestroyed")
 		},
 	},
 	{
@@ -108,15 +111,7 @@ var devopsSignatures = []ThreatSig{
 		ID: "DEV-009", Name: "New Organization Owner or Admin Added",
 		Description: "A user was granted Owner or Admin role in the organization. This is the highest privilege level and provides full access to all repositories, secrets, and billing.",
 		Severity: 5, MITRE: "T1098", Category: "Persistence",
-		Match: func(ev store.Event) bool {
-			if !isDevOpsEvent(ev) {
-				return false
-			}
-			t := devopsParse(ev)
-			return t.is(ev, "org.add_member", "org_add_member", "member_added", "added_to_org",
-				"org.update_member", "member.added", "org.invite_member") &&
-				(t.Role == "owner" || t.Role == "admin")
-		},
+		Match: matchOrgAdminAdded,
 	},
 	{
 		ID: "DEV-010", Name: "Personal Access Token Created",
@@ -187,9 +182,12 @@ var devopsSignatures = []ThreatSig{
 			if json.Unmarshal([]byte(rawStr(ev)), &m) == nil && m.Branch != "" {
 				return (m.Forced || m.Deleted) && isProtectedBranch(m.Branch)
 			}
-			// Audit-log style events (no explicit branch field).
-			return containsAny(raw, "force_push", "forced_push", "protected_branch.destroy") &&
-				containsAny(raw, "main", "master", "develop", "release")
+			// Audit-log style events: the action must be a force push and the
+			// branch field a protected name (it used to be any raw JSON that
+			// contained "main" anywhere, such as a repository called "domain").
+			t := devopsParse(ev)
+			_ = raw
+			return containsAny(t.Action+" "+t.Event, "force_push", "forced_push") && isProtectedBranch(t.Branch)
 		},
 	},
 	{
@@ -219,12 +217,9 @@ var devopsSignatures = []ThreatSig{
 		Description: "A repository was made public outside normal business hours - suspicious timing.",
 		Severity: 5, MITRE: "T1530", Category: "Exfiltration",
 		Match: func(ev store.Event) bool {
-			if !isDevOpsEvent(ev) {
-				return false
-			}
-			isOutside := outsideBusinessHours(ev.Time)
-			return isOutside && containsAny(strings.ToLower(rawStr(ev)),
-				"publicized", "made_public", "visibility_change")
+			// The same event DEV-006 matches (it used to be any raw JSON
+			// containing "publicized", commit messages included).
+			return outsideBusinessHours(ev.Time) && matchRepoPublicized(ev)
 		},
 	},
 	{
@@ -234,10 +229,16 @@ var devopsSignatures = []ThreatSig{
 		Match: func(ev store.Event) bool { return ev.EventType == "devops.mass_deletion" },
 	},
 	{
-		ID: "DEV-020", Name: "Dependency Manifest Modified",
-		Description: "A dependency manifest or lockfile changed - review for dependency confusion, typosquatted or malicious packages.",
-		Severity: 2, MITRE: "T1195.001", Category: "Initial Access",
-		Match: func(ev store.Event) bool { return ev.EventType == "devops.dependency_change" },
+		ID: "DEV-020", Name: "Risky Dependency Change",
+		Description: "A dependency manifest or package-manager configuration change added an install script, a dependency fetched from a git repository or URL, an extra package index or registry, or a go.mod replace directive. These are how dependency confusion and malicious packages get in. Ordinary version bumps do not alert.",
+		Severity: 3, MITRE: "T1195.001", Category: "Initial Access",
+		Match: func(ev store.Event) bool {
+			if ev.EventType != "devops.dependency_change" {
+				return false
+			}
+			r, _ := rawField(ev, "risks").([]interface{})
+			return len(r) > 0
+		},
 	},
 	{
 		ID: "DEV-021", Name: "Commit Committer/Author Mismatch Without Signature",
@@ -259,13 +260,47 @@ var devopsSignatures = []ThreatSig{
 		Description: "A user was granted org admin access outside normal business hours.",
 		Severity: 5, MITRE: "T1098", Category: "Persistence",
 		Match: func(ev store.Event) bool {
-			if !isDevOpsEvent(ev) {
-				return false
-			}
-			isOutside := outsideBusinessHours(ev.Time)
-			return isOutside && containsAny(strings.ToLower(rawStr(ev)),
-				"org.add_member", "member_added", "org_admin") &&
-				containsAny(strings.ToLower(rawStr(ev)), "owner", "admin")
+			return outsideBusinessHours(ev.Time) && matchOrgAdminAdded(ev)
 		},
 	},
+	{
+		ID: "DEV-022", Name: "Azure DevOps High-Risk Audit Change",
+		Description: "An Azure DevOps audit entry recorded a high-risk change (permissions, service connections, policies, agent pools, extensions, variable groups or secure files) that no more specific rule covers.",
+		Severity: 3, MITRE: "T1098", Category: "Persistence",
+		Match: func(ev store.Event) bool {
+			if ev.Source != "azuredevops_audit" || ev.Severity < 4 {
+				return false
+			}
+			// Leave entries the specific rules handle to them.
+			if a := devopsParse(ev).Action; containsAny(a, "variablegroup", "securefile", "policiesbypassed") {
+				return false // DEV-026, DEV-027
+			}
+			switch devopsParse(ev).Event {
+			case "repo.destroy", "personal_access_token.created", "protected_branch.destroy",
+				"audit_log_streaming.destroy", "integration_installation.create", "runners.create":
+				return false
+			}
+			return true
+		},
+	},
+}
+
+func matchRepoPublicized(ev store.Event) bool {
+	if !isDevOpsEvent(ev) {
+		return false
+	}
+	t := devopsParse(ev)
+	return t.is(ev, "repo_publicized", "repo.publicized", "repository.publicized", "made_public",
+		"publicized", "visibility_change", "changed_visibility_to_public") ||
+		(t.is(ev, "repo.access", "repository.access") && t.Visibility == "public")
+}
+
+func matchOrgAdminAdded(ev store.Event) bool {
+	if !isDevOpsEvent(ev) {
+		return false
+	}
+	t := devopsParse(ev)
+	return t.is(ev, "org.add_member", "org_add_member", "member_added", "added_to_org",
+		"org.update_member", "member.added", "org.invite_member") &&
+		(t.Role == "owner" || t.Role == "admin")
 }

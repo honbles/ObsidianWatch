@@ -38,6 +38,10 @@ type UnifiedFinding struct {
 	CWE         string    `json:"cwe,omitempty"`
 	ScannedAt   time.Time `json:"scanned_at"`
 	Sources     []string  `json:"sources"` // every scanner that reported it
+	// Dependency findings: package and runtime reachability (Code step 4).
+	Package      string        `json:"package,omitempty"`
+	Version      string        `json:"version,omitempty"`
+	Reachability *findingReach `json:"reachability,omitempty"`
 }
 
 func normSeverity(s string) string {
@@ -74,6 +78,9 @@ func fromSAST(connID int64, scanned time.Time, raw json.RawMessage) []UnifiedFin
 		Repo     string `json:"repo"`
 		File     string `json:"file"`
 		Line     int    `json:"line"`
+		Package  string        `json:"package"`
+		Version  string        `json:"version"`
+		Reach    *findingReach `json:"reachability"`
 	}
 	if json.Unmarshal(raw, &in) != nil {
 		return nil
@@ -84,6 +91,7 @@ func fromSAST(connID int64, scanned time.Time, raw json.RawMessage) []UnifiedFin
 			Source: "sast", ConnectorID: connID, Severity: normSeverity(f.Severity), Category: "code",
 			Title: f.Title, Detail: f.Detail, Repo: f.Repo, File: f.File, Line: f.Line,
 			Remediation: f.Fix, RuleID: f.RuleID, CWE: f.CWE, ScannedAt: scanned,
+			Package: f.Package, Version: f.Version, Reachability: f.Reach,
 		})
 	}
 	return out
@@ -165,7 +173,7 @@ func loadUnifiedFindings(ctx context.Context, db *store.DB) []UnifiedFinding {
 			var at time.Time
 			var raw json.RawMessage
 			if rows.Scan(&id, &at, &raw) == nil {
-				all = append(all, fromSAST(id, at, raw)...)
+				all = append(all, fromSAST(id, at, enrichFindingsJSON(ctx, db, id, raw))...)
 			}
 		}
 		rows.Close()

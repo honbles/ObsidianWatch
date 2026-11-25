@@ -166,6 +166,7 @@ func handleADOWebhook(db *store.DB, eventDB *store.DB, logger *slog.Logger) http
 		if len(events) > 0 {
 			ingestCloudEvents(r.Context(), eventDB, events)
 		}
+		adoCodeTriggers(r.Context(), db, conn, payload, logger)
 		w.WriteHeader(204)
 	}
 }

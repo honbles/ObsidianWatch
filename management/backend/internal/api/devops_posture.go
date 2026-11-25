@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -177,7 +178,7 @@ func handleDevOpsPosture(db *store.DB) http.HandlerFunc {
 			}
 			findings, checked, err = gitlabPosture(ctx, &gitlabClient{token: token, baseURL: base, group: conn.Org})
 		case "azuredevops":
-			findings, checked, err = azureDevOpsPosture(ctx, newAzureClient(token, conn.Org), conn.Org)
+			findings, checked, err = azureDevOpsPosture(ctx, adoClientFor(conn), conn)
 		default:
 			writeJSONError(w, http.StatusNotImplemented, "posture checks are implemented for GitHub, GitLab and Azure DevOps")
 			return
@@ -259,19 +260,13 @@ func gitlabPosture(ctx context.Context, c *gitlabClient) ([]PostureFinding, int,
 	var grp struct {
 		RequireTwoFactor *bool `json:"require_two_factor_authentication"`
 	}
-	if err := c.getJSON(ctx, "/api/v4/groups/"+c.group, &grp); err == nil && grp.RequireTwoFactor != nil && !*grp.RequireTwoFactor {
+	if err := c.getJSON(ctx, "/api/v4/groups/"+gitlabID(c.group), &grp); err == nil && grp.RequireTwoFactor != nil && !*grp.RequireTwoFactor {
 		findings = append(findings, PostureFinding{"high", "Group does not require two-factor authentication",
 			"Members can access the group with password-only accounts.", c.group,
 			"Enable 'Require all users to set up two-factor authentication' in group settings."})
 	}
-	var projects []struct {
-		ID                int    `json:"id"`
-		PathWithNamespace string `json:"path_with_namespace"`
-		DefaultBranch     string `json:"default_branch"`
-		EmptyRepo         bool   `json:"empty_repo"`
-	}
-	path := fmt.Sprintf("/api/v4/groups/%s/projects?per_page=100&archived=false&include_subgroups=true", c.group)
-	if err := c.getJSON(ctx, path, &projects); err != nil {
+	projects, err := gitlabProjects(ctx, c, c.group)
+	if err != nil {
 		return nil, 0, err
 	}
 	checked := 0
@@ -338,18 +333,15 @@ func adoDefaultBranchReviewed(repoID, defaultBranch string, policies []adoPolicy
 	return false
 }
 
-func azureDevOpsPosture(ctx context.Context, c *azureClient, org string) ([]PostureFinding, int, error) {
-	var projects struct {
-		Value []struct {
-			Name string `json:"name"`
-		} `json:"value"`
-	}
-	if err := c.getJSON(ctx, fmt.Sprintf("https://dev.azure.com/%s/_apis/projects?api-version=7.0", org), &projects); err != nil {
+func azureDevOpsPosture(ctx context.Context, c *azureClient, conn *store.DevOpsConnector) ([]PostureFinding, int, error) {
+	projects, err := adoProjects(ctx, c, conn)
+	if err != nil {
 		return nil, 0, err
 	}
 	var findings []PostureFinding
 	checked := 0
-	for _, pr := range projects.Value {
+	for _, prName := range projects {
+		pr := struct{ Name string }{prName}
 		var repos struct {
 			Value []struct {
 				ID            string `json:"id"`
@@ -358,13 +350,13 @@ func azureDevOpsPosture(ctx context.Context, c *azureClient, org string) ([]Post
 				IsDisabled    bool   `json:"isDisabled"`
 			} `json:"value"`
 		}
-		if err := c.getJSON(ctx, fmt.Sprintf("https://dev.azure.com/%s/%s/_apis/git/repositories?api-version=7.0", org, pr.Name), &repos); err != nil {
+		if err := c.getJSON(ctx, fmt.Sprintf("%s/%s/_apis/git/repositories?api-version=7.0", c.baseURL, url.PathEscape(pr.Name)), &repos); err != nil {
 			continue
 		}
 		var pols struct {
 			Value []adoPolicy `json:"value"`
 		}
-		if err := c.getJSON(ctx, fmt.Sprintf("https://dev.azure.com/%s/%s/_apis/policy/configurations?api-version=7.0", org, pr.Name), &pols); err != nil {
+		if err := c.getJSON(ctx, fmt.Sprintf("%s/%s/_apis/policy/configurations?api-version=7.0", c.baseURL, url.PathEscape(pr.Name)), &pols); err != nil {
 			continue // cannot assess this project
 		}
 		for _, r := range repos.Value {
@@ -375,7 +367,7 @@ func azureDevOpsPosture(ctx context.Context, c *azureClient, org string) ([]Post
 			if !adoDefaultBranchReviewed(r.ID, r.DefaultBranch, pols.Value) {
 				findings = append(findings, PostureFinding{"high", "Default branch has no required-reviewer policy",
 					"No enabled, blocking minimum-reviewer branch policy covers " + r.DefaultBranch + ", so changes can merge without review.",
-					fmt.Sprintf("%s/%s/%s@%s", org, pr.Name, r.Name, strings.TrimPrefix(r.DefaultBranch, "refs/heads/")),
+					fmt.Sprintf("%s/%s/%s@%s", conn.Org, pr.Name, r.Name, strings.TrimPrefix(r.DefaultBranch, "refs/heads/")),
 					"Add a Minimum number of reviewers branch policy (blocking) on the default branch."})
 			}
 		}

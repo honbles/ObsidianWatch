@@ -362,7 +362,7 @@ func handleCodeScan(cfg *config.Config, db *store.DB, logger *slog.Logger) http.
 			allFindings = append(allFindings, findings...)
 		}
 
-		// Deduplicate by title+file combo
+		// Deduplicate by repo+category+title+file
 		allFindings = deduplicateFindings(allFindings)
 
 		// Count by severity
@@ -550,7 +550,9 @@ func deduplicateFindings(findings []CodeFinding) []CodeFinding {
 	seen := map[string]bool{}
 	var out []CodeFinding
 	for _, f := range findings {
-		key := f.Category + ":" + f.Title + ":" + f.File
+		// Repo is part of the key: the same file name (.env, config.py)
+		// in two repositories is two findings, not one.
+		key := f.Repo + "\x00" + f.Category + "\x00" + f.Title + "\x00" + f.File
 		if !seen[key] {
 			seen[key] = true
 			out = append(out, f)

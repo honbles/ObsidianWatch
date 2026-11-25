@@ -43,7 +43,6 @@ function buildNav({ alertCount, isAdmin }) {
     { id: 'cloud', label: 'Posture', icon: Cloud, to: '/cloud' },
     { section: 'Detect' },
     { id: 'alerts', label: 'Alerts', icon: Bell, to: '/alerts', badge: alertCount },
-    { id: 'search', label: 'Search', icon: FileSearch, to: '/search' },
     { id: 'events', label: 'Events', icon: Activity, to: '/events' },
     { id: 'insights', label: 'Insights', icon: Eye, to: '/insights' },
     { id: 'rules', label: 'Rules', icon: Shield, to: '/detections' },

@@ -63,7 +63,7 @@ func next(t *testing.T, out chan schema.Event) map[string]any {
 		var m map[string]any
 		json.Unmarshal(ev.Raw, &m)
 		return m
-	case <-time.After(2 * time.Second):
+	case <-time.After(10 * time.Second): // generous: the full suite runs packages in parallel
 		t.Fatal("no prevention event")
 		return nil
 	}

@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback, useRef, useMemo } from 'react'
 import { Search, Wifi, Download, X, ChevronRight, Cloud, Monitor, Terminal,
          Shield, Globe, FileText, Key, Activity, AlertTriangle, Cpu,
-         GitBranch, GitCommit, Trash2, User } from 'lucide-react'
+         GitBranch, GitCommit, Trash2, User, Boxes } from 'lucide-react'
 import { format, formatDistanceToNow } from 'date-fns'
 import api from '../api/client'
 import { useLiveFeed } from '../api/useLiveFeed'
@@ -349,6 +349,52 @@ export const SAVED_SEARCHES = [
         tags: [{ field: 'os', label: 'OS: linux', value: 'linux' },
                { field: 'severity', label: 'Severity: 4', value: '4' }],
       },
+    
+      // From the former Search page
+      { label: "All Linux process events", desc: "type:process os:linux", tags: [{ field: 'kql', label: "type:process os:linux", value: "type:process os:linux" }] },
+      { label: "Shell executions (bash/sh/zsh)", desc: "type:process bash", tags: [{ field: 'kql', label: "type:process bash", value: "type:process bash" }] },
+      { label: "Python interpreter executions", desc: "type:process python", tags: [{ field: 'kql', label: "type:process python", value: "type:process python" }] },
+      { label: "Perl executions", desc: "type:process perl", tags: [{ field: 'kql', label: "type:process perl", value: "type:process perl" }] },
+      { label: "Curl / wget commands", desc: "type:process curl", tags: [{ field: 'kql', label: "type:process curl", value: "type:process curl" }] },
+      { label: "Ncat / netcat usage", desc: "type:process ncat", tags: [{ field: 'kql', label: "type:process ncat", value: "type:process ncat" }] },
+      { label: "chmod +x executions", desc: "type:process cmd:chmod", tags: [{ field: 'kql', label: "type:process cmd:chmod", value: "type:process cmd:chmod" }] },
+      { label: "Process from /tmp", desc: "type:process /tmp/", tags: [{ field: 'kql', label: "type:process /tmp/", value: "type:process /tmp/" }] },
+      { label: "Process from /dev/shm", desc: "type:process /dev/shm", tags: [{ field: 'kql', label: "type:process /dev/shm", value: "type:process /dev/shm" }] },
+      { label: "LD_PRELOAD in command line", desc: "type:process ld_preload", tags: [{ field: 'kql', label: "type:process ld_preload", value: "type:process ld_preload" }] },
+      { label: "strace / ptrace usage", desc: "type:process strace", tags: [{ field: 'kql', label: "type:process strace", value: "type:process strace" }] },
+      { label: "nmap scanning", desc: "type:process nmap", tags: [{ field: 'kql', label: "type:process nmap", value: "type:process nmap" }] },
+      { label: "High severity Linux processes", desc: "type:process sev>=4", tags: [{ field: 'kql', label: "type:process sev>=4", value: "type:process sev>=4" }] },
+      { label: "All sudo executions", desc: "type:process proc:sudo", tags: [{ field: 'kql', label: "type:process proc:sudo", value: "type:process proc:sudo" }] },
+      { label: "sudo auth failures", desc: "type:logon sudo_failed", tags: [{ field: 'kql', label: "type:logon sudo_failed", value: "type:logon sudo_failed" }] },
+      { label: "SSH logins (accepted)", desc: "type:logon ssh_login", tags: [{ field: 'kql', label: "type:logon ssh_login", value: "type:logon ssh_login" }] },
+      { label: "SSH failures (brute force)", desc: "type:logon ssh_failed", tags: [{ field: 'kql', label: "type:logon ssh_failed", value: "type:logon ssh_failed" }] },
+      { label: "su / user switching", desc: "type:logon su_login", tags: [{ field: 'kql', label: "type:logon su_login", value: "type:logon su_login" }] },
+      { label: "PAM auth failures", desc: "type:logon pam_auth_failed", tags: [{ field: 'kql', label: "type:logon pam_auth_failed", value: "type:logon pam_auth_failed" }] },
+      { label: "All Linux logon events", desc: "type:logon os:linux", tags: [{ field: 'kql', label: "type:logon os:linux", value: "type:logon os:linux" }] },
+      { label: "User account added", desc: "type:logon ADD_USER", tags: [{ field: 'kql', label: "type:logon ADD_USER", value: "type:logon ADD_USER" }] },
+      { label: "User account deleted", desc: "type:logon DEL_USER", tags: [{ field: 'kql', label: "type:logon DEL_USER", value: "type:logon DEL_USER" }] },
+      { label: "Root account activity (uid=0)", desc: "type:process user:root", tags: [{ field: 'kql', label: "type:process user:root", value: "type:process user:root" }] },
+      { label: "All FIM events", desc: "type:file source:inotify", tags: [{ field: 'kql', label: "type:file source:inotify", value: "type:file source:inotify" }] },
+      { label: "/etc/passwd modifications", desc: "type:file file:/etc/passwd", tags: [{ field: 'kql', label: "type:file file:/etc/passwd", value: "type:file file:/etc/passwd" }] },
+      { label: "/etc/shadow modifications", desc: "type:file file:/etc/shadow", tags: [{ field: 'kql', label: "type:file file:/etc/shadow", value: "type:file file:/etc/shadow" }] },
+      { label: "/etc/sudoers modifications", desc: "type:file file:/etc/sudoers", tags: [{ field: 'kql', label: "type:file file:/etc/sudoers", value: "type:file file:/etc/sudoers" }] },
+      { label: "SSH config changes", desc: "type:file file:/etc/ssh", tags: [{ field: 'kql', label: "type:file file:/etc/ssh", value: "type:file file:/etc/ssh" }] },
+      { label: "Crontab modifications", desc: "type:file file:cron", tags: [{ field: 'kql', label: "type:file file:cron", value: "type:file file:cron" }] },
+      { label: "/tmp file drops", desc: "type:file file:/tmp/", tags: [{ field: 'kql', label: "type:file file:/tmp/", value: "type:file file:/tmp/" }] },
+      { label: "/dev/shm file drops", desc: "type:file file:/dev/shm", tags: [{ field: 'kql', label: "type:file file:/dev/shm", value: "type:file file:/dev/shm" }] },
+      { label: "ld.so.preload changes", desc: "type:file file:ld.so.preload", tags: [{ field: 'kql', label: "type:file file:ld.so.preload", value: "type:file file:ld.so.preload" }] },
+      { label: "Systemd unit file changes", desc: "type:file file:systemd", tags: [{ field: 'kql', label: "type:file file:systemd", value: "type:file file:systemd" }] },
+      { label: "Binary replaced in /usr/bin", desc: "type:file file:/usr/bin", tags: [{ field: 'kql', label: "type:file file:/usr/bin", value: "type:file file:/usr/bin" }] },
+      { label: "Profile/bashrc modifications", desc: "type:file .bashrc", tags: [{ field: 'kql', label: "type:file .bashrc", value: "type:file .bashrc" }] },
+      { label: "High severity FIM events", desc: "type:file sev>=4", tags: [{ field: 'kql', label: "type:file sev>=4", value: "type:file sev>=4" }] },
+      { label: "All auditd events", desc: "source:auditd", tags: [{ field: 'kql', label: "source:auditd", value: "source:auditd" }] },
+      { label: "All journald events", desc: "source:journald", tags: [{ field: 'kql', label: "source:journald", value: "source:journald" }] },
+      { label: "Kernel OOM kills", desc: "oom_kill", tags: [{ field: 'kql', label: "oom_kill", value: "oom_kill" }] },
+      { label: "Kernel module loads", desc: "kernel_module_load", tags: [{ field: 'kql', label: "kernel_module_load", value: "kernel_module_load" }] },
+      { label: "Cron job executions", desc: "cron_exec", tags: [{ field: 'kql', label: "cron_exec", value: "cron_exec" }] },
+      { label: "Service failures (systemd)", desc: "service_failed", tags: [{ field: 'kql', label: "service_failed", value: "service_failed" }] },
+      { label: "Segfault / crash events", desc: "segfault", tags: [{ field: 'kql', label: "segfault", value: "segfault" }] },
+      { label: "All Linux health events", desc: "type:health os:linux", tags: [{ field: 'kql', label: "type:health os:linux", value: "type:health os:linux" }] },
     ],
   },
   // ── macOS ─────────────────────────────────────────────────────────────────
@@ -429,6 +475,189 @@ export const SAVED_SEARCHES = [
         tags: [{ field: 'os', label: 'OS: darwin', value: 'darwin' },
                { field: 'severity', label: 'Severity: 4', value: '4' }],
       },
+    ],
+  },
+  {
+    group: "Process",
+    searches: [
+      { label: "All processes on all hosts", desc: "type:process", tags: [{ field: 'kql', label: "type:process", value: "type:process" }] },
+      { label: "All PowerShell executions", desc: "type:process proc:powershell", tags: [{ field: 'kql', label: "type:process proc:powershell", value: "type:process proc:powershell" }] },
+      { label: "PowerShell encoded commands", desc: "type:process cmd:-enc", tags: [{ field: 'kql', label: "type:process cmd:-enc", value: "type:process cmd:-enc" }] },
+      { label: "PowerShell download cradles", desc: "type:process cmd:downloadstring", tags: [{ field: 'kql', label: "type:process cmd:downloadstring", value: "type:process cmd:downloadstring" }] },
+      { label: "CMD executions", desc: "type:process proc:cmd.exe", tags: [{ field: 'kql', label: "type:process proc:cmd.exe", value: "type:process proc:cmd.exe" }] },
+      { label: "Rundll32 executions", desc: "type:process proc:rundll32", tags: [{ field: 'kql', label: "type:process proc:rundll32", value: "type:process proc:rundll32" }] },
+      { label: "MSHTA executions", desc: "type:process proc:mshta", tags: [{ field: 'kql', label: "type:process proc:mshta", value: "type:process proc:mshta" }] },
+      { label: "WScript / CScript", desc: "type:process wscript", tags: [{ field: 'kql', label: "type:process wscript", value: "type:process wscript" }] },
+      { label: "Regsvr32 executions", desc: "type:process proc:regsvr32", tags: [{ field: 'kql', label: "type:process proc:regsvr32", value: "type:process proc:regsvr32" }] },
+      { label: "Certutil abuse", desc: "type:process proc:certutil", tags: [{ field: 'kql', label: "type:process proc:certutil", value: "type:process proc:certutil" }] },
+      { label: "BITSAdmin executions", desc: "type:process bitsadmin", tags: [{ field: 'kql', label: "type:process bitsadmin", value: "type:process bitsadmin" }] },
+      { label: "Scheduled task creation", desc: "type:process cmd:schtasks", tags: [{ field: 'kql', label: "type:process cmd:schtasks", value: "type:process cmd:schtasks" }] },
+      { label: "New service (sc create)", desc: "type:process cmd:\"sc create\"", tags: [{ field: 'kql', label: "type:process cmd:\"sc create\"", value: "type:process cmd:\"sc create\"" }] },
+      { label: "PsExec remote execution", desc: "type:process psexec", tags: [{ field: 'kql', label: "type:process psexec", value: "type:process psexec" }] },
+      { label: "High severity process events", desc: "type:process sev>=4", tags: [{ field: 'kql', label: "type:process sev>=4", value: "type:process sev>=4" }] },
+      { label: "Net.exe account commands", desc: "type:process \"net user\"", tags: [{ field: 'kql', label: "type:process \"net user\"", value: "type:process \"net user\"" }] },
+      { label: "whoami execution", desc: "type:process cmd:whoami", tags: [{ field: 'kql', label: "type:process cmd:whoami", value: "type:process cmd:whoami" }] },
+      { label: "WMIC command execution", desc: "type:process proc:wmic", tags: [{ field: 'kql', label: "type:process proc:wmic", value: "type:process proc:wmic" }] },
+      { label: "bcdedit (recovery disabled)", desc: "type:process cmd:bcdedit", tags: [{ field: 'kql', label: "type:process cmd:bcdedit", value: "type:process cmd:bcdedit" }] },
+    ],
+  },
+  {
+    group: "Credential",
+    searches: [
+      { label: "All logon events", desc: "type:logon", tags: [{ field: 'kql', label: "type:logon", value: "type:logon" }] },
+      { label: "Failed logons (Event 4625)", desc: "type:logon event_id:4625", tags: [{ field: 'kql', label: "type:logon event_id:4625", value: "type:logon event_id:4625" }] },
+      { label: "Successful logons (Event 4624)", desc: "type:logon event_id:4624", tags: [{ field: 'kql', label: "type:logon event_id:4624", value: "type:logon event_id:4624" }] },
+      { label: "Logon with explicit creds (4648)", desc: "type:logon event_id:4648", tags: [{ field: 'kql', label: "type:logon event_id:4648", value: "type:logon event_id:4648" }] },
+      { label: "LSASS access attempts", desc: "type:process lsass", tags: [{ field: 'kql', label: "type:process lsass", value: "type:process lsass" }] },
+      { label: "Mimikatz indicators", desc: "type:process mimikatz", tags: [{ field: 'kql', label: "type:process mimikatz", value: "type:process mimikatz" }] },
+      { label: "Procdump usage", desc: "type:process procdump", tags: [{ field: 'kql', label: "type:process procdump", value: "type:process procdump" }] },
+      { label: "SAM registry access", desc: "type:registry reg:SAM", tags: [{ field: 'kql', label: "type:registry reg:SAM", value: "type:registry reg:SAM" }] },
+      { label: "Password string search", desc: "type:process cmd:password", tags: [{ field: 'kql', label: "type:process cmd:password", value: "type:process cmd:password" }] },
+      { label: "High severity logon events", desc: "type:logon sev>=4", tags: [{ field: 'kql', label: "type:logon sev>=4", value: "type:logon sev>=4" }] },
+    ],
+  },
+  {
+    group: "Network",
+    searches: [
+      { label: "All network connections", desc: "type:network", tags: [{ field: 'kql', label: "type:network", value: "type:network" }] },
+      { label: "Outbound RDP (port 3389)", desc: "type:network port:3389", tags: [{ field: 'kql', label: "type:network port:3389", value: "type:network port:3389" }] },
+      { label: "Outbound SMB (port 445)", desc: "type:network port:445", tags: [{ field: 'kql', label: "type:network port:445", value: "type:network port:445" }] },
+      { label: "Outbound SSH (port 22)", desc: "type:network port:22", tags: [{ field: 'kql', label: "type:network port:22", value: "type:network port:22" }] },
+      { label: "Outbound FTP (port 21)", desc: "type:network port:21", tags: [{ field: 'kql', label: "type:network port:21", value: "type:network port:21" }] },
+      { label: "HTTP traffic (port 80)", desc: "type:network port:80", tags: [{ field: 'kql', label: "type:network port:80", value: "type:network port:80" }] },
+      { label: "HTTPS traffic (port 443)", desc: "type:network port:443", tags: [{ field: 'kql', label: "type:network port:443", value: "type:network port:443" }] },
+      { label: "DNS traffic (port 53)", desc: "type:network port:53", tags: [{ field: 'kql', label: "type:network port:53", value: "type:network port:53" }] },
+      { label: "SMTP outbound (port 587)", desc: "type:network port:587", tags: [{ field: 'kql', label: "type:network port:587", value: "type:network port:587" }] },
+      { label: "WinRM (port 5985)", desc: "type:network port:5985", tags: [{ field: 'kql', label: "type:network port:5985", value: "type:network port:5985" }] },
+      { label: "LDAP (port 389)", desc: "type:network port:389", tags: [{ field: 'kql', label: "type:network port:389", value: "type:network port:389" }] },
+      { label: "Kerberos (port 88)", desc: "type:network port:88", tags: [{ field: 'kql', label: "type:network port:88", value: "type:network port:88" }] },
+      { label: "SQL Server (port 1433)", desc: "type:network port:1433", tags: [{ field: 'kql', label: "type:network port:1433", value: "type:network port:1433" }] },
+      { label: "All TCP connections", desc: "type:network proto:tcp", tags: [{ field: 'kql', label: "type:network proto:tcp", value: "type:network proto:tcp" }] },
+      { label: "High severity network events", desc: "type:network sev>=4", tags: [{ field: 'kql', label: "type:network sev>=4", value: "type:network sev>=4" }] },
+    ],
+  },
+  {
+    group: "DNS / Web",
+    searches: [
+      { label: "All websites visited (DNS)", desc: "type:dns", tags: [{ field: 'kql', label: "type:dns", value: "type:dns" }] },
+      { label: "RustDesk DNS queries", desc: "type:dns rustdesk", tags: [{ field: 'kql', label: "type:dns rustdesk", value: "type:dns rustdesk" }] },
+      { label: "WPAD proxy discovery", desc: "type:dns wpad", tags: [{ field: 'kql', label: "type:dns wpad", value: "type:dns wpad" }] },
+      { label: "Urban VPN queries", desc: "type:dns urban-vpn", tags: [{ field: 'kql', label: "type:dns urban-vpn", value: "type:dns urban-vpn" }] },
+      { label: "ngrok tunnel queries", desc: "type:dns ngrok", tags: [{ field: 'kql', label: "type:dns ngrok", value: "type:dns ngrok" }] },
+      { label: "Pastebin lookups", desc: "type:dns pastebin", tags: [{ field: 'kql', label: "type:dns pastebin", value: "type:dns pastebin" }] },
+      { label: "TOR / .onion domains", desc: "type:dns .onion", tags: [{ field: 'kql', label: "type:dns .onion", value: "type:dns .onion" }] },
+      { label: "AnyDesk DNS queries", desc: "type:dns anydesk", tags: [{ field: 'kql', label: "type:dns anydesk", value: "type:dns anydesk" }] },
+      { label: "TeamViewer DNS queries", desc: "type:dns teamviewer", tags: [{ field: 'kql', label: "type:dns teamviewer", value: "type:dns teamviewer" }] },
+      { label: "High severity DNS events", desc: "type:dns sev>=4", tags: [{ field: 'kql', label: "type:dns sev>=4", value: "type:dns sev>=4" }] },
+    ],
+  },
+  {
+    group: "File",
+    searches: [
+      { label: "All file events", desc: "type:file", tags: [{ field: 'kql', label: "type:file", value: "type:file" }] },
+      { label: "Temp directory writes", desc: "type:file file:\\\\temp\\\\", tags: [{ field: 'kql', label: "type:file file:\\\\temp\\\\", value: "type:file file:\\\\temp\\\\" }] },
+      { label: "AppData writes", desc: "type:file file:appdata", tags: [{ field: 'kql', label: "type:file file:appdata", value: "type:file file:appdata" }] },
+      { label: "Desktop file drops", desc: "type:file file:\\\\desktop\\\\", tags: [{ field: 'kql', label: "type:file file:\\\\desktop\\\\", value: "type:file file:\\\\desktop\\\\" }] },
+      { label: "Executable files written (.exe)", desc: "type:file file:.exe", tags: [{ field: 'kql', label: "type:file file:.exe", value: "type:file file:.exe" }] },
+      { label: "PowerShell scripts written (.ps1)", desc: "type:file file:.ps1", tags: [{ field: 'kql', label: "type:file file:.ps1", value: "type:file file:.ps1" }] },
+      { label: "Startup folder writes", desc: "type:file file:startup", tags: [{ field: 'kql', label: "type:file file:startup", value: "type:file file:startup" }] },
+      { label: "System32 writes", desc: "type:file file:system32", tags: [{ field: 'kql', label: "type:file file:system32", value: "type:file file:system32" }] },
+      { label: "Encrypted file extensions", desc: "type:file .locked", tags: [{ field: 'kql', label: "type:file .locked", value: "type:file .locked" }] },
+      { label: "High severity file events", desc: "type:file sev>=4", tags: [{ field: 'kql', label: "type:file sev>=4", value: "type:file sev>=4" }] },
+    ],
+  },
+  {
+    group: "Registry",
+    searches: [
+      { label: "All registry events", desc: "type:registry", tags: [{ field: 'kql', label: "type:registry", value: "type:registry" }] },
+      { label: "Run key modifications", desc: "type:registry reg:CurrentVersion\\\\Run", tags: [{ field: 'kql', label: "type:registry reg:CurrentVersion\\\\Run", value: "type:registry reg:CurrentVersion\\\\Run" }] },
+      { label: "RunOnce key modifications", desc: "type:registry reg:RunOnce", tags: [{ field: 'kql', label: "type:registry reg:RunOnce", value: "type:registry reg:RunOnce" }] },
+      { label: "Security policy changes", desc: "type:registry reg:Policies", tags: [{ field: 'kql', label: "type:registry reg:Policies", value: "type:registry reg:Policies" }] },
+      { label: "Service registry changes", desc: "type:registry reg:Services", tags: [{ field: 'kql', label: "type:registry reg:Services", value: "type:registry reg:Services" }] },
+      { label: "LSA registry changes", desc: "type:registry reg:Lsa", tags: [{ field: 'kql', label: "type:registry reg:Lsa", value: "type:registry reg:Lsa" }] },
+      { label: "Winlogon key changes", desc: "type:registry reg:Winlogon", tags: [{ field: 'kql', label: "type:registry reg:Winlogon", value: "type:registry reg:Winlogon" }] },
+      { label: "AppInit DLLs", desc: "type:registry reg:AppInit_DLLs", tags: [{ field: 'kql', label: "type:registry reg:AppInit_DLLs", value: "type:registry reg:AppInit_DLLs" }] },
+      { label: "IE Zone settings", desc: "type:registry reg:ZoneMap", tags: [{ field: 'kql', label: "type:registry reg:ZoneMap", value: "type:registry reg:ZoneMap" }] },
+      { label: "High severity registry events", desc: "type:registry sev>=4", tags: [{ field: 'kql', label: "type:registry sev>=4", value: "type:registry sev>=4" }] },
+    ],
+  },
+  {
+    group: "User",
+    searches: [
+      { label: "All events for SYSTEM account", desc: "user:SYSTEM", tags: [{ field: 'kql', label: "user:SYSTEM", value: "user:SYSTEM" }] },
+      { label: "All events for administrator", desc: "user:administrator", tags: [{ field: 'kql', label: "user:administrator", value: "user:administrator" }] },
+      { label: "Guest account activity", desc: "user:guest", tags: [{ field: 'kql', label: "user:guest", value: "user:guest" }] },
+      { label: "Network service account", desc: "user:\"NETWORK SERVICE\"", tags: [{ field: 'kql', label: "user:\"NETWORK SERVICE\"", value: "user:\"NETWORK SERVICE\"" }] },
+      { label: "All logon events", desc: "type:logon", tags: [{ field: 'kql', label: "type:logon", value: "type:logon" }] },
+      { label: "Service account logons", desc: "type:logon svc", tags: [{ field: 'kql', label: "type:logon svc", value: "type:logon svc" }] },
+      { label: "Account creation (Event 4720)", desc: "event_id:4720", tags: [{ field: 'kql', label: "event_id:4720", value: "event_id:4720" }] },
+      { label: "High severity user events", desc: "sev>=4", tags: [{ field: 'kql', label: "sev>=4", value: "sev>=4" }] },
+    ],
+  },
+  {
+    group: "Sysmon",
+    searches: [
+      { label: "All Sysmon events", desc: "type:sysmon", tags: [{ field: 'kql', label: "type:sysmon", value: "type:sysmon" }] },
+      { label: "Sysmon process creation (ID 1)", desc: "type:sysmon event_id:1", tags: [{ field: 'kql', label: "type:sysmon event_id:1", value: "type:sysmon event_id:1" }] },
+      { label: "Sysmon network connection (ID 3)", desc: "type:sysmon event_id:3", tags: [{ field: 'kql', label: "type:sysmon event_id:3", value: "type:sysmon event_id:3" }] },
+      { label: "Sysmon file creation (ID 11)", desc: "type:sysmon event_id:11", tags: [{ field: 'kql', label: "type:sysmon event_id:11", value: "type:sysmon event_id:11" }] },
+      { label: "Sysmon registry event (ID 12)", desc: "type:sysmon event_id:12", tags: [{ field: 'kql', label: "type:sysmon event_id:12", value: "type:sysmon event_id:12" }] },
+      { label: "Sysmon image loaded (ID 7)", desc: "type:sysmon event_id:7", tags: [{ field: 'kql', label: "type:sysmon event_id:7", value: "type:sysmon event_id:7" }] },
+      { label: "Sysmon process access (ID 10)", desc: "type:sysmon event_id:10", tags: [{ field: 'kql', label: "type:sysmon event_id:10", value: "type:sysmon event_id:10" }] },
+      { label: "All critical severity events", desc: "sev>=5", tags: [{ field: 'kql', label: "sev>=5", value: "sev>=5" }] },
+      { label: "All high severity events", desc: "sev>=4", tags: [{ field: 'kql', label: "sev>=4", value: "sev>=4" }] },
+      { label: "Windows Security channel", desc: "channel:Security", tags: [{ field: 'kql', label: "channel:Security", value: "channel:Security" }] },
+      { label: "Windows System channel", desc: "channel:System", tags: [{ field: 'kql', label: "channel:System", value: "channel:System" }] },
+      { label: "PowerShell Operational channel", desc: "channel:PowerShell", tags: [{ field: 'kql', label: "channel:PowerShell", value: "channel:PowerShell" }] },
+      { label: "Event log cleared (ID 1102)", desc: "event_id:1102", tags: [{ field: 'kql', label: "event_id:1102", value: "event_id:1102" }] },
+      { label: "AppLocker block events (8004)", desc: "event_id:8004", tags: [{ field: 'kql', label: "event_id:8004", value: "event_id:8004" }] },
+      { label: "All raw events", desc: "type:raw", tags: [{ field: 'kql', label: "type:raw", value: "type:raw" }] },
+    ],
+  },
+  {
+    group: "Code",
+    searches: [
+      { label: "All code-platform events", desc: "type:devops.*", tags: [{ field: 'kql', label: "type:devops.*", value: "type:devops.*" }] },
+      { label: "Secrets pushed to a repository", desc: "type:devops.secret_push", tags: [{ field: 'kql', label: "type:devops.secret_push", value: "type:devops.secret_push" }] },
+      { label: "CI/CD pipeline or workflow changed", desc: "type:devops.cicd_modified", tags: [{ field: 'kql', label: "type:devops.cicd_modified", value: "type:devops.cicd_modified" }] },
+      { label: "Sensitive files changed", desc: "type:devops.sensitive_file", tags: [{ field: 'kql', label: "type:devops.sensitive_file", value: "type:devops.sensitive_file" }] },
+      { label: "Repositories made public", desc: "type:devops.repo_publicized", tags: [{ field: 'kql', label: "type:devops.repo_publicized", value: "type:devops.repo_publicized" }] },
+      { label: "Repositories deleted", desc: "type:devops.repo_deleted", tags: [{ field: 'kql', label: "type:devops.repo_deleted", value: "type:devops.repo_deleted" }] },
+      { label: "Members added to the organisation", desc: "type:devops.member_added", tags: [{ field: 'kql', label: "type:devops.member_added", value: "type:devops.member_added" }] },
+      { label: "Dependency changes", desc: "type:devops.dependency_change", tags: [{ field: 'kql', label: "type:devops.dependency_change", value: "type:devops.dependency_change" }] },
+      { label: "Mass deletion", desc: "type:devops.mass_deletion", tags: [{ field: 'kql', label: "type:devops.mass_deletion", value: "type:devops.mass_deletion" }] },
+      { label: "Pipeline runs", desc: "type:(devops.pipeline_run or devops.workflow_run)", tags: [{ field: 'kql', label: "type:(devops.pipeline_run or devops.workflow_run)", value: "type:(devops.pipeline_run or devops.workflow_run)" }] },
+      { label: "Platform audit log", desc: "type:devops.audit", tags: [{ field: 'kql', label: "type:devops.audit", value: "type:devops.audit" }] },
+      { label: "High-severity code events", desc: "type:devops.* sev:high", tags: [{ field: 'kql', label: "type:devops.* sev:high", value: "type:devops.* sev:high" }] },
+    ],
+  },
+  {
+    group: "Cloud",
+    searches: [
+      { label: "All cloud events", desc: "type:cloud.*", tags: [{ field: 'kql', label: "type:cloud.*", value: "type:cloud.*" }] },
+      { label: "AWS CloudTrail", desc: "type:(cloud.cloudtrail or cloud.aws_cloudtrail)", tags: [{ field: 'kql', label: "type:(cloud.cloudtrail or cloud.aws_cloudtrail)", value: "type:(cloud.cloudtrail or cloud.aws_cloudtrail)" }] },
+      { label: "AWS GuardDuty findings", desc: "type:cloud.guardduty", tags: [{ field: 'kql', label: "type:cloud.guardduty", value: "type:cloud.guardduty" }] },
+      { label: "AWS Security Hub", desc: "type:cloud.securityhub", tags: [{ field: 'kql', label: "type:cloud.securityhub", value: "type:cloud.securityhub" }] },
+      { label: "Azure activity log", desc: "type:cloud.azure_activity", tags: [{ field: 'kql', label: "type:cloud.azure_activity", value: "type:cloud.azure_activity" }] },
+      { label: "Azure Defender alerts", desc: "type:cloud.azure_defender", tags: [{ field: 'kql', label: "type:cloud.azure_defender", value: "type:cloud.azure_defender" }] },
+      { label: "Entra ID sign-ins", desc: "type:cloud.entra_signin", tags: [{ field: 'kql', label: "type:cloud.entra_signin", value: "type:cloud.entra_signin" }] },
+      { label: "Entra ID audit", desc: "type:cloud.entra_audit", tags: [{ field: 'kql', label: "type:cloud.entra_audit", value: "type:cloud.entra_audit" }] },
+      { label: "GCP audit log", desc: "type:cloud.gcp_audit", tags: [{ field: 'kql', label: "type:cloud.gcp_audit", value: "type:cloud.gcp_audit" }] },
+      { label: "GKE audit log", desc: "type:cloud.gcp_gke_audit", tags: [{ field: 'kql', label: "type:cloud.gcp_gke_audit", value: "type:cloud.gcp_gke_audit" }] },
+      { label: "GCP policy denials", desc: "type:cloud.gcp_policy_denied", tags: [{ field: 'kql', label: "type:cloud.gcp_policy_denied", value: "type:cloud.gcp_policy_denied" }] },
+      { label: "GCP Security Command Center", desc: "type:cloud.gcp_scc", tags: [{ field: 'kql', label: "type:cloud.gcp_scc", value: "type:cloud.gcp_scc" }] },
+      { label: "Cloud posture findings", desc: "type:cloud.cspm", tags: [{ field: 'kql', label: "type:cloud.cspm", value: "type:cloud.cspm" }] },
+      { label: "Cloud anomalies and correlations", desc: "type:(cloud.aws_anomaly or cloud.azure_anomaly or cloud.gcp_anomaly or cloud.azure_correlation or cloud.gcp_correlation)", tags: [{ field: 'kql', label: "type:(cloud.aws_anomaly or cloud.azure_anomaly or cloud.gcp_anomaly or cloud.azure_correlation or cloud.gcp_correlation)", value: "type:(cloud.aws_anomaly or cloud.azure_anomaly or cloud.gcp_anomaly or cloud.azure_correlation or cloud.gcp_correlation)" }] },
+      { label: "High-severity cloud events", desc: "type:cloud.* sev:high", tags: [{ field: 'kql', label: "type:cloud.* sev:high", value: "type:cloud.* sev:high" }] },
+    ],
+  },
+  {
+    group: "Application",
+    searches: [
+      { label: "Application security alerts", desc: "type:app.alert", tags: [{ field: 'kql', label: "type:app.alert", value: "type:app.alert" }] },
+      { label: "High-severity application alerts", desc: "type:app.alert sev:high", tags: [{ field: 'kql', label: "type:app.alert sev:high", value: "type:app.alert sev:high" }] },
+      { label: "Application logs", desc: "type:applog", tags: [{ field: 'kql', label: "type:applog", value: "type:applog" }] },
+      { label: "All application events", desc: "type:app.*", tags: [{ field: 'kql', label: "type:app.*", value: "type:app.*" }] },
     ],
   },
 ]
@@ -683,13 +912,14 @@ function SavedSearchPanel({ onSelect, onClose }) {
 
   const GROUP_ICONS = {
     Windows: Monitor, Linux: Terminal, macOS: Monitor,
-    AWS: Cloud, Azure: Cloud, GCP: Cloud, 'All Cloud': Cloud,
+    AWS: Cloud, Azure: Cloud, GCP: Cloud, 'All Cloud': Cloud, Cloud: Cloud,
+    Code: GitBranch, Application: Boxes,
   }
 
   return (
     <div className="bg-siem-surface border border-siem-border rounded-xl overflow-hidden">
       <div className="flex items-center justify-between px-4 py-2.5 border-b border-siem-border">
-        <span className="text-xs font-semibold text-siem-text">Saved Searches</span>
+        <span className="text-xs font-semibold text-siem-text">Query library</span>
         <button onClick={onClose} className="text-siem-muted hover:text-siem-text"><X size={12}/></button>
       </div>
       <div className="flex">
@@ -697,7 +927,7 @@ function SavedSearchPanel({ onSelect, onClose }) {
         <div className="w-28 border-r border-siem-border shrink-0">
           {SAVED_SEARCHES.map(({ group }) => {
             const Icon = GROUP_ICONS[group] || Shield
-            const isCloud = ['AWS','Azure','GCP','All Cloud'].includes(group)
+            const isCloud = false
             return (
               <button key={group} onClick={() => setActiveGroup(group)}
                 className={`w-full flex items-center gap-1.5 px-3 py-2 text-[10px] transition-colors text-left ${
@@ -1115,7 +1345,7 @@ export default function Events() {
         sub={live ? (connected ? 'Live tail: newest events as they arrive (last 200).' : 'Live tail: reconnecting…')
           : <>{loading ? 'Searching…' : <><span className="t1 mono">{total.toLocaleString()}</span> events</>} · {rangeName}{tags.length > 0 && ` · ${tags.length} filter${tags.length > 1 ? 's' : ''}`}</>}
         actions={<>
-          <button className={`ow-btn ${showSaved ? 'primary' : ''}`} onClick={() => setShowSaved(s => !s)}>Saved searches</button>
+          <button className={`ow-btn ${showSaved ? 'primary' : ''}`} onClick={() => setShowSaved(s => !s)}>Query library</button>
           {!live && (
             <div style={{ position: 'relative' }}>
               <button className="ow-btn" onClick={() => setExportOpen(o => !o)} aria-haspopup="menu" aria-expanded={exportOpen}><Download size={13}/>Export</button>

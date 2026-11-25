@@ -16,7 +16,6 @@ import AuditLog from './pages/AuditLog'
 import Suppressions from './pages/Suppressions'
 import ChangePassword from './pages/ChangePassword'
 import Settings from './pages/Settings'
-import Search from './pages/Search'
 import Detections from './pages/Detections'
 import ThreatGraph from './pages/ThreatGraph'
 import Locations from './pages/Locations'
@@ -84,7 +83,7 @@ export default function App() {
         <Route path="/audit-log"    element={<ProtectedRoute><AuditLog /></ProtectedRoute>} />
         <Route path="/suppressions" element={<ProtectedRoute><Suppressions /></ProtectedRoute>} />
         <Route path="/settings"      element={<ProtectedRoute adminOnly><Settings /></ProtectedRoute>} />
-        <Route path="/search"        element={<ProtectedRoute><Search /></ProtectedRoute>} />
+        <Route path="/search"        element={<Navigate to="/events" replace />} />
         <Route path="/threat-graph" element={<Navigate to="/agents" replace />} />
         <Route path="/locations"      element={<Navigate to="/agents" replace />} />
         <Route path="/cloud"           element={<ProtectedRoute><CloudPage /></ProtectedRoute>} />

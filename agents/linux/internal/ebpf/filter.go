@@ -71,3 +71,14 @@ func (r *Registry) Len() int {
 	defer r.mu.RUnlock()
 	return len(r.pids)
 }
+
+// Snapshot returns a copy of pid -> service name.
+func (r *Registry) Snapshot() map[int]string {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	out := make(map[int]string, len(r.pids))
+	for p, n := range r.pids {
+		out[p] = n
+	}
+	return out
+}

@@ -344,6 +344,7 @@ func scaFindings(ctx context.Context, repo string, pkgs []scaPkg) ([]SASTFinding
 		out = append(out, SASTFinding{
 			RuleID: "SCA-" + h.id, Severity: sev, CWE: "CWE-1104", OWASP: "A06:2021 Vulnerable and Outdated Components",
 			Title: title, Detail: detail, Fix: fix, Repo: repo, File: h.pkg.File, Line: 0, Engine: "osv",
+			Ecosystem: h.pkg.Ecosystem, Package: h.pkg.Name, Version: h.pkg.Version,
 		})
 	}
 	return out, nil

@@ -1,6 +1,20 @@
 # Codebase security: capability reference
 
-This document describes, end to end, what the Code feature collects from each Git platform, every scanning layer and its rules, how findings are identified and merged, which alerts DevOps activity raises, and what each page shows. Everything here is derived from the source code at the time of writing. Rule tables are generated from the rule definitions.
+This document describes, end to end, what the Code feature does: what it collects from each Git platform, every scanning layer and its rules (secrets over full history, pattern rules, CodeQL, dependencies, IaC, licences, SBOM), automated scans and pull-request checks, runtime reachability of vulnerable dependencies, triage and fix suggestions, the platform threat-detection rules, and what each page shows. Everything here is derived from the source code at the time of writing.
+
+Feature map:
+
+| Capability | Section | Needs |
+|---|---|---|
+| Platform activity collection (audit logs, commits, pipelines, webhooks) | 2, 3 | A connector |
+| Platform threat detection (DEV-001 … DEV-031, CODE-RT-001) | 6 | A connector; webhooks for real time |
+| Code scan over stored diffs | 4.2 | A synced connector |
+| SAST: secrets over history, pattern rules, CodeQL, dependencies, IaC, licences, SBOM | 4.3 – 4.8 | The scanner image (deployment.md section 6.1) |
+| Automated scans: on push, on a schedule, pull-request checks with comments and merge blocking | 4.10 | Automation tab; webhooks; a token with write access for PR checks |
+| Runtime reachability of dependency vulnerabilities | 4.11 | Linux agent with the host sensor on the servers |
+| Triage that learns from decisions | 4.12 | – |
+| Fix suggestions (dependency upgrades; AI for code) | 4.13 | AI provider and source-sharing opt-in for code fixes |
+| Posture checks | 5 | A connector |
 
 See also [deployment.md](deployment.md) and [configuration.md](configuration.md).
 
@@ -12,26 +26,33 @@ See also [deployment.md](deployment.md) and [configuration.md](configuration.md)
 
 ```
  GitHub / GitLab / Azure DevOps
-   │  poll every 5 min (DevOpsEngine)         │  webhooks (optional)
-   ▼                                          ▼
- commits + redacted diffs ──► devops_commits   devops.* events ──► events table
- audit / pipeline / member events ─────────────────────────────►  (agent-ingest DB)
-                                                                     │
-                                       detection engine (DEV-001…021) ──► alerts
- manual scans:
-   Code scan  ── over stored diffs ──────────► code_scan_results
-   SAST + SCA ── downloads source ───────────► sast_results
-   Posture    ── provider settings APIs ─────► settings: devops.posture.last.{id}
-                                                     │
-                     Code → Repositories pages, Insights → Code findings, GET /api/v1/findings
+   │ poll every 5 min (DevOpsEngine)       │ webhooks (optional, real time)
+   ▼                                       ▼
+ commits + redacted diffs ─► devops_commits    devops.* events ─► events table ─► platform detection
+ audit / pipeline / member events ─────────────────────────────►              (DEV-*, section 6) ─► alerts
+                                           │
+                                           ├─ push to default branch ─┐
+                                           └─ pull/merge request ─────┤   code_scan_jobs (queue)
+ Automation tab schedule (daily/weekly) ───────────────────────────────┤        │ worker
+ SAST tab "Run SAST Scan" (manual) ─────────────────────────────────────┘        ▼
+                       git clone ─► secrets (history) · pattern rules · Trivy/OSV · built-in · CodeQL
+                                  ─► sast_results (findings, engines, SBOM)
+                                  ─► PR: status + summary + inline comments (+ AI fixes)
+ Linux agents (host sensor) ─► runtime_inventory events ─► runtime_packages ─► reachability labels,
+                                                                              alert CODE-RT-001
+ Analysts ─► triage decisions / rules ─► hide, learn, hints
+ Code scan (stored diffs) ─► code_scan_results     Posture (settings APIs) ─► devops.posture.last.{id}
+                                   │
+       Code → Repositories pages, SAST tab, Insights → Code findings, GET /api/v1/findings
 ```
 
-Two separate result paths exist:
+Three result paths exist:
 
-- **Events and alerts.** Activity from polling and webhooks becomes `devops.*` events. Detection signatures turn them into alerts.
-- **Findings.** Results of the three manual scanners (code scan, SAST/SCA, posture). They are shown on the Repositories pages. They are not alerts.
+- **Events and alerts.** Platform activity from polling and webhooks becomes `devops.*` events; the platform detection rules turn them into alerts (section 6). Runtime reachability adds alert CODE-RT-001.
+- **Findings.** Results of the scanners (code scan, SAST/SCA, posture). They are shown on the Code pages and Insights → Code findings, labelled with runtime reachability and triage. They are not alerts.
+- **Pull-request checks.** Findings a change introduces go back to the platform as a status, a summary and inline comments.
 
-Implemented in: `devops_engine.go`, `devops_*.go`, `codescan.go`, `sast_*.go`, `devops_posture.go`, `findings_unified.go`, `detection_engine.go`.
+Implemented in: `devops_engine.go`, `devops_*.go`, `codescan.go`, `sast_*.go`, `code_automation.go`, `code_reporters.go`, `code_reachability.go`, `code_triage.go`, `code_fix.go`, `devops_posture.go`, `findings_unified.go`, `detection_engine.go`, `devops_sigs.go`, `devops_detect_more.go`.
 
 ---
 
@@ -43,9 +64,9 @@ Every polled item becomes a row in the events table with `os = "devops"`, `agent
 
 | Source | API | What is kept | Event type | Severity |
 |---|---|---|---|---|
-| Org audit log | `GET /orgs/{org}/audit-log?include=all` (cursor `after=`) | Every entry except `git.*` (clone/fetch) and entries without an action | `devops.<action with . replaced by _>`, for example `devops.repo_destroy` | From the table in 2.1.1; unrated actions get 1 |
+| Org audit log | `GET /orgs/{org}/audit-log?include=all` (cursor `after=`) | Every entry with an action, with the actor's IP (`actor_ip`) in `src_ip`. Git traffic (`git.clone`, `git.fetch`) and `repo.download_zip` are not stored one by one: one `devops.repo_clone_summary` event per actor and sync lists the distinct repositories copied (feeds DEV-028). | `devops.<action with . replaced by _>`, for example `devops.repo_destroy` | From the table in 2.1.1; unrated actions get 1 |
 | Public user events (fallback when the audit log fails) | `GET /users/{org}/events` | All event types except Watch, Issues, IssueComment, CommitComment, Gollum | `devops.push`, `devops.repo_create`, `devops.delete_<reftype>`, `devops.repo_make_public`, `devops.member_<action>`, `devops.fork`, `devops.release_<action>`, `devops.pull_request_<action>`, other `devops.<type>` | 1 by default; repo create 4; delete 2 (4 on a protected branch); make public 5; member 4; fork 2; release 2 |
-| Repository list | `/orgs/{org}/repos` and `/user/repos` | Name, private flag, default branch | none (used to drive commit polling) | – |
+| Repository list | `/orgs/{org}/repos`, plus `/user/repos?affiliation=owner` for a personal account; only repositories whose owner is the connector's org are kept | Name, private flag, default branch | none (used to drive commit polling) | – |
 | Commits | `/repos/{r}/commits?since=` then `/repos/{r}/commits/{sha}` per commit | Author name, e-mail and login, message, URL, file list with additions, deletions and status, patch (secrets redacted, first 2 000 characters per file), signature verification, committer e-mail | `devops.push` per commit, plus the commit-derived events in 2.4 | 1 |
 
 "Protected branch" in this document always means the name-based check `isProtectedBranch`: `main`, `master`, `develop`, `development`, `trunk`, `production`, `prod`, and names starting with `release/` or `release-`. It does not query the platform's real branch protection.
@@ -65,28 +86,30 @@ Matching is exact or by dotted prefix (`hook` matches `hook.create`, not `hookup
 
 | Source | API | What is kept | Event type | Severity |
 |---|---|---|---|---|
-| Group audit events (Premium) | `GET /groups/{g}/audit_events?created_after=` | Entries whose `action_name` is rated (below) | `devops.<action_name with spaces replaced by _>` | 4 or 2 |
-| Project list | `/groups/{g}/projects?include_subgroups=true` (first 50), else `/users/{u}/projects` | ID, path, default branch | none | – |
+| Group audit events (Premium) | `GET /groups/{g}/audit_events?created_after=` (paged, up to 20 × 100) | Rated entries. The action is read from `details` (`add`, `remove`, `change` with `from`/`to`, `custom_message`) or `event_name`; actor from `details.author_name`, IP from `details.ip_address` | `devops.<action with spaces replaced by _>` (for example `devops.added_user_access`), raw carries `event` (canonical name), `role`, `visibility`, `repo` | 4 or 2 |
+| Project list | `/groups/{g}/projects?include_subgroups=true&archived=false`, else `/users/{u}/projects`, else the single project named by Org; all pages (up to 20 × 100) | ID, path, default branch | none | – |
 | Pipelines | `/projects/{id}/pipelines?updated_after=` (50) | ID, status, source, ref, SHA, URL | `devops.pipeline_run` | 1; failed 2 |
-| Project events (any tier) | `/projects/{id}/events?after=` (100) | `joined`, `left`, `expired`, `removed` → member change; `created`, `destroyed` of the project | `devops.member_change`, `devops.project_created`, `devops.project_destroyed` | 3 |
+| Project events (any tier) | `/projects/{id}/events?after=` (paged, up to 10 × 100) | `joined`, `left`, `expired`, `removed` → member change; `created`, `destroyed` of the project | `devops.member_change`, `devops.project_created`, `devops.project_destroyed` | 3 |
 | Commits | `/projects/{id}/repository/commits?since=` (20) then `/commits/{sha}/diff` | As GitHub, without login, signature and committer | `devops.push` and the events in 2.4 | 1 |
 
-GitLab audit severity (substring match on `action_name`):
+Group and project paths are URL-encoded as one segment (`group/sub` → `group%2Fsub`), so nested groups and names with spaces work.
+
+GitLab audit severity (substring match on the action and `event_name`):
 
 | Severity | Contains |
 |---|---|
-| 4 | `added user`, `removed user`, `destroyed`, `transferred`, `made public`, `changed visibility`, `enabled two-factor`, `disabled two-factor`, `added deploy key`, `created personal access token` |
-| 2 | `added`, `removed`, `changed`, `updated`, `created` |
+| 4 | `added user`, `removed user`, `user_access`, `destroyed`, `removed project`, `transfer`, `made public`, `changed visibility`, `two-factor`, `deploy_key`, `personal access token`, `protected_branch`, `streaming`, `hook` |
+| 2 | `added`, `removed`, `changed`, `updated`, `created`, `deleted` |
 | dropped | anything else |
 
-*(unverified)* The GitLab audit-events API documents the action inside `details` (for example `details.custom_message`, `event_name`). The code reads a top-level `action_name`. If that field is absent, every group audit entry is dropped.
+Canonical names given to GitLab audit entries so the DEV rules match them: member added → `org.add_member` (role from `details.as`), access level change → `org.update_member`, visibility changed to public → `repo.access` with `visibility: public`, project removed → `project_destroyed`, deploy key added → `deploy_key.create`, personal access token created → `personal_access_token.created`, protected branch removed → `protected_branch.destroy`, streaming destination removed → `audit_log_streaming.destroy`, hook added → `hook.create`, transfer → `repo.transfer`.
 
 ### 2.3 Azure DevOps
 
 | Source | API | What is kept | Event type | Severity |
 |---|---|---|---|---|
-| Projects | `_apis/projects` | Name | none | – |
-| Audit log | `auditservice.dev.azure.com/{org}/_apis/audit/auditlog?startTime=` (10 × 200) | Rated entries, with actor display name and IP address | `devops.audit` | 4 or 2 |
+| Projects | `_apis/projects`, or only the connector's `project` when set | Name | none | – |
+| Audit log (Azure DevOps Services only) | `auditservice.dev.azure.com/{org}/_apis/audit/auditlog?startTime=` (10 × 200) | Rated entries, with actor display name and IP address; raw also carries `event` (canonical name, below), `action`, and `role` / `visibility` when relevant | `devops.audit` | 4 or 2 |
 | Builds | `{project}/_apis/build/builds?minTime=` (50) | ID, number, pipeline name, repository, branch, status, result, reason, requested-for | `devops.pipeline_run` | 1; failed 2 |
 | Repositories | `{project}/_apis/git/repositories` | ID, name, default branch | none | – |
 | Commits | `.../commits?searchCriteria.fromDate=&$top=20` then `.../commits/{id}/changes` | Author, message, file paths and change types (no content) | `devops.push`, plus `devops.secret_push` (path match only) and `devops.cicd_modified` | 1 |
@@ -99,6 +122,10 @@ Azure DevOps audit severity (substring match on `actionId`, case-insensitive):
 | 2 | `create`, `modif`, `delete`, `remove`, `add`, `update`, `change` |
 | dropped | anything else |
 
+All Azure DevOps calls use the connector's `base_url` when set (the full organisation or collection URL, for example `https://tfs.example.com/tfs/DefaultCollection` for Azure DevOps Server), otherwise `https://dev.azure.com/{org}`. Azure DevOps Server has no audit API; for such a connector the audit step is skipped and a coverage note says so.
+
+Canonical names for Azure DevOps audit actions: `Git.RepositoryDeleted` / `Git.RepositoryDestroyed` → `repo.destroy`; `Token.PatCreate*` → `personal_access_token.created`; `Token.SshCreate*` → `public_key.create`; `Policy.PolicyConfigRemoved` → `protected_branch.destroy`; `AuditLog.StreamDeleted` / `AuditLog.StreamDisabled*` → `audit_log_streaming.destroy`; `Extension.Installed` → `integration_installation.create`; `Group.UpdateGroupMembership.Add` → `org.add_member` (role `admin` when the group is an administrators group); `Project.UpdateVisibility*` → `repo.access` (with `visibility: public` when made public); agent pool creation → `runners.create`; service connection create/modify → `service_connection.change`.
+
 All Azure DevOps audit entries share the event type `devops.audit`. The action is in the raw `actionId` field. No DEV signature matches `devops.audit` by action (see section 6), so these events are searchable but raise no DevOps alert.
 
 ### 2.4 Events derived from each polled commit
@@ -107,19 +134,29 @@ All Azure DevOps audit entries share the event type `devops.audit`. The action i
 |---|---|---|---|---|---|
 | `devops.push` | Always, one per commit | 1 | yes | yes | yes |
 | `devops.secret_push` | An added diff line matches the commit secret scanner (section 4.1). Azure DevOps: a file **path** matches a provider-specific pattern. | 5 (Azure DevOps 4) | yes | yes | path only |
-| `devops.cicd_modified` | A changed file is a CI/CD file: path starts with `.github/workflows/`, or equals `.gitlab-ci.yml`, `azure-pipelines.yml`, `Jenkinsfile`, `.circleci/config.yml`, `.travis.yml`, `bitbucket-pipelines.yml`, `cloudbuild.yaml`. GitLab and Azure DevOps use a substring match on the path. | GitHub 3, or 4 with a risky addition; GitLab 4; Azure DevOps 3 | yes | yes | yes |
+| `devops.cicd_modified` | A changed file is a CI/CD file: path starts with `.github/workflows/`, or equals `.gitlab-ci.yml`, `azure-pipelines.yml`, `Jenkinsfile`, `.circleci/config.yml`, `.travis.yml`, `bitbucket-pipelines.yml`, `cloudbuild.yaml`. GitLab and Azure DevOps use a substring match on the path. Raw `risky` lists what the change adds (below). | 2; with risky additions 3, 4 or 5 (below). Azure DevOps (paths only) 3. | yes | yes | yes |
 | `devops.sensitive_file` | A non-deleted file matches a sensitive name (section 4.1.1) | 3 | yes | yes | no |
 | `devops.mass_deletion` | ≥ 1 000 deleted lines and deletions > 5 × additions | 3 | yes | no | no |
-| `devops.dependency_change` | A non-deleted dependency manifest changed (`package.json`, `package-lock.json`, `yarn.lock`, `pnpm-lock.yaml`, `go.mod`, `go.sum`, `requirements.txt`, `Pipfile`, `Pipfile.lock`, `poetry.lock`, `pyproject.toml`, `pom.xml`, `build.gradle`, `Gemfile`, `Gemfile.lock`, `Cargo.toml`, `Cargo.lock`, `composer.json`, `composer.lock`) | 2 | yes | no | no |
+| `devops.dependency_change` | A non-deleted dependency manifest (`package.json`, `package-lock.json`, `yarn.lock`, `pnpm-lock.yaml`, `go.mod`, `go.sum`, `requirements.txt`, `Pipfile`, `Pipfile.lock`, `poetry.lock`, `pyproject.toml`, `pom.xml`, `build.gradle`, `Gemfile`, `Gemfile.lock`, `Cargo.toml`, `Cargo.lock`, `composer.json`, `composer.lock`) or package-manager configuration (`.npmrc`, `.yarnrc`, `.yarnrc.yml`, `pip.conf`, `nuget.config`) changed. Raw `risks` lists risky additions (below). | 1; with risks 3 | yes | no | no |
 
-**Risky pipeline additions** (GitHub only, on `+` lines of a CI/CD file; the first match is recorded in `risky`):
+**Risky pipeline additions** (GitHub and GitLab, on the added lines of a CI/CD file; every match is recorded in `risky`, separated by `; `):
 
-| Pattern | Reason recorded |
+| Reason recorded | What is looked for |
 |---|---|
-| `pull_request_target` | `pull_request_target trigger` |
+| `pull_request_target trigger` | `pull_request_target` |
+| `checks out pull request head code` | `ref: ${{ github.event.pull_request.head.sha }}` / `.head.ref` / `github.head_ref` |
+| `untrusted event data interpolated into a step` | `${{ github.event.<issue/pull_request/comment/review/discussion/head_commit/commits/pages/workflow_run>….<title/body/message/name/label/ref/email/head_branch> }}` or `${{ github.head_ref }}` |
 | `secrets: inherit` | `secrets: inherit` |
-| `self-hosted` | `self-hosted runner` |
-| `curl` or `wget` together with `\| bash`, `\|bash` or `\| sh` | `download piped to shell` |
+| `self-hosted runner` | `self-hosted` |
+| `write permissions for the workflow token` | `permissions: write-all`, or `contents`, `actions`, `packages`, `id-token`, `pull-requests` set to `write` |
+| `download piped to a shell` | `curl`/`wget … \| sh/bash/zsh`, `bash <(curl …)` |
+| `prints, dumps or encodes secrets` | `echo`/`printf`/`cat` with `${{ secrets.… }}`, `printenv`, `env \|`, `base64` with a secret, `toJSON(secrets)` |
+| `sends the CI token to a URL` | `curl`/`wget`/`Invoke-WebRequest` with `$CI_JOB_TOKEN`, `System.AccessToken`, `secrets.GITHUB_TOKEN` or `github.token` |
+| `third-party action not pinned to a commit SHA` | `uses: owner/repo@ref` where the owner is not `actions` or `github` and the ref is not a 40-character SHA |
+
+Severity of the event: 5 when `pull_request_target` comes with a PR-head checkout or untrusted interpolation (the "pwn request" pattern); 4 for untrusted interpolation, printed secrets or a CI token sent out; 3 for any other risky addition; 2 otherwise.
+
+**Risky dependency changes** (added lines): an `install`/`preinstall`/`postinstall` script in `package.json`; a dependency fetched from `git+https`, `git+ssh`, `github:` or an `http(s)` tarball; `--extra-index-url`, `--index-url`, `--trusted-host`, a `registry=` or `"registry":` line, a Poetry source, a Gemfile `source`; a `go.mod` `replace` to a local path or another module.
 
 **Event IDs and timestamps.** Commit events have stable IDs such as `devops:{sha}:push`, `devops:gl:{sha}:secret` or `devops:az:{sha}:cicd`. Their time is the commit time; zero or future times fall back to the receive time. Because events are inserted with `ON CONFLICT (id, time) DO NOTHING`, the 2-minute overlap and manual re-syncs do not create duplicates. Exception: GitLab `secret_push`, `cicd_modified` and `sensitive_file` events use the raw commit time without the future-date guard.
 
@@ -138,11 +175,12 @@ Webhook events have `time` = receive time.
 | `push` | `devops.push` with `ref`, `branch`, `pusher`, `commits` (count), `forced`, `deleted`, `created`. No diff is fetched; polling handles content. | 1; force push or deletion 2; on a protected branch 4 |
 | `repository` | `devops.repo_<action>` (for example `repo_publicized`, `repo_deleted`, `repo_transferred`) | 2; `publicized` 5; `deleted`, `transferred` 4 |
 | `member` | `devops.member_<action>` | 3; `added` 4 |
-| `workflow_run` | `devops.workflow_run` with `conclusion`, `branch` | 1 |
-| `org` | `devops.org_<action>` | Audit severity of `org.<action>`, else 2. GitHub sends this event as `organization`, so this branch is not reached in practice; see the next row. |
-| `organization`, `team`, `team_add`, `membership`, `deploy_key`, `installation`, `installation_repositories`, `github_app_authorization` | `devops.<event>_<action>` | 3; `created` or `added` 4 |
+| `workflow_run` | `devops.workflow_run` with `action`, `conclusion`, `branch`, `trigger` (the run's event), `head_repo`, `from_fork`, `workflow`, `path` | 1; 4 when the code came from a fork and the trigger runs with the base repository's secrets (`pull_request_target`, `workflow_run`, `issue_comment`, `pull_request_review_comment`) |
+| `organization` | `devops.org_<action>`; raw `event` is the audit-log name (`member_added` → `org.add_member`, `member_removed` → `org.remove_member`, `member_invited` → `org.invite_member`), with `member` and `role` | Audit severity of that name, else 2; `deleted` 5 |
+| `team`, `team_add`, `membership`, `deploy_key`, `installation`, `installation_repositories`, `github_app_authorization` | `devops.<event>_<action>` | 3; `created` or `added` 4 |
 | `branch_protection_rule`, `branch_protection_configuration`, `repository_ruleset`, `security_and_analysis`, `repository_import` | `devops.<event>_<action>` | 3; `deleted` or `disabled` 4 |
-| `secret_scanning_alert`, `secret_scanning_alert_location`, `code_scanning_alert`, `dependabot_alert`, `repository_vulnerability_alert`, `repository_advisory`, `security_advisory` | `devops.<event>_<action>` | 3; `created` or `reopened` 4 |
+| `secret_scanning_alert`, `secret_scanning_alert_location`, `code_scanning_alert`, `dependabot_alert`, `repository_vulnerability_alert`, `repository_advisory`, `security_advisory` | `devops.<event>_<action>`; a secret-scanning alert whose `push_protection_bypassed` is true records it with `secret_type` and `bypassed_by` (DEV-024) | 3; `created` or `reopened` 4 |
+| `security_and_analysis` turning a feature off | `devops.security_and_analysis` with `disabled` (the features that went from enabled to disabled) (DEV-025) | 4 |
 | `create`, `delete` | `devops.create_<ref_type>`, `devops.delete_<ref_type>` | create 1; delete 2; delete of a protected branch 4 |
 | `public` | `devops.repo_publicized` | 5 |
 | `fork`, `release` | `devops.<event>_<action>` | 2 |
@@ -174,7 +212,17 @@ Webhook events have `time` = receive time.
 | `build.complete`, `ms.vss-pipelines.run-state-changed-event` | `devops.workflow_run` with conclusion and pipeline name | 1 |
 | anything else | dropped | – |
 
-### 3.4 Event IDs
+### 3.4 Webhooks that start scans
+
+Besides becoming events, some webhooks queue scan jobs when the connector's automation policy allows it (section 4.10):
+
+| Provider | Starts a PR check | Starts a branch scan |
+|---|---|---|
+| GitHub | `pull_request` with action `opened`, `synchronize`, `reopened`, `ready_for_review` (not drafts) | `push` to the repository's default branch (not a deletion) |
+| GitLab | `merge_request` with action `open`, `reopen`, or `update` with new commits (`oldrev` present); not drafts | `push` to the project's default branch |
+| Azure DevOps | `git.pullrequest.created`, `git.pullrequest.updated` (status `active`, not drafts) | `git.push` updating the repository's default branch |
+
+### 3.5 Event IDs
 
 With a delivery ID, webhook events get the ID `gh-wh:{delivery}:{n}`, `gl-wh:{uuid}:{n}` or `ado-wh:{id}:{n}`. Without one, the ID includes the receive time in nanoseconds, so a retried delivery creates a second event.
 
@@ -186,12 +234,14 @@ With a delivery ID, webhook events get the ID `gh-wh:{delivery}:{n}`, `gl-wh:{uu
 |---|---|---|---|---|
 | 4.1 Commit secret scanner | Added lines of polled diffs | Every sync | `devops.secret_push` events | – |
 | 4.2 Code scan | Stored, redacted commit diffs (last 500 commits) | **Code Scan** tab | `code_scan_results` | – |
-| 4.4 Built-in SAST rules | Downloaded source (4.3) | **SAST** tab | `sast_results` (but see 4.7) | `builtin` |
-| 4.5 Semgrep / CodeQL | Downloaded source (4.3) | **SAST** tab | `sast_results` | `semgrep`, `codeql`, `semgrep+codeql` |
-| 4.6 Dependency scan (SCA, OSV) | Lockfiles in the downloaded source | **SAST** tab | `sast_results` (but see 4.7) | `osv` |
-| 4.8 IaC checks | Downloaded source | **SAST** tab (part of 4.4 / 4.5) | `sast_results` | `builtin` / `semgrep` |
+| 4.3a History secrets | Every commit of the cloned branch | **SAST** tab | `sast_results` | `gitleaks`, or `history` (built-in patterns) |
+| 4.4 Built-in SAST rules | The checkout (4.3) | **SAST** tab | `sast_results` | `builtin` |
+| 4.5 Pattern rules / CodeQL | The checkout | **SAST** tab | `sast_results` | `semgrep` (opengrep or semgrep engine), `codeql`, `semgrep+codeql` |
+| 4.6 Dependencies, IaC, licences, SBOM | The checkout | **SAST** tab | `sast_results` (`findings`, `sbom`) | `trivy`, or `osv` when Trivy is missing |
 | 4.9 Pipeline-change detection | Polled commits | Every sync | `devops.cicd_modified` events | – |
 | 5 Posture | Provider settings APIs | **Posture** tab | settings `devops.posture.last.{id}` | – |
+
+Every SAST result stores `engines`: what ran, what was missing, and why something failed (for example `{"source":"git","gitleaks":"ran","semgrep":"ran","trivy":"ran","codeql":"ran","codeql-languages":"go,javascript","builtin":"ran"}`). The SAST tab shows it as chips; a crossed-out chip is an engine that did not run.
 
 ### 4.1 Commit secret scanner (sync time)
 
@@ -225,7 +275,7 @@ Generic rules apply the placeholder and entropy filter (configuration.md section
 
 ### 4.2 Code scan (stored diffs)
 
-`POST /api/v1/devops-connectors/{id}/code-scan` reads the connector's last 500 stored commits and scans each stored file diff. Findings are deduplicated by `category + title + file` (the repository is not part of the key, so the same path in two repositories is reported once). Every run inserts a new row in `code_scan_results`.
+`POST /api/v1/devops-connectors/{id}/code-scan` reads the connector's last 500 stored commits and scans each stored file diff. Findings are deduplicated by `repository + category + title + file`. Every run inserts a new row in `code_scan_results`.
 
 **Important limitation.** The stored patches are already redacted and cut to 2 000 characters per file at sync time. Most provider-specific secret patterns below therefore no longer match: the value is `[REDACTED]`. The "Generic Password" pattern still matches `password = "[REDACTED]"`, because `[REDACTED]` is 10 characters. Azure DevOps commits have no stored patch, so only the file-name checks apply.
 
@@ -283,17 +333,32 @@ Dependency checks (on added lines of the named file). These flag the **presence*
 
 Implemented in: `codescan.go`.
 
-### 4.3 SAST: file selection and source download
+### 4.3 SAST: source download
 
 `POST /api/v1/devops-connectors/{id}/sast[?repo=&branch=]`:
 
 1. **Repositories.** One selected repository, or every repository in the last 500 stored commits.
-2. **File tree.** GitHub `git/trees/{branch}?recursive=1`; GitLab `repository/tree` (up to 2 000 entries); Azure DevOps `items?recursionLevel=full`.
-3. **Filter.** Keep blobs that are source or configuration files: `.py .js .jsx .ts .tsx .mjs .cjs .vue .svelte .go .java .kt .kts .scala .groovy .swift .m .mm .php .c .cpp .cc .cxx .h .hpp .rb .cs .rs .lua .pl .pm .r .dart .tf .tfvars .yaml .yml .toml .sql .sh .bash .zsh .ps1 .bat .cmd .gradle .cfg .ini .properties .conf`, plus `Dockerfile*`, `Makefile`, `Jenkinsfile`, `Gemfile`, `Procfile`, `Vagrantfile`, `.env*`, `*.env`, and the manifests `package.json`, `package-lock.json`, `yarn.lock`, `requirements.txt`, `go.mod`, `Cargo.lock`, `composer.json`, `composer.lock`, `Pipfile`, `Pipfile.lock`, `poetry.lock`, `pom.xml`. Drop vendor paths and files over the size limit (300 000 bytes; 5 MiB for lockfiles).
-4. **Cap.** Above 1 000 files, files are ranked and the first 1 000 kept. Order: CI files (`.github/workflows/`, `.gitlab-ci.yml`, `Jenkinsfile`, `azure-pipelines.yml`, `.circleci/`); then Dockerfiles, `.env*`, `.sh`, `.ps1`, `.tf`; then main manifests; then other files; paths containing `test`, `mock` or `fixture` come last.
-5. **Download.** GitHub: one tarball, with per-file download as the fallback. GitLab and Azure DevOps: one API call per file.
-6. **Run the engines** in this order per repository: Semgrep → OSV dependency scan → built-in rules → CodeQL.
-7. **Deduplicate** (4.7), count, and upsert one row per (connector, repository or `''`, branch).
+2. **Clone.** `git clone --single-branch --no-tags` of the branch (`HEAD` = default branch), with the **whole branch history** unless `OW_SAST_SECRET_HISTORY=false` (then `--depth 1`). If the full clone fails it is retried shallow. The token is sent as an `Authorization: Basic` header through `GIT_CONFIG_*` environment variables (GitHub user `x-access-token`, GitLab `oauth2`, Azure DevOps any user), never in the URL or the command line. The clone is hardened: hooks disabled, symlinks checked out as plain files (no scanner can follow a link out of the checkout), HTTPS only, no submodules, no LFS download, no redirects to another host, no user or system git config. Limit: 5 minutes and `OW_SAST_MAX_REPO_MB` (default 2 048 MB) on disk.
+3. **Fallback.** When the clone fails (git missing, network, permissions), the previous API download is used: the provider's file tree, source and configuration files only, capped at 1 000 files ranked by risk (CI files first, tests last), 300 000 bytes per file (5 MiB for lockfiles); GitHub as one tarball, GitLab and Azure DevOps one call per file. History secrets do not run then.
+4. **Run the engines** per repository: history secrets → pattern rules → Trivy (or OSV) → built-in rules → CodeQL. A missing engine is skipped and recorded.
+5. **Deduplicate** (4.7), count, and upsert one row per (connector, repository or `''`, branch), with the engine report and, for a single-repository scan, the SBOM.
+
+If no repository could be downloaded, the response carries a `warning` with the last clone error, shown in the SAST tab.
+
+### 4.3a History secrets
+
+With **gitleaks** installed: `gitleaks git` over the clone (its full rule set, 5 MB per blob). Without it: the built-in secret patterns of section 4.2 (critical and high ones only) over `git log -p` added lines, up to 5 000 commits.
+
+One finding per (rule, file, secret), however many commits contain it:
+
+| Field | Value |
+|---|---|
+| `rule_id` | `SECRET-<rule>` |
+| Severity | **critical** when the secret is still in the file on the scanned branch; **high** when it was removed but remains in history |
+| Detail | Rule, masked secret (first 4 and last 2 characters), the commit that introduced it, author and date, and whether it is still present |
+| Fix | Revoke and rotate at the issuer first; deleting the line or rewriting history does not invalidate a leaked credential |
+
+The secret value is never stored; it is only held in memory to compare with the current file.
 
 ### 4.4 Built-in SAST rules
 
@@ -301,7 +366,6 @@ Implemented in: `codescan.go`.
 
 The "Detects" column is the first sentence of the rule's own description. `any` rules apply to the extensions in their file pattern.
 
-> These rules run on every SAST scan. Their results are then dropped by the deduplication step (section 4.7) and do not reach the pages. The table describes what the rules would report once that defect is fixed.
 
 | ID | Language | Title | Detects | CWE | Severity |
 |---|---|---|---|---|---|
@@ -522,9 +586,9 @@ Notes on the rule set:
 - File patterns differ between rule families. For example, `A01-JAVA*` rules apply to `.java` only, while `JV*` rules also cover `.kt` and `.kts`. `SEC-*` rules do not cover `.jsx` or `.tsx`.
 - `A06-*` rules check manifests (`package.json`, `requirements*.txt`, `Pipfile`, `setup.py`) by regex. They are not version-accurate; the OSV scan (4.6) is.
 
-### 4.5 Semgrep and CodeQL
+### 4.5 Pattern rules and CodeQL
 
-**Semgrep** runs over the repository's scan directory with `--config /semgrep-rules` if that directory exists, else `--config p/default` (fetched from the Semgrep registry; the shipped image has no `/semgrep-rules`, see deployment.md section 6.1). Mapping:
+**Pattern rules** run with the **opengrep** engine (LGPL-2.1, with `--taint-intrafile` for taint across functions in a file) or, when only it is installed, the **Semgrep CE** engine (LGPL-2.1, `--metrics=off`). The rules are the **opengrep-rules** set bundled in the image at `/opt/obsidianwatch/rules/opengrep` (override with `OW_SEMGREP_RULES`; a directory mounted at `/semgrep-rules` is also used). Nothing is downloaded at scan time: the Semgrep registry packs (`p/default` and the `semgrep-rules` repository) are under the Semgrep Rules License, which limits them to internal, non-competing use, so the product never fetches them. Without an engine binary or a rules directory the layer is reported as missing. Mapping:
 
 | Semgrep field | Finding field |
 |---|---|
@@ -534,11 +598,23 @@ Notes on the rule set:
 | `metadata.fix` | fix text |
 | source lines | snippet: 2 lines before to 1 line after the match, at most 500 characters, matched lines marked `>` |
 
-**CodeQL** runs only when the `codeql` CLI is installed. It builds a database for the most common language in the repository (Go, JavaScript/TypeScript, Python, Java, C#, Ruby; one language per repository) with `--no-tracing`. It then runs the standard query pack `codeql/<lang>-queries` and parses the SARIF output. The title is the rule `name`. The severity comes from the rule's `properties.severity`. When that property is missing the code sets `medium`, so the SARIF `level` fallback (`error` → critical, `warning` → high) is never used *(unverified against real CodeQL output: in practice CodeQL findings may all be `medium`)*. C/C++ and PHP are not analysed by CodeQL here.
+**CodeQL** runs only when the `codeql` CLI is installed. It analyses **every supported language** with at least 3 files (the 4 largest): JavaScript/TypeScript, Python, Java/Kotlin, C#, Ruby, C/C++ and Rust with `--build-mode=none` (no build, no repository code runs), and Go with an explicit `go build ./...` (cgo off, installed toolchain only; no Makefile or build script from the repository is run). Each language runs the `security-extended` suite of its pack (`codeql/<lang>-queries:codeql-suites/<lang>-security-extended.qls`). The languages analysed are listed in the engine report. The title is the rule `name`. Severity: the rule's `security-severity` score when present (≥ 9.0 critical, ≥ 7.0 high, ≥ 4.0 medium, otherwise low, the GitHub code-scanning bands); otherwise the rule's `problem.severity` / `severity` / default level, then the result's SARIF `level` (`error` → high, `warning` → medium, `note` / `recommendation` → low); medium when none is given. PHP and Swift are not analysed by CodeQL here (pattern rules cover PHP).
 
-### 4.6 Dependency scanning (SCA, OSV)
+### 4.6 Dependencies, IaC, licences and SBOM
 
-After Semgrep, the scanner looks for lockfiles in the scan directory (up to 50 files, 8 MiB each). It extracts exact `name + version` pairs:
+**Trivy** (`trivy fs`, scanners `vuln,misconfig,license`, `--list-all-pkgs`) runs over the checkout:
+
+| Finding | From | `rule_id` | Severity |
+|---|---|---|---|
+| Vulnerable dependency, direct or transitive | Every lockfile and manifest Trivy reads: npm/yarn/pnpm, pip/Pipfile/poetry/uv, Go modules, Maven `pom.xml`, Gradle lockfiles, Gemfile.lock, NuGet, Cargo, Composer, Conan, Swift, Dart, Elixir, and more | `SCA-<CVE/GHSA>` | Trivy's rating |
+| IaC / Dockerfile misconfiguration | Terraform, CloudFormation, Kubernetes, Helm, Dockerfile, Azure ARM, Docker Compose (Trivy's built-in checks; failed checks only) | `IAC-<AVD id>` | Trivy's rating, with start and end line |
+| Licence | Forbidden, restricted and reciprocal licences of dependencies (notice and permissive licences are not findings) | `LICENSE-<CATEGORY>` | Trivy's rating |
+
+The vulnerability databases ship in the image (`/var/cache/trivy`). With network access Trivy refreshes them when they are stale; `OW_SCANNER_DB_UPDATE=false` keeps them frozen (fully offline). Checks use the set embedded in the binary (`--skip-check-update`), and `--offline-scan` stops Trivy from calling package registries.
+
+**SBOM.** The packages Trivy found become a CycloneDX 1.5 JSON document (components with purl, licences, `transitive` flag and source file; vulnerabilities linked to their component). It is stored with the repository's result and downloaded from **Download SBOM (CycloneDX)** in the SAST tab or `GET /api/v1/devops-connectors/{id}/sast/sbom?repo=<full name>[&branch=]`. Without Trivy the SBOM is built from the built-in manifest parser below. Scans of all repositories at once store no SBOM.
+
+**Without Trivy**, or when its vulnerability database is unavailable, the built-in parser and OSV are used as before: lockfiles in the checkout (up to 50 files, 8 MiB each), exact `name + version` pairs:
 
 | File | Ecosystem | What is parsed |
 |---|---|---|
@@ -551,64 +627,150 @@ After Semgrep, the scanner looks for lockfiles in the scan directory (up to 50 f
 | `Cargo.lock` | crates.io | `name` / `version` pairs |
 | `composer.lock` | Packagist | `packages` (leading `v` removed) |
 
-`package.json`, `pom.xml`, `build.gradle`, `Gemfile.lock` and `pnpm-lock.yaml` are not parsed by SCA.
+Up to 2 000 unique packages go to `POST https://api.osv.dev/v1/querybatch` (batches of 500), and up to 150 advisories are fetched for details, within 60 seconds. Findings: `SCA-<OSV id>`, severity from `database_specific.severity` (else medium), fix from the first fixed version, engine `osv`. A network failure produces no OSV findings and does not fail the scan.
 
-Up to 2 000 unique packages are sent to `POST https://api.osv.dev/v1/querybatch` in batches of 500. Up to 150 matched advisories are then fetched (`GET /v1/vulns/{id}`, sorted by ID) for details. The whole lookup has a 60 second budget. A network failure produces no SCA findings and does not fail the scan.
-
-One finding per (package, advisory):
-
-| Field | Value |
-|---|---|
-| `rule_id` | `SCA-<OSV id>` (for example `SCA-GHSA-xxxx-xxxx-xxxx`) |
-| Title | `Vulnerable dependency: <name> <version> (<id>)` |
-| Severity | `database_specific.severity` of the advisory (`CRITICAL`, `HIGH`, `LOW`; anything else and advisories without details → `medium`). CVSS vectors are not evaluated. |
-| CWE / OWASP | `CWE-1104` / `A06:2021 Vulnerable and Outdated Components` |
-| Detail | Advisory summary and aliases (CVE IDs) |
-| Fix | `Upgrade <name> to <first fixed version> or later.`, when OSV lists one |
-| File / line | The lockfile path / 0 |
-| Engine | `osv` |
-
-> As with the built-in rules, OSV findings are currently removed by the deduplication step (4.7) before they are stored.
-
-Implemented in: `sast_sca.go`.
+Implemented in: `sast_engines.go` (`runTrivy`, `parseTrivy`, `buildCycloneDX`, `sbomFromManifests`), `sast_sca.go`.
 
 ### 4.7 SAST result deduplication
 
-`deduplicateSASTFindings` (`sast_engine.go` line 1259):
+`deduplicateSASTFindings` (`sast_engine.go`):
 
-1. Exact duplicates are removed by `engine + rule_id + file + line`.
-2. Semgrep findings are kept. A CodeQL finding within ±2 lines of a Semgrep finding in the same file marks that Semgrep finding as `semgrep+codeql` and is dropped. Other CodeQL findings are kept.
-
-**Defects (confirmed by running the function in isolation):**
-
-- Findings with engine `builtin` or `osv` are not carried into the output. They are always discarded. A scan on a server without Semgrep therefore always reports zero findings, although the logs report built-in findings.
-- The location map stores indexes into the step-1 list but uses them on the output list. When a CodeQL finding sits next to a Semgrep finding, and non-Semgrep findings came earlier in the list, the code either tags the wrong finding or panics with "index out of range". A panic fails the scan request. With `?async=1` the job is reported as failed.
-- The location key does not include the repository. In a multi-repository scan, a CodeQL hit can be merged with a Semgrep hit at the same path and line in another repository.
+1. Exact duplicates are removed by `engine + repository + rule_id + file + line`.
+2. Every non-CodeQL finding (Semgrep, built-in rules, OSV) is kept. A CodeQL finding within ±2 lines of a Semgrep finding in the same file **of the same repository** marks that Semgrep finding as `semgrep+codeql` and is dropped. Other CodeQL findings are kept.
 
 ### 4.8 IaC checks
 
-There is no separate IaC engine. IaC coverage is:
-
 | Check | Where |
 |---|---|
+| Terraform, CloudFormation, Kubernetes, Helm, Dockerfile, ARM, Compose misconfigurations | Trivy (4.6) |
 | `IAC001` Hardcoded secret in Terraform (`.tf`, `.tfvars`) | built-in rules |
 | `IAC002` Hardcoded secret in YAML config (`.yaml`, `.yml`) | built-in rules |
 | `IAC003` Secret in Dockerfile `ENV` | built-in rules |
 | `IAC004` Unpinned Docker base image | built-in rules |
+| Terraform, Kubernetes, Dockerfile and YAML pattern rules | opengrep-rules (4.5) |
 | Terraform state, kubeconfig, `.tfvars`, secrets YAML committed | code scan sensitive files (4.2), sync-time sensitive-file events (4.1.1) |
-| Whatever Terraform, Kubernetes, Dockerfile and YAML rules the active Semgrep configuration contains | Semgrep (`p/default`) |
 
-`.tf`, `.yaml`, `.yml`, `.toml` and `Dockerfile` files are downloaded and given to Semgrep and CodeQL. Kubernetes, Helm, CloudFormation and ARM templates have no dedicated built-in rules.
+Container images are not pulled or scanned; Dockerfiles are checked as configuration.
 
 ### 4.9 Pipeline-change detection
 
 | Mechanism | Output |
 |---|---|
-| Polled commit touches a CI/CD file | `devops.cicd_modified` (alert DEV-003). GitHub records a `risky` reason for risky additions (2.4). |
-| Pipeline runs (GitLab pipelines, Azure DevOps builds; GitHub `workflow_run`, GitLab `pipeline` and Azure DevOps build webhooks) | `devops.pipeline_run` / `devops.workflow_run` events, severity 1 (2 when failed). Searchable. DEV-005 is the only rule over `devops.workflow_run`. |
-| SAST file priority | CI files are scanned first when a repository exceeds 1 000 files |
+| Polled commit touches a CI/CD file | `devops.cicd_modified` with the risky additions found (section 2.4). Alerts: DEV-023 when anything risky was added, DEV-003 (informational) otherwise. |
+| Pipeline runs (GitLab pipelines, Azure DevOps builds; GitHub `workflow_run`, GitLab `pipeline` and Azure DevOps build webhooks) | `devops.pipeline_run` / `devops.workflow_run` events, severity 1 (2 when failed). GitHub `workflow_run` records the trigger and whether the code came from a fork (DEV-005). |
+| SAST pattern rules and Trivy | Workflow and pipeline files are part of the checkout; Trivy's misconfiguration checks and the opengrep rules for YAML / GitHub Actions apply. |
+| PR checks | A pull request that changes a workflow is scanned like any other change. |
 
----
+### 4.10 Automation: on push, on a schedule, and pull/merge request checks
+
+Set per connector on the **Automation** tab (`GET/PUT /api/v1/devops-connectors/{id}/scan-policy`, admin to change; stored in setting `code.policy.{id}`). Everything is off by default.
+
+| Setting | Effect |
+|---|---|
+| Scan every pull request | A `pull_request` (opened, synchronize, reopened, ready for review; drafts skipped), GitLab `merge_request` (open, reopen, update with new commits) or Azure DevOps `git.pullrequest.created/updated` webhook queues a PR check |
+| Post comments | Summary comment plus inline comments on changed lines; each finding is commented once per PR (keyed on rule, file and the text of the line, so it survives lines moving) |
+| Fail the check on | `critical` (default), `high`, `medium`, `low` or never |
+| Run CodeQL on pull requests | Off by default (it adds minutes per update) |
+| AI fix suggestions in comments | Off by default. Up to 5 per update (section 4.13). Needs an AI provider and the source-sharing opt-in. |
+| Inline comments per update | 1-100, default 20; the rest are listed in the summary |
+| Scan on push | A push to the repository's **default branch** queues a full branch scan |
+| Scheduled scan | Daily, or weekly on Monday, at a UTC hour; all repositories seen for the connector, or a listed set |
+
+**Jobs** are rows in `code_scan_jobs` (migration `076`): queued, running, done or failed, with the trigger, target, finding count, whether it blocked, what was posted, and the findings. The same target and commit is never queued twice while one is pending. One worker runs them in order (`OW_CODE_SCAN_WORKERS`, up to 4); a restart fails jobs that were running. **Scan all repositories now** queues a manual branch scan of every known repository. A branch scan stores its result as the repository's SAST result (the Code pages show it).
+
+**A PR check:**
+
+1. Sets the commit status to pending.
+2. Fetches the base branch and the PR head (`refs/pull/N/head` on GitHub, `refs/merge-requests/N/head` on GitLab, the source branch on Azure DevOps; fork PRs work on GitHub and GitLab) into an empty hardened repository, checks out the head and finds the merge base (deepening the shallow fetch once if needed).
+3. Runs every engine on the head; secrets are searched only in the PR's own commits (`merge-base..HEAD`).
+4. Keeps what the PR introduces: findings on lines it changed (a multi-line finding counts if it overlaps a change), secrets from its commits, and dependency, licence or IaC findings without a line in files it changed that the merge base does not already have (the base is scanned only when needed). Findings dismissed by triage (section 4.12) are dropped and counted in the job notes. Dependency findings carry their runtime reachability (section 4.11), shown in the comment.
+5. Sets the status: failure when a kept finding is at or above the blocking level, otherwise success.
+6. Posts the summary and inline comments (GitHub: one review; GitLab: MR note and line discussions; Azure DevOps: PR threads). If GitHub refuses a review because a line is outside its diff, the findings are posted as a list in one comment instead. A summary is posted only when new findings appear or the outcome changes.
+
+**Blocking a merge** is done by the provider: make the status required.
+
+| Provider | Status name | Where to require it |
+|---|---|---|
+| GitHub | `ObsidianWatch / code scan` | Branch protection or ruleset → require status checks |
+| GitLab | `ObsidianWatch code scan` (external commit status, part of the pipeline) | Settings → Merge requests → Pipelines must succeed |
+| Azure DevOps | genre `obsidianwatch`, name `code-scan` | Branch policies → Status checks → required |
+
+Set `OW_PUBLIC_URL` to the management UI's address to make the status link back to it.
+
+Implemented in: `code_automation.go`, `code_reporters.go`, `store/code_jobs.go`.
+
+### 4.11 Runtime reachability of dependency vulnerabilities
+
+A dependency finding says a vulnerable version is in a lockfile. Runtime reachability says whether that version is actually running.
+
+**Where the data comes from.** The Linux agent's host runtime sensor (application profile, `app_monitoring.ebpf.enabled: true`) knows the service processes on the host: those discovered by their listening ports and those sending OpenTelemetry. Every 15 minutes it reads each one through `/proc/<pid>` (containers included, through `/proc/<pid>/root`) and reports a `runtime_inventory` event with the packages it found. An unchanged inventory is re-sent every 6 hours; large ones are split into events of 500 packages.
+
+| Language | Loaded (code is in the process) | Deployed (installed where the process loads code from) |
+|---|---|---|
+| Go | every module in the binary's build info | – |
+| Java / Kotlin | each memory-mapped jar (Maven coordinates from `META-INF/maven/**/pom.properties`; shaded jars give several) | jars nested in a Spring Boot or WAR archive (`BOOT-INF/lib`, `WEB-INF/lib`) |
+| Python | a distribution whose native extension (`.so`) is mapped | every distribution (`*.dist-info`) in the interpreter's or virtualenv's site-packages |
+| Node.js | a package whose native addon (`.node`) is mapped | `node_modules/.package-lock.json` (or each top-level `package.json`) in the process's working directory |
+| .NET | an assembly from `~/.nuget/packages/<id>/<version>/`, or a `deps.json` package whose runtime assembly is mapped | every package in the app's `*.deps.json` |
+
+Nothing is executed and nothing is written; at most 5 000 packages per process. Windows and macOS agents do not report inventories yet. Pure Python and JavaScript modules are not memory-mapped, so for those languages "deployed" is usually the strongest evidence.
+
+**Indexing.** The management server folds the events into `runtime_packages` (migration `077`) every 2 minutes, keyed by package, version and process context (agent, service, container, executable); rows not seen for 14 days are deleted.
+
+**Labels.** Every dependency finding (`SCA-*`, from Trivy or OSV) carries its ecosystem, package and version, and gets a `reachability` label when it is read (SAST tab, Code overview, Insights → Code findings, PR comments):
+
+| Level | Meaning |
+|---|---|
+| `loaded` | this exact version is loaded by a process seen in the last 24 hours (hosts and services listed) |
+| `deployed` | installed for such a process, not proven loaded |
+| `not_running` | hosts report inventories and none has this version |
+| `unknown` | no host has reported an inventory in the last 24 hours |
+
+Names are matched case-insensitively (PyPI also treats `-`, `_` and `.` alike) and Go versions with or without the leading `v`. The match is fleet-wide: a version running on any monitored host counts, and the label lists where. Findings of equal severity sort running ones first; the Code overview has a **Runtime** facet.
+
+**Alert CODE-RT-001 "Vulnerable dependency running".** When a critical or high dependency finding from the latest SAST result of any repository (last 30 days) is **loaded** on a host, an alert is raised on that host (severity 5 for critical, 4 for high; MITRE T1190), one per vulnerability, package, version and host per day. The check runs when new inventories arrive and every 10 minutes.
+
+**Lookup.** `GET /api/v1/runtime-packages?name=<package>[&ecosystem=&version=&hours=]` answers "is this package running anywhere?" with every host, service and process it was seen in, and the number of hosts reporting inventories.
+
+Implemented in: `agents/linux/internal/runtimeinv`, `agents/linux/internal/ebpf/inventory_linux.go`, `management/backend/internal/api/code_reachability.go`, `store/runtime_packages.go`.
+
+### 4.12 Triage and learning
+
+**Decisions.** On a SAST finding (SAST tab, expand the finding) an analyst or admin records **False positive**, **Accept risk** (both need a reason) or **Confirm**, or clears the decision. `POST /api/v1/devops-connectors/{id}/findings/triage` stores it in `code_finding_triage` (migration `078`) per connector, repository and **fingerprint**: SHA-1 of the rule, the file, and the package and version (dependencies) or the flagged code without line numbers (code), else the title. The fingerprint survives rescans and lines moving; a different dependency version or changed code is a new finding.
+
+**Triage rules.** An admin can dismiss a rule for one repository or every repository of the connector, optionally under a path prefix and with an expiry (`POST .../triage-rules {repo, rule_id, path_prefix, status, reason, days}`; listed and deleted on the **Automation** tab). A reason is required.
+
+**Effect of a dismissal** (false positive or accepted risk, by decision or rule): the finding is hidden in the SAST tab unless **Show dismissed** is ticked, it is labelled in the Code overview (**Triage** facet), it never blocks or gets a comment in a PR check, it raises no CODE-RT-001 alert, and it is not sent to the AI triage summary. "Confirmed" changes nothing but the label and feeds learning.
+
+**Learning.** When findings are read, earlier decisions on the same rule produce hints on new, undecided findings (shown as a dashed badge and a line in the expanded finding):
+
+| Hint | When |
+|---|---|
+| Likely false positive (this repository) | At least 3 earlier findings of the rule in the repository were dismissed, and at least 4 times as many dismissed as confirmed. If 2 or more of them share a directory with this finding, the hint names it and the suggested rule is narrowed to that path prefix. |
+| Likely false positive (across repositories) | The rule was dismissed in 3 or more repositories of the connector and never confirmed anywhere. |
+| Likely real | 2 or more earlier findings of the rule in the repository were confirmed and none dismissed. |
+
+A "likely false positive" hint offers a one-click triage rule (with the reason typed in the finding). Hints never hide anything by themselves.
+
+Implemented in: `code_triage.go`; UI `pages/code/FindingActions.jsx`, `AutomationPanel.jsx`.
+
+### 4.13 Fix suggestions
+
+**Suggest fix** on a SAST finding (`POST /api/v1/devops-connectors/{id}/sast/fix {repo, branch, finding}`):
+
+| Finding | Suggestion |
+|---|---|
+| Dependency (`SCA-*`) | No AI. The fixed version from the advisory, and the command for the package manager (`npm install pkg@v`, `yarn up`, `pnpm update`, `poetry add`, `pipenv install`, `uv add`, `go get …@v… && go mod tidy`, `dotnet add package --version`, `bundle update --conservative`, `cargo update -p --precise`, `composer require`, or the Maven coordinates to change). Without a fixed version it says so and gives the runtime status. |
+| Code finding with a line | AI. The server reads the file from the provider at the scanned branch, sends the finding and up to 30 lines around it (fenced as untrusted input, with the prompt-injection guard), and asks for an explanation, a confidence, whether it looks like a false positive, and a replacement for a line range. The server accepts the range only if it lies inside what the model was shown and is at most 40 lines, and builds the unified diff itself. Nothing is applied to the repository. |
+| No line (history secret, configuration) | No AI; the finding's own fix text applies. |
+
+AI suggestions need an AI provider (Settings → AI, Groq or Anthropic) **and** the operator opt-in to send source (`ai.send_source_snippets = true`); otherwise the request answers 412 with the reason. They are cached for 30 days per finding, file content around it and model (`code_fix_cache`) and share the source-AI rate limit (6 requests per 10 minutes).
+
+**In PR comments** (policy "AI fix suggestions in comments"): for up to 5 inline findings per update the suggestion is built from the PR checkout. A one-line replacement of the commented line becomes a one-click suggestion block on GitHub (```` ```suggestion ````) and GitLab (```` ```suggestion:-0+0 ````); anything else is shown as a diff; dependency findings get the upgrade command; an AI "may be a false positive" verdict is shown too.
+
+**AI triage summary** (SAST tab, **AI Triage**): unchanged in shape (risk score, critical issues, likely false positives, actions), now over the repository on screen and without dismissed findings.
+
+Implemented in: `code_fix.go`, `code_reporters.go` (`fixBlock`), `sast_engine.go` (`handleSASTAI`).
 
 ## 5. Posture checks
 
@@ -635,66 +797,91 @@ Implemented in: `devops_posture.go`.
 
 ---
 
-## 6. Alerts on DevOps events
+## 6. Platform threat detection
 
-Every `devops.*` event is evaluated against 21 signatures. Two engine paths do this:
+Platform threat detection watches what happens **on** the Git platforms (who changed access, pipelines, protections, secrets, which code left) rather than what is in the code. Inputs are the `devops.*` events from polling (section 2) and webhooks (section 3). Output is alerts in the normal alert queue, with the same workflow, notifications and response as endpoint and cloud alerts.
 
-1. The main detection pass, which evaluates all new events every cycle. It honours rule toggles and allow-lists (`engineGate`). It deduplicates on `sig:{rule}:host:{host}:d:{UTC day}`.
-2. `runDevOpsCursor`, a DevOps-only pass with its own cursor and a 7-day first look-back. It deduplicates on `sig:{rule}:host:{host}:d:{day}:e:{entity}`. It does **not** consult rule toggles or allow-lists.
+**Engine.** Every `devops.*` event is evaluated by one path, `runDevOpsCursor`: a DevOps-only cursor over `ingested_at` with a 7-day first look-back. It runs at start-up, on every detection interval, and whenever an ingest notification arrives (the management server notifies after it stores connector or webhook events, so webhook alerts appear within seconds). The main detection pass skips DevOps events. Rule toggles, severity overrides, retired rules and allow-lists (`engineGate`) apply.
 
-The two dedup keys differ, so a matching event can raise **two** alerts, one from each path *(suspected defect; observed from code only)*.
+**Dedup.** Key `sig:{rule}:host:{host}:d:{UTC day}:e:{entity}`, the entity being a hash of connector, repository, actor, file or path, branch or ref, member and rule (`devopsDedupKey`); DEV-029/030 also include the IP. Within the alert-grouping window (same title and host, open alert) further hits are added to the open alert as related events.
 
-Alert title: `[<MITRE>] <Name>`. Host: the event host (organisation or repository).
+Alert title: `[<MITRE>] <Name>`. Host: the event host (organisation, or repository for GitHub audit entries with one).
 
-| ID | Name | Fires on | Severity | MITRE |
+### 6.1 Rules
+
+"Action / event / suffix" means the rule compares exact values against the raw `action` field, the raw `event` field, or the event type without the `devops.` prefix (`devopsParse`, `devops_typed.go`). Azure DevOps and GitLab audit entries carry a canonical `event` name (sections 2.2, 2.3), so the same rules apply to them.
+
+| ID | Name | Fires on | Sev | MITRE |
 |---|---|---|---|---|
-| DEV-001 | Secret or Credential Pushed to Repository | `devops.secret_push` | 5 | T1552.001 |
-| DEV-002 | Sensitive File Committed (.env, .pem, credentials) | `devops.sensitive_file` | 4 | T1552.001 |
-| DEV-003 | CI/CD Pipeline Configuration Modified | `devops.cicd_modified` | 4 | T1195.002 |
-| DEV-004 | Self-Hosted Runner Registered | action / event / type suffix `runners.create`, `runner_registered`, `enterprise.register_self_hosted_runner`, `org.register_self_hosted_runner`, `repo.register_self_hosted_runner`; or `type` = `self-hosted` with `runner`, `runner_created`, `runners.create` | 4 | T1195.002 |
-| DEV-005 | Pipeline Secret or Variable Accessed from Unexpected Branch | `devops.workflow_run` whose raw JSON contains `fork` or `pull_request` and whose branch is not `main`, `master` or `develop` | 4 | T1195.002 |
-| DEV-006 | Private Repository Made Public | `repo_publicized`, `repo.publicized`, `repository.publicized`, `made_public`, `publicized`, `visibility_change`, `changed_visibility_to_public`; or `repo.access` / `repository.access` with `visibility` = `public` | 5 | T1530 |
-| DEV-007 | Repository Deleted | `repo.destroy`, `repo_destroy`, `repository.deleted`, `repository_deleted`, `repo_deleted`, `deleted` | 4 | T1485 |
+| DEV-001 | Secret or Credential Pushed to Repository | `devops.secret_push` (commit secret scanner, section 4.1) | 5 | T1552.001 |
+| DEV-002 | Sensitive File Committed | `devops.sensitive_file` | 4 | T1552.001 |
+| DEV-003 | CI/CD Pipeline Configuration Modified | `devops.cicd_modified` with **no** risky addition (informational) | 2 | T1195.002 |
+| DEV-004 | Self-Hosted Runner Registered | `runners.create`, `runner_registered`, `enterprise/org/repo.register_self_hosted_runner`, or `type` = `self-hosted` with a runner action; Azure DevOps agent pool creation | 4 | T1195.002 |
+| DEV-005 | Fork Code Ran in a Privileged Pipeline | `devops.workflow_run` with `from_fork` and a trigger that runs with the base repository's secrets (`pull_request_target`, `workflow_run`, `issue_comment`, `pull_request_review_comment`); the `in_progress` delivery is ignored | 4 | T1195.002 |
+| DEV-006 | Private Repository Made Public | `repo_publicized`, `repo.publicized`, `repository.publicized`, `made_public`, `publicized`, `visibility_change`, `changed_visibility_to_public`, or `repo.access` / `repository.access` with `visibility` = `public` | 5 | T1530 |
+| DEV-007 | Repository Deleted | `repo.destroy`, `repo_destroy`, `repository.deleted`, `repository_deleted`, `repo_deleted`, `project_destroy`, `project.destroy`, `project_deleted`, `project_destroyed`, `git.repositorydeleted`, `git.repositorydestroyed` | 4 | T1485 |
 | DEV-008 | Repository Transferred to External Account | `repo.transfer`, `repo_transfer`, `repository.transferred`, `repository_transferred`, `transfer_start`, `transferred` | 4 | T1537 |
-| DEV-009 | New Organization Owner or Admin Added | `org.add_member`, `org_add_member`, `member_added`, `added_to_org`, `org.update_member`, `member.added`, `org.invite_member` **and** `role` (or `permission`) = `owner` / `admin` | 5 | T1098 |
+| DEV-009 | New Organization Owner or Admin Added | `org.add_member`, `org_add_member`, `member_added`, `added_to_org`, `org.update_member`, `member.added`, `org.invite_member` **and** `role` / `permission` = `owner` or `admin` | 5 | T1098 |
 | DEV-010 | Personal Access Token Created | `personal_access_token.created`, `pat.created`, `access_token_created`, `create_pat`, `personal_access_token.access_granted` | 4 | T1098 |
 | DEV-011 | Deploy Key Added to Repository | `deploy_key.create`, `deploy_key_added`, `repo.add_deploy_key` | 3 | T1098.004 |
 | DEV-012 | OAuth Application Installed with Broad Permissions | `oauth_application.create`, `integration_installation.create`, `app_installation`, `github_app_installed`, `oauth_access.create` | 4 | T1550.001 |
-| DEV-013 | Branch Protection Removed or Weakened | `protected_branch.destroy`, `protected_branch_deleted`, `branch_protection_rule_deleted`, `remove_branch_protection`; or `protected_branch.update_admin_enforcement` / `.dismiss_stale_reviews` / `.update_require_code_owner_review` whose raw JSON contains `disabled`, `"enabled":false` or `"value":false` | 4 | T1562 |
-| DEV-014 | Force Push to Protected Branch | Event with a `branch` field: `forced` or `deleted` on a protected branch name. Otherwise raw JSON containing `force_push` / `forced_push` / `protected_branch.destroy` together with `main` / `master` / `develop` / `release`. | 4 | T1562 |
+| DEV-013 | Branch Protection Removed or Weakened | `protected_branch.destroy`, `protected_branch_deleted`, `branch_protection_rule_deleted`, `remove_branch_protection`; or admin enforcement / stale reviews / code-owner review turned off | 4 | T1562 |
+| DEV-014 | Force Push to Protected Branch | An event with a `branch` field: `forced` or `deleted` on a protected branch name. Audit entries: a force-push action with a protected `branch` field. | 4 | T1562 |
 | DEV-015 | Audit Log Streaming Disabled | `audit_log_streaming.disabled`, `audit_stream_delete`, `log_streaming_disabled`, `stream_key.destroy`, `audit_log_streaming.destroy` | 5 | T1562.008 |
 | DEV-016 | Webhook Created on Organization | `hook.create`, `webhook_created`, `org_webhook_add`, `project_hook_add`, `org.add_webhook` | 3 | T1071.001 |
-| DEV-017 | Repository Made Public Outside Business Hours | Any devops event outside business hours whose raw JSON contains `publicized`, `made_public` or `visibility_change` | 5 | T1530 |
-| DEV-018 | Admin Added to Org Outside Business Hours | Outside business hours, raw JSON contains `org.add_member`, `member_added` or `org_admin`, and `owner` or `admin` | 5 | T1098 |
+| DEV-017 | Repository Made Public Outside Business Hours | DEV-006's match, outside business hours | 5 | T1530 |
+| DEV-018 | Admin Added to Org Outside Business Hours | DEV-009's match, outside business hours | 5 | T1098 |
 | DEV-019 | Mass Deletion Commit | `devops.mass_deletion` | 3 | T1485 |
-| DEV-020 | Dependency Manifest Modified | `devops.dependency_change` | 2 | T1195.001 |
-| DEV-021 | Commit Committer/Author Mismatch Without Signature | `devops.push` with `committer_mismatch` true and `verified` false (GitHub polling only; the GitHub web-flow committer `noreply@github.com` is ignored) | 3 | T1565 |
+| DEV-020 | Risky Dependency Change | `devops.dependency_change` with risks (install script, git/URL dependency, extra index or registry, go.mod replace). Version bumps alone do not alert. | 3 | T1195.001 |
+| DEV-021 | Commit Committer/Author Mismatch Without Signature | `devops.push` with `committer_mismatch` and not `verified` (GitHub polling; the web-flow committer is ignored) | 3 | T1565 |
+| DEV-022 | Azure DevOps High-Risk Audit Change | An Azure DevOps audit entry rated 4 that no more specific rule covers (permissions, service connections, policies, extensions) | 3 | T1098 |
+| DEV-023 | Dangerous CI/CD Pipeline Change | `devops.cicd_modified` with risky additions (section 2.4). The alert severity follows the event: 5 for the pwn-request pattern. | 4 | T1195.002 |
+| DEV-024 | Secret Scanning Push Protection Bypassed | `secret_scanning_push_protection.bypass` (audit) or a secret-scanning alert with `push_protection_bypassed` (webhook) | 4 | T1552.001 |
+| DEV-025 | Repository Security Feature Disabled | `repository_secret_scanning.disable`, `repository_secret_scanning_push_protection.disable`, `dependabot_alerts.disable`, `repository_vulnerability_alerts.disable`, `dependabot_security_updates.disable`, org push-protection disable, code scanning disable; webhook `security_and_analysis` turning a feature off | 4 | T1562.001 |
+| DEV-026 | CI/CD Secret or Variable Changed | Actions secret create/update/remove (org, repo, environment), Codespaces/Dependabot org secrets; GitLab CI variable changes; Azure DevOps variable groups and secure files | 3 | T1098 |
+| DEV-027 | Branch Protection Bypassed | `protected_branch.policy_override`, `protected_branch.rejected_ref_update_override`, `repository_ruleset.bypass`; Azure DevOps `Git.RefUpdatePoliciesBypassed` | 4 | T1562 |
+| DEV-028 | Mass Repository Clone or Download | `devops.repo_clone_summary` with 15 or more distinct repositories for one human actor in one sync batch (about 5 minutes). Actors ending `[bot]` / `-bot`, `github-actions`, `dependabot` are excluded. GitHub audit log only. | 4 | T1213.003 |
+| DEV-029 | Platform Activity from a Known-Malicious IP | Any DevOps event whose `src_ip` (GitHub `actor_ip`, GitLab `details.ip_address`, Azure DevOps `ipAddress`) is an IP indicator from threat intelligence (OTX indicators below the OTX confidence threshold are ignored, as for endpoint rules) | 5 | T1078 |
+| DEV-030 | Sensitive Platform Change from a New IP | An event of severity 4 or more from an actor and IP, when the actor used other IPs on the platform in the last 30 days but never this one | 3 | T1078 |
+| DEV-031 | Organization or Repository Webhook Removed | `hook.destroy`, `hook.active_changed`, `webhook_deleted`, `project_hook_destroy`, `group_hook_destroy`, GitLab "removed hook". If it was the ObsidianWatch webhook, real-time detection stops (polling continues). | 3 | T1562.008 |
+| CODE-RT-001 | Vulnerable dependency running | A critical or high dependency finding from the latest SAST result of a repository is loaded by a running process (section 4.11); not for dismissed findings. Host = the server running it. | 5 / 4 | T1190 |
 
-"Action / event / suffix" means the signature compares exact values against the raw `action` field, the raw `event` field, or the event type without the `devops.` prefix (`devopsParse`, `devops_typed.go`).
+DEV-029 and DEV-030 need data outside the event (threat intelligence, the actor's history), so they are evaluated by the DevOps pass itself; they appear in the rule list and follow the same toggles and overrides.
 
-Coverage by provider (from the event shapes above; *unverified* against real payloads):
+### 6.2 Coverage by provider
 
-| Signature | GitHub | GitLab | Azure DevOps |
+| Rules | GitHub | GitLab | Azure DevOps |
 |---|---|---|---|
-| DEV-001, 003 | poll | poll | poll (DEV-001 path match only) |
-| DEV-002 | poll | poll | – |
-| DEV-019, 020, 021 | poll | – | – |
-| DEV-006 | audit `repo.access` with visibility, webhook `repository.publicized` / `public` | audit `.make_public`-style names are not produced; webhook has no visibility event | – |
-| DEV-007, 008 | audit, webhook | webhook `project_destroy` / `project_transfer` | – |
-| DEV-009 | audit (needs `role` or `permission` in the entry) | – (webhook sets `role` from `project_access`/`group_access`, but the event is `member_added`, which matches only if the role text is exactly `owner` or `admin`) | – |
-| DEV-010, 011, 012, 013, 015, 016 | audit, webhooks | – | – |
-| DEV-014 | webhook `push` | webhook `push` (deletion only) | webhook `git.push` (deletion only) |
-| DEV-004, 005 | audit / webhook | – | – |
+| DEV-001, 002, 019, 020, 021 | polled commits (019/020/021 GitHub only) | polled commits (001, 002) | polled commits (001 by path only) |
+| DEV-003, 023 | polled commits, content analysed | polled commits, content analysed | polled commits, paths only (DEV-003) |
+| DEV-004 | audit, webhook | – | audit (agent pool) |
+| DEV-005 | webhook `workflow_run` | – | – |
+| DEV-006, 017 | audit, webhooks | audit | audit (project visibility) |
+| DEV-007, 008 | audit, webhooks | audit, webhooks, project events | audit |
+| DEV-009, 018 | audit, `organization` webhook | audit | audit (admin group) |
+| DEV-010, 011, 012, 013, 015, 016, 031 | audit, webhooks | audit (where GitLab records the action) | audit: 010, 012, 013, 015 |
+| DEV-014 | webhook `push` | webhook `push` (deletions) | webhook `git.push` (deletions) |
+| DEV-022 | – | – | audit |
+| DEV-024, 025 | audit, webhooks | – | – |
+| DEV-026 | audit | audit | audit |
+| DEV-027 | audit | – | audit |
+| DEV-028 | audit (Enterprise, git events in the audit log) | – | – |
+| DEV-029, 030 | audit (actor IP) | audit (IP) | audit (IP) |
+| CODE-RT-001 | any provider's SAST results × Linux agent inventories | same | same |
 
-**Azure DevOps audit events** (`devops.audit`) do not match any DEV signature. The rated actions (permission changes, PAT creation, policy removal, repository deletion) are stored and searchable, but raise no DevOps alert.
+Audit-based rules need the provider's audit source: GitHub Enterprise Cloud audit log (an org owner's token), GitLab Premium group audit events, Azure DevOps organisation auditing. Without it, GitHub falls back to public user events and many rules have no input; the connector shows a coverage note.
 
-**Suspected false positives:**
+### 6.3 Tuning
 
-- DEV-007 matches any event whose raw `action` is `deleted`. GitHub webhooks such as `branch_protection_rule` (`deleted`), `deploy_key` (`deleted`) or `secret_scanning_alert` carry `action` in the raw JSON. A deleted branch-protection rule therefore raises both DEV-013 and "Repository Deleted".
-- DEV-017 and DEV-018 search the whole raw JSON, so a commit message containing `publicized` outside business hours can match.
-- DEV-005 searches the raw JSON for `fork` or `pull_request`. The workflow-run events built by the code contain neither field, so in practice DEV-005 fires only when a repository or branch name contains those words.
+| Need | How |
+|---|---|
+| Turn a rule off or change its severity | Detect → Rules (general rule settings) |
+| Silence a known actor, repository or IP | Detect → Suppressions / allow-lists (`engineGate`) |
+| Business hours for DEV-017/018 | Settings `detection.business_hours` (for example `07-19`) and `detection.business_tz` (IANA zone); default 06-22 UTC |
+| OTX confidence for DEV-029 | Setting `ioc_otx_min_confidence` (default 70) |
+| Stop CODE-RT-001 for an accepted risk | Triage the dependency finding as accepted risk (section 4.12) |
 
-Implemented in: `devops_sigs.go`, `devops_typed.go`, `business_hours.go`, `detection_engine.go`.
+Implemented in: `devops_sigs.go`, `devops_detect_more.go`, `devops_typed.go`, `business_hours.go`, `detection_engine.go` (`runDevOpsCursor`), `code_reachability.go` (CODE-RT-001).
 
 ---
 
@@ -702,7 +889,7 @@ Implemented in: `devops_sigs.go`, `devops_typed.go`, `business_hours.go`, `detec
 
 ### 7.1 On the Code pages (frontend)
 
-The Code pages (section 8) build findings in the browser from three API calls per connector: `GET .../code-scan` (latest run), `GET .../sast` (latest SAST row of the connector, whatever repository it was for), and `GET .../posture`. Each finding gets:
+The Code pages (section 8) build findings in the browser from three API calls per connector: `GET .../code-scan` (latest run), `GET .../sast` (its `scans` list: the latest SAST row of every repository of the connector), and `GET .../posture`. Each finding gets:
 
 | Field | Derivation |
 |---|---|
@@ -711,6 +898,8 @@ The Code pages (section 8) build findings in the browser from three API calls pe
 | `source` | `scan`, `sast` or `posture` |
 | `type` | code-scan category (`secret`, `dependency`, `dangerous_code`, `sensitive_file`, `config`), or `sast`, or `posture` |
 | `sev` | 5 critical, 4 high, 3 medium, 2 low, 1 info or unknown |
+| `reach` | SAST dependency findings: runtime reachability level (section 4.11) |
+| `triage` | SAST findings: `confirmed`, `false_positive`, `accepted_risk`, a learned hint, or `open` (section 4.12) |
 
 **Finding ID** (`CodeOverview.jsx`, `findingId`):
 
@@ -738,7 +927,7 @@ Findings are not merged across sources on these pages. A secret reported by both
 | Severity normalisation | `critical`/`5`; `high`/`4`/`error`; `medium`/`3`/`warning`/`moderate`; `low`/`2`; anything else `info` |
 | Order and cap | By severity, descending; at most 1 000 returned, with `total` and `by_severity` counts |
 
-The rule ID and CWE are kept for SAST findings. Posture findings use the resource (`org/repo@branch`) as `repo`.
+The rule ID and CWE are kept for SAST findings, and dependency findings carry `package`, `version` and `reachability`. Posture findings use the resource (`org/repo@branch`) as `repo`.
 
 ### 7.3 Repository scoring
 
@@ -769,14 +958,14 @@ Tabs:
 | Tab | Content |
 |---|---|
 | **Repositories** | One row per repository: Severity, Repository, Top finding, Count, Branch, Scanned. Facets: Severity, Finding type, Provider, Organisation (with more than one connector). Filter syntax: free text, `severity:critical,high`, `type:secret`. Up to 300 rows. Organisation-level posture findings appear as a row `<org> (organisation)`. The repository list comes from the provider (`GET .../sast/repos`) and arrives after the findings, so clean repositories appear a moment later. |
-| **Findings** | One row per finding: Severity, Finding, Repository, Where, Source, Scanned. Facets: Severity, Finding type, Source, Repository (top 15). Up to 500 rows. A row opens the finding page. |
+| **Findings** | One row per finding: Severity, Finding (with runtime and triage badges), Repository, Where, Source, Scanned. Facets: Severity, Finding type, Source, **Triage**, **Runtime (dependencies)**, Repository (top 15). Rows of equal severity sort running dependencies first. Up to 500 rows. A row opens the finding page. |
 | **Connectors and scans** | The per-connector workspaces (8.4) |
 
 ### 8.2 Repository page (`/devops/repos/:connector/:repo`)
 
 `:repo` is the short repository name. The header shows `org/repo`, the provider, the branch, the last scan time, and the worst severity. Numbers: Open findings, Critical, High, Secrets, Branch and access issues. The table lists every finding for that repository from all three sources (Severity, Finding, Where, Type, Source, Scanned). Buttons: **Back**, **All repositories**. If no connector holds the repository, the page says "Repository not found in any connected source."
 
-Because the key is the short name, two repositories with the same short name in one connector (for example `acme/api` and `acme-labs/api` seen through `/user/repos`) are merged into one page.
+Because the key is the short name, two repositories with the same short name in one connector (for example after renaming the organisation) are merged into one page.
 
 ### 8.3 Finding page (`/devops/findings/:fid`)
 
@@ -785,7 +974,7 @@ Because the key is the short name, two repositories with the same short name in 
 - **How to fix:** the remediation text. Secret findings add: "Rotate the secret first: deleting it from the code does not remove it from git history."
 - **Other findings in this repository:** up to 8, by severity.
 
-The page has no status, assignee, comment or suppress action.
+Triage and fix suggestions are done in the connector's SAST tab (8.4); the finding page shows no actions.
 
 ### 8.4 Per-connector workspace (Connectors and scans tab)
 
@@ -795,7 +984,8 @@ The left sidebar lists connectors (organisation, provider, status, items synced)
 |---|---|
 | **Code Changes** | Last 100 stored commits (search box, repository filter). A commit opens its detail with the file list and redacted patches. |
 | **Code Scan** | Run the code scan, see counts and findings of the latest run, and request an AI summary (risk score, label, executive summary, top issues, immediate actions). |
-| **SAST** | Repository selector (live list from the provider) and Branch field; **Run SAST Scan** (async job, polled every 2 seconds for up to 12 minutes); summary counts; severity filter; findings with snippet, CWE, OWASP, engine and fix; AI triage (risk label, systemic issues, likely false positives, immediate actions). Selecting a repository loads its last stored result. |
+| **SAST** | Repository selector (live list from the provider) and Branch field; **Run SAST Scan** (async job, polled every 2 seconds for up to 42 minutes); engine chips (what ran, what was missing or failed, source git clone or API, CodeQL languages); **Download SBOM (CycloneDX)**; summary counts; severity filter; **Show dismissed**; findings with snippet, CWE, OWASP, engine, runtime badge, triage badge or hint, and fix; per finding **Suggest fix** / **Show fix**, **False positive**, **Accept risk**, **Confirm**, **Clear decision**, and a one-click triage rule from a hint; **AI Triage** summary of the repository on screen. Selecting a repository loads its last stored result. |
+| **Automation** | Policy (PR checks, comments, CodeQL on PRs, AI fixes in comments, blocking level, comments per update, scan on push, schedule and hour, repositories for scheduled scans), **Scan all repositories now**, the status name to require for merge blocking with the provider-specific steps, the **Triage rules** list (delete), and the **Automated scans** list (trigger, repository, target, result, findings; a row shows what was posted, notes and the findings). Refreshes every 10 seconds. |
 | **Events** | Up to 500 events whose host equals the organisation name (all time). Events whose host is a repository (GitHub audit entries with a repository) are not listed here. |
 | **Alerts** | Up to 100 alerts whose host equals the organisation name. |
 | **Posture** | **Run posture check** and the last result: repositories checked and each finding with its fix. |
@@ -811,14 +1001,18 @@ Implemented in: `management/frontend/src/pages/code/CodeOverview.jsx`, `RepoPage
 | Area | Limit |
 |---|---|
 | Polling | Every 5 min; 3 min per sync; default branch only; per-provider page caps (configuration.md section 7) |
-| GitLab | First 50 projects; 20 commits per project per sync |
+| GitLab | Up to 2 000 projects (20 pages); 20 commits per project per sync |
 | Azure DevOps | 20 commits per repository per sync; no diff content |
 | Stored patch | 2 000 characters per file, redacted |
-| Code scan | Last 500 commits; repository not part of the dedup key |
-| SAST | 1 000 files per repository; 300 KB per file (lockfiles 5 MiB); 10 min per job; one job per connector at a time |
-| SCA | 50 lockfiles, 2 000 packages, 150 advisory look-ups, 60 s |
+| Code scan | Last 500 commits |
+| SAST | Whole repository from git (2 048 MB on disk, 5 min clone); API fallback 1 000 files, 300 KB per file (lockfiles 5 MiB); history secrets 5 min; pattern rules 4 min; Trivy 9 min; CodeQL 12 min for up to 4 languages; 40 min per job; one job per connector and repository/branch at a time |
+| SCA (OSV fallback) | 50 lockfiles, 2 000 packages, 150 advisory look-ups, 60 s |
+| Automation | 1 worker (up to 4 with `OW_CODE_SCAN_WORKERS`); 40 min per job; schedule checked every 10 min; scheduled scans up to 200 known repositories per connector |
+| PR checks | Shallow fetch of 300 commits (deepened once to 3 000); inline comments 1-100 per update (default 20); AI fixes 5 per update; 2 000 commented-finding keys remembered per PR |
+| Runtime inventory | Every 15 min per service process (re-sent every 6 h when unchanged); 5 000 packages per process; "running" = seen in 24 h; index rows kept 14 days |
+| AI | Source-AI rate limit 6 requests per 10 minutes (shared by AI triage and fix suggestions); 30 lines of context each side; fixes cached 30 days |
 | Posture | 100 repositories |
-| Pages | Overview SAST data is the connector's **latest SAST row only**: after scanning repository A, then B, the overview shows B's SAST findings only (A's are still in the database and in Insights → Code findings). 300 repositories and 500 findings per table. |
+| Pages | Overview SAST data is the latest row of each repository (up to 1 000 repositories per connector). 300 repositories and 500 findings per table. |
 | Unified API | 1 000 findings |
 
 ---
@@ -829,11 +1023,15 @@ The following were not exercised against live accounts while writing this docume
 
 1. All token scopes and PAT permissions listed in deployment.md section 3.
 2. GitHub audit-log fields (`action`, `actor`, `repo`, `created_at`, `@cursor`, `visibility`, `role`/`permission`) and whether `after=<cursor>` resumes correctly.
-3. GitLab group audit events: the code reads `action_name`, which the API may not provide at the top level.
-4. GitLab nested group paths in unencoded URL paths.
+3. GitLab group audit-event `details` keys (`add`, `remove`, `change`, `as`, `custom_message`, `entity_path`) and `event_name` values.
+4. Azure DevOps audit `actionId` names used for the canonical mapping (section 2.3), and Azure DevOps Server collection URLs as `base_url`.
 5. Azure DevOps audit fields (`actionId`, `actorDisplayName`, `ipAddress`) and the `7.1-preview.1` API version; project names with spaces in URLs; branch-policy scope matching.
 6. Webhook payload fields for every provider, the GitHub `organization` event name, and Azure DevOps basic-auth delivery.
-7. CodeQL SARIF severity mapping (likely always `medium`).
-8. Semgrep `p/default` download behaviour with `--metrics=off` inside the shipped image.
+7. CodeQL `security-severity` present on every security query of the shipped packs.
+8. The pinned scanner releases (opengrep asset name, gitleaks, Trivy, CodeQL bundle tag) and the opengrep-rules layout were not downloaded in this pass; `management/docker/install-scanners.sh` skips any that fail.
 9. GitHub rulesets versus classic branch protection in the posture check.
+10. Pull-request write-back (statuses, reviews, suggestions, MR discussions, Azure DevOps PR statuses and threads) against live accounts; it was tested against a local Git and GitLab-API test server only.
+11. GitHub audit actions used by the new rules (`secret_scanning_push_protection.bypass`, `protected_branch.policy_override`, `repository_ruleset.bypass`, `git.clone`, `repo.download_zip`, `actor_ip`) and the `security_and_analysis` webhook's `changes.from` shape.
+12. AI fix suggestions against a live model (the response shape is validated, the quality is not measured).
+13. Runtime inventory on real Java (Spring Boot), Python, Node and .NET services; it was tested with fixtures and live Go services.
 10. Behaviour under real rate limits on large organisations (the 3-minute sync timeout will cut long commit backfills).
