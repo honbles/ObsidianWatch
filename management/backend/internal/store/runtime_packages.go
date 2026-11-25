@@ -2,6 +2,8 @@ package store
 
 import (
 	"context"
+
+	"github.com/lib/pq"
 	"strings"
 	"time"
 )
@@ -115,4 +117,35 @@ func itoaStore(n int) string {
 		return string(rune('0' + n))
 	}
 	return string(rune('0'+n/10)) + string(rune('0'+n%10))
+}
+
+// RuntimeIndexEntry summarises where one package version runs.
+type RuntimeIndexEntry struct {
+	Loaded   bool
+	Hosts    []string
+	Services []string
+}
+
+// RuntimePackageIndex returns every package version seen since, keyed by
+// ecosystem \x00 name key \x00 version, restricted to the given ecosystems.
+func (db *DB) RuntimePackageIndex(ctx context.Context, ecosystems []string, since time.Time) (map[string]RuntimeIndexEntry, error) {
+	rows, err := db.QueryContext(ctx, `
+		SELECT ecosystem, name_key, version, bool_or(evidence='loaded'),
+		       (array_agg(DISTINCT host))[1:10], (array_agg(DISTINCT service) FILTER (WHERE service <> ''))[1:10]
+		FROM runtime_packages WHERE last_seen >= $1 AND ecosystem = ANY($2)
+		GROUP BY 1, 2, 3`, since, pq.Array(ecosystems))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string]RuntimeIndexEntry{}
+	for rows.Next() {
+		var eco, key, ver string
+		var e RuntimeIndexEntry
+		if err := rows.Scan(&eco, &key, &ver, &e.Loaded, pq.Array(&e.Hosts), pq.Array(&e.Services)); err != nil {
+			return nil, err
+		}
+		out[eco+"\x00"+key+"\x00"+ver] = e
+	}
+	return out, rows.Err()
 }

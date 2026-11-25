@@ -341,6 +341,9 @@ Implemented in: `management/backend/internal/store/secrets.go`, `store/credmask.
 | `OW_TRIVY_CACHE_DIR` | `/var/cache/trivy` | Trivy databases |
 | `OW_SCANNER_DB_UPDATE` | `true` | `false`: never refresh the Trivy databases (fully offline) |
 | `OW_CODE_SCAN_WORKERS` | `1` | Automated scan jobs run in parallel (1-4) |
+| `OW_SAST_HEAVY_SLOTS` | `1` | Pattern-rule and CodeQL runs allowed at the same time across all scans (1-8). Each needs 1-2 GB of memory; other scans wait. Raise only with memory to match. |
+| `OW_SEMGREP_TIMEOUT_MIN` | `10` | Time limit of the pattern-rule engine per repository (1-60 minutes) |
+| `CODEQL_JAVA_HOME` | system JDK (set in the image) | Makes CodeQL use the system Java; its bundled Java does not run on Alpine |
 | `HTTPS_PROXY`, `NO_PROXY` | – | Outbound proxy for the API clients, git and the scanners |
 
 Settings (Settings → AI, or the settings table): `ai.send_source_snippets` (`true` to allow code to the AI provider), `detection.business_hours`, `detection.business_tz`, `ioc_otx_min_confidence`.

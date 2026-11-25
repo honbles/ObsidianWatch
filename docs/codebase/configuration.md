@@ -157,7 +157,7 @@ The code-scan secret patterns, the built-in SAST rules and the sensitive-file fi
 | GitLab tree | 20 pages × 100 entries | `fetchGitLabTree` |
 | Clone | 5 min, 2 048 MB | `cloneRepo` |
 | History secrets | 5 min (gitleaks) / 4 min and 5 000 commits (built-in) | `runHistorySecrets` |
-| Pattern rules | 4 min per repository, 30 s per file, 1 000 MB memory, 2 jobs | `runSemgrep` |
+| Pattern rules | 10 min per repository (`OW_SEMGREP_TIMEOUT_MIN`), 30 s per file, 1 000 MB memory, 2 jobs; one pattern-rule or CodeQL run at a time across scans (`OW_SAST_HEAVY_SLOTS`) | `runSemgrep` |
 | Trivy | 9 min | `runTrivy` |
 | CodeQL | 12 min per repository for all languages, 2 threads | `runCodeQLAll` |
 | SAST job | 40 min | `jobRuntimeFor` |

@@ -56,6 +56,10 @@ RUN [ ! -x /usr/local/bin/trivy ] || { trivy image --download-db-only --cache-di
 # Set JAVA_HOME so CodeQL uses system Java instead of its bundled glibc Java
 ENV JAVA_HOME=/usr/lib/jvm/java-17-openjdk
 ENV PATH="${JAVA_HOME}/bin:${PATH}"
+# CodeQL ignores JAVA_HOME and starts its bundled glibc Java, which fails on
+# Alpine/musl ("Error relocating libjvm.so: posix_fallocate64").
+# CODEQL_JAVA_HOME makes it use the system JDK.
+ENV CODEQL_JAVA_HOME=/usr/lib/jvm/java-17-openjdk
 
 # H-4: pinned release (bump deliberately); set CODEQL_SHA256 to also verify the download.
 # 2.23.3+ is needed for C/C++ build-mode none and Rust.

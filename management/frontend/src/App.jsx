@@ -26,6 +26,7 @@ import DevOps from './pages/DevOps'
 import AlertPage from './pages/AlertPage'
 import RepoPage from './pages/code/RepoPage'
 import FindingPage from './pages/code/FindingPage'
+import SBOMPage from './pages/code/SBOMPage'
 import CloudFindingPage from './pages/cloud/FindingPage'
 import NetworkProbes from './pages/NetworkProbes'
 import Setup from './pages/Setup'
@@ -95,6 +96,7 @@ export default function App() {
         <Route path="/devops"             element={<ProtectedRoute><DevOps /></ProtectedRoute>} />
         <Route path="/devops/repos/:connector/:repo" element={<ProtectedRoute><RepoPage /></ProtectedRoute>} />
         <Route path="/devops/findings/:fid" element={<ProtectedRoute><FindingPage /></ProtectedRoute>} />
+        <Route path="/devops/sbom/:connector" element={<ProtectedRoute><SBOMPage /></ProtectedRoute>} />
         <Route path="/network"            element={<ProtectedRoute><NetworkProbes /></ProtectedRoute>} />
         {/* [NET-ROUTES-BEGIN] - Network build adds /network/* routes here */}
         {/* [NET-ROUTES-END] */}

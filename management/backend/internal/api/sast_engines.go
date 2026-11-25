@@ -1007,9 +1007,19 @@ func scanCheckout(ctx context.Context, conn *store.DevOpsConnector, repo, repoDi
 
 	// Semgrep-compatible engine with bundled rules.
 	if opts.Semgrep {
-		semgrepCtx, cancel := context.WithTimeout(ctx, 4*time.Minute)
-		results, err := runSemgrep(semgrepCtx, repoDir, logger)
-		cancel()
+		release, werr := heavySlot(ctx)
+		var results []semgrepResult
+		var err error
+		if werr != nil {
+			err = werr
+		} else {
+			limit := semgrepTimeout()
+			semgrepCtx, cancel := context.WithTimeout(ctx, limit)
+			results, err = runSemgrep(semgrepCtx, repoDir, logger)
+			err = explainKill(err, semgrepCtx, limit, "OW_SEMGREP_TIMEOUT_MIN")
+			cancel()
+			release()
+		}
 		if err != nil {
 			engines.set("semgrep", "failed: "+err.Error())
 			logger.Warn("sast: semgrep failed", "repo", repo, "err", err)
@@ -1055,9 +1065,16 @@ func scanCheckout(ctx context.Context, conn *store.DevOpsConnector, repo, repoDi
 
 	// CodeQL: every supported language in the repository.
 	if opts.CodeQL {
-		codeqlCtx, cancelCQ := context.WithTimeout(ctx, 12*time.Minute)
-		codeqlFindings, langs, codeqlErr := runCodeQLAll(codeqlCtx, repoDir, repo, logger)
-		cancelCQ()
+		var codeqlFindings []SASTFinding
+		var langs []string
+		release, codeqlErr := heavySlot(ctx)
+		if codeqlErr == nil {
+			codeqlCtx, cancelCQ := context.WithTimeout(ctx, 12*time.Minute)
+			codeqlFindings, langs, codeqlErr = runCodeQLAll(codeqlCtx, repoDir, repo, logger)
+			codeqlErr = explainKill(codeqlErr, codeqlCtx, 12*time.Minute, "")
+			cancelCQ()
+			release()
+		}
 		switch {
 		case codeqlErr != nil:
 			engines.set("codeql", "failed: "+codeqlErr.Error())
@@ -1142,4 +1159,52 @@ func trivyEcosystem(t string) string {
 		return "Packagist"
 	}
 	return t
+}
+
+// ── Concurrency of the heavy engines ──────────────────────────────────────────
+
+// heavySlots bounds how many pattern-rule and CodeQL runs execute at the same
+// time across all scans (manual, scheduled, PR). Each can use 1-2 GB of memory;
+// several scans at once used to get the engine killed by the out-of-memory
+// killer ("signal: killed"). Other scans wait for a slot.
+var heavySlots = make(chan struct{}, envInt("OW_SAST_HEAVY_SLOTS", 1, 1, 8))
+
+func heavySlot(ctx context.Context) (release func(), err error) {
+	select {
+	case heavySlots <- struct{}{}:
+		return func() { <-heavySlots }, nil
+	case <-ctx.Done():
+		return func() {}, fmt.Errorf("not run: the scan ran out of time waiting for another scan's engine to finish")
+	}
+}
+
+func envInt(name string, def, lo, hi int) int {
+	var n int
+	if _, err := fmt.Sscan(os.Getenv(name), &n); err != nil || n < lo || n > hi {
+		return def
+	}
+	return n
+}
+
+func semgrepTimeout() time.Duration {
+	return time.Duration(envInt("OW_SEMGREP_TIMEOUT_MIN", 10, 1, 60)) * time.Minute
+}
+
+// explainKill turns "signal: killed" into its cause: our own time limit, or
+// the system killing the process (almost always memory).
+func explainKill(err error, ctx context.Context, limit time.Duration, envVar string) error {
+	if err == nil {
+		return nil
+	}
+	if ctx.Err() == context.DeadlineExceeded {
+		msg := fmt.Sprintf("timed out after %s", limit)
+		if envVar != "" {
+			msg += " (raise " + envVar + ")"
+		}
+		return fmt.Errorf("%s", msg)
+	}
+	if strings.Contains(err.Error(), "signal: killed") {
+		return fmt.Errorf("killed by the system, most likely out of memory: give the management container more memory or keep OW_SAST_HEAVY_SLOTS at 1 (%v)", err)
+	}
+	return err
 }

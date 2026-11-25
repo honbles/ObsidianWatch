@@ -109,7 +109,7 @@ export function buildRepos(findings, repoList, connectors) {
 const SEV_ORDER = ['critical', 'high', 'medium', 'low', 'info', 'clean']
 const sevState = (n) => n >= 5 ? 'crit' : n >= 4 ? 'warn' : n >= 3 ? 'info' : n >= 1 ? 'none' : 'ok'
 
-function FilterBar({ value, onChange, placeholder, count, total, children }) {
+export function FilterBar({ value, onChange, placeholder, count, total, children }) {
   return (
     <div className="ow-card-bar">
       <label className="ow-field" style={{ flex: 1, maxWidth: 380, height: 28 }}>
@@ -123,7 +123,7 @@ function FilterBar({ value, onChange, placeholder, count, total, children }) {
   )
 }
 
-function toggler(setSel) {
+export function toggler(setSel) {
   return (k, v) => setSel(s => { const n = { ...s }; const set = new Set(n[k] || []); set.has(v) ? set.delete(v) : set.add(v); n[k] = set; return n })
 }
 

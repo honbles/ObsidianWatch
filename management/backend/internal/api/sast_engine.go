@@ -1000,7 +1000,10 @@ func handleGetSASTResults(db *store.DB) http.HandlerFunc {
 				       COALESCE(engines, '{}'::jsonb), sbom IS NOT NULL
 				FROM sast_results
 				WHERE connector_id = $1 AND repo = $2
-				ORDER BY scanned_at DESC LIMIT 1`, connID, filterRepo,
+				  AND ($3 = '' OR branch = $3 OR ($4 AND branch IN ('', 'HEAD')))
+				ORDER BY scanned_at DESC LIMIT 1`, connID, filterRepo, filterBranch,
+				// The default branch is stored as "HEAD" when it was scanned without a name.
+				filterBranch == "HEAD" || (filterBranch != "" && filterBranch == r.URL.Query().Get("default")),
 			).Scan(&result.ID, &result.ConnectorID, &result.Repo, &result.Branch, &result.Engine,
 				&result.ScannedAt, &result.RepoCount, &result.FileCount, &result.FindingCount,
 				&result.CriticalCount, &result.HighCount, &result.MediumCount,
@@ -1080,15 +1083,21 @@ func handleSASTSBOM(db *store.DB) http.HandlerFunc {
 		}
 		branch := r.URL.Query().Get("branch")
 		var sbom []byte
-		q := `SELECT sbom FROM sast_results WHERE connector_id=$1 AND repo=$2 AND sbom IS NOT NULL`
+		var gotBranch string
+		var scannedAt time.Time
+		q := `SELECT sbom, COALESCE(branch,''), scanned_at FROM sast_results WHERE connector_id=$1 AND repo=$2 AND sbom IS NOT NULL`
 		args := []interface{}{connID, repo}
 		if branch != "" {
 			q += ` AND branch=$3`
 			args = append(args, branch)
 		}
 		q += ` ORDER BY scanned_at DESC LIMIT 1`
-		if err := db.QueryRowContext(r.Context(), q, args...).Scan(&sbom); err != nil || len(sbom) == 0 {
+		if err := db.QueryRowContext(r.Context(), q, args...).Scan(&sbom, &gotBranch, &scannedAt); err != nil || len(sbom) == 0 {
 			writeJSON(w, 404, map[string]string{"error": "no SBOM for this repository yet; run a SAST scan of it"})
+			return
+		}
+		if r.URL.Query().Get("view") == "1" {
+			writeSBOMView(w, r, db, repo, gotBranch, scannedAt, sbom)
 			return
 		}
 		name := strings.NewReplacer("/", "_", "\\", "_", "\"", "").Replace(repo)

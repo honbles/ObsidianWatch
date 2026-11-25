@@ -12,6 +12,7 @@ import { formatDistanceToNow } from 'date-fns'
 import api, { runScan } from '../api/client'
 import AlertPanel from '../components/AlertPanel'
 import { EventPanel, devopsFields } from './Events.jsx'
+import { useNavigate } from 'react-router-dom'
 
 // ── Provider config ───────────────────────────────────────────────────────────
 const PROVIDERS = {
@@ -371,6 +372,7 @@ function ConnectorDetail({ conn, onSync, onDisconnect, syncing }) {
   const [scanError, setScanError] = useState(null)
   const [aiScan, setAiScan]       = useState(null)
   const [aiScanLoading, setAiScanLoading] = useState(false)
+  const navigate = useNavigate()
   const [sastResult, setSastResult] = useState(null)
   const [sasting, setSasting]       = useState(false)
   const [sastError, setSastError]   = useState(null)
@@ -382,6 +384,13 @@ function ConnectorDetail({ conn, onSync, onDisconnect, syncing }) {
   const [sastRepos, setSastRepos]   = useState([])
   const [sastSelRepo, setSastSelRepo] = useState('')
   const [sastSelBranch, setSastSelBranch] = useState('')
+  const [sastBranches, setSastBranches] = useState([])
+  const loadBranches = useCallback((repo, def) => {
+    setSastBranches([])
+    if (!repo) return
+    const p = new URLSearchParams({ repo }); if (def) p.set('default', def)
+    api.get(`/api/v1/devops-connectors/${conn.id}/sast/branches?${p}`).then(r => setSastBranches(r.data.branches || [])).catch(() => {})
+  }, [conn.id])
   const [search, setSearch]     = useState('')
   const [repoFilter, setRepoFilter] = useState('')
   const [repos, setRepos]       = useState([])
@@ -428,6 +437,9 @@ function ConnectorDetail({ conn, onSync, onDisconnect, syncing }) {
     try {
       const params = new URLSearchParams({ repo })
       if (branch) params.set('branch', branch)
+      // The default branch may be stored as "HEAD": tell the server which it is.
+      const def = sastRepos.find(x => x.repo === repo)?.branch
+      if (def) params.set('default', def)
       const { data } = await api.get(`/api/v1/devops-connectors/${conn.id}/sast?${params}`)
       if (data?.scan) {
         setSastResult(data.scan)
@@ -443,7 +455,7 @@ function ConnectorDetail({ conn, onSync, onDisconnect, syncing }) {
         setAiSast(null)
       }
     } catch {}
-  }, [conn.id])
+  }, [conn.id, sastRepos])
 
   // After a triage decision: reload the result on screen (with fresh triage).
   const reloadSAST = () => {
@@ -461,6 +473,7 @@ function ConnectorDetail({ conn, onSync, onDisconnect, syncing }) {
         if (repos.length === 1 && !sastSelRepo) {
           setSastSelRepo(repos[0].repo)
           setSastSelBranch(repos[0].branch)
+          loadBranches(repos[0].repo, repos[0].branch)
         }
       }).catch(() => {})
     try {
@@ -685,6 +698,7 @@ function ConnectorDetail({ conn, onSync, onDisconnect, syncing }) {
                     const r = sastRepos.find(r => r.repo === repo)
                     const branch = r?.branch || ''
                     if (r) setSastSelBranch(branch)
+                    loadBranches(repo, branch)
                     // Load cached result for this repo immediately
                     if (repo) loadSASTForRepo(repo, branch)
                     else loadSAST()
@@ -698,12 +712,19 @@ function ConnectorDetail({ conn, onSync, onDisconnect, syncing }) {
                 {sastSelRepo && (
                   <div className="flex flex-col gap-1">
                     <label className="text-[10px] uppercase tracking-wider text-siem-muted font-semibold">Branch</label>
-                    <input
-                      value={sastSelBranch}
-                      onChange={e => setSastSelBranch(e.target.value)}
-                      placeholder="HEAD"
-                      className="bg-siem-bg border border-siem-border rounded-lg px-3 py-1.5 text-xs text-siem-text font-mono focus:outline-none focus:border-siem-accent w-36"
-                    />
+                    <select value={sastSelBranch} onChange={e => {
+                        const b = e.target.value
+                        setSastSelBranch(b)
+                        loadSASTForRepo(sastSelRepo, b)
+                      }}
+                      className="bg-siem-bg border border-siem-border rounded-lg px-3 py-1.5 text-xs text-siem-text font-mono focus:outline-none focus:border-siem-accent min-w-[180px]">
+                      {!sastBranches.some(b => b.name === sastSelBranch) && sastSelBranch && <option value={sastSelBranch}>{sastSelBranch}</option>}
+                      {sastBranches.map(b => (
+                        <option key={b.name} value={b.name}>
+                          {b.name}{b.default ? ' (default)' : ''}{b.scanned_at ? ' · scanned' : ''}
+                        </option>
+                      ))}
+                    </select>
                   </div>
                 )}
               </div>
@@ -815,6 +836,15 @@ function ConnectorDetail({ conn, onSync, onDisconnect, syncing }) {
                       )
                     })}
                     {sastResult.sbom_available && (sastResult.repo || sastSelRepo) && (
+                      <button onClick={() => {
+                        const p = new URLSearchParams({ repo: sastResult.repo || sastSelRepo })
+                        if (sastResult.branch) p.set('branch', sastResult.branch)
+                        navigate(`/devops/sbom/${conn.id}?${p}`)
+                      }} className="ml-auto text-[10px] px-3 py-1 rounded-lg bg-siem-accent text-white hover:opacity-90">
+                        View SBOM
+                      </button>
+                    )}
+                    {sastResult.sbom_available && (sastResult.repo || sastSelRepo) && (
                       <button onClick={async () => {
                         const repo = sastResult.repo || sastSelRepo
                         try {
@@ -827,8 +857,8 @@ function ConnectorDetail({ conn, onSync, onDisconnect, syncing }) {
                           a.click()
                           URL.revokeObjectURL(a.href)
                         } catch (e) { setSastError('SBOM download failed') }
-                      }} className="ml-auto text-[10px] px-3 py-1 rounded-lg border border-siem-accent/40 text-siem-accent hover:bg-siem-accent/10">
-                        Download SBOM (CycloneDX)
+                      }} className="text-[10px] px-3 py-1 rounded-lg border border-siem-accent/40 text-siem-accent hover:bg-siem-accent/10">
+                        Download
                       </button>
                     )}
                   </div>

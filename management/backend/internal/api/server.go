@@ -283,6 +283,7 @@ func New(cfg *config.Config, db *store.DB, backendDB *store.DB, logger *slog.Log
 	protected.HandleFunc("GET /api/v1/devops-connectors/{id}/sast", handleGetSASTResults(db))
 	protected.HandleFunc("GET /api/v1/devops-connectors/{id}/sast/repos", handleListSASTRepos(db, logger))
 	protected.HandleFunc("GET /api/v1/devops-connectors/{id}/sast/sbom", handleSASTSBOM(db))
+	protected.HandleFunc("GET /api/v1/devops-connectors/{id}/sast/branches", handleListSASTBranches(db))
 	// Code step 3: scan automation (push, schedule, PR checks).
 	protected.HandleFunc("GET /api/v1/devops-connectors/{id}/scan-policy", handleGetCodeScanPolicy(db))
 	protected.HandleFunc("PUT /api/v1/devops-connectors/{id}/scan-policy", adminOnly(handlePutCodeScanPolicy(db)))
