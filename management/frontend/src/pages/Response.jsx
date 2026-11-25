@@ -18,7 +18,7 @@ import {
 export const ACTIONS = [
   // Network
   { id: 'isolate', group: 'Network', label: 'Isolate', icon: ShieldAlert, multi: true, queues: true, danger: true,
-    help: 'Cuts the host off from every other machine and the internet. ObsidianWatch stays reachable, so you can keep investigating. People who try to browse see a “contact your administrator” page.' },
+    help: 'Cuts the host off from every other machine and the internet. ObsidianWatch stays reachable, so you can keep investigating. The user gets a pop-up saying the computer is isolated, again whenever they try to reach a site.' },
   { id: 'release', group: 'Network', label: 'Release isolation', icon: ShieldCheck, multi: true, queues: true,
     help: 'Restores normal networking.' },
   { id: 'block_ip', group: 'Network', label: 'Block IP address', icon: Globe, multi: true, danger: true,
@@ -74,7 +74,7 @@ export function describeParams(a) {
   if (p.id) return `vault item ${p.id}`
   if (p.ip) return p.ip
   if (p.user) return `account ${p.user}`
-  if (a.action === 'isolate') return (p.ttl_minutes ? `for ${p.ttl_minutes >= 1440 ? p.ttl_minutes / 1440 + ' d' : p.ttl_minutes / 60 + ' h'}` : 'until released') + (p.no_block_page ? ' · no block page' : '')
+  if (a.action === 'isolate') return (p.ttl_minutes ? `for ${p.ttl_minutes >= 1440 ? p.ttl_minutes / 1440 + ' d' : p.ttl_minutes / 60 + ' h'}` : 'until released') + (p.no_block_page ? ' · silent' : '')
   return ''
 }
 
@@ -253,7 +253,7 @@ function RunAction({ hosts, preselect, onDone }) {
                   {TTLS.map(([l, v]) => <option key={v} value={v}>{l}</option>)}</select></Field>
                 <label className="t2" style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 12.5 }}>
                   <input type="checkbox" className="ow-check" checked={params.block_page} onChange={e => setParams(p => ({ ...p, block_page: e.target.checked }))}/>
-                  <span>Show the “contact your administrator” page when someone browses. Web addresses lead to the page; secure (https) sites that cannot show it fail straight away instead of hanging.</span>
+                  <span>Tell the user: a pop-up says the computer is isolated and to contact the administrator, at isolation and again (at most every 10 minutes) when they try to reach a site. Off: isolate silently.</span>
                 </label>
               </>
             )}

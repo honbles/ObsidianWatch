@@ -89,7 +89,8 @@ type Handler struct {
 	cbMu     sync.Mutex
 	onChange func() // told when isolation ends on its own (ttl expiry)
 
-	bp blockPage
+	bp     blockPage
+	notice noticer // isolation pop-ups
 }
 
 // SetOnChange registers a callback fired when the state changes without a
@@ -135,7 +136,10 @@ func New(dir string, urls []string, logger *slog.Logger) *Handler {
 			hosts = append(hosts, h)
 		}
 	}
-	return &Handler{dir: dir, hosts: hosts, logger: logger}
+	h := &Handler{dir: dir, hosts: hosts, logger: logger}
+	h.notice.show = showNotice
+	h.bp.onSink = h.notice.attempt
+	return h
 }
 
 func (h *Handler) statePath() string { return filepath.Join(h.dir, "response.json") }
@@ -308,9 +312,14 @@ func (h *Handler) isolate(p Params) Result {
 		h.logger.Warn("response: cannot persist isolation state", "err", err)
 	}
 	h.logger.Warn("response: host ISOLATED", "allow", st.Allow, "block_page", st.BlockPage)
+	if st.BlockPage {
+		h.notice.isolated()
+	} else {
+		h.notice.released() // re-isolated without notices: stop showing them
+	}
 	msg := fmt.Sprintf("host isolated; only %v is reachable", st.Allow)
 	if st.BlockPage {
-		msg += "; browsing shows the \"contact your administrator\" page" + note
+		msg += "; the user is told by a pop-up (again when they try to reach a site)" + note
 	}
 	return Result{OK: true, Message: msg, Data: h.stateLocked()}
 }
@@ -326,6 +335,7 @@ func (h *Handler) release() Result {
 	st.Isolated, st.Expires, st.Saved, st.BlockPage = false, time.Time{}, "", false
 	_ = h.saveIso(st)
 	h.logger.Warn("response: host RELEASED from isolation")
+	h.notice.released()
 	return Result{OK: true, Message: "isolation removed; normal network access restored", Data: h.stateLocked()}
 }
 
@@ -402,6 +412,7 @@ func (h *Handler) Restore() {
 			if err := h.startBlockPage(exempt, &st); err != nil {
 				h.logger.Warn("response: block page", "err", err)
 			}
+			h.notice.resume() // still isolated after a restart: notices on browsing continue
 		}
 		_ = h.saveIso(st)
 	}

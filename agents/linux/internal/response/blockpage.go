@@ -43,6 +43,18 @@ type blockPage struct {
 	tcp     net.Listener
 	exempt  map[string][]netip.Addr
 	hostTxt string
+	// onSink is called when a lookup is answered with the sink: someone on
+	// the host tried to reach a site (drives the isolation pop-up).
+	onSink func()
+}
+
+// lookupNoted is lookup plus the onSink callback for names that are sunk.
+func (b *blockPage) lookupNoted(name string) []netip.Addr {
+	a := b.lookup(name)
+	if len(a) == 0 && b.onSink != nil {
+		b.onSink()
+	}
+	return a
 }
 
 // start brings up the listeners. A port that cannot be bound (something else
@@ -159,7 +171,7 @@ func (b *blockPage) serveUDP(pc net.PacketConn) {
 		if err != nil {
 			return
 		}
-		if resp := dnsAnswer(buf[:n], b.lookup); resp != nil {
+		if resp := dnsAnswer(buf[:n], b.lookupNoted); resp != nil {
 			_, _ = pc.WriteTo(resp, addr)
 		}
 	}
@@ -184,7 +196,7 @@ func (b *blockPage) serveTCP(ln net.Listener) {
 				if _, err := io.ReadFull(r, q); err != nil {
 					return
 				}
-				resp := dnsAnswer(q, b.lookup)
+				resp := dnsAnswer(q, b.lookupNoted)
 				if resp == nil {
 					return
 				}

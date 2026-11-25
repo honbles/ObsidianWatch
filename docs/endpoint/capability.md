@@ -238,6 +238,10 @@ Rule quality notes:
 - "Executable run from /tmp, /dev/shm or /var/tmp" (`L-T1059.004b`) is Medium.
 - Rules only use fields that the platform's collectors fill. Linux in fallback mode (no eBPF) misses short-lived processes, and Windows without Sysmon depends on 4688 auditing.
 
+### 5.3b ObsidianWatch's own activity
+
+Events that ObsidianWatch causes are stored and searchable but never alert (`isObsidianWatchActivity`, `self_activity.go`): the agent binary; processes the agent tags as its own (scans, response actions, hunt queries, installers); any process descended from the agent according to the lineage, except under the live-response shell (`/bin/bash --login`, `<shell> -l`, bare `cmd.exe`), so analyst commands still alert; the server stack on a monitored host (`/app/server`, `/app/management-server` and what they start) and the compose healthchecks (`pg_isready`, the `/health` wget, the `/proc/net/tcp` check); Sysmon as installed by the agent. Container runtimes re-executing themselves from a sealed memfd (`runc init` from `/proc/self/fd/N`, also crun and youki) are excluded from the memfd and deleted-file rules.
+
 ### 5.3a Process lineage
 
 Before rules run, the engine attaches each event's ancestors (parent first, up to 8) from a cache of process starts keyed by process GUID, with a pid fallback for sources without GUIDs (4688). Parents it has not seen are read from stored events (up to 300 per pass, 3 levels, last 7 days); misses are not asked again for an hour. On Linux an exec keeps the process GUID, so the cache keeps the images a process ran before (`bash -c cmd` execs `cmd` in place) and counts them as ancestors. Network, file and other events get the lineage of the process that caused them. Every signature, IOC and Sigma alert description ends with `Process chain: systemd → nginx → sh → curl` when ancestors are known.
@@ -409,7 +413,7 @@ Mechanisms per OS:
 | IP block | nftables table `obsidianwatch_ipblock` | Windows Firewall rules | pf |
 | Verified | isolation and block page tested in a network namespace (nftables and iptables); IP block and account lock tested live, not under the systemd sandbox | unit-tested | unit-tested |
 
-HTTPS sites cannot show the block page. If port 80 or 53 is in use on Windows or macOS, the page or DNS change is skipped and the result says so.
+**Telling the user.** Unless the isolation is silent (`no_block_page`), the agent shows a pop-up in every logged-on desktop session when the host is isolated: "This computer has been isolated from the network by your security team. Contact your administrator." It shows again, at most every 10 minutes, whenever a lookup reaches the agent's DNS sink (someone or something tried to reach a site), and once on release. Windows: a message box in each active session (`WTSSendMessage`, closes after 5 minutes). Linux: a critical desktop notification in each graphical session (`notify-send` through the user's session bus) and `wall` for terminals. macOS: a dialog for the console user (`osascript` through `launchctl asuser`). Background programs looking names up also count as attempts, which is why repeats are capped. Plain-HTTP sites still show the block page in the browser; HTTPS sites cannot (no certificate for them), so they fail and the pop-up does the telling. If port 80 or 53 is in use on Windows or macOS, the page or DNS change is skipped and the result says so. Pop-ups are not yet tested on Windows or macOS hosts.
 
 Linux caution (not verified): under the installed systemd unit (`ProtectSystem=strict`, `ProtectHome=read-only`, `PrivateTmp=true`), file actions outside `/var/lib/obsidianwatch` and `/etc/obsidianwatch`, and `disable_user`, are expected to fail with a read-only file system error, and files in the host's `/tmp` are not visible to the agent.
 

@@ -47,7 +47,7 @@ func rarityCandidates(events []store.Event, max int) map[string]store.Event {
 		if ev.EventType != "process" || ev.ImagePath == nil || !inWritableDir(*ev.ImagePath) {
 			continue
 		}
-		if isSelfActivity(ev) || isOwnAgentProcess(ev) || isOwnSysmon(ev) {
+		if isObsidianWatchActivity(ev) {
 			continue // the agent and what it spawns are not "rare binaries"
 		}
 		k := hashKey(ev)

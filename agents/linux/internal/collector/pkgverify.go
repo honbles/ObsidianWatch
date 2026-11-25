@@ -157,7 +157,11 @@ func pkgVerify(pid int, exePath, sha256hex string) (verified, known bool, pkg st
 	}
 	f, err := os.Open(fmt.Sprintf("/proc/%d/exe", pid))
 	if err != nil {
-		return false, false, ""
+		// The process already exited (the kernel sensor sees short-lived
+		// processes the /proc reader never did): verify the file by path.
+		if f, err = os.Open(exePath); err != nil {
+			return false, false, ""
+		}
 	}
 	defer f.Close()
 	st, err := f.Stat()

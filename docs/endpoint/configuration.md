@@ -224,6 +224,8 @@ All of these are admin-only unless stated.
 | `threat_intel.retro_hunt` | on | After a sync, new IOCs are searched in stored events (up to 500 alerts per sync). |
 | Manual IOCs | **Rules** / `POST /api/v1/iocs/manual` | Analyst IOCs, treated like feed IOCs. |
 | `ioc_known_good_enabled` | true | Lowers hash-IOC hits on package-verified or OS binaries. |
+| `ioc_otx_min_confidence` | 70 | OTX matches below this confidence never alert. OTX scores run from 5 to 85: a pulse reaches 70 only when it names an adversary and malware families and has ATT&CK techniques or references. Other feeds are not affected. |
+| `imds_allowed_processes` | empty | Comma-separated extra process names allowed to reach the metadata service. Cloud guest agents and their child scripts, the cloud CLIs, and non-interpreter system programs (OS Login lookups from `sshd`, `sudo`, `id`) are always allowed. |
 | `ioc_hash_prevalence_hosts` | 3 | Hash IOC severity is adjusted when the hash is seen on at least this many hosts. |
 | Confidence | fixed | IOCs below 25 % confidence are ignored; 25 to 49 % are lowered one level. |
 

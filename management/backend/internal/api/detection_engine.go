@@ -1415,6 +1415,15 @@ func NewDetectionEngine(db *store.DB, mailer *notify.Mailer, logger *slog.Logger
 	return &DetectionEngine{db: db, mailer: mailer, logger: logger, suppressor: NewGCPSuppressor(db), auth: newAuthCorrelator(), seq: newSeqCorrelator(), geo: newEntraGeoTracker(), lineage: newLineage()}
 }
 
+// defaultOTXMinConfidence: OTX is community-submitted and lists ordinary
+// binaries (system shells, package files) in pulses, so its matches alert
+// only from this confidence up (setting ioc_otx_min_confidence, 0 to 100).
+const defaultOTXMinConfidence = 70
+
+func otxConfidentEnough(ioc store.IOCIndicator, min int) bool {
+	return ioc.Source != "otx" || ioc.Confidence >= min
+}
+
 // engineConfig is what one evaluation pass reads from the database: rule
 // states, IOCs, Sigma rules and settings. Evaluation can now run several
 // times a second (it wakes on new events), so this is reloaded at most every
@@ -1425,6 +1434,7 @@ type engineConfig struct {
 	ipIOCs, domainIOCs, hashIOCs map[string]store.IOCIndicator
 	iocPrevalenceHosts           int
 	iocKnownGoodOn               bool
+	otxMinConfidence             int
 	sigmaByCategory              map[string][]store.SigmaRule
 }
 
@@ -1440,7 +1450,7 @@ func (e *DetectionEngine) config(ctx context.Context) *engineConfig {
 	if e.suppressor != nil {
 		e.suppressor.Refresh(ctx)
 	}
-	c := &engineConfig{loaded: time.Now(), iocPrevalenceHosts: 3, iocKnownGoodOn: true}
+	c := &engineConfig{loaded: time.Now(), iocPrevalenceHosts: 3, iocKnownGoodOn: true, otxMinConfidence: defaultOTXMinConfidence}
 	c.states, _ = e.db.GetSignatureStates(ctx)
 	c.ipIOCs, c.domainIOCs, c.hashIOCs = e.loadIOCs(ctx)
 	if v, _ := e.db.GetSetting(ctx, "imds_allowed_processes"); v != "" {
@@ -1451,6 +1461,9 @@ func (e *DetectionEngine) config(ctx context.Context) *engineConfig {
 	}
 	if v, _ := e.db.GetSetting(ctx, "ioc_known_good_enabled"); v == "false" {
 		c.iocKnownGoodOn = false
+	}
+	if v, _ := e.db.GetSetting(ctx, "ioc_otx_min_confidence"); v != "" {
+		c.otxMinConfidence = settingInt(v, defaultOTXMinConfidence)
 	}
 	sigmaGlobalEnabled := true
 	if v, _ := e.db.GetSetting(ctx, "detection.sigma_enabled"); v == "false" {
@@ -1609,6 +1622,7 @@ func (e *DetectionEngine) evaluateEvents(ctx context.Context, events []store.Eve
 	cfg := e.config(ctx)
 	states, ipIOCs, domainIOCs, hashIOCs := cfg.states, cfg.ipIOCs, cfg.domainIOCs, cfg.hashIOCs
 	iocPrevalenceHosts, iocKnownGoodOn, sigmaByCategory := cfg.iocPrevalenceHosts, cfg.iocKnownGoodOn, cfg.sigmaByCategory
+	otxMin := cfg.otxMinConfidence
 	e.lineage.observe(ctx, e.db, events)
 
 	created := 0
@@ -1639,7 +1653,7 @@ func (e *DetectionEngine) evaluateEvents(ctx context.Context, events []store.Eve
 			continue
 		}
 		// Skip if the process IS the ObsidianWatch agent binary
-		if isOwnAgentProcess(ev) || isSelfActivity(ev) || isOwnSysmon(ev) {
+		if isObsidianWatchActivity(ev) {
 			continue
 		}
 
@@ -1801,7 +1815,7 @@ func (e *DetectionEngine) evaluateEvents(ctx context.Context, events []store.Eve
 
 		// IOC matching
 		if ioc := e.matchIOC(ev, ipIOCs, domainIOCs, hashIOCs); ioc != nil && ioc.Confidence >= 0 && !(ioc.Confidence > 0 && ioc.Confidence < 25) &&
-			!endpointSuppressed(iocSuppressID(*ioc), ev) {
+			otxConfidentEnough(*ioc, otxMin) && !endpointSuppressed(iocSuppressID(*ioc), ev) {
 			// D-14: confidence weighting. IOCs under 25% confidence are
 			// ignored (noise); 25-49% are alerted one level lower.
 			if ioc.Confidence > 0 && ioc.Confidence < 50 && ioc.Severity > 2 {

@@ -49,6 +49,25 @@ func procStart(ev store.Event) bool {
 }
 
 // imagePath is the executable path: raw exe, then ImagePath.
+// containerRuntimeReexec: runc (and crun, youki) copy themselves into a
+// sealed memfd and re-execute from /proc/self/fd/N on every container start
+// and docker exec (the CVE-2019-5736 fix). That is the runtime, not malware.
+func containerRuntimeReexec(ev store.Event) bool {
+	names := []string{strings.ToLower(deref(ev.ProcessName))}
+	if a := argv(ev); len(a) > 0 {
+		names = append(names, strings.ToLower(winBase(a[0])))
+	}
+	for _, n := range names {
+		n = strings.TrimPrefix(n, "runc:[") // runc renames itself runc:[0:PARENT], runc:[2:INIT]
+		for _, rt := range []string{"runc", "crun", "youki", "0:parent]", "1:child]", "2:init]"} {
+			if n == rt {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func imagePath(ev store.Event) string {
 	if r := rawProcOf(ev); r.Exe != "" {
 		return r.Exe
@@ -109,7 +128,7 @@ var linuxLineageSignatures = []ThreatSig{
 				return false
 			}
 			p := imagePath(ev)
-			return strings.HasPrefix(p, "/memfd:") || fdExecRe.MatchString(p)
+			return (strings.HasPrefix(p, "/memfd:") || fdExecRe.MatchString(p)) && !containerRuntimeReexec(ev)
 		},
 	},
 	{
@@ -117,7 +136,7 @@ var linuxLineageSignatures = []ThreatSig{
 		Description: "The program's file was deleted while it started, so only the running copy remains. Malware does this to remove its trace from disk.",
 		Severity:    4, MITRE: "T1070.004", Category: "Defence Evasion",
 		Match: func(ev store.Event) bool {
-			return procStart(ev) && strings.HasSuffix(imagePath(ev), " (deleted)") && !strings.HasPrefix(imagePath(ev), "/memfd:")
+			return procStart(ev) && strings.HasSuffix(imagePath(ev), " (deleted)") && !strings.HasPrefix(imagePath(ev), "/memfd:") && !containerRuntimeReexec(ev)
 		},
 	},
 	{

@@ -6,7 +6,7 @@ Isolation and release queue for offline hosts; every other action needs the host
 
 | Group | Action | What it does | Hosts |
 |---|---|---|---|
-| Network | Isolate | Blocks all traffic except the ObsidianWatch servers. Optional duration. Shows the block page (below) unless turned off. | many, queues |
+| Network | Isolate | Blocks all traffic except the ObsidianWatch servers. Optional duration. Tells the user with a desktop pop-up (and the block page for plain-HTTP sites) unless isolated silently. | many, queues |
 | | Release isolation | Restores networking, removes the block page and puts DNS settings back. | many, queues |
 | | Block IP address / Unblock | Drops all traffic to and from one address without isolating. Survives restarts. Server addresses, loopback, multicast and link-local are refused. | many |
 | | Blocked IPs | Lists blocked addresses. | many |

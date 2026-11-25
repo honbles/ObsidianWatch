@@ -69,13 +69,52 @@ func imdsHighRisk(ev store.Event) bool {
 	return false
 }
 
+// imdsGuestAgents are cloud guest components whose own processes and
+// children (startup and OS Config scripts, which are shells and
+// interpreters) use the metadata service by design.
+var imdsGuestAgents = []string{"google_guest_agent", "google_osconfig_agent", "google_metadata_script_runner",
+	"gce_workload_cert_refresh", "google_oslogin_nss", "google_authorized_keys", "otelopscol", "fluent-bit",
+	"google_cloud_ops_agent_engine", "cloud-init", "amazon-ssm-agent", "ssm-agent-worker", "waagent", "walinuxagent"}
+
+// imdsByGuestAgent: the process or one of its ancestors is a guest agent.
+func imdsByGuestAgent(ev store.Event) bool {
+	if exeIn(ev, imdsGuestAgents...) {
+		return true
+	}
+	return ancestorIn(ev, lineageMaxDepth, imdsGuestAgents...)
+}
+
+// imdsSystemBinary: a non-interpreter program in a system directory. On GCP
+// with OS Login, the NSS module makes ordinary programs (sshd, sudo, id, ls)
+// ask the metadata server who a user is; a stolen-credential attempt uses a
+// shell, an interpreter, curl or a dropped binary instead.
+func imdsSystemBinary(ev store.Event) bool {
+	if imdsHighRisk(ev) || exeIn(ev, "curl", "wget", "nc", "ncat", "socat", "busybox") {
+		return false
+	}
+	p := strings.ToLower(rawStringField(ev, "exe"))
+	if p == "" {
+		p = img(ev)
+	}
+	for _, d := range []string{"/usr/bin/", "/usr/sbin/", "/bin/", "/sbin/", "/usr/lib/", "/usr/libexec/", "/lib/"} {
+		if strings.HasPrefix(p, d) {
+			return true
+		}
+	}
+	return false
+}
+
+func imdsExpected(ev store.Event) bool {
+	return imdsAllowedProcess(ev) || imdsByGuestAgent(ev)
+}
+
 var imdsSignatures = []ThreatSig{
 	{
 		ID: "NET-IMDS-001", Name: "Instance Metadata Service Accessed by Unexpected Process",
-		Description: "A process other than the cloud guest agents and CLIs connected to the instance metadata service (169.254.169.254 and equivalents). Possible credential theft.",
+		Description: "A process other than the cloud guest agents, their scripts, the cloud CLIs and system programs connected to the instance metadata service (169.254.169.254 and equivalents). Possible credential theft.",
 		Severity:    4, MITRE: "T1552.005", Category: "Credential Access",
 		Match: func(ev store.Event) bool {
-			return imdsDest(ev) && !imdsAllowedProcess(ev) && !imdsHighRisk(ev)
+			return imdsDest(ev) && !imdsExpected(ev) && !imdsHighRisk(ev) && !imdsSystemBinary(ev)
 		},
 	},
 	{
@@ -83,7 +122,7 @@ var imdsSignatures = []ThreatSig{
 		Description: "A shell, script interpreter or binary running from a user-writable path connected to the instance metadata service. Likely credential theft.",
 		Severity:    5, MITRE: "T1552.005", Category: "Credential Access",
 		Match: func(ev store.Event) bool {
-			return imdsDest(ev) && !imdsAllowedProcess(ev) && imdsHighRisk(ev)
+			return imdsDest(ev) && !imdsExpected(ev) && imdsHighRisk(ev)
 		},
 	},
 }
