@@ -47,13 +47,17 @@ func handleIngest(db ingestStore, maxBatch int, logger *slog.Logger) http.Handle
 			http.Error(w, errAgentMismatch, http.StatusForbidden)
 			return
 		}
+		// Events are attributed to the certificate's agent, whatever id they
+		// carry (an agent's queue may hold events from before a reinstall).
+		reattributed := 0
 		for i := range batch.Events {
-			if a := batch.Events[i].AgentID; a != "" && boundAgentMismatch(r, a) {
-				metrics.invalid.Add(1)
-				logger.Warn("ingest: event agent_id differs from certificate", "claimed", a)
-				http.Error(w, errAgentMismatch, http.StatusForbidden)
-				return
+			if a := batch.Events[i].AgentID; a != "" && a != batch.AgentID {
+				batch.Events[i].AgentID = batch.AgentID
+				reattributed++
 			}
+		}
+		if reattributed > 0 {
+			logger.Info("ingest: events re-attributed to the certificate's agent", "agent", batch.AgentID, "events", reattributed)
 		}
 		if len(batch.Events) == 0 {
 			writeJSON(w, http.StatusOK, map[string]any{"accepted": 0})
@@ -135,6 +139,9 @@ func handleIngest(db ingestStore, maxBatch int, logger *slog.Logger) http.Handle
 			return
 		}
 
+		if n, ok := db.(interface{ NotifyEventsInserted(context.Context) }); ok {
+			n.NotifyEventsInserted(r.Context())
+		}
 		metrics.insertNanos.Add(int64(time.Since(insStart)))
 		metrics.batches.Add(1)
 		metrics.eventsAccepted.Add(int64(len(batch.Events)))

@@ -497,8 +497,8 @@ func handleAgentProcesses(db *store.DB, reg *TunnelRegistry) http.HandlerFunc {
 }
 
 // DELETE /api/v1/agents/{id} - remove a stale agent record (for example the old record left
-// behind when a machine is renamed or re-imaged, since an agent's identity is its host name).
-// Refused while the agent is connected or has reported within the last 10 minutes.
+// behind when a machine is renamed or re-imaged). Refused only while the agent is online
+// (reported within the last 2 minutes, the same rule the Fleet page uses) or has a live tunnel.
 func handleDeleteAgent(db *store.DB, reg *TunnelRegistry, logger *slog.Logger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id := r.PathValue("id")
@@ -507,8 +507,12 @@ func handleDeleteAgent(db *store.DB, reg *TunnelRegistry, logger *slog.Logger) h
 			writeJSON(w, 404, map[string]string{"error": "agent not found"})
 			return
 		}
-		if _, up := reg.Get(id); up || time.Since(a.LastSeen) < 10*time.Minute {
-			writeJSON(w, 409, map[string]string{"error": "this agent reported within the last 10 minutes; only offline agents can be removed"})
+		if _, up := reg.Get(id); up {
+			writeJSON(w, 409, map[string]string{"error": "this agent has a live response tunnel open, so it is still running; uninstall it first"})
+			return
+		}
+		if time.Since(a.LastSeen) < 2*time.Minute {
+			writeJSON(w, 409, map[string]string{"error": "this agent is online (reported in the last 2 minutes); only offline agents can be removed"})
 			return
 		}
 		if err := db.DeleteAgent(r.Context(), id); err != nil {

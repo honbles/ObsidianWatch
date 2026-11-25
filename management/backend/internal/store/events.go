@@ -10,6 +10,15 @@ import (
 	"time"
 )
 
+// ProcAncestor is one process in an event's lineage.
+type ProcAncestor struct {
+	PID         int    `json:"pid,omitempty"`
+	Name        string `json:"name,omitempty"`
+	Image       string `json:"image,omitempty"`
+	CommandLine string `json:"command_line,omitempty"`
+	GUID        string `json:"guid,omitempty"`
+}
+
 type Event struct {
 	ID          string          `json:"id"`
 	Time        time.Time       `json:"time"`
@@ -46,6 +55,10 @@ type Event struct {
 	// enrichFromRaw fills them from raw for rows ingested before migration 009.
 	ProcessGUID       string `json:"process_guid,omitempty"`
 	ParentProcessGUID string `json:"parent_process_guid,omitempty"`
+
+	// Ancestors is the event's process lineage (parent first), filled by the
+	// detection engine before rules run. Not stored.
+	Ancestors []ProcAncestor `json:"ancestors,omitempty"`
 }
 
 // EventFilter is the full set of supported search parameters.

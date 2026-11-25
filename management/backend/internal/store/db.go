@@ -14,6 +14,7 @@ import (
 type DB struct {
 	*sql.DB
 	logger *slog.Logger
+	dsn    string // for LISTEN connections, which cannot come from the pool
 }
 
 func Connect(cfg config.DatabaseConfig, logger *slog.Logger) (*DB, error) {
@@ -31,7 +32,7 @@ func Connect(cfg config.DatabaseConfig, logger *slog.Logger) (*DB, error) {
 		return nil, fmt.Errorf("store: ping: %w", err)
 	}
 	logger.Info("database connected", "host", cfg.Host, "db", cfg.Name)
-	return &DB{DB: db, logger: logger}, nil
+	return &DB{DB: db, logger: logger, dsn: cfg.DSN()}, nil
 }
 
 func (db *DB) HealthCheck(ctx context.Context) error {

@@ -4,6 +4,7 @@ package forwarder
 
 import (
 	"context"
+	"errors"
 	"math"
 	"math/rand"
 	"time"
@@ -39,6 +40,10 @@ func (r RetryPolicy) Do(ctx context.Context, fn func() error) error {
 		err = fn()
 		if err == nil {
 			return nil
+		}
+		var rt interface{ Retryable() bool }
+		if errors.As(err, &rt) && !rt.Retryable() {
+			return err
 		}
 
 		if attempt == r.MaxAttempts-1 {

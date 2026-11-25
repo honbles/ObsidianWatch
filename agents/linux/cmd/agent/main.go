@@ -20,6 +20,7 @@ import (
 	"obsidianwatch/linux-agent/internal/identity"
 	"obsidianwatch/linux-agent/internal/ownproc"
 	"obsidianwatch/linux-agent/internal/parser"
+	"obsidianwatch/linux-agent/internal/prevention"
 	"obsidianwatch/linux-agent/internal/response"
 	"obsidianwatch/linux-agent/internal/service"
 	"obsidianwatch/linux-agent/pkg/schema"
@@ -135,6 +136,7 @@ func main() {
 		logger.Error("Failed to create forwarder", "err", err)
 		os.Exit(1)
 	}
+	fwd.DepthSink = collector.GlobalHealth.QueueDepth.Store
 
 	rlCfg := collector.RateLimitConfig{
 		MaxPerSecond: cfg.Collector.RateLimit.MaxPerSecond,
@@ -142,12 +144,34 @@ func main() {
 	}
 	limiter := collector.NewRateLimiter(rlCfg)
 
+	// One response handler for live response and prevention.
+	rh := response.New("", []string{cfg.Forwarder.BackendURL, cfg.Forwarder.ManagementURL}, logger)
+	go rh.Run(ctx)
+
+	// Prevention: agent-side matching against the server's indicator set.
+	var prev *prevention.Engine
+	if cfg.Prevention.On() {
+		tlsCfg, terr := config.BuildTLSConfig(caPEMFor(cfg), cfg.Forwarder.AllowInsecureTLS)
+		if terr != nil {
+			logger.Warn("prevention: no TLS configuration, disabled", "err", terr)
+		} else {
+			prev = prevention.Start(ctx, prevention.StartOptions{
+				Dir: response.DefaultDir(), Out: rawCh, Responder: rh, AgentID: agentID, Host: hostname, OS: "linux",
+				Logger: logger, BackendURL: cfg.Forwarder.BackendURL, ProtectURLs: []string{cfg.Forwarder.ManagementURL},
+				TLS: tlsCfg, Kernel: cfg.Prevention.KernelOn(),
+			})
+		}
+	}
+
 	// Normalizer → filteredCh
 	go func() {
 		for ev := range rawCh {
 			enrich.Enrich(&ev)
 			if err := norm.Normalize(&ev); err != nil {
 				continue
+			}
+			if prev != nil {
+				prev.Inspect(&ev)
 			}
 			if ownproc.IsOwn(ev.PID, ev.PPID) {
 				ev.Raw = ownproc.TagRaw(ev.Raw)
@@ -284,8 +308,6 @@ func main() {
 			logger,
 		)
 		// One-click response actions share the tunnel; isolation survives restarts.
-		rh := response.New("", []string{cfg.Forwarder.BackendURL, cfg.Forwarder.ManagementURL}, logger)
-		go rh.Run(ctx)
 		lr.SetResponse(rh)
 		// Pass embedded CA PEM so tunnel TLS works when no ca_file is set on disk
 		caPEM := cfg.Forwarder.CACertPEM // backend CA: the tunnel goes to the backend
@@ -356,4 +378,17 @@ func uninstallCA(mgmtCA, backendCA string) string {
 		return mgmtCA
 	}
 	return backendCA
+}
+
+// caPEMFor returns the deployment CA: embedded PEM, else the CA file.
+func caPEMFor(cfg *config.Config) []byte {
+	if cfg.Forwarder.CACertPEM != "" {
+		return []byte(cfg.Forwarder.CACertPEM)
+	}
+	if cfg.Forwarder.CAFile != "" {
+		if b, err := os.ReadFile(cfg.Forwarder.CAFile); err == nil {
+			return b
+		}
+	}
+	return nil
 }

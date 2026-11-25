@@ -89,6 +89,7 @@ func New(cfg *config.Config, db *store.DB, logger *slog.Logger) (*Server, error)
 		protected.Handle("GET /api/v1/live-response/agent-tunnel", tp)
 		protected.Handle("POST /api/v1/agent/register-key", tp)
 		protected.Handle("POST /api/v1/verify-install-key", tp)
+		protected.Handle("GET /api/v1/agent/prevention", tp)
 		logger.Info("tunnel: agent calls pass through to management", "url", tc.ManagementURL)
 	}
 	// [NET-ROUTES-BEGIN]

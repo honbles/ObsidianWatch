@@ -7,7 +7,7 @@ import "net"
 // otherResolver cannot identify the sending process on this platform yet, so every
 // connection is reported unresolved and telemetry is marked "asserted" (it can never
 // raise high-severity alerts on its own). Process identification for this OS is a
-// known gap; see docs/app/platform-guide.md.
+// known gap; see docs/application/capability.md.
 type otherResolver struct{}
 
 // NewPeerResolver returns the fallback resolver.

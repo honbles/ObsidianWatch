@@ -14,13 +14,13 @@ package collector
 //   - All traffic goes over the existing TLS-encrypted WebSocket tunnel
 
 import (
-	"obsidianwatch/linux-agent/internal/ownproc"
-	"obsidianwatch/linux-agent/internal/response"
 	"context"
 	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net/http"
+	"obsidianwatch/linux-agent/internal/ownproc"
+	"obsidianwatch/linux-agent/internal/response"
 	"os"
 	"os/exec"
 	"strings"
@@ -115,7 +115,7 @@ func (c *LiveResponseCollector) runTunnel(ctx context.Context) error {
 
 	// Register as direct-shell mode - no credentials needed
 	conn.WriteJSON(map[string]interface{}{
-		"type": "register_credentials",
+		"type":    "register_credentials",
 		"payload": json.RawMessage(`{"username":"root","mode":"direct-shell"}`),
 	})
 
@@ -182,8 +182,12 @@ func (c *LiveResponseCollector) runTunnel(ctx context.Context) error {
 		case "open_session":
 			tok := env.Token
 			cols, rows := env.Cols, env.Rows
-			if cols == 0 { cols = 120 }
-			if rows == 0 { rows = 30 }
+			if cols == 0 {
+				cols = 120
+			}
+			if rows == 0 {
+				rows = 30
+			}
 			c.logger.Info("live-response: session requested", "token", tok[:8]+"...")
 			ch := make(chan []byte, 256)
 			mu.Lock()
@@ -281,7 +285,7 @@ func (c *LiveResponseCollector) handleSession(ctx context.Context, token string,
 		return
 	}
 	ownproc.Exclude(cmd.Process.Pid) // analyst commands stay visible
-	pts.Close() // parent doesn't need pts after child starts
+	pts.Close()                      // parent doesn't need pts after child starts
 
 	c.logger.Info("live-response: shell session started", "token", token[:8]+"...")
 
@@ -326,7 +330,10 @@ func (c *LiveResponseCollector) handleSession(ctx context.Context, token string,
 	case <-ctx.Done():
 		cmd.Process.Kill()
 	}
-	go func() { for range inCh {} }()
+	go func() {
+		for range inCh {
+		}
+	}()
 	cmd.Wait()
 }
 
@@ -365,14 +372,18 @@ func grantPT(f *os.File) error {
 func unlockPT(f *os.File) error {
 	var n int32 = 0
 	_, _, errno := unix.Syscall(unix.SYS_IOCTL, f.Fd(), unix.TIOCSPTLCK, uintptr(unsafe.Pointer(&n)))
-	if errno != 0 { return errno }
+	if errno != 0 {
+		return errno
+	}
 	return nil
 }
 
 func ptsName(f *os.File) (string, error) {
 	var n uint32
 	_, _, errno := unix.Syscall(unix.SYS_IOCTL, f.Fd(), unix.TIOCGPTN, uintptr(unsafe.Pointer(&n)))
-	if errno != 0 { return "", errno }
+	if errno != 0 {
+		return "", errno
+	}
 	return fmt.Sprintf("/dev/pts/%d", n), nil
 }
 

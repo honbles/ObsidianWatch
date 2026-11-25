@@ -44,7 +44,10 @@ func (db *DB) UpsertAgent(ctx context.Context, id, hostname, os, version, remote
 			version     = EXCLUDED.version,
 			last_seen   = NOW(),
 			last_ip     = EXCLUDED.last_ip,
-			event_count = agents.event_count + EXCLUDED.event_count
+			event_count = agents.event_count + EXCLUDED.event_count,
+			-- An agent that reports is, by definition, not replaced.
+			superseded_by = NULL,
+			superseded_at = NULL
 			-- install_key intentionally omitted: never updated once set.
 	`, id, hostname, os, version, remoteIP, eventCount, hashIngestKey(installKey))
 	if err != nil {
@@ -125,4 +128,20 @@ func hashIngestKey(k string) string {
 	}
 	sum := sha256.Sum256([]byte(k))
 	return hex.EncodeToString(sum[:])
+}
+
+// SupersedeByHost marks older records of the same host name as replaced by
+// newID (a reinstall enrolls a new identity). Records that report again are
+// un-hidden by UpsertAgent. Returns how many records were marked.
+func (db *DB) SupersedeByHost(ctx context.Context, newID, hostname string) (int64, error) {
+	if hostname == "" {
+		return 0, nil
+	}
+	res, err := db.ExecContext(ctx, `
+		UPDATE agents SET superseded_by = $1, superseded_at = NOW()
+		WHERE LOWER(hostname) = LOWER($2) AND id <> $1 AND superseded_by IS NULL`, newID, hostname)
+	if err != nil {
+		return 0, err
+	}
+	return res.RowsAffected()
 }

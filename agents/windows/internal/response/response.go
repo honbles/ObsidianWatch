@@ -34,6 +34,7 @@ type Params struct {
 	Kind       string `json:"kind,omitempty"` // fleet query kind
 	Match      string `json:"match,omitempty"`
 	Limit      int    `json:"limit,omitempty"`
+	Hours      int    `json:"hours,omitempty"`       // recent_files window
 	TTLMinutes int    `json:"ttl_minutes,omitempty"` // isolate: auto-release after N minutes (0 = until released)
 	// NoBlockPage (isolate): do not redirect browsing to the "contact your
 	// administrator" page.

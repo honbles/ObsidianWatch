@@ -30,7 +30,15 @@ var (
 // exeSHA256 returns the hex SHA-256 of the process image, or "" when it cannot
 // be read or is too large.
 func exeSHA256(pid int) string {
-	f, err := os.Open(fmt.Sprintf("/proc/%d/exe", pid))
+	return fileSHA256(fmt.Sprintf("/proc/%d/exe", pid))
+}
+
+// pathSHA256 hashes a binary by path, for processes that exited before
+// /proc/<pid>/exe could be opened.
+func pathSHA256(path string) string { return fileSHA256(path) }
+
+func fileSHA256(path string) string {
+	f, err := os.Open(path)
 	if err != nil {
 		return ""
 	}

@@ -3,7 +3,7 @@ import { useNavigate, useLocation, Link } from 'react-router-dom'
 import {
   LayoutDashboard, Bell, Activity, GitBranch, Cloud, Monitor, Network, Shield, Boxes, Crosshair, Search,
   Settings, Users, Key, ClipboardList, Terminal, LogOut, Sun, Moon, ChevronDown, PanelLeftClose, PanelLeftOpen,
-  Eye, Share2, Gauge, SlidersHorizontal, BellOff, ListChecks, CornerDownLeft, Server, FileSearch,
+  Eye, Share2, Gauge, ShieldCheck, SlidersHorizontal, BellOff, ListChecks, CornerDownLeft, Server, FileSearch,
 } from 'lucide-react'
 import { useTheme } from '../api/useTheme'
 import api from '../api/client'
@@ -20,15 +20,17 @@ export function OWMark({ size = 22 }) {
   )
 }
 
-// The rail is grouped by domain. Endpoint, Application, Code and Cloud are the four places;
-// detection, hunting, alerts and response cut across all four, so they get a fifth group.
+// The rail is grouped by domain. Endpoint, Application, Code and Cloud are the four places.
+// Hunt, prevention and response work on endpoints only today, so they sit under Endpoint;
+// alerts, search and rules cut across all four and get their own group.
 function buildNav({ alertCount, isAdmin }) {
   const main = [
     { id: 'dash', label: 'Overview', icon: LayoutDashboard, to: '/' },
     { section: 'Endpoint' },
     { id: 'fleet', label: 'Fleet', icon: Monitor, to: '/agents' },
-    { id: 'events', label: 'Events', icon: Activity, to: '/events' },
-    { id: 'network', label: 'Network', icon: Network, to: '/network', tag: 'beta' },
+    { id: 'hunt', label: 'Hunt', icon: Crosshair, to: '/hunt' },
+    { id: 'prevention', label: 'Prevention', icon: ShieldCheck, to: '/prevention' },
+    { id: 'response', label: 'Response', icon: Terminal, to: '/response' },
     { section: 'Application' },
     { id: 'app-overview', label: 'Overview', icon: Gauge, to: '/applications', exact: true },
     { id: 'app-services', label: 'Services', icon: Boxes, to: '/applications/services' },
@@ -39,15 +41,16 @@ function buildNav({ alertCount, isAdmin }) {
     { id: 'repos', label: 'Repositories', icon: GitBranch, to: '/devops' },
     { section: 'Cloud' },
     { id: 'cloud', label: 'Posture', icon: Cloud, to: '/cloud' },
-    { section: 'Detect and respond' },
+    { section: 'Detect' },
     { id: 'alerts', label: 'Alerts', icon: Bell, to: '/alerts', badge: alertCount },
     { id: 'search', label: 'Search', icon: FileSearch, to: '/search' },
-    { id: 'hunt', label: 'Hunt', icon: Crosshair, to: '/hunt' },
+    { id: 'events', label: 'Events', icon: Activity, to: '/events' },
     { id: 'insights', label: 'Insights', icon: Eye, to: '/insights' },
     { id: 'rules', label: 'Rules', icon: Shield, to: '/detections' },
     { id: 'alert-rules', label: 'Alert rules', icon: ListChecks, to: '/alert-rules' },
     { id: 'suppressions', label: 'Suppressions', icon: BellOff, to: '/suppressions' },
-    { id: 'response', label: 'Response', icon: Terminal, to: '/response' },
+    { section: 'Network' },
+    { id: 'network', label: 'Probes', icon: Network, to: '/network', tag: 'beta' },
   ]
   const admin = isAdmin ? [
     { section: 'Administration' },

@@ -37,7 +37,7 @@ func buildAttackCoverage(disabled map[string]bool) []attackPlatform {
 		name string
 		sets [][]ThreatSig
 	}{
-		{"linux", [][]ThreatSig{linuxSignatures, endpointAgentSignatures, dnsCatSignatures}},
+		{"linux", [][]ThreatSig{linuxSignatures, linuxLineageSignatures, endpointAgentSignatures, dnsCatSignatures}},
 		{"windows", [][]ThreatSig{windowsSignatures, windowsTamperSignatures, dcSignatures, endpointAgentSignatures, dnsCatSignatures}},
 		{"macos", [][]ThreatSig{macosSignatures, endpointAgentSignatures, dnsCatSignatures}},
 		{"aws", [][]ThreatSig{cloudSignaturesExtended, cloudReconSignatures, cloudNetworkSignatures, cloudLateralSignatures, cloudComputeAbuseSignatures, awsExtraSignatures}},

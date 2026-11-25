@@ -61,5 +61,3 @@ func isInterpreter(name string) bool {
 func inotifyEventAt(buf []byte, offset int) *unix.InotifyEvent {
 	return (*unix.InotifyEvent)(unsafe.Pointer(&buf[offset]))
 }
-
-

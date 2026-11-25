@@ -168,15 +168,19 @@ type Aggregator struct {
 	ed   map[edgeKey]*[2]int64 // calls, errors since last flush
 	in   map[instKey]*instVal
 	seen map[svcKey]map[[2]string]bool
-	ovf  map[svcKey]int64
-	drp  map[svcKey]int64
-	cl   map[clientKey]*clientVal
-	clN  map[svcMinute]int
-	clOv map[svcKey]int64
-	pm   map[paramKey]int64 // parameter name counts since the last flush
-	pmN  map[routeKey]int   // distinct names held per route since the last flush
-	pl   []BatchPayload     // sampled allowed parameters since the last flush
-	plN  map[routeKey]int   // payload samples per route since the last flush
+	// seenSince is when seen was last cleared: it is cleared hourly so a
+	// service that once hit MaxRoutes does not lump new routes into "other"
+	// until the agent restarts.
+	seenSince time.Time
+	ovf       map[svcKey]int64
+	drp       map[svcKey]int64
+	cl        map[clientKey]*clientVal
+	clN       map[svcMinute]int
+	clOv      map[svcKey]int64
+	pm        map[paramKey]int64 // parameter name counts since the last flush
+	pmN       map[routeKey]int   // distinct names held per route since the last flush
+	pl        []BatchPayload     // sampled allowed parameters since the last flush
+	plN       map[routeKey]int   // payload samples per route since the last flush
 
 	traces   map[string]*openTrace
 	order    []string
@@ -938,6 +942,11 @@ func (a *Aggregator) Flush(agentID string, final bool) *Batch {
 		note(s).ClientOverflow = n
 	}
 	a.ovf, a.drp, a.clOv = map[svcKey]int64{}, map[svcKey]int64{}, map[svcKey]int64{}
+	if a.seenSince.IsZero() {
+		a.seenSince = now
+	} else if now.Sub(a.seenSince) >= time.Hour {
+		a.seen, a.seenSince = map[svcKey]map[[2]string]bool{}, now
+	}
 	for _, n := range notes {
 		b.Notes = append(b.Notes, *n)
 	}

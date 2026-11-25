@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import ErrorBoundary from './components/ErrorBoundary'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { Shell } from './components/Shell'
+import Prevention from './pages/Prevention'
 import Hunt from './pages/Hunt'
 import Login from './pages/Login'
 import Dashboard from './pages/Dashboard'
@@ -106,6 +107,7 @@ export default function App() {
         })}
         {/* [APP-ROUTES-END] */}
         <Route path="/hunt"               element={<ProtectedRoute><Hunt /></ProtectedRoute>} />
+        <Route path="/prevention"         element={<ProtectedRoute><Prevention /></ProtectedRoute>} />
         <Route path="/insights"           element={<ProtectedRoute><Insights /></ProtectedRoute>} />
         <Route path="*"             element={<Navigate to="/" replace />} />
       </Routes>

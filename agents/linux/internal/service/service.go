@@ -200,10 +200,10 @@ SyslogIdentifier=obsidianwatch-agent
 User=root
 Group=root
 NoNewPrivileges=true
-ProtectSystem=strict
-ReadWritePaths=/var/lib/obsidianwatch /etc/obsidianwatch
-PrivateTmp=true
-ProtectHome=read-only
+# No ProtectSystem/ProtectHome/PrivateTmp: the agent must see the host's real
+# /tmp and home directories (file monitoring, quarantine, delete) and write
+# system files for response actions (disable account) and the live-response
+# shell. A read-only or private view breaks all of these.
 RestrictSUIDSGID=true
 LockPersonality=true
 LimitNOFILE=65536

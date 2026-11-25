@@ -6,7 +6,7 @@ package ebpf
 // services themselves (a process with a listening port that is not a system daemon = Tier 0
 // discovery). The snapshot source is a small interface so the logic is tested on any OS.
 //
-// Gaps compared with the Linux tiers, all stated in docs/app/platform-guide.md: processes and connections
+// Gaps compared with the Linux tiers, all stated in docs/application/capability.md: processes and connections
 // that start and end between two polls are missed, there are no file events and no uid-change
 // (APP-H08) events.
 

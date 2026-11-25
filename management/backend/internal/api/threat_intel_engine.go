@@ -193,6 +193,7 @@ func (e *ThreatIntelEngine) syncThreatFox(ctx context.Context, apiKey *string) (
 			Confidence int      `json:"confidence_level"`
 			Tags       []string `json:"tags"`
 			ExpiresAt  string   `json:"expire_date"`
+			FirstSeen  string   `json:"first_seen"`
 		} `json:"data"`
 	}
 	if err := json.Unmarshal(respBody, &result); err != nil {
@@ -231,7 +232,14 @@ func (e *ThreatIntelEngine) syncThreatFox(ctx context.Context, apiKey *string) (
 				expiresAt = &t
 			}
 		}
+		var firstSeen *time.Time
+		if t, err := time.Parse("2006-01-02 15:04:05 MST", d.FirstSeen); err == nil {
+			firstSeen = &t
+		} else if t, err := time.Parse("2006-01-02 15:04:05", d.FirstSeen); err == nil {
+			firstSeen = &t
+		}
 		iocs = append(iocs, store.IOCIndicator{
+			FirstSeen:  firstSeen,
 			Source:     "threatfox",
 			IOCType:    iocType,
 			Value:      value,

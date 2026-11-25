@@ -98,6 +98,8 @@ type IOCIndicator struct {
 	Tags       string
 	ExpiresAt  *time.Time
 	CreatedAt  time.Time
+	// FirstSeen is the feed's own first-seen time; nil means "now" on insert.
+	FirstSeen *time.Time
 	// OTX pulse metadata (empty for other sources).
 	PulseID   string
 	PulseName string
@@ -111,14 +113,15 @@ func (db *DB) UpsertIOCs(ctx context.Context, iocs []IOCIndicator) (int, error) 
 	inserted := 0
 	for _, ioc := range iocs {
 		res, err := db.ExecContext(ctx, `
-			INSERT INTO ioc_indicators (source, ioc_type, value, malware, threat_type, confidence, severity, tags, expires_at, pulse_id, pulse_name, pulse_size)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+			INSERT INTO ioc_indicators (source, ioc_type, value, malware, threat_type, confidence, severity, tags, expires_at, pulse_id, pulse_name, pulse_size, first_seen)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, COALESCE($13, NOW()))
 			ON CONFLICT (source, ioc_type, value) DO UPDATE
 			SET malware = $4, threat_type = $5, confidence = $6, severity = $7, tags = $8, expires_at = $9,
-			    pulse_id = $10, pulse_name = $11, pulse_size = $12
+			    pulse_id = $10, pulse_name = $11, pulse_size = $12,
+			    first_seen = LEAST(COALESCE(ioc_indicators.first_seen, EXCLUDED.first_seen), EXCLUDED.first_seen)
 		`, ioc.Source, ioc.IOCType, ioc.Value, ioc.Malware, ioc.ThreatType,
 			ioc.Confidence, ioc.Severity, ioc.Tags, ioc.ExpiresAt,
-			ioc.PulseID, ioc.PulseName, ioc.PulseSize)
+			ioc.PulseID, ioc.PulseName, ioc.PulseSize, ioc.FirstSeen)
 		if err != nil {
 			continue
 		}

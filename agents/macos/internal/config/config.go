@@ -18,6 +18,7 @@ type Config struct {
 	AppMonitoring AppMonitoringConfig `yaml:"app_monitoring"`
 	// [APP-CONFIG-END]
 	LiveResponse LiveResponseConfig `yaml:"live_response"` // H-2: opt-in remote shell
+	Prevention   PreventionConfig   `yaml:"prevention"`
 	Agent        AgentConfig        `yaml:"agent"`
 	Collector    CollectorConfig    `yaml:"collector"`
 	Forwarder    ForwarderConfig    `yaml:"forwarder"`
@@ -304,3 +305,14 @@ func buildTLSConfig(caPEM []byte, allowInsecure bool) (*tls.Config, error) {
 type LiveResponseConfig struct {
 	Enabled bool `yaml:"enabled"`
 }
+
+// PreventionConfig switches agent-side IOC matching. The server decides the
+// mode per indicator type (off, audit, enforce; audit by default), so this
+// only turns the feature off entirely or disables the Linux kernel tier.
+type PreventionConfig struct {
+	Enabled *bool `yaml:"enabled"` // default true
+	Kernel  *bool `yaml:"kernel"`  // Linux eBPF connect block; default true
+}
+
+func (p PreventionConfig) On() bool       { return p.Enabled == nil || *p.Enabled }
+func (p PreventionConfig) KernelOn() bool { return p.Kernel == nil || *p.Kernel }

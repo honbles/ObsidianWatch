@@ -35,7 +35,7 @@ type Priv struct {
 	Detail string `json:"detail"`
 }
 
-// RawProc is the raw.proc block the Application rules read (docs/app/platform-guide.md).
+// RawProc is the raw.proc block the Application rules read (docs/application/capability.md).
 type RawProc struct {
 	Ancestors  []Anc  `json:"ancestors,omitempty"`
 	TTY        bool   `json:"tty"`

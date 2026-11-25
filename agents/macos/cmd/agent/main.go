@@ -20,8 +20,9 @@ import (
 	"obsidianwatch/macos-agent/internal/forwarder"
 	"obsidianwatch/macos-agent/internal/identity"
 	"obsidianwatch/macos-agent/internal/ownproc"
-	"obsidianwatch/macos-agent/internal/response"
 	"obsidianwatch/macos-agent/internal/parser"
+	"obsidianwatch/macos-agent/internal/prevention"
+	"obsidianwatch/macos-agent/internal/response"
 	"obsidianwatch/macos-agent/internal/service"
 	"obsidianwatch/macos-agent/pkg/schema"
 )
@@ -112,12 +113,32 @@ func main() {
 	normalizedCh := make(chan schema.Event, 2048)
 	filteredCh := make(chan schema.Event, 2048)
 
+	// One response handler for live response and prevention.
+	rh := response.New("", []string{cfg.Forwarder.BackendURL, cfg.Forwarder.ManagementURL}, logger)
+	go rh.Run(ctx)
+
+	// Prevention: agent-side matching against the server's indicator set.
+	var prev *prevention.Engine
+	if cfg.Prevention.On() {
+		if tlsCfg, terr := config.BuildTLSConfig(caPEMFor(cfg), cfg.Forwarder.AllowInsecureTLS); terr != nil {
+			logger.Warn("prevention: no TLS configuration, disabled", "err", terr)
+		} else {
+			prev = prevention.Start(ctx, prevention.StartOptions{
+				Dir: response.DefaultDir(), Out: rawCh, Responder: rh, AgentID: agentID, Host: hostname, OS: "darwin",
+				Logger: logger, BackendURL: cfg.Forwarder.BackendURL, ProtectURLs: []string{cfg.Forwarder.ManagementURL}, TLS: tlsCfg,
+			})
+		}
+	}
+
 	// Normalizer pipeline
 	norm := parser.NewNormalizer(logger)
 	go func() {
 		for ev := range rawCh {
 			e := ev // copy
 			if err := norm.Normalize(&e); err == nil {
+				if prev != nil {
+					prev.Inspect(&e)
+				}
 				if ownproc.IsOwn(e.PID, e.PPID) {
 					e.Raw = ownproc.TagRaw(e.Raw)
 					e.Severity = schema.SeverityInfo
@@ -168,6 +189,7 @@ func main() {
 		logger.Error("Failed to create forwarder", "err", err)
 		os.Exit(1)
 	}
+	fwd.DepthSink = collector.GlobalHealth.QueueDepth.Store
 
 	go func() {
 		for ev := range filteredCh {
@@ -285,8 +307,6 @@ func main() {
 			logger,
 		)
 		// One-click response actions share the tunnel; isolation survives restarts.
-		rh := response.New("", []string{cfg.Forwarder.BackendURL, cfg.Forwarder.ManagementURL}, logger)
-		go rh.Run(ctx)
 		lr.SetResponse(rh)
 		go func() { lr.Run(ctx) }()
 		activeCollectors = append(activeCollectors, "live-response")
@@ -361,4 +381,17 @@ func uninstallCA(mgmtCA, backendCA string) string {
 		return mgmtCA
 	}
 	return backendCA
+}
+
+// caPEMFor returns the deployment CA: embedded PEM, else the CA file.
+func caPEMFor(cfg *config.Config) []byte {
+	if cfg.Forwarder.CACertPEM != "" {
+		return []byte(cfg.Forwarder.CACertPEM)
+	}
+	if cfg.Forwarder.CAFile != "" {
+		if b, err := os.ReadFile(cfg.Forwarder.CAFile); err == nil {
+			return b
+		}
+	}
+	return nil
 }

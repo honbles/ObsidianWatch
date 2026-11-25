@@ -90,6 +90,8 @@ func New(cfg *config.Config, db *store.DB, backendDB *store.DB, logger *slog.Log
 	protected.HandleFunc("GET /api/v1/rules/meta", handleRuleMeta())
 	protected.HandleFunc("GET /api/v1/rules/settings", handleListRuleSettings(db))
 	protected.HandleFunc("PUT /api/v1/rules/settings", adminOnly(handlePutRuleSetting(db)))
+	protected.HandleFunc("GET /api/v1/prevention", handleGetPrevention(db))
+	protected.HandleFunc("PUT /api/v1/prevention", adminOnly(handlePutPrevention(db)))
 	// [NET-ROUTES-BEGIN]
 	registerNetRoutes(protected, db, backendDB)
 	// [NET-ROUTES-END]
@@ -189,6 +191,7 @@ func New(cfg *config.Config, db *store.DB, backendDB *store.DB, logger *slog.Log
 	// the ingest backend with their certificate identity.
 	mux.HandleFunc("POST /api/v1/verify-install-key", handleVerifyInstallKey(db, s.tunnelAuth))
 	mux.HandleFunc("POST /api/v1/agent/register-key", handleAgentRegisterKey(db, s.tunnelAuth))
+	mux.HandleFunc("GET /api/v1/agent/prevention", handleAgentPrevention(db, s.tunnelAuth, logger))
 	// Agent enrollment administration (A1, A4). Admin only.
 	protected.HandleFunc("GET /api/v1/enrollment-tokens", adminOnly(handleListEnrollmentTokens(idDB)))
 	protected.HandleFunc("POST /api/v1/enrollment-tokens", adminOnly(handleCreateEnrollmentToken(idDB)))

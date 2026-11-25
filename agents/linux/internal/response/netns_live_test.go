@@ -15,8 +15,8 @@ package response
 import (
 	"log/slog"
 	"net/netip"
-	"os/exec"
 	"os"
+	"os/exec"
 	"testing"
 	"time"
 )

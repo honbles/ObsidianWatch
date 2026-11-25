@@ -23,6 +23,7 @@ type enrollStore interface {
 	ConsumeEnrollmentToken(ctx context.Context, tokenHash string) (int64, error)
 	CreateAgentIdentity(ctx context.Context, in store.AgentIdentity) error
 	RenewAgentIdentity(ctx context.Context, agentID, serial string, notAfter time.Time) error
+	SupersedeByHost(ctx context.Context, newID, hostname string) (int64, error)
 }
 
 var _ enrollStore = (*store.DB)(nil)
@@ -129,6 +130,13 @@ func handleEnroll(db enrollStore, cfg *enrollConfig, logger *slog.Logger) http.H
 			logger.Error("enroll: save identity failed", "err", err)
 			http.Error(w, `{"error":"internal server error"}`, http.StatusInternalServerError)
 			return
+		}
+		// A reinstall: hide older records of this host from the fleet. Any of
+		// them that is still alive reappears with its next batch.
+		if n, err := db.SupersedeByHost(r.Context(), id, body.Hostname); err != nil {
+			logger.Warn("enroll: could not mark older records of this host", "host", body.Hostname, "err", err)
+		} else if n > 0 {
+			logger.Info("enroll: older records of this host marked as replaced", "host", body.Hostname, "records", n, "by", id)
 		}
 		logger.Info("enroll: agent enrolled", "agent", id, "host", body.Hostname, "ip", ip, "by_token", tokenID != nil)
 		cfg.respond(w, id, string(certPEM), cert.NotBefore, cert.NotAfter)

@@ -10,14 +10,31 @@ import { isAdminUser } from '../components/ResponseActions.jsx'
 //  - Live query: ask every connected agent a fixed read-only question right now.
 //  - History: run a KQL-style query over stored events, rolled up per host.
 
+// [kind, label, hint, group, systems ('' = all)]
 const KINDS = [
-  ['processes', 'Running processes', 'e.g. powershell  or  name:curl cmdline:http'],
-  ['connections', 'Network connections', 'e.g. 203.0.113.7  or  remote::4444'],
-  ['listening', 'Listening ports', 'e.g. 3389  or  local::22'],
-  ['persistence', 'Persistence (autoruns, tasks, cron...)', 'e.g. powershell  or  type:run_key'],
-  ['software', 'Installed software', 'e.g. anydesk teamviewer (any of the words must match)'],
-  ['users', 'Local users', 'e.g. admin:yes'],
-  ['file_find', 'Find a file', 'file name text, or sha256:<64 hex>'],
+  ['processes', 'Running processes', 'e.g. powershell  or  name:curl cmdline:http', 'Processes and programs', ''],
+  ['loaded_modules', 'Loaded modules / DLLs', 'module name, required (e.g. version.dll or libssl)', 'Processes and programs', 'Windows, Linux'],
+  ['software', 'Installed software', 'e.g. anydesk teamviewer (any of the words must match)', 'Processes and programs', ''],
+  ['drivers', 'Drivers and kernel modules', 'e.g. state:running  or a driver name', 'Processes and programs', ''],
+  ['patches', 'Installed updates', 'e.g. KB5034441', 'Processes and programs', 'Windows'],
+  ['browser_extensions', 'Browser extensions', 'e.g. permissions:<all_urls>  or an extension name', 'Processes and programs', ''],
+  ['persistence', 'Persistence (autoruns, tasks, cron...)', 'e.g. powershell  or  type:run_key', 'Persistence', ''],
+  ['services', 'Services', 'e.g. state:running  or  account:localsystem', 'Persistence', ''],
+  ['scheduled_tasks', 'Scheduled tasks, cron, timers', 'e.g. powershell  or  type:cron', 'Persistence', ''],
+  ['registry', 'Registry key', 'filter values (optional); key path below', 'Persistence', 'Windows'],
+  ['connections', 'Network connections', 'e.g. 203.0.113.7  or  remote::4444', 'Network', ''],
+  ['listening', 'Listening ports', 'e.g. 3389  or  local::22', 'Network', ''],
+  ['dns_cache', 'DNS cache', 'e.g. a domain', 'Network', 'Windows'],
+  ['firewall_rules', 'Firewall rules', 'e.g. action:allow direction:inbound', 'Network', ''],
+  ['shares', 'File shares', 'e.g. guest', 'Network', ''],
+  ['named_pipes', 'Named pipes', 'e.g. msagent_  or  postex_', 'Network', 'Windows'],
+  ['users', 'Local users', 'e.g. admin:yes', 'Users and sessions', ''],
+  ['sessions', 'Logged-on sessions', 'e.g. a user name or source address', 'Users and sessions', ''],
+  ['shell_history', 'Shell history', 'e.g. curl  or  invoke-webrequest', 'Users and sessions', ''],
+  ['file_find', 'Find a file', 'file name text, or sha256:<64 hex>', 'Files and devices', ''],
+  ['recent_files', 'Recently changed files', 'e.g. .exe  or  downloads', 'Files and devices', ''],
+  ['certificates', 'Certificates (added roots)', 'e.g. self_signed:yes', 'Files and devices', ''],
+  ['usb_devices', 'USB devices', 'e.g. a vendor or serial', 'Files and devices', ''],
 ]
 
 function Table({ cols, rows }) {
@@ -101,7 +118,8 @@ function LiveTab({ library, initial }) {
   const admin = isAdminUser()
   const [kind, setKind] = useState(initial?.kind || 'processes')
   const [match, setMatch] = useState(initial?.match || '')
-  const [path, setPath] = useState('')
+  const [path, setPath] = useState(initial?.path || '')
+  const [hours, setHours] = useState(24)
   const [os, setOS] = useState('')
   const [offline, setOffline] = useState('skip')
   const [wait, setWait] = useState('24h')
@@ -111,12 +129,18 @@ function LiveTab({ library, initial }) {
   const [active, setActive] = useState(null)
   const loadHunts = async () => { try { setHunts((await api.get('/api/v1/hunt/live')).data.hunts || []) } catch { /* */ } }
   useEffect(() => { loadHunts() }, [])
-  useEffect(() => { if (initial) { setKind(initial.kind); setMatch(initial.match || '') } }, [initial])
-  const hint = KINDS.find(k => k[0] === kind)?.[2]
+  useEffect(() => { if (initial) { setKind(initial.kind); setMatch(initial.match || ''); setPath(initial.path || '') } }, [initial])
+  const spec = KINDS.find(k => k[0] === kind)
+  const hint = spec?.[2]
+  const groups = [...new Set(KINDS.map(k => k[3]))]
+  const needsMatch = kind === 'file_find' || kind === 'loaded_modules'
+  const needsPath = kind === 'registry' 
   const run = async () => {
     setBusy(true); setErr('')
     try {
-      const { data } = await api.post('/api/v1/hunt/live', { kind, match, path, os, offline, wait: offline === 'wait' ? wait : undefined })
+      const body = { kind, match, path, os, offline, wait: offline === 'wait' ? wait : undefined }
+      if (kind === 'recent_files') body.hours = Number(hours) || 24
+      const { data } = await api.post('/api/v1/hunt/live', body)
       setActive(data.id); loadHunts()
     } catch (e) { setErr(e.response?.data?.error || e.message) } finally { setBusy(false) }
   }
@@ -126,10 +150,24 @@ function LiveTab({ library, initial }) {
         <div className="rounded-xl border border-siem-border bg-siem-surface/40 p-4 space-y-2.5">
           <div className="text-xs font-semibold text-siem-text">Ask the fleet</div>
           <select value={kind} onChange={e => setKind(e.target.value)} className="w-full bg-siem-bg border border-siem-border rounded px-2 py-1.5 text-xs text-siem-text">
-            {KINDS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+            {groups.map(g => (
+              <optgroup key={g} label={g}>
+                {KINDS.filter(k => k[3] === g).map(([k, l, , , sys]) => <option key={k} value={k}>{l}{sys ? ` (${sys})` : ''}</option>)}
+              </optgroup>
+            ))}
           </select>
+          {spec?.[4] && <div className="text-[10px] text-siem-muted">Answered by {spec[4]} hosts; others reply "not available".</div>}
           <input value={match} onChange={e => setMatch(e.target.value)} placeholder={hint} className="w-full bg-siem-bg border border-siem-border rounded px-2 py-1.5 text-xs text-siem-text font-mono" />
           {kind === 'file_find' && <input value={path} onChange={e => setPath(e.target.value)} placeholder="Folder to search (default: C:\Users or /)" className="w-full bg-siem-bg border border-siem-border rounded px-2 py-1.5 text-xs text-siem-text font-mono" />}
+          {kind === 'recent_files' && (
+            <div className="flex gap-2">
+              <input value={path} onChange={e => setPath(e.target.value)} placeholder="Folder (default: user folders and temp)" className="flex-1 min-w-0 bg-siem-bg border border-siem-border rounded px-2 py-1.5 text-xs text-siem-text font-mono" />
+              <select value={hours} onChange={e => setHours(e.target.value)} aria-label="Changed within" className="bg-siem-bg border border-siem-border rounded px-2 py-1 text-xs text-siem-text">
+                <option value={1}>1 h</option><option value={24}>24 h</option><option value={72}>3 days</option><option value={168}>7 days</option><option value={720}>30 days</option>
+              </select>
+            </div>
+          )}
+          {needsPath && <input value={path} onChange={e => setPath(e.target.value)} placeholder="Key, e.g. HKLM\Software\Microsoft\Windows\CurrentVersion\Run" className="w-full bg-siem-bg border border-siem-border rounded px-2 py-1.5 text-xs text-siem-text font-mono" />}
           <select value={os} onChange={e => setOS(e.target.value)} className="w-full bg-siem-bg border border-siem-border rounded px-2 py-1.5 text-xs text-siem-text">
             <option value="">All operating systems</option><option value="windows">Windows</option><option value="linux">Linux</option><option value="darwin">macOS</option>
           </select>
@@ -147,7 +185,7 @@ function LiveTab({ library, initial }) {
           {offline === 'wait' && <div className="text-[10px] text-siem-muted">Offline hosts get the question the moment they reconnect, until the window ends; then they show as expired. Late answers are marked with the time they really ran. Only these read-only questions ever wait; response actions never do.</div>}
           <div className="text-[10px] text-siem-muted">Fixed, read-only questions: nothing is executed on the host. Several words must all match; <code>col:text</code> limits a word to one column. Hosts need a live tunnel to answer.</div>
           {admin ? (
-            <button onClick={run} disabled={busy || (kind === 'file_find' && !match)} className="w-full px-3 py-2 rounded bg-siem-accent text-white text-xs font-semibold flex items-center justify-center gap-1.5 disabled:opacity-50">
+            <button onClick={run} disabled={busy || (needsMatch && !match) || (needsPath && !path)} className="w-full px-3 py-2 rounded bg-siem-accent text-white text-xs font-semibold flex items-center justify-center gap-1.5 disabled:opacity-50">
               {busy ? <Loader2 size={13} className="animate-spin" /> : <Play size={13} />} Run on fleet
             </button>
           ) : <div className="text-[11px] text-amber-300">Admin role required to run live queries.</div>}

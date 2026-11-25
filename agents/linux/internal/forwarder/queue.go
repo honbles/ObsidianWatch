@@ -10,8 +10,11 @@ package forwarder
 //       0000000002.jsonl
 //
 // Each .jsonl file holds up to segmentSize events (one JSON object per line).
-// Pop reads from the oldest segment; Push writes to the newest.
-// Completed segments are deleted after all events are consumed.
+// Push appends to the newest segment and fsyncs it before returning.
+// Delivery is at-least-once: Peek reads from the front without removing,
+// and Ack removes what was read only after the backend accepted it. A crash
+// between send and Ack resends the batch; the backend drops duplicates by
+// event id. Pop (Peek then Ack at once) is kept for callers that do not send.
 
 import (
 	"bufio"
@@ -104,87 +107,116 @@ func (q *Queue) Push(events []schema.Event) error {
 		}
 		q.writeCount++
 	}
+	if q.writeFile != nil {
+		if err := q.writeFile.Sync(); err != nil {
+			return fmt.Errorf("queue: sync: %w", err)
+		}
+	}
 	return nil
 }
 
-// Pop removes and returns up to n events from the front of the queue.
-func (q *Queue) Pop(n int) ([]schema.Event, error) {
+// segTake is how many lines Peek read from the front of one segment.
+type segTake struct {
+	seq   int64
+	lines int
+}
+
+// Receipt identifies what one Peek returned; pass it to Ack.
+type Receipt struct {
+	takes []segTake
+}
+
+// Peek returns up to n events from the front of the queue without removing
+// them. Lines that do not parse are counted in the receipt so Ack removes
+// them too.
+func (q *Queue) Peek(n int) ([]schema.Event, Receipt, error) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
-
+	var rc Receipt
 	seqs, err := q.listSegments()
 	if err != nil || len(seqs) == 0 {
-		return nil, err
+		return nil, rc, err
 	}
-
 	var events []schema.Event
-	remaining := n
-
 	for _, seq := range seqs {
-		if remaining <= 0 {
+		if len(events) >= n {
 			break
 		}
-		// Don't read from the active write segment unless it's the only one.
-		if seq == q.writeSeq && len(seqs) > 1 {
-			continue
-		}
-
-		path := q.segPath(seq)
-		lines, err := readLines(path)
+		lines, err := readLines(q.segPath(seq))
 		if err != nil {
-			q.logger.Warn("queue: read segment failed", "path", path, "err", err)
+			q.logger.Warn("queue: read segment failed", "seq", seq, "err", err)
 			continue
 		}
-
-		var keep []string
+		take := 0
 		for _, line := range lines {
-			if remaining <= 0 {
-				keep = append(keep, line)
-				continue
+			if len(events) >= n {
+				break
 			}
+			take++
 			var ev schema.Event
 			if err := json.Unmarshal([]byte(line), &ev); err != nil {
 				q.logger.Warn("queue: unmarshal failed, dropping line", "err", err)
 				continue
 			}
 			events = append(events, ev)
-			remaining--
 		}
-
-		if len(keep) == 0 {
-			if seq == q.writeSeq {
-				if q.writeFile != nil {
-					q.writeFile.Close()
-					q.writeFile = nil
-				}
-				q.writeCount = 0
-			}
-			os.Remove(path)
-		} else {
-			// On Windows, renaming over an open file handle is not permitted.
-			// Close the write handle before rewriting, then reopen after.
-			isWriteSeg := seq == q.writeSeq
-			if isWriteSeg && q.writeFile != nil {
-				q.writeFile.Close()
-				q.writeFile = nil
-			}
-			if err := writeLines(path, keep); err != nil {
-				q.logger.Warn("queue: rewrite segment failed", "err", err)
-			} else if isWriteSeg {
-				// Reopen so Push() can continue appending.
-				f, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
-				if err != nil {
-					q.logger.Warn("queue: reopen write segment failed", "err", err)
-				} else {
-					q.writeFile = f
-					q.writeCount = len(keep)
-				}
-			}
-			break
+		if take > 0 {
+			rc.takes = append(rc.takes, segTake{seq: seq, lines: take})
 		}
 	}
+	return events, rc, nil
+}
 
-	return events, nil
+// Ack removes what a Peek returned. Push only appends, so the lines Peek read
+// are still the first lines of their segments; a segment evicted in between
+// is skipped.
+func (q *Queue) Ack(rc Receipt) error {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	for _, t := range rc.takes {
+		path := q.segPath(t.seq)
+		lines, err := readLines(path)
+		if os.IsNotExist(err) {
+			continue
+		}
+		if err != nil {
+			return fmt.Errorf("queue: ack read: %w", err)
+		}
+		isWriteSeg := t.seq == q.writeSeq
+		// Windows cannot rename over an open handle: close it first.
+		if isWriteSeg && q.writeFile != nil {
+			q.writeFile.Close()
+			q.writeFile = nil
+		}
+		if t.lines >= len(lines) {
+			if isWriteSeg {
+				q.writeCount = 0
+			}
+			if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+				return fmt.Errorf("queue: ack remove: %w", err)
+			}
+			continue
+		}
+		keep := lines[t.lines:]
+		if err := writeLines(path, keep); err != nil {
+			return fmt.Errorf("queue: ack rewrite: %w", err)
+		}
+		if isWriteSeg {
+			q.writeCount = len(keep)
+		}
+	}
+	syncDir(filepath.Join(q.dir, "segments"))
+	return nil
+}
+
+// Pop removes and returns up to n events (Peek and Ack together). Use Peek
+// and Ack when the events are sent somewhere that can fail.
+func (q *Queue) Pop(n int) ([]schema.Event, error) {
+	events, rc, err := q.Peek(n)
+	if err != nil || len(events) == 0 && len(rc.takes) == 0 {
+		return events, err
+	}
+	return events, q.Ack(rc)
 }
 
 // Len returns the approximate number of events currently queued.
@@ -293,8 +325,22 @@ func writeLines(path string, lines []string) error {
 		os.Remove(f.Name())
 		return err
 	}
+	if err := f.Sync(); err != nil {
+		f.Close()
+		os.Remove(f.Name())
+		return err
+	}
 	f.Close()
 	return os.Rename(f.Name(), path)
+}
+
+// syncDir makes renames and removals in dir durable. Not supported on
+// Windows, where the error is ignored.
+func syncDir(dir string) {
+	if d, err := os.Open(dir); err == nil {
+		_ = d.Sync()
+		d.Close()
+	}
 }
 
 func countLines(path string) (int, error) {

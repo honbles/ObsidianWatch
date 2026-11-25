@@ -3,7 +3,7 @@
 // It observes the processes, network connections and file accesses of the services on a host and
 // emits them as ordinary process / network / file events into the agent's NORMAL event channel
 // (enrichment, normaliser, own-activity filter, rate limiter), each carrying pid and ppid and the
-// raw.proc block that the Application rules read (docs/app/platform-guide.md).
+// raw.proc block that the Application rules read (docs/application/capability.md).
 //
 // Three tiers, best first; "auto" takes the best one that works on the host:
 //

@@ -87,6 +87,10 @@ func (f *fakeEnrollStore) RenewAgentIdentity(_ context.Context, id, serial strin
 	return nil
 }
 
+func (f *fakeEnrollStore) SupersedeByHost(context.Context, string, string) (int64, error) {
+	return 0, nil
+}
+
 func (f *fakeEnrollStore) revoke(id string) {
 	f.mu.Lock()
 	f.revoked[id] = true
@@ -302,7 +306,7 @@ func TestForgedAgentIDRejected(t *testing.T) {
 		{"own id on event", batch(me.AgentID, me.AgentID), 200},
 		{"other agent's id", batch(other.AgentID, ""), 403},
 		{"hostname as id", batch("web-01", ""), 403},
-		{"own batch, foreign event", batch(me.AgentID, other.AgentID), 403},
+		{"own batch, foreign event (re-attributed to me)", batch(me.AgentID, other.AgentID), 200},
 	}
 	for _, c := range cases {
 		code, body, err := rg.do(t, myCert, "POST", "/api/v1/events", c.body, nil)

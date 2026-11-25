@@ -102,8 +102,8 @@ func (db *DB) Summary(ctx context.Context) (map[string]interface{}, error) {
 	db.QueryRowContext(ctx, `SELECT COUNT(*) FROM events WHERE severity >= 4 AND time > NOW() - INTERVAL '24 hours'`).Scan(&highSeverityToday)
 
 	var totalAgents, onlineAgents int64
-	db.QueryRowContext(ctx, `SELECT COUNT(*) FROM agents`).Scan(&totalAgents)
-	db.QueryRowContext(ctx, `SELECT COUNT(*) FROM agents WHERE last_seen > NOW() - INTERVAL '2 minutes'`).Scan(&onlineAgents)
+	db.QueryRowContext(ctx, `SELECT COUNT(*) FROM agents WHERE superseded_by IS NULL`).Scan(&totalAgents)
+	db.QueryRowContext(ctx, `SELECT COUNT(*) FROM agents WHERE superseded_by IS NULL AND last_seen > NOW() - INTERVAL '2 minutes'`).Scan(&onlineAgents)
 
 	var openAlerts int64
 	db.QueryRowContext(ctx, `SELECT COUNT(*) FROM alerts WHERE status = 'open'`).Scan(&openAlerts)
@@ -649,7 +649,7 @@ func (db *DB) DashboardStats(ctx context.Context) (map[string]interface{}, error
 		SELECT id, hostname, os, last_ip,
 		       (last_seen > NOW() - INTERVAL '2 minutes') as online,
 		       last_seen, version
-		FROM agents ORDER BY hostname
+		FROM agents WHERE superseded_by IS NULL ORDER BY hostname
 	`)
 
 	// Event type counts

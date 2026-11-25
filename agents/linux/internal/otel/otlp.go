@@ -15,7 +15,8 @@ const (
 	maxSpansPerRequest = 20000
 	maxLogsPerRequest  = 5000
 	maxAttrsPerItem    = 256
-	maxStringBytes     = 4096
+	maxStringBytes     = 4096      // span, event and attribute names
+	maxValueBytes      = 32 * 1024 // attribute values: helper bodies (bodyparams.go allows 32 KiB) and stack traces
 )
 
 var errTooMany = errors.New("otel: too many items in one request")
@@ -23,6 +24,13 @@ var errTooMany = errors.New("otel: too many items in one request")
 func clip(s string) string {
 	if len(s) > maxStringBytes {
 		return s[:maxStringBytes]
+	}
+	return s
+}
+
+func clipValue(s string) string {
+	if len(s) > maxValueBytes {
+		return s[:maxValueBytes]
 	}
 	return s
 }
@@ -46,7 +54,7 @@ func pbAnyValue(b []byte, depth int) (attrValue, error) {
 			if err != nil {
 				return v, err
 			}
-			v = attrValue{s: clip(string(s))}
+			v = attrValue{s: clipValue(string(s))}
 		case f == 2 && w == wireVarint: // bool_value
 			x, err := r.varint()
 			if err != nil {
@@ -414,7 +422,7 @@ func pbLogRecord(b []byte, res Resource) (Log, error) {
 			if k == "event.name" {
 				l.EventName = v.str()
 			} else if helperAllow[k] {
-				l.Attrs[k] = clip(v.str())
+				l.Attrs[k] = clipValue(v.str())
 			}
 		default: // body, severity and the rest are never read: helper events carry no free text
 			if err := r.skip(w); err != nil {
@@ -524,7 +532,7 @@ type jsonKV struct {
 func (a jsonAny) value() attrValue {
 	switch {
 	case a.StringValue != nil:
-		return attrValue{s: clip(*a.StringValue)}
+		return attrValue{s: clipValue(*a.StringValue)}
 	case len(a.IntValue) > 0:
 		t := string(a.IntValue)
 		if len(t) > 1 && t[0] == '"' {
@@ -677,7 +685,7 @@ func DecodeLogsJSON(b []byte) ([]Log, error) {
 					if kv.Key == "event.name" {
 						l.EventName = kv.Value.value().str()
 					} else if helperAllow[kv.Key] {
-						l.Attrs[kv.Key] = clip(kv.Value.value().str())
+						l.Attrs[kv.Key] = clipValue(kv.Value.value().str())
 					}
 				}
 				out = append(out, l)

@@ -2,6 +2,7 @@ package response
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io/fs"
 	"os"
@@ -21,7 +22,7 @@ const (
 
 // QueryKinds lists the fixed, read-only questions a fleet hunt can ask.
 // There is no arbitrary command execution here by design.
-var QueryKinds = []string{"processes", "connections", "listening", "persistence", "software", "users", "file_find"}
+var QueryKinds = append([]string{"processes", "connections", "listening", "persistence", "software", "users", "file_find"}, MoreQueryKinds...)
 
 func (h *Handler) query(ctx context.Context, p Params) Result {
 	limit := p.Limit
@@ -53,7 +54,13 @@ func (h *Handler) query(ctx context.Context, p Params) Result {
 	case "file_find":
 		return h.fileFind(ctx, p, limit)
 	default:
-		return Result{Message: "unknown query kind " + p.Kind}
+		cols, rows, err = queryMore(ctx, p)
+		if errors.Is(err, errKindUnsupported) {
+			return Result{Message: p.Kind + " is not available on " + runtime.GOOS}
+		}
+		if errors.Is(err, errUnknownKind) {
+			return Result{Message: "unknown query kind " + p.Kind}
+		}
 	}
 	if err != nil {
 		return Result{Message: err.Error()}

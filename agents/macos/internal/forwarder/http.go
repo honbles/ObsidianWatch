@@ -1,6 +1,6 @@
 package forwarder
 
-// http.go - batched HTTP/2 forwarder with mTLS and API-key fallback.
+// http.go - batched HTTP/2 forwarder authenticated by the agent certificate.
 // Events are read from the local Queue and POSTed to the backend ingest API.
 
 import (
@@ -9,10 +9,12 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
+	"sync"
 	"time"
 
 	"obsidianwatch/macos-agent/pkg/schema"
@@ -22,14 +24,18 @@ import (
 
 // HTTPForwarder reads from the Queue and delivers batches to the backend.
 type HTTPForwarder struct {
-	cfg     ForwarderConfig
-	queue   *Queue
-	client  *http.Client
-	retry   RetryPolicy
-	logger  *slog.Logger
+	cfg      ForwarderConfig
+	queue    *Queue
+	client   *http.Client
+	retry    RetryPolicy
+	logger   *slog.Logger
 	agentID  string
 	hostname string
-	ver     string
+	mu       sync.Mutex
+	cur      int // current batch size; halves on 413 and grows back
+	// DepthSink, when set, receives the queue depth every 30 s (health events).
+	DepthSink func(int64)
+	ver       string
 }
 
 // ForwarderConfig holds transport configuration.
@@ -39,10 +45,10 @@ type ForwarderConfig struct {
 	BatchSize     int
 	FlushInterval time.Duration
 	// mTLS
-	CertFile string
-	KeyFile  string
-	CAFile      string
-	CACertPEM  string
+	CertFile  string
+	KeyFile   string
+	CAFile    string
+	CACertPEM string
 }
 
 // NewHTTPForwarder creates the forwarder and builds the TLS-aware HTTP client.
@@ -53,14 +59,14 @@ func NewHTTPForwarder(cfg ForwarderConfig, queue *Queue, agentID, hostname, ver 
 	}
 
 	return &HTTPForwarder{
-		cfg:     cfg,
-		queue:   queue,
-		client:  client,
-		retry:   DefaultRetryPolicy(),
-		logger:  logger,
+		cfg:      cfg,
+		queue:    queue,
+		client:   client,
+		retry:    DefaultRetryPolicy(),
+		logger:   logger,
 		agentID:  agentID,
 		hostname: hostname,
-		ver:     ver,
+		ver:      ver,
 	}, nil
 }
 
@@ -70,6 +76,11 @@ func (f *HTTPForwarder) Run(ctx context.Context) error {
 	defer ticker.Stop()
 
 	f.logger.Info("forwarder: started", "url", f.cfg.BackendURL)
+	depth := time.NewTicker(30 * time.Second)
+	defer depth.Stop()
+	if f.DepthSink != nil {
+		f.DepthSink(f.QueueDepth())
+	}
 
 	for {
 		select {
@@ -79,10 +90,13 @@ func (f *HTTPForwarder) Run(ctx context.Context) error {
 			return nil
 		case <-ticker.C:
 			f.flush(ctx)
+		case <-depth.C:
+			if f.DepthSink != nil {
+				f.DepthSink(f.QueueDepth())
+			}
 		}
 	}
 }
-
 
 // SendFinal (D-12) transmits one last event synchronously as the agent shuts
 // down - typically "agent.tamper" (stop requested / signal received) - so the
@@ -118,17 +132,42 @@ func (f *HTTPForwarder) Enqueue(events []schema.Event) {
 	}
 }
 
-// flush pops one batch from the queue and sends it.
+// maxBatchesPerTick bounds one flush so a large backlog drains steadily
+// without starving shutdown.
+const maxBatchesPerTick = 50
+
+// flush sends queued batches until the queue is empty, a send fails, or
+// maxBatchesPerTick batches went out. Events leave the queue only after the
+// backend accepted them.
 func (f *HTTPForwarder) flush(ctx context.Context) {
-	events, err := f.queue.Pop(f.cfg.BatchSize)
+	for i := 0; i < maxBatchesPerTick; i++ {
+		if !f.flushOne(ctx) {
+			return
+		}
+	}
+}
+
+// flushOne sends one batch and reports whether to keep going.
+func (f *HTTPForwarder) flushOne(ctx context.Context) bool {
+	size := f.batchSize()
+	events, rc, err := f.queue.Peek(size)
 	if err != nil {
-		f.logger.Error("forwarder: queue pop failed", "err", err)
-		return
+		f.logger.Error("forwarder: queue read failed", "err", err)
+		return false
 	}
 	if len(events) == 0 {
-		return
+		if len(rc.takes) > 0 { // only unreadable lines: drop them
+			_ = f.queue.Ack(rc)
+			return true
+		}
+		return false
 	}
-
+	// Everything in this queue was collected on this host. Events queued
+	// under an earlier identity (before a reinstall or re-enrollment) are
+	// sent under the current one.
+	for i := range events {
+		events[i].AgentID = f.agentID
+	}
 	batch := schema.Batch{
 		AgentID:    f.agentID,
 		Hostname:   f.hostname,
@@ -137,21 +176,82 @@ func (f *HTTPForwarder) flush(ctx context.Context) {
 		SentAt:     time.Now().UTC(),
 		Events:     events,
 	}
-
-	err = f.retry.Do(ctx, func() error {
-		return f.send(ctx, batch)
-	})
-	if err != nil {
-		f.logger.Error("forwarder: send failed after retries",
-			"events", len(events), "err", err)
-		// Re-queue so events are not lost.
-		if pushErr := f.queue.Push(events); pushErr != nil {
-			f.logger.Error("forwarder: re-queue failed", "err", pushErr)
+	err = f.retry.Do(ctx, func() error { return f.send(ctx, batch) })
+	var he *httpStatusError
+	switch {
+	case err == nil:
+		if aerr := f.queue.Ack(rc); aerr != nil {
+			// The batch was delivered; it will be sent again and the
+			// backend drops the duplicates by event id.
+			f.logger.Error("forwarder: ack failed", "err", aerr)
+			return false
 		}
-	} else {
+		f.grow()
 		f.logger.Debug("forwarder: sent batch", "count", len(events))
+		return true
+	case errors.As(err, &he) && len(events) > 1 && (he.code == http.StatusRequestEntityTooLarge ||
+		he.code == http.StatusBadRequest || he.code == http.StatusUnprocessableEntity):
+		// Too large, or one bad event spoils the batch: halve until the bad
+		// event is alone, so only it is dropped.
+		f.shrink(len(events))
+		f.logger.Warn("forwarder: batch refused, sending smaller batches", "events", len(events), "status", he.code)
+		return true
+	case errors.As(err, &he) && (he.code == http.StatusBadRequest || he.code == http.StatusUnprocessableEntity ||
+		he.code == http.StatusRequestEntityTooLarge):
+		// The backend will never accept this event: keeping it would block
+		// every event behind it.
+		f.logger.Error("forwarder: backend refused an event permanently, dropping it",
+			"id", events[0].ID, "type", events[0].EventType, "status", he.code)
+		_ = f.queue.Ack(rc)
+		return true
+	default:
+		// Network errors, 5xx and 429 after retries, and 401/403 (identity
+		// not yet renewed or revoked) leave the batch queued for next time.
+		f.logger.Error("forwarder: send failed; events stay queued",
+			"events", len(events), "err", err)
+		return false
 	}
 }
+
+func (f *HTTPForwarder) batchSize() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.cur <= 0 || f.cur > f.cfg.BatchSize {
+		f.cur = f.cfg.BatchSize
+	}
+	if f.cur <= 0 {
+		f.cur = 500
+	}
+	return f.cur
+}
+
+func (f *HTTPForwarder) shrink(n int) {
+	f.mu.Lock()
+	f.cur = max(1, n/2)
+	f.mu.Unlock()
+}
+
+func (f *HTTPForwarder) grow() {
+	f.mu.Lock()
+	if f.cur < f.cfg.BatchSize {
+		f.cur = min(f.cfg.BatchSize, f.cur*2)
+	}
+	f.mu.Unlock()
+}
+
+// QueueDepth is the number of events waiting to be sent.
+func (f *HTTPForwarder) QueueDepth() int64 {
+	n, _ := f.queue.Len()
+	return n
+}
+
+// httpStatusError is a non-2xx answer from the backend.
+type httpStatusError struct{ code int }
+
+func (e *httpStatusError) Error() string { return fmt.Sprintf("HTTP %d", e.code) }
+
+// Retryable lets RetryPolicy stop early on answers retrying cannot fix.
+func (e *httpStatusError) Retryable() bool { return IsRetryable(e.code) }
 
 // send serialises the batch and POSTs it to the backend.
 func (f *HTTPForwarder) send(ctx context.Context, batch schema.Batch) error {
@@ -180,11 +280,7 @@ func (f *HTTPForwarder) send(ctx context.Context, batch schema.Batch) error {
 		return nil
 	}
 
-	if IsRetryable(resp.StatusCode) {
-		return fmt.Errorf("retryable HTTP %d", resp.StatusCode)
-	}
-
-	return fmt.Errorf("non-retryable HTTP %d", resp.StatusCode)
+	return &httpStatusError{code: resp.StatusCode}
 }
 
 // ---------------------------------------------------------------------------

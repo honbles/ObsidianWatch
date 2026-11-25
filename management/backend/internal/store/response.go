@@ -196,6 +196,7 @@ type FleetHunt struct {
 	Kind        string     `json:"kind"`
 	Match       string     `json:"match"`
 	Path        string     `json:"path,omitempty"`
+	Hours       int        `json:"hours,omitempty"` // recent_files window
 	RequestedBy string     `json:"requested_by"`
 	CreatedAt   time.Time  `json:"created_at"`
 	CompletedAt *time.Time `json:"completed_at,omitempty"`
@@ -261,8 +262,8 @@ func (db *DB) CreateFleetHunt(ctx context.Context, h FleetHunt, targets []Agent,
 		return err
 	}
 	defer tx.Rollback()
-	if _, err := tx.ExecContext(ctx, `INSERT INTO fleet_hunts (id, name, kind, match, path, requested_by, agents_total, expires_at, wait_mode) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
-		h.ID, h.Name, h.Kind, h.Match, h.Path, h.RequestedBy, len(targets), expires, h.WaitMode); err != nil {
+	if _, err := tx.ExecContext(ctx, `INSERT INTO fleet_hunts (id, name, kind, match, path, requested_by, agents_total, expires_at, wait_mode, hours) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+		h.ID, h.Name, h.Kind, h.Match, h.Path, h.RequestedBy, len(targets), expires, h.WaitMode, h.Hours); err != nil {
 		return err
 	}
 	for _, a := range targets {
@@ -305,7 +306,10 @@ func (db *DB) CompleteHuntResult(ctx context.Context, huntID, agentID, status, m
 }
 
 // QueuedHunt is a question waiting for an offline host.
-type QueuedHunt struct{ ID, Kind, Match, Path string }
+type QueuedHunt struct {
+	ID, Kind, Match, Path string
+	Hours                 int
+}
 
 // ClaimQueuedHunts atomically moves this agent's queued, unexpired hunt results to pending and returns
 // the questions to send. Called when the agent's tunnel connects.
@@ -313,7 +317,7 @@ func (db *DB) ClaimQueuedHunts(ctx context.Context, agentID string) ([]QueuedHun
 	rows, err := db.QueryContext(ctx, `UPDATE fleet_hunt_results r SET status='pending', sent_at=now()
 		FROM fleet_hunts h WHERE r.hunt_id=h.id AND r.agent_id=$1 AND r.status='queued'
 		  AND (h.expires_at IS NULL OR h.expires_at > now())
-		RETURNING h.id, h.kind, h.match, h.path`, agentID)
+		RETURNING h.id, h.kind, h.match, h.path, h.hours`, agentID)
 	if err != nil {
 		return nil, err
 	}
@@ -321,7 +325,7 @@ func (db *DB) ClaimQueuedHunts(ctx context.Context, agentID string) ([]QueuedHun
 	var out []QueuedHunt
 	for rows.Next() {
 		var q QueuedHunt
-		if err := rows.Scan(&q.ID, &q.Kind, &q.Match, &q.Path); err != nil {
+		if err := rows.Scan(&q.ID, &q.Kind, &q.Match, &q.Path, &q.Hours); err != nil {
 			return nil, err
 		}
 		out = append(out, q)

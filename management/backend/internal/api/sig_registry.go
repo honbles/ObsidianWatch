@@ -9,7 +9,7 @@ func allSignatureSets() map[string][]ThreatSig {
 		// [NET-REGISTRY-END]
 		// [APP-REGISTRY-BEGIN]
 		// [APP-REGISTRY-END]
-		"linux": linuxSignatures, "endpoint": endpointAgentSignatures, "dns": dnsCatSignatures,
+		"linux": linuxSignatures, "linuxLineage": linuxLineageSignatures, "endpoint": endpointAgentSignatures, "dns": dnsCatSignatures,
 		"imds": imdsSignatures, "windows": windowsSignatures, "windowsTamper": windowsTamperSignatures, "dc": dcSignatures,
 		"macos": macosSignatures, "devops": devopsSignatures,
 		"awsExt": cloudSignaturesExtended, "awsRecon": cloudReconSignatures, "cloudNet": cloudNetworkSignatures,
@@ -22,6 +22,6 @@ func allSignatureSets() map[string][]ThreatSig {
 		"azNet": azureNetworkSignatures, "azDefEv": azureDefenseEvasionSignatures, "azDefender": azureDefenderSignatures,
 		"azResource": azureResourceSignatures, "azAudit": azureAuditSignatures, "entra": entraIdentitySignatures,
 		"winAccount": windowsAccountSignatures, "linAccount": linuxAccountSignatures, "remoteSession": remoteSessionSignatures,
-		"gcpNew": gcpNewSignatures, "network": networkSignatures, "usb": usbSignatures, "software": softwareSignatures, "winUSB": windowsUSBSignatures,
+		"gcpNew": gcpNewSignatures, "prevention": preventionSignatures, "network": networkSignatures, "usb": usbSignatures, "software": softwareSignatures, "winUSB": windowsUSBSignatures,
 	}
 }

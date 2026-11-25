@@ -345,6 +345,7 @@ func (h *HealthReporter) emit() {
 		"rate_limit_drops": GlobalHealth.RateLimitDrops.Load(),
 		"events_forwarded": GlobalHealth.EventsForwarded.Load(),
 		"queue_depth":      GlobalHealth.QueueDepth.Load(),
+		"process_sensor":   processSensorMode(),
 		"forward_errors":   GlobalHealth.ForwardErrors.Load(),
 		"agent_memory_mb":  float64(mem.Alloc) / 1024 / 1024,
 		"goroutines":       runtime.NumGoroutine(),
@@ -368,4 +369,13 @@ func (h *HealthReporter) emit() {
 	default:
 		h.logger.Warn("health: out channel full")
 	}
+}
+
+// processSensorMode names the process source: "ebpf" when the kernel tier
+// runs, otherwise "proc-connector" (with /proc polling).
+func processSensorMode() string {
+	if KernelSensorActive.Load() {
+		return "ebpf"
+	}
+	return "proc-connector"
 }

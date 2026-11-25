@@ -1257,43 +1257,47 @@ func sastFilePriority(path string) int {
 }
 
 func deduplicateSASTFindings(findings []SASTFinding) []SASTFinding {
-	// Phase 1: exact dedup within same engine (rule+file+line)
+	// Phase 1: exact duplicates within one engine (repo+rule+file+line).
 	exactSeen := map[string]bool{}
 	var deduped []SASTFinding
 	for _, f := range findings {
-		key := f.Engine + ":" + f.RuleID + ":" + f.File + ":" + strconv.Itoa(f.Line)
+		key := f.Engine + "\x00" + f.Repo + "\x00" + f.RuleID + "\x00" + f.File + "\x00" + strconv.Itoa(f.Line)
 		if !exactSeen[key] {
 			exactSeen[key] = true
 			deduped = append(deduped, f)
 		}
 	}
 
-	// Phase 2: cross-engine dedup - only deduplicate if SAME file AND line within ±2
-	// Keep BOTH if they flag different aspects of the same area
-	// Only merge if one is strictly a subset of the other
-	type fileLineKey struct{ file string; line int }
-	semgrepByLoc := map[fileLineKey]int{} // file+line → index in deduped
-	var out []SASTFinding
-	for i, f := range deduped {
+	// Phase 2: a CodeQL finding within two lines of a Semgrep finding in the
+	// same file of the same repository is the same issue: tag the Semgrep
+	// one and drop the CodeQL copy. Every other finding (built-in rules,
+	// OSV dependency findings, unmatched CodeQL) is kept as is.
+	type loc struct {
+		repo, file string
+		line       int
+	}
+	out := make([]SASTFinding, 0, len(deduped))
+	semgrepAt := map[loc]int{} // location -> index in out
+	for _, f := range deduped {
 		if f.Engine == "semgrep" {
-			semgrepByLoc[fileLineKey{f.File, f.Line}] = i
+			semgrepAt[loc{f.Repo, f.File, f.Line}] = len(out)
+		}
+		if f.Engine != "codeql" {
 			out = append(out, f)
 		}
 	}
 	for _, f := range deduped {
-		if f.Engine != "codeql" { continue }
-		// Check if semgrep already found something at same location (±2 lines)
-		duped := false
-		for dl := -2; dl <= 2; dl++ {
-			if idx, ok := semgrepByLoc[fileLineKey{f.File, f.Line + dl}]; ok {
-				// Same location - upgrade the semgrep finding with CodeQL engine tag
+		if f.Engine != "codeql" {
+			continue
+		}
+		merged := false
+		for dl := -2; dl <= 2 && !merged; dl++ {
+			if idx, ok := semgrepAt[loc{f.Repo, f.File, f.Line + dl}]; ok {
 				out[idx].Engine = "semgrep+codeql"
-				duped = true
-				break
+				merged = true
 			}
 		}
-		if !duped {
-			// CodeQL found something Semgrep missed - add it
+		if !merged {
 			out = append(out, f)
 		}
 	}

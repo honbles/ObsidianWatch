@@ -29,6 +29,8 @@ func handleListDetections(db *store.DB) http.HandlerFunc {
 		allSigs = append(allSigs,
 			linuxSignatures...,
 		)
+		allSigs = append(allSigs, linuxLineageSignatures...)
+		allSigs = append(allSigs, preventionSignatures...)
 		allSigs = append(allSigs, usbSignatures...)
 		allSigs = append(allSigs, softwareSignatures...)
 		allSigs = append(allSigs, windowsSignatures...)

@@ -448,9 +448,9 @@ func handleStats(db *store.DB) http.HandlerFunc {
 
 		// OS counts
 		var winCount, linCount, macCount int64
-		db.QueryRowContext(r.Context(), `SELECT COUNT(*) FROM agents WHERE LOWER(os) LIKE '%win%'`).Scan(&winCount)
-		db.QueryRowContext(r.Context(), `SELECT COUNT(*) FROM agents WHERE LOWER(os) LIKE '%linux%' OR LOWER(os) LIKE '%ubuntu%'`).Scan(&linCount)
-		db.QueryRowContext(r.Context(), `SELECT COUNT(*) FROM agents WHERE LOWER(os) LIKE '%mac%' OR LOWER(os) LIKE '%darwin%'`).Scan(&macCount)
+		db.QueryRowContext(r.Context(), `SELECT COUNT(*) FROM agents WHERE superseded_by IS NULL AND LOWER(os) LIKE '%win%'`).Scan(&winCount)
+		db.QueryRowContext(r.Context(), `SELECT COUNT(*) FROM agents WHERE superseded_by IS NULL AND (LOWER(os) LIKE '%linux%' OR LOWER(os) LIKE '%ubuntu%')`).Scan(&linCount)
+		db.QueryRowContext(r.Context(), `SELECT COUNT(*) FROM agents WHERE superseded_by IS NULL AND (LOWER(os) LIKE '%mac%' OR LOWER(os) LIKE '%darwin%')`).Scan(&macCount)
 
 		// Cloud connector count
 		var cloudConns int64

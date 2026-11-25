@@ -2,18 +2,22 @@
 
 package collector
 
-// process.go - captures process creation/termination via ETW
-// using the Microsoft-Windows-Kernel-Process provider.
-// Uses the golang.org/x/sys/windows/etw package pattern via direct
-// NT API calls. Falls back to polling WMI Win32_Process if ETW fails.
+// process.go - process start and stop from ETW (Microsoft-Windows-Kernel-Process),
+// with a Toolhelp polling fallback when ETW cannot start.
+//
+// Source order on a host: Sysmon (event 1/5) when it runs, else Security
+// 4688/4689 (the agent enables Process Creation and Termination auditing with
+// command lines), else this collector. ProcessSourceSuppressed tells it when
+// one of the others is active, so each process is reported once.
 
 import (
 	"context"
 	"encoding/json"
 	"fmt"
 	"log/slog"
-	"syscall"
 	"strings"
+	"sync"
+	"syscall"
 	"time"
 	"unsafe"
 
@@ -32,14 +36,14 @@ var kernelProcessProviderGUID = windows.GUID{
 
 // ETW API procs
 var (
-	modNtdll             = windows.NewLazySystemDLL("ntdll.dll")
-	modAdvapi32ETW       = windows.NewLazySystemDLL("advapi32.dll")
-	procStartTrace       = modAdvapi32ETW.NewProc("StartTraceW")
-	procEnableTraceEx2   = modAdvapi32ETW.NewProc("EnableTraceEx2")
-	procOpenTrace        = modAdvapi32ETW.NewProc("OpenTraceW")
-	procProcessTrace     = modAdvapi32ETW.NewProc("ProcessTrace")
-	procCloseTrace       = modAdvapi32ETW.NewProc("CloseTrace")
-	procStopTrace        = modAdvapi32ETW.NewProc("StopTraceW")
+	modNtdll           = windows.NewLazySystemDLL("ntdll.dll")
+	modAdvapi32ETW     = windows.NewLazySystemDLL("advapi32.dll")
+	procStartTrace     = modAdvapi32ETW.NewProc("StartTraceW")
+	procEnableTraceEx2 = modAdvapi32ETW.NewProc("EnableTraceEx2")
+	procOpenTrace      = modAdvapi32ETW.NewProc("OpenTraceW")
+	procProcessTrace   = modAdvapi32ETW.NewProc("ProcessTrace")
+	procCloseTrace     = modAdvapi32ETW.NewProc("CloseTrace")
+	procStopTrace      = modAdvapi32ETW.NewProc("StopTraceW")
 )
 
 const (
@@ -86,20 +90,20 @@ type wnodeHeader struct {
 
 // EVENT_TRACE_LOGFILE for OpenTrace
 type eventTraceLogfile struct {
-	LogFileName   *uint16
-	LoggerName    *uint16
-	CurrentTime   int64
-	BuffersRead   uint32
-	Union1        uint32 // ProcessTraceMode flags
-	CurrentEvent  eventTrace
-	LogfileHeader traceLogfileHeader
+	LogFileName    *uint16
+	LoggerName     *uint16
+	CurrentTime    int64
+	BuffersRead    uint32
+	Union1         uint32 // ProcessTraceMode flags
+	CurrentEvent   eventTrace
+	LogfileHeader  traceLogfileHeader
 	BufferCallback uintptr
-	BufferSize    uint32
-	Filled        uint32
-	EventsLost    uint32
-	Callback      uintptr // EventRecordCallback
-	IsKernelTrace uint32
-	Context       uintptr
+	BufferSize     uint32
+	Filled         uint32
+	EventsLost     uint32
+	Callback       uintptr // EventRecordCallback
+	IsKernelTrace  uint32
+	Context        uintptr
 }
 
 type eventTrace struct {
@@ -113,33 +117,33 @@ type eventTrace struct {
 }
 
 type eventTraceHeader struct {
-	Size         uint16
-	Union1       uint16
-	Union2       uint32
-	ThreadId     uint32
-	ProcessId    uint32
-	TimeStamp    int64
-	Union3       [16]byte
-	KernelTime   uint32
-	UserTime     uint32
+	Size       uint16
+	Union1     uint16
+	Union2     uint32
+	ThreadId   uint32
+	ProcessId  uint32
+	TimeStamp  int64
+	Union3     [16]byte
+	KernelTime uint32
+	UserTime   uint32
 }
 
 type traceLogfileHeader struct {
-	BufferSize         uint32
-	Union1             uint32
-	StartTime          int64
-	EndTime            int64
-	PointerSize        uint32
-	EventsLost         uint32
-	CpuSpeedInMHz      uint32
-	LoggerName         uintptr
-	LogFileName        uintptr
-	TimeZone           [176]byte
-	BootTime           int64
-	PerfFreq           int64
-	StartPerfCount     int64
-	ReservedFlags      uint32
-	BuffersLost        uint32
+	BufferSize     uint32
+	Union1         uint32
+	StartTime      int64
+	EndTime        int64
+	PointerSize    uint32
+	EventsLost     uint32
+	CpuSpeedInMHz  uint32
+	LoggerName     uintptr
+	LogFileName    uintptr
+	TimeZone       [176]byte
+	BootTime       int64
+	PerfFreq       int64
+	StartPerfCount int64
+	ReservedFlags  uint32
+	BuffersLost    uint32
 }
 
 // EVENT_RECORD passed to our callback
@@ -169,8 +173,8 @@ type eventHeader struct {
 }
 
 type eventBufferContext struct {
-	Union     uint16
-	LoggerId  uint16
+	Union    uint16
+	LoggerId uint16
 }
 
 type eventDescriptor struct {
@@ -197,7 +201,10 @@ type ProcessCollector struct {
 	sessionHandle uintptr
 	traceHandle   uintptr
 	// callback must be stored to prevent GC
-	callback      uintptr
+	callback uintptr
+
+	mu   sync.Mutex
+	live map[uint32]etwProc // processes seen starting, for parent names and stop events
 }
 
 // Global reference so the ETW callback can reach the collector instance.
@@ -284,7 +291,7 @@ func (p *ProcessCollector) startETW() error {
 		sessionHandle,
 		uintptr(unsafe.Pointer(&kernelProcessProviderGUID)),
 		eventControlCodeEnableProvider,
-		4, // TRACE_LEVEL_INFORMATION
+		4,    // TRACE_LEVEL_INFORMATION
 		0x10, // WINEVENT_KEYWORD_PROCESS
 		0,
 		0,
@@ -338,57 +345,162 @@ func etwEventCallback(record *eventRecord) uintptr {
 	return 0
 }
 
+// ProcessSourceSuppressed reports whether a better process source is active
+// (Sysmon, or Security 4688 auditing the agent enabled), so the ETW and WMI
+// fallbacks do not report the same processes again. main sets it.
+var ProcessSourceSuppressed func() bool
+
+func (p *ProcessCollector) suppressed() bool {
+	return ProcessSourceSuppressed != nil && ProcessSourceSuppressed()
+}
+
+// handleRecord decodes Microsoft-Windows-Kernel-Process start and stop events.
+// The event header's process id is the creator, not the new process: the new
+// pid, parent and image come from the payload.
 func (p *ProcessCollector) handleRecord(rec *eventRecord) {
-	op := rec.EventHeader.EventDescriptor.Opcode
-
-	var evType schema.EventType
-	var sev schema.Severity
-	var action string
-
-	switch op {
-	case processOpStart:
-		evType = schema.EventTypeProcess
-		sev = schema.SeverityLow
-		action = "start"
-	case processOpStop:
-		evType = schema.EventTypeProcess
-		sev = schema.SeverityInfo
-		action = "stop"
-	default:
-		return // only care about start/stop
+	if p.suppressed() {
+		return
 	}
-
+	op := rec.EventHeader.EventDescriptor.Opcode
+	if op != processOpStart && op != processOpStop {
+		return
+	}
+	var data []byte
+	if rec.UserData != 0 && rec.UserDataLength > 0 {
+		data = unsafe.Slice((*byte)(unsafe.Pointer(rec.UserData)), rec.UserDataLength)
+		data = append([]byte(nil), data...) // the buffer is reused after the callback
+	}
 	ft := syscall.Filetime{
 		LowDateTime:  uint32(rec.EventHeader.TimeStamp),
 		HighDateTime: uint32(uint64(rec.EventHeader.TimeStamp) >> 32),
 	}
 	t := time.Unix(0, ft.Nanoseconds()).UTC()
 
-	rawData := map[string]interface{}{
-		"action":  action,
-		"pid":     rec.EventHeader.ProcessId,
-		"tid":     rec.EventHeader.ThreadId,
-		"opcode":  op,
+	if op == processOpStart {
+		st, ok := parseETWProcessStart(rec.EventHeader.EventDescriptor.Version, data)
+		if !ok {
+			return
+		}
+		image := ntToDosPath(st.Image, dosDevices())
+		// The command line is read from the new process while it runs; a
+		// process that already exited keeps an empty command line.
+		cmd := readProcessCommandLine(st.PID)
+		info := ProcessInfo{Name: baseName(image), CommandLine: cmd, PPID: st.PPID}
+		p.remember(st.PID, info, image)
+		parent := p.lookup(st.PPID)
+		raw := map[string]any{
+			"action":       "start",
+			"pid":          st.PID,
+			"ppid":         st.PPID,
+			"name":         info.Name,
+			"image":        image,
+			"command_line": cmd,
+			"session_id":   st.Session,
+			"sensor":       "etw",
+		}
+		if !st.Created.IsZero() {
+			raw["process_guid"] = fmt.Sprintf("%d-%d", st.PID, st.Created.UnixNano()/100)
+		}
+		if parent.image != "" {
+			raw["parent_image"] = parent.image
+			raw["parent_name"] = parent.info.Name
+		}
+		sev := schema.SeverityLow
+		if containsInteresting(strings.ToLower(info.Name), strings.ToLower(cmd)) {
+			sev = schema.SeverityMedium
+		}
+		p.send(schema.Event{
+			Time: t, AgentID: p.agentID, Host: p.host, OS: "windows",
+			EventType: schema.EventTypeProcess, Severity: sev, Source: "ETW/KernelProcess",
+			PID: int(st.PID), PPID: int(st.PPID), ProcessName: info.Name, ImagePath: image,
+			CommandLine: cmd, Raw: mustJSON(raw),
+		})
+		return
 	}
-	rawJSON, _ := json.Marshal(rawData)
 
+	sp, ok := parseETWProcessStop(data)
+	if !ok {
+		return
+	}
+	known := p.forget(sp.PID)
+	raw := map[string]any{"action": "stop", "pid": sp.PID, "exit_code": sp.ExitCode, "sensor": "etw"}
 	ev := schema.Event{
-		Time:      t,
-		AgentID:   p.agentID,
-		Host:      p.host,
-		OS:        "windows",
-		EventType: evType,
-		Severity:  sev,
-		Source:    "ETW/KernelProcess",
-		PID:       int(rec.EventHeader.ProcessId),
-		Raw:       rawJSON,
+		Time: t, AgentID: p.agentID, Host: p.host, OS: "windows",
+		EventType: schema.EventTypeProcess, Severity: schema.SeverityInfo, Source: "ETW/KernelProcess",
+		PID: int(sp.PID), Raw: nil,
 	}
+	if known.image != "" {
+		raw["image"] = known.image
+		raw["name"] = known.info.Name
+		ev.ImagePath, ev.ProcessName, ev.PPID = known.image, known.info.Name, int(known.info.PPID)
+	}
+	ev.Raw = mustJSON(raw)
+	p.send(ev)
+}
 
+type etwProc struct {
+	info  ProcessInfo
+	image string
+}
+
+func (p *ProcessCollector) remember(pid uint32, info ProcessInfo, image string) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.live == nil || len(p.live) > 50000 {
+		p.live = map[uint32]etwProc{}
+	}
+	p.live[pid] = etwProc{info: info, image: image}
+}
+
+func (p *ProcessCollector) lookup(pid uint32) etwProc {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.live[pid]
+}
+
+func (p *ProcessCollector) forget(pid uint32) etwProc {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	e := p.live[pid]
+	delete(p.live, pid)
+	return e
+}
+
+func (p *ProcessCollector) send(ev schema.Event) {
 	select {
 	case p.out <- ev:
 	default:
-		p.logger.Warn("process: out channel full, dropping event")
+		GlobalHealth.EventsDropped.Add(1)
 	}
+}
+
+func mustJSON(v any) json.RawMessage {
+	b, _ := json.Marshal(v)
+	return b
+}
+
+var (
+	dosDevOnce sync.Once
+	dosDevMap  map[string]string
+)
+
+// dosDevices maps NT device names to drive letters (\Device\HarddiskVolume3
+// -> C:). Read once; drives mounted later keep their NT path.
+func dosDevices() map[string]string {
+	dosDevOnce.Do(func() {
+		dosDevMap = map[string]string{}
+		buf := make([]uint16, 1024)
+		for c := 'A'; c <= 'Z'; c++ {
+			drive := string(c) + ":"
+			d, _ := windows.UTF16PtrFromString(drive)
+			n, err := windows.QueryDosDevice(d, &buf[0], uint32(len(buf)))
+			if err != nil || n == 0 {
+				continue
+			}
+			dosDevMap[windows.UTF16ToString(buf[:n])] = drive
+		}
+	})
+	return dosDevMap
 }
 
 // runWMIFallback polls Win32_Process via WMI when ETW is unavailable.
@@ -397,8 +509,8 @@ func (p *ProcessCollector) runWMIFallback(ctx context.Context) error {
 	p.logger.Info("process: WMI polling fallback active (5s interval)")
 
 	var (
-		modOle32   = windows.NewLazySystemDLL("ole32.dll")
-		modOleAut  = windows.NewLazySystemDLL("oleaut32.dll")
+		modOle32  = windows.NewLazySystemDLL("ole32.dll")
+		modOleAut = windows.NewLazySystemDLL("oleaut32.dll")
 	)
 	_ = modOle32
 	_ = modOleAut
@@ -439,6 +551,9 @@ func (p *ProcessCollector) runWMIFallback(ctx context.Context) error {
 }
 
 func (p *ProcessCollector) emitWMIEvent(pid uint32, info ProcessInfo, action string, sev schema.Severity) {
+	if p.suppressed() {
+		return
+	}
 	// Elevate severity for interesting processes
 	cmdLow := strings.ToLower(info.CommandLine)
 	nameLow := strings.ToLower(info.Name)
@@ -502,7 +617,7 @@ func snapshotProcesses() (map[uint32]ProcessInfo, error) {
 	modKernel32 := windows.NewLazySystemDLL("kernel32.dll")
 	procCreateSnapshot := modKernel32.NewProc("CreateToolhelp32Snapshot")
 	procProcess32First := modKernel32.NewProc("Process32FirstW")
-	procProcess32Next  := modKernel32.NewProc("Process32NextW")
+	procProcess32Next := modKernel32.NewProc("Process32NextW")
 
 	const TH32CS_SNAPPROCESS = 0x00000002
 	snapshot, _, err := procCreateSnapshot.Call(TH32CS_SNAPPROCESS, 0)
@@ -547,7 +662,7 @@ func snapshotProcesses() (map[uint32]ProcessInfo, error) {
 // NtQueryInformationProcess → PEB → ProcessParameters.
 func readProcessCommandLine(pid uint32) string {
 	const PROCESS_QUERY_INFORMATION = 0x0400
-	const PROCESS_VM_READ           = 0x0010
+	const PROCESS_VM_READ = 0x0010
 
 	handle, err := windows.OpenProcess(PROCESS_QUERY_INFORMATION|PROCESS_VM_READ, false, pid)
 	if err != nil {
@@ -562,8 +677,8 @@ func readProcessCommandLine(pid uint32) string {
 		Buffer    uintptr
 	}
 	type RTL_USER_PROCESS_PARAMETERS struct {
-		_              [112]byte // offset to CommandLine varies - skip via known offset
-		CommandLine    UNICODE_STRING
+		_           [112]byte // offset to CommandLine varies - skip via known offset
+		CommandLine UNICODE_STRING
 	}
 
 	// Use NtQueryInformationProcess to get PBI (ProcessBasicInformation)

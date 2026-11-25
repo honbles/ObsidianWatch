@@ -24,7 +24,25 @@ import (
 	"obsidianwatch/management/internal/store"
 )
 
-var liveHuntKinds = map[string]bool{"processes": true, "connections": true, "listening": true, "persistence": true, "software": true, "users": true, "file_find": true}
+// liveKindList is every read-only question an agent answers (keep in step
+// with agents/*/internal/response/query.go and query_more.go). Kinds marked
+// in liveKindOS exist only on some systems; other hosts answer "not available".
+var liveKindList = []string{"processes", "connections", "listening", "persistence", "software", "users", "file_find",
+	"services", "scheduled_tasks", "sessions", "dns_cache", "browser_extensions", "shell_history", "recent_files",
+	"firewall_rules", "shares", "certificates", "usb_devices", "drivers", "loaded_modules", "named_pipes", "registry", "patches"}
+
+var liveKindOS = map[string][]string{
+	"dns_cache": {"windows"}, "named_pipes": {"windows"}, "registry": {"windows"}, "patches": {"windows"},
+	"loaded_modules": {"windows", "linux"},
+}
+
+var liveHuntKinds = func() map[string]bool {
+	m := map[string]bool{}
+	for _, k := range liveKindList {
+		m[k] = true
+	}
+	return m
+}()
 
 const (
 	huntPerHostRows  = 500
@@ -74,6 +92,7 @@ func handleStartFleetHunt(db *store.DB, reg *TunnelRegistry, logger *slog.Logger
 			Kind     string   `json:"kind"`
 			Match    string   `json:"match"`
 			Path     string   `json:"path"`
+			Hours    int      `json:"hours"` // recent_files window, 1 to 720
 			AgentIDs []string `json:"agent_ids"`
 			OS       string   `json:"os"` // "", windows, linux, macos
 			// Offline hosts: "skip" (default) asks only hosts connected now; "wait" stores the question for the
@@ -94,6 +113,27 @@ func handleStartFleetHunt(db *store.DB, reg *TunnelRegistry, logger *slog.Logger
 		if len(req.Match) > 500 || len(req.Path) > 2048 {
 			writeJSON(w, 400, map[string]string{"error": "match or path too long"})
 			return
+		}
+		if req.Hours < 0 || req.Hours > 720 {
+			writeJSON(w, 400, map[string]string{"error": "hours must be between 1 and 720"})
+			return
+		}
+		switch req.Kind {
+		case "loaded_modules":
+			if req.Match == "" {
+				writeJSON(w, 400, map[string]string{"error": "loaded module search needs a module name"})
+				return
+			}
+		case "registry":
+			if req.Path == "" {
+				writeJSON(w, 400, map[string]string{"error": `registry needs a key path such as HKLM\Software\Microsoft\Windows\CurrentVersion\Run`})
+				return
+			}
+		case "recent_files":
+			if req.Path != "" && !absPath(req.Path) {
+				writeJSON(w, 400, map[string]string{"error": "path must be absolute"})
+				return
+			}
 		}
 		if req.Kind == "file_find" {
 			if req.Match == "" {
@@ -172,7 +212,7 @@ func handleStartFleetHunt(db *store.DB, reg *TunnelRegistry, logger *slog.Logger
 			}
 		}
 		by := actor(r)
-		h := store.FleetHunt{ID: newToken(), Name: name, Kind: req.Kind, Match: req.Match, Path: req.Path, RequestedBy: by, WaitMode: waitMode}
+		h := store.FleetHunt{ID: newToken(), Name: name, Kind: req.Kind, Match: req.Match, Path: req.Path, Hours: req.Hours, RequestedBy: by, WaitMode: waitMode}
 		if err := db.CreateFleetHunt(r.Context(), h, targets, initial, expires); err != nil {
 			writeJSON(w, 500, map[string]string{"error": "db error"})
 			return
@@ -180,7 +220,7 @@ func handleStartFleetHunt(db *store.DB, reg *TunnelRegistry, logger *slog.Logger
 		db.WriteAudit(r.Context(), by, "fleet_hunt", "hunt:"+h.ID, fmt.Sprintf("kind=%s match=%q hosts=%d", req.Kind, req.Match, len(targets)), clientIP(r))
 		logger.Info("fleet hunt started", "id", h.ID, "kind", req.Kind, "hosts", len(targets), "by", by)
 
-		params := mustJSON(map[string]any{"kind": req.Kind, "match": req.Match, "path": req.Path, "limit": huntPerHostRows})
+		params := mustJSON(map[string]any{"kind": req.Kind, "match": req.Match, "path": req.Path, "hours": req.Hours, "limit": huntPerHostRows})
 		for _, a := range targets {
 			a := a
 			t, up := reg.Get(a.ID)
@@ -207,7 +247,7 @@ func queuedHuntFrame(q store.QueuedHunt) (string, json.RawMessage, bool) {
 	if !liveHuntKinds[q.Kind] {
 		return "", nil, false
 	}
-	return "query", mustJSON(map[string]any{"kind": q.Kind, "match": q.Match, "path": q.Path, "limit": huntPerHostRows}), true
+	return "query", mustJSON(map[string]any{"kind": q.Kind, "match": q.Match, "path": q.Path, "hours": q.Hours, "limit": huntPerHostRows}), true
 }
 
 // dispatchQueuedHunts sends the hunts that were waiting for this agent. Called when its tunnel connects.
@@ -408,12 +448,26 @@ var huntLibrary = []huntLib{
 	{"l-persistence", "Persistence items (live)", "Run keys, scheduled tasks, services, cron, systemd, launch agents, SSH keys", "live", "", "persistence", "", "", "T1547"},
 	{"l-admins", "Local administrators (live)", "Accounts with admin rights per host", "live", "", "users", "admin:yes", "", "T1078"},
 	{"l-rmm", "Remote access tools installed (live)", "Installed software matching common RMM tools", "live", "", "software", "anydesk teamviewer ultraviewer screenconnect rustdesk splashtop", "", "T1219"},
+	{"l-browser-ext", "Browser extensions (live)", "Chrome, Edge, Brave and Firefox extensions per user, with their permissions", "live", "", "browser_extensions", "", "", "T1176"},
+	{"l-ext-allurls", "Extensions that can read every site (live)", "Browser extensions holding <all_urls> or cookie access", "live", "", "browser_extensions", "permissions:<all_urls>", "", "T1176"},
+	{"l-root-ca", "Locally added root certificates (live)", "Root CAs added to the machine store: the precondition for TLS interception", "live", "", "certificates", "self_signed:yes", "", "T1553.004"},
+	{"l-sched", "Scheduled tasks, cron and timers (live)", "Every scheduled job with its command", "live", "", "scheduled_tasks", "", "", "T1053"},
+	{"l-sessions", "Logged-on sessions (live)", "Who is logged on now, and from where", "live", "", "sessions", "", "", "T1078"},
+	{"l-recent-dl", "Files changed in user folders, last 24 h (live)", "New or modified files in Downloads, Desktop, Documents and temp directories", "live", "", "recent_files", "", "", "T1105"},
+	{"l-hist-dl", "Download commands in shell history (live)", "curl, wget, Invoke-WebRequest and similar in users' shell history", "live", "", "shell_history", "http", "", "T1105"},
+	{"l-usb", "USB devices seen (live)", "USB storage history (Windows) or attached devices", "live", "", "usb_devices", "", "", "T1091"},
+	{"l-unsigned-drv", "Drivers and kernel modules (live)", "Loaded drivers with signatures (Windows) or kernel modules with taint flags (Linux)", "live", "", "drivers", "", "", "T1014"},
+	{"l-shares", "File shares (live)", "SMB and NFS shares exposed by each host", "live", "", "shares", "", "", "T1135"},
+	{"l-dns-cache", "DNS cache (live, Windows)", "Names each Windows host resolved recently", "live", "", "dns_cache", "", "", "T1071.004"},
+	{"l-pipes", "Suspicious named pipes (live, Windows)", "Pipe names used by Cobalt Strike, PsExec and similar tools", "live", "", "named_pipes", "msagent_", "", "T1570"},
+	{"l-run-key", "Run key contents (live, Windows)", "Values under HKLM Run", "live", "", "registry", "", `HKLM\Software\Microsoft\Windows\CurrentVersion\Run`, "T1547.001"},
+	{"l-patches", "Installed updates (live, Windows)", "Hotfixes and when they were installed", "live", "", "patches", "", "", ""},
 	{"l-tmp-proc", "Processes running from temp/user dirs (live)", "Running binaries launched from Temp, Downloads, AppData or /tmp", "live", "", "processes", "path:\\temp\\", "", "T1036"},
 }
 
 func handleHuntLibrary() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, 200, map[string]any{"hunts": huntLibrary, "kinds": []string{"processes", "connections", "listening", "persistence", "software", "users", "file_find"}})
+		writeJSON(w, 200, map[string]any{"hunts": huntLibrary, "kinds": liveKindList, "kind_os": liveKindOS})
 	}
 }
 

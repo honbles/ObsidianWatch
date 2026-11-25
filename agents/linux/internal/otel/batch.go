@@ -147,72 +147,103 @@ func (b *Batch) Empty() bool {
 	return len(b.Instances)+len(b.Routes)+len(b.Edges)+len(b.Traces)+len(b.Clients)+len(b.Params)+len(b.Payloads)+len(b.Children)+len(b.Queries)+len(b.NPlusOne)+len(b.Errors)+len(b.Metrics)+len(b.Sampling)+len(b.Operations)+len(b.Notes) == 0
 }
 
+func (b *Batch) items() int {
+	return len(b.Instances) + len(b.Routes) + len(b.Edges) + len(b.Traces) + len(b.Clients) + len(b.Params) + len(b.Payloads) + len(b.Children) + len(b.Queries) + len(b.NPlusOne) + len(b.Errors) + len(b.Metrics) + len(b.Sampling) + len(b.Operations)
+}
+
 // Limits the backend enforces per batch (keep in step with app_batch.go).
 const (
-	BatchMaxInstances = 200
-	BatchMaxRoutes    = 2000
-	BatchMaxEdges     = 500
-	BatchMaxTraces    = 50
-	BatchMaxClients   = 3000
-	BatchMaxParams    = 5000
-	BatchMaxPayloads  = 500
+	BatchMaxInstances  = 200
+	BatchMaxRoutes     = 2000
+	BatchMaxEdges      = 500
+	BatchMaxTraces     = 50
+	BatchMaxClients    = 3000
+	BatchMaxParams     = 5000
+	BatchMaxPayloads   = 500
+	BatchMaxChildren   = 5000
+	BatchMaxQueries    = 3000
+	BatchMaxNPlusOne   = 500
+	BatchMaxErrors     = 1500
+	BatchMaxMetrics    = 4000
+	BatchMaxSampling   = 200
+	BatchMaxOperations = 1500
 )
 
-// Split cuts a batch into pieces that each respect the backend's per-batch caps.
-// Notes ride with the first piece.
+// splitInto appends items to the pieces, opening a new piece whenever the
+// current one holds max items of this kind.
+func splitInto[T any](b *Batch, out *[]*Batch, items []T, max int, field func(*Batch) *[]T) {
+	for _, v := range items {
+		if len(*out) == 0 || len(*field((*out)[len(*out)-1])) >= max {
+			*out = append(*out, &Batch{AgentID: b.AgentID, SentAt: b.SentAt, SchemaVersion: b.SchemaVersion})
+		}
+		f := field((*out)[len(*out)-1])
+		*f = append(*f, v)
+	}
+}
+
+// Split cuts a batch into pieces that each respect the backend's per-batch
+// caps. Every section is carried; notes ride with the first piece.
 func (b *Batch) Split() []*Batch {
 	var out []*Batch
-	cur := func() *Batch {
-		if len(out) == 0 {
-			out = append(out, &Batch{AgentID: b.AgentID, SentAt: b.SentAt})
-		}
-		return out[len(out)-1]
-	}
-	fresh := func() { out = append(out, &Batch{AgentID: b.AgentID, SentAt: b.SentAt}) }
-	for _, v := range b.Instances {
-		if c := cur(); len(c.Instances) >= BatchMaxInstances {
-			fresh()
-		}
-		cur().Instances = append(cur().Instances, v)
-	}
-	for _, v := range b.Routes {
-		if c := cur(); len(c.Routes) >= BatchMaxRoutes {
-			fresh()
-		}
-		cur().Routes = append(cur().Routes, v)
-	}
-	for _, v := range b.Edges {
-		if c := cur(); len(c.Edges) >= BatchMaxEdges {
-			fresh()
-		}
-		cur().Edges = append(cur().Edges, v)
-	}
-	for _, v := range b.Traces {
-		if c := cur(); len(c.Traces) >= BatchMaxTraces {
-			fresh()
-		}
-		cur().Traces = append(cur().Traces, v)
-	}
-	for _, v := range b.Clients {
-		if c := cur(); len(c.Clients) >= BatchMaxClients {
-			fresh()
-		}
-		cur().Clients = append(cur().Clients, v)
-	}
-	for _, v := range b.Params {
-		if c := cur(); len(c.Params) >= BatchMaxParams {
-			fresh()
-		}
-		cur().Params = append(cur().Params, v)
-	}
-	for _, v := range b.Payloads {
-		if c := cur(); len(c.Payloads) >= BatchMaxPayloads {
-			fresh()
-		}
-		cur().Payloads = append(cur().Payloads, v)
-	}
+	splitInto(b, &out, b.Instances, BatchMaxInstances, func(x *Batch) *[]BatchInstance { return &x.Instances })
+	splitInto(b, &out, b.Routes, BatchMaxRoutes, func(x *Batch) *[]BatchRoute { return &x.Routes })
+	splitInto(b, &out, b.Edges, BatchMaxEdges, func(x *Batch) *[]BatchEdge { return &x.Edges })
+	splitInto(b, &out, b.Traces, BatchMaxTraces, func(x *Batch) *[]BatchTrace { return &x.Traces })
+	splitInto(b, &out, b.Clients, BatchMaxClients, func(x *Batch) *[]BatchClient { return &x.Clients })
+	splitInto(b, &out, b.Params, BatchMaxParams, func(x *Batch) *[]BatchParam { return &x.Params })
+	splitInto(b, &out, b.Payloads, BatchMaxPayloads, func(x *Batch) *[]BatchPayload { return &x.Payloads })
+	splitInto(b, &out, b.Children, BatchMaxChildren, func(x *Batch) *[]BatchChild { return &x.Children })
+	splitInto(b, &out, b.Queries, BatchMaxQueries, func(x *Batch) *[]BatchQuery { return &x.Queries })
+	splitInto(b, &out, b.NPlusOne, BatchMaxNPlusOne, func(x *Batch) *[]BatchNPlusOne { return &x.NPlusOne })
+	splitInto(b, &out, b.Errors, BatchMaxErrors, func(x *Batch) *[]BatchError { return &x.Errors })
+	splitInto(b, &out, b.Metrics, BatchMaxMetrics, func(x *Batch) *[]BatchMetric { return &x.Metrics })
+	splitInto(b, &out, b.Sampling, BatchMaxSampling, func(x *Batch) *[]BatchSampling { return &x.Sampling })
+	splitInto(b, &out, b.Operations, BatchMaxOperations, func(x *Batch) *[]BatchOperation { return &x.Operations })
 	if len(b.Notes) > 0 {
-		cur().Notes = append(cur().Notes, b.Notes...)
+		if len(out) == 0 {
+			out = append(out, &Batch{AgentID: b.AgentID, SentAt: b.SentAt, SchemaVersion: b.SchemaVersion})
+		}
+		out[0].Notes = append(out[0].Notes, b.Notes...)
 	}
-	return out
+	// Count caps alone do not bound the size: halve any piece the backend's
+	// 4 MiB body cap would refuse.
+	var sized []*Batch
+	for _, piece := range out {
+		sized = append(sized, fitBytes(piece, BatchMaxBytes)...)
+	}
+	return sized
+}
+
+// BatchMaxBytes keeps a piece comfortably under the backend's 4 MiB body cap.
+const BatchMaxBytes = 3 << 20
+
+func half[T any](a []T) ([]T, []T) { return a[:len(a)/2], a[len(a)/2:] }
+
+// fitBytes splits b in two, section by section, until each piece encodes
+// under max bytes or cannot be split further.
+func fitBytes(b *Batch, max int) []*Batch {
+	raw, err := json.Marshal(b)
+	if err != nil || len(raw) <= max {
+		return []*Batch{b}
+	}
+	x := &Batch{AgentID: b.AgentID, SentAt: b.SentAt, SchemaVersion: b.SchemaVersion, Notes: b.Notes}
+	y := &Batch{AgentID: b.AgentID, SentAt: b.SentAt, SchemaVersion: b.SchemaVersion}
+	x.Instances, y.Instances = half(b.Instances)
+	x.Routes, y.Routes = half(b.Routes)
+	x.Edges, y.Edges = half(b.Edges)
+	x.Traces, y.Traces = half(b.Traces)
+	x.Clients, y.Clients = half(b.Clients)
+	x.Params, y.Params = half(b.Params)
+	x.Payloads, y.Payloads = half(b.Payloads)
+	x.Children, y.Children = half(b.Children)
+	x.Queries, y.Queries = half(b.Queries)
+	x.NPlusOne, y.NPlusOne = half(b.NPlusOne)
+	x.Errors, y.Errors = half(b.Errors)
+	x.Metrics, y.Metrics = half(b.Metrics)
+	x.Sampling, y.Sampling = half(b.Sampling)
+	x.Operations, y.Operations = half(b.Operations)
+	if x.items() == 0 || y.items() == 0 { // one item too large to split: send it and let the backend decide
+		return []*Batch{b}
+	}
+	return append(fitBytes(x, max), fitBytes(y, max)...)
 }

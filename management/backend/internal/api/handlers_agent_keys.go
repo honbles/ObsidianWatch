@@ -31,6 +31,7 @@ func handleAgentRegisterKey(db *store.DB, ta *tunnelAuth) http.HandlerFunc {
 			InstallKey string `json:"install_key"`
 			AgentID    string `json:"agent_id"`
 			OS         string `json:"os"`
+			Hostname   string `json:"hostname"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			writeJSON(w, 400, map[string]string{"error": "invalid body"})
@@ -40,7 +41,7 @@ func handleAgentRegisterKey(db *store.DB, ta *tunnelAuth) http.HandlerFunc {
 			writeJSON(w, 400, map[string]string{"error": "install_key required"})
 			return
 		}
-		if len(body.InstallKey) > 256 || len(body.AgentID) > 128 || len(body.OS) > 32 {
+		if len(body.InstallKey) > 256 || len(body.AgentID) > 128 || len(body.OS) > 32 || len(body.Hostname) > 253 {
 			writeJSON(w, 400, map[string]string{"error": "field too long"})
 			return
 		}
@@ -50,7 +51,7 @@ func handleAgentRegisterKey(db *store.DB, ta *tunnelAuth) http.HandlerFunc {
 			writeJSON(w, 403, map[string]string{"error": "agent_id does not match the client certificate"})
 			return
 		}
-		if err := db.SetInstallKey(r.Context(), agentID, body.InstallKey, body.OS); err != nil {
+		if err := db.SetInstallKey(r.Context(), agentID, body.InstallKey, body.OS, body.Hostname); err != nil {
 			writeJSON(w, 500, map[string]string{"error": err.Error()})
 			return
 		}

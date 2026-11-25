@@ -36,7 +36,9 @@ func handleListRuleSettings(db *store.DB) http.HandlerFunc {
 
 func handlePutRuleSetting(db *store.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		var s store.RuleSetting
+		// A setting that leaves "enabled" out keeps the rule on: only an
+		// explicit false turns it off.
+		s := store.RuleSetting{Enabled: true}
 		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<16)).Decode(&s); err != nil || s.RuleID == "" {
 			writeJSON(w, 400, map[string]string{"error": "invalid request"})
 			return

@@ -37,16 +37,16 @@ import (
 // ── Port scanning ─────────────────────────────────────────────────────────────
 
 type PortResult struct {
-	Port        int    `json:"port"`
-	Protocol    string `json:"protocol"`
-	State       string `json:"state"`
-	Service     string `json:"service,omitempty"`
-	Version     string `json:"version,omitempty"` // extracted from banner
-	Banner      string `json:"banner,omitempty"`
-	Product     string `json:"product,omitempty"` // e.g. "OpenSSH", "nginx"
-	RiskLabel   string `json:"risk_label,omitempty"`
-	RiskDetail  string `json:"risk_detail,omitempty"`
-	Severity    int    `json:"severity"` // 1=info 2=low 3=medium 4=high 5=critical
+	Port       int    `json:"port"`
+	Protocol   string `json:"protocol"`
+	State      string `json:"state"`
+	Service    string `json:"service,omitempty"`
+	Version    string `json:"version,omitempty"` // extracted from banner
+	Banner     string `json:"banner,omitempty"`
+	Product    string `json:"product,omitempty"` // e.g. "OpenSSH", "nginx"
+	RiskLabel  string `json:"risk_label,omitempty"`
+	RiskDetail string `json:"risk_detail,omitempty"`
+	Severity   int    `json:"severity"` // 1=info 2=low 3=medium 4=high 5=critical
 }
 
 // ── Installed software ────────────────────────────────────────────────────────
@@ -70,9 +70,9 @@ type SystemInfo struct {
 // ── Running services ──────────────────────────────────────────────────────────
 
 type RunningService struct {
-	Name    string `json:"name"`
-	State   string `json:"state"`
-	PID     string `json:"pid,omitempty"`
+	Name  string `json:"name"`
+	State string `json:"state"`
+	PID   string `json:"pid,omitempty"`
 }
 
 // ── Findings ──────────────────────────────────────────────────────────────────
@@ -125,23 +125,37 @@ type VulnScanner struct {
 
 func NewVulnScanner(cfg VulnScannerConfig, agentID, host, osStr string,
 	out chan<- schema.Event, logger *slog.Logger) *VulnScanner {
-	if cfg.ScanInterval == 0 { cfg.ScanInterval = 5 * 24 * time.Hour }
-	if cfg.Timeout == 0      { cfg.Timeout = 500 * time.Millisecond }
-	if cfg.Concurrency == 0  { cfg.Concurrency = 200 }
+	if cfg.ScanInterval == 0 {
+		cfg.ScanInterval = 5 * 24 * time.Hour
+	}
+	if cfg.Timeout == 0 {
+		cfg.Timeout = 500 * time.Millisecond
+	}
+	if cfg.Concurrency == 0 {
+		cfg.Concurrency = 200
+	}
 	return &VulnScanner{cfg: cfg, agentID: agentID, host: host, os: osStr, out: out, logger: logger}
 }
 
 func (v *VulnScanner) Run(ctx context.Context) {
-	if !v.cfg.Enabled { return }
+	if !v.cfg.Enabled {
+		return
+	}
 	v.logger.Info("vuln: scanner ready - first scan in 30s")
-	select { case <-ctx.Done(): return; case <-time.After(30 * time.Second): }
+	select {
+	case <-ctx.Done():
+		return
+	case <-time.After(30 * time.Second):
+	}
 	v.scan(ctx)
 	ticker := time.NewTicker(v.cfg.ScanInterval)
 	defer ticker.Stop()
 	for {
 		select {
-		case <-ctx.Done(): return
-		case <-ticker.C: v.scan(ctx)
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			v.scan(ctx)
 		}
 	}
 }
@@ -184,28 +198,39 @@ func (v *VulnScanner) scan(ctx context.Context) {
 	result.Posture = collectPosture()
 
 	// Totals
-	result.TotalOpen   = len(result.OpenPorts)
+	result.TotalOpen = len(result.OpenPorts)
 	result.ScanDurationSecs = time.Since(start).Seconds()
 	for _, p := range result.OpenPorts {
 		switch {
-		case p.Severity >= 5: result.CriticalCount++
-		case p.Severity >= 4: result.HighCount++
-		case p.Severity >= 3: result.MediumCount++
+		case p.Severity >= 5:
+			result.CriticalCount++
+		case p.Severity >= 4:
+			result.HighCount++
+		case p.Severity >= 3:
+			result.MediumCount++
 		}
 	}
 	for _, f := range result.Findings {
 		switch {
-		case f.Severity >= 5: result.CriticalCount++
-		case f.Severity >= 4: result.HighCount++
-		case f.Severity >= 3: result.MediumCount++
+		case f.Severity >= 5:
+			result.CriticalCount++
+		case f.Severity >= 4:
+			result.HighCount++
+		case f.Severity >= 3:
+			result.MediumCount++
 		}
 	}
 
 	sev := 1
-	if result.CriticalCount > 0   { sev = 5 } else
-	if result.HighCount > 0        { sev = 4 } else
-	if result.MediumCount > 0      { sev = 3 } else
-	if result.TotalOpen > 0        { sev = 2 }
+	if result.CriticalCount > 0 {
+		sev = 5
+	} else if result.HighCount > 0 {
+		sev = 4
+	} else if result.MediumCount > 0 {
+		sev = 3
+	} else if result.TotalOpen > 0 {
+		sev = 2
+	}
 
 	v.logger.Info("vuln: scan complete",
 		"tcp_open", result.TotalOpen,
@@ -243,17 +268,25 @@ func (v *VulnScanner) scan(ctx context.Context) {
 
 func (v *VulnScanner) scanTCP(ctx context.Context) []PortResult {
 	sem := make(chan struct{}, v.cfg.Concurrency)
-	mu  := sync.Mutex{}
+	mu := sync.Mutex{}
 	var results []PortResult
 	var wg sync.WaitGroup
 
 	for port := 1; port <= 65535; port++ {
-		select { case <-ctx.Done(): goto done; default: }
-		wg.Add(1); sem <- struct{}{}
+		select {
+		case <-ctx.Done():
+			goto done
+		default:
+		}
+		wg.Add(1)
+		sem <- struct{}{}
 		go func(p int) {
-			defer wg.Done(); defer func() { <-sem }()
+			defer wg.Done()
+			defer func() { <-sem }()
 			if r := v.probeTCP(p); r != nil {
-				mu.Lock(); results = append(results, *r); mu.Unlock()
+				mu.Lock()
+				results = append(results, *r)
+				mu.Unlock()
 			}
 		}(port)
 	}
@@ -265,7 +298,9 @@ done:
 
 func (v *VulnScanner) probeTCP(port int) *PortResult {
 	conn, err := net.DialTimeout("tcp", fmt.Sprintf("127.0.0.1:%d", port), v.cfg.Timeout)
-	if err != nil { return nil }
+	if err != nil {
+		return nil
+	}
 	defer conn.Close()
 
 	r := &PortResult{Port: port, Protocol: "tcp", State: "open", Severity: 1}
@@ -278,7 +313,9 @@ func (v *VulnScanner) probeTCP(port int) *PortResult {
 		r.Banner = sanitizeBanner(buf[:n])
 		r.Product, r.Version = extractProductVersion(r.Banner, port)
 		r.Service = r.Product
-		if r.Service == "" { r.Service = commonServiceName(port) }
+		if r.Service == "" {
+			r.Service = commonServiceName(port)
+		}
 	} else {
 		r.Service = commonServiceName(port)
 		// Send a probe for services that don't banner first
@@ -289,7 +326,9 @@ func (v *VulnScanner) probeTCP(port int) *PortResult {
 		if n2 > 0 {
 			r.Banner = sanitizeBanner(buf[:n2])
 			r.Product, r.Version = extractProductVersion(r.Banner, port)
-			if r.Product != "" { r.Service = r.Product }
+			if r.Product != "" {
+				r.Service = r.Product
+			}
 		}
 	}
 
@@ -305,9 +344,15 @@ var udpPorts = []int{53, 67, 68, 69, 123, 137, 138, 161, 162, 500, 514, 1194, 19
 func (v *VulnScanner) scanUDP(ctx context.Context) []PortResult {
 	var results []PortResult
 	for _, port := range udpPorts {
-		select { case <-ctx.Done(): return results; default: }
+		select {
+		case <-ctx.Done():
+			return results
+		default:
+		}
 		conn, err := net.DialTimeout("udp", fmt.Sprintf("127.0.0.1:%d", port), 300*time.Millisecond)
-		if err != nil { continue }
+		if err != nil {
+			continue
+		}
 		conn.SetWriteDeadline(time.Now().Add(100 * time.Millisecond))
 		conn.Write([]byte("\x00"))
 		conn.SetReadDeadline(time.Now().Add(300 * time.Millisecond))
@@ -419,17 +464,27 @@ func collectServices() []RunningService {
 
 	// /proc fallback - read /proc/*/comm
 	entries, err := os.ReadDir("/proc")
-	if err != nil { return services }
+	if err != nil {
+		return services
+	}
 	seen := map[string]bool{}
 	for _, e := range entries {
-		if !e.IsDir() { continue }
+		if !e.IsDir() {
+			continue
+		}
 		comm, err := os.ReadFile("/proc/" + e.Name() + "/comm")
-		if err != nil { continue }
+		if err != nil {
+			continue
+		}
 		name := strings.TrimSpace(string(comm))
-		if name == "" || seen[name] { continue }
+		if name == "" || seen[name] {
+			continue
+		}
 		seen[name] = true
 		services = append(services, RunningService{Name: name, State: "running", PID: e.Name()})
-		if len(services) >= 100 { break } // cap at 100
+		if len(services) >= 100 {
+			break
+		} // cap at 100
 	}
 	return services
 }
@@ -498,7 +553,9 @@ func collectSecurityFindings() []SecurityFinding {
 		"-writable", "-type", "d").Output()
 	if err2 == nil && len(strings.TrimSpace(string(out2))) > 0 {
 		for _, dir := range strings.Split(strings.TrimSpace(string(out2)), "\n") {
-			if dir == "" { continue }
+			if dir == "" {
+				continue
+			}
 			findings = append(findings, SecurityFinding{
 				Category: "File Permissions",
 				Severity: 5,
@@ -683,9 +740,9 @@ var portRisks = map[int]portRisk{
 
 func assessPortRisk(r *PortResult) {
 	if risk, ok := portRisks[r.Port]; ok {
-		r.RiskLabel  = risk.label
+		r.RiskLabel = risk.label
 		r.RiskDetail = risk.detail
-		r.Severity   = risk.severity
+		r.Severity = risk.severity
 	}
 	// Elevate severity for known-vulnerable ancient versions
 	if r.Version != "" {
@@ -722,7 +779,9 @@ func checkVersionRisk(r *PortResult) {
 	}
 	for _, c := range checks {
 		if strings.EqualFold(r.Product, c.product) && strings.HasPrefix(r.Version, c.prefix) {
-			if r.Severity < c.severity { r.Severity = c.severity }
+			if r.Severity < c.severity {
+				r.Severity = c.severity
+			}
 			r.RiskDetail = c.detail + " | " + r.RiskDetail
 		}
 	}
@@ -767,6 +826,8 @@ func commonServiceName(port int) string {
 		27017: "MongoDB", 27018: "MongoDB", 50000: "Jenkins",
 		50070: "HDFS", 61616: "ActiveMQ",
 	}
-	if n, ok := names[port]; ok { return n }
+	if n, ok := names[port]; ok {
+		return n
+	}
 	return ""
 }

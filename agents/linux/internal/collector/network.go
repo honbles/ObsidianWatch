@@ -93,6 +93,11 @@ func (n *NetworkCollector) diff() {
 	// New connections
 	for key, conn := range current {
 		if _, existed := n.prev[key]; !existed {
+			if conn.proto == "tcp" && KernelSensorActive.Load() {
+				if _, ok := kernelConnects.Load(connKey("tcp", conn.srcPort, conn.dstIP, conn.dstPort)); ok {
+					continue // the kernel sensor already reported this connect with its process
+				}
+			}
 			n.emit(conn, "open")
 		}
 	}

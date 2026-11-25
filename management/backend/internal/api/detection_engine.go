@@ -32,11 +32,11 @@ package api
 //    registry  → EventType="registry",RegKey=config_path  (configmon)
 
 import (
-	"regexp"
 	"context"
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -77,6 +77,7 @@ func img(ev store.Event) string {
 	}
 	return strings.ToLower(*ev.ImagePath)
 }
+
 // procIn reports whether the process base name (lower-case, without a
 // directory or ".exe") is exactly one of names. Substring matching on short
 // names ("sh", "nc", "host", "tar") matched ssh, sync, ghost, start-stop-daemon.
@@ -115,6 +116,7 @@ func dstip(ev store.Event) string {
 	}
 	return strings.ToLower(*ev.DstIP)
 }
+
 // G-12: rawStr lower-cases the full raw JSON; it is called by hundreds of
 // rules per event, so memoise the most recent conversion (keyed by the raw
 // buffer's address + length). Events are evaluated one at a time against all
@@ -1405,10 +1407,67 @@ type DetectionEngine struct {
 	auth       *authCorrelator
 	seq        *seqCorrelator
 	geo        *entraGeoTracker
+	cfg        *engineConfig
+	lineage    *lineage
 }
 
 func NewDetectionEngine(db *store.DB, mailer *notify.Mailer, logger *slog.Logger) *DetectionEngine {
-	return &DetectionEngine{db: db, mailer: mailer, logger: logger, suppressor: NewGCPSuppressor(db), auth: newAuthCorrelator(), seq: newSeqCorrelator(), geo: newEntraGeoTracker()}
+	return &DetectionEngine{db: db, mailer: mailer, logger: logger, suppressor: NewGCPSuppressor(db), auth: newAuthCorrelator(), seq: newSeqCorrelator(), geo: newEntraGeoTracker(), lineage: newLineage()}
+}
+
+// engineConfig is what one evaluation pass reads from the database: rule
+// states, IOCs, Sigma rules and settings. Evaluation can now run several
+// times a second (it wakes on new events), so this is reloaded at most every
+// configRefresh rather than on every pass.
+type engineConfig struct {
+	loaded                       time.Time
+	states                       map[string]store.DetectionSignatureState
+	ipIOCs, domainIOCs, hashIOCs map[string]store.IOCIndicator
+	iocPrevalenceHosts           int
+	iocKnownGoodOn               bool
+	sigmaByCategory              map[string][]store.SigmaRule
+}
+
+const configRefresh = 10 * time.Second
+
+func (e *DetectionEngine) config(ctx context.Context) *engineConfig {
+	if e.cfg != nil && time.Since(e.cfg.loaded) < configRefresh {
+		return e.cfg
+	}
+	refreshBusinessHours(ctx, e.db)
+	refreshGCPInternalDomains(ctx, e.db)
+	refreshEndpointSuppressions(ctx, e.db)
+	if e.suppressor != nil {
+		e.suppressor.Refresh(ctx)
+	}
+	c := &engineConfig{loaded: time.Now(), iocPrevalenceHosts: 3, iocKnownGoodOn: true}
+	c.states, _ = e.db.GetSignatureStates(ctx)
+	c.ipIOCs, c.domainIOCs, c.hashIOCs = e.loadIOCs(ctx)
+	if v, _ := e.db.GetSetting(ctx, "imds_allowed_processes"); v != "" {
+		setIMDSExtraAllowed(v)
+	}
+	if v, _ := e.db.GetSetting(ctx, "ioc_hash_prevalence_hosts"); v != "" {
+		c.iocPrevalenceHosts = settingInt(v, 3)
+	}
+	if v, _ := e.db.GetSetting(ctx, "ioc_known_good_enabled"); v == "false" {
+		c.iocKnownGoodOn = false
+	}
+	sigmaGlobalEnabled := true
+	if v, _ := e.db.GetSetting(ctx, "detection.sigma_enabled"); v == "false" {
+		sigmaGlobalEnabled = false
+	}
+	// Pre-index Sigma rules by category: O(events * relevant rules), not
+	// O(events * all rules).
+	c.sigmaByCategory = map[string][]store.SigmaRule{}
+	if sigmaGlobalEnabled {
+		rules, _ := e.db.ListSigmaRules(ctx, true)
+		for _, r := range rules {
+			cat := strings.ToLower(r.Category)
+			c.sigmaByCategory[cat] = append(c.sigmaByCategory[cat], r)
+		}
+	}
+	e.cfg = c
+	return c
 }
 
 func (e *DetectionEngine) Run(ctx context.Context) {
@@ -1416,19 +1475,67 @@ func (e *DetectionEngine) Run(ctx context.Context) {
 	// after that resumes exactly from the persisted cursor regardless of
 	// how long the gap since the last poll was.
 	loadCorrelatorState(ctx, e.db, e.auth, e.seq) // D-07
-	e.runCursor(ctx)
+	e.catchUp(ctx)
 	e.runDevOpsCursor(ctx)
+
+	// The ingest backend notifies after each batch, so new events are
+	// evaluated within about half a second; the ticker remains as the
+	// fallback when notifications are lost or the listener is down.
+	wake := make(chan struct{}, 1)
+	go func() {
+		for ctx.Err() == nil {
+			if err := e.db.ListenEvents(ctx, wake); err != nil {
+				e.logger.Warn("detection: event notifications unavailable, polling only", "err", err)
+			}
+			select {
+			case <-ctx.Done():
+			case <-time.After(30 * time.Second):
+			}
+		}
+	}()
 	ticker := time.NewTicker(detectionInterval())
 	defer ticker.Stop()
+	devops := time.NewTicker(detectionInterval())
+	defer devops.Stop()
 	for {
 		select {
 		case <-ctx.Done():
 			saveCorrelatorState(context.Background(), e.db, e.auth, e.seq)
 			return
+		case <-wake:
+			// Let a burst of batches land, then take them in one pass.
+			select {
+			case <-ctx.Done():
+				continue
+			case <-time.After(wakeDebounce):
+			}
+			select {
+			case <-wake:
+			default:
+			}
+			e.catchUp(ctx)
 		case <-ticker.C:
-			e.runCursor(ctx)
+			e.catchUp(ctx)
+		case <-devops.C:
 			e.runDevOpsCursor(ctx)
 			saveCorrelatorState(ctx, e.db, e.auth, e.seq)
+		}
+	}
+}
+
+// wakeDebounce is how long the engine waits after a notification before
+// reading, so a burst of batches is evaluated together.
+const wakeDebounce = 300 * time.Millisecond
+
+// detectionPage is how many events one cursor read returns.
+const detectionPage = 5000
+
+// catchUp reads and evaluates pages until the cursor reaches the newest
+// event (bounded, so one huge backlog cannot starve the other cursors).
+func (e *DetectionEngine) catchUp(ctx context.Context) {
+	for i := 0; i < 20 && ctx.Err() == nil; i++ {
+		if e.runCursor(ctx) < detectionPage {
+			return
 		}
 	}
 }
@@ -1481,13 +1588,14 @@ func (e *DetectionEngine) runDevOpsCursor(ctx context.Context) {
 // wall-clock polling with cursor-based paging over events.ingested_at - see
 // pageEventCursor for why this matters (a backlogged/reconnecting agent's
 // events used to be able to fall permanently outside every future window).
-func (e *DetectionEngine) runCursor(ctx context.Context) {
-	events, err := pageEventCursor(ctx, e.db, "detection", store.EventFilter{}, 2*time.Hour, 5000)
+func (e *DetectionEngine) runCursor(ctx context.Context) int {
+	events, err := pageEventCursor(ctx, e.db, "detection", store.EventFilter{}, 2*time.Hour, detectionPage)
 	if err != nil {
 		e.logger.Warn("detection: cursor query failed", "err", err)
-		return
+		return 0
 	}
 	e.evaluateEvents(ctx, events)
+	return len(events)
 }
 
 func (e *DetectionEngine) evaluateEvents(ctx context.Context, events []store.Event) {
@@ -1498,45 +1606,10 @@ func (e *DetectionEngine) evaluateEvents(ctx context.Context, events []store.Eve
 
 	e.recordPrevalence(events)
 	e.alertRareBinaries(ctx, events)
-	refreshBusinessHours(ctx, e.db)
-	refreshGCPInternalDomains(ctx, e.db)
-	refreshEndpointSuppressions(ctx, e.db)
-	// Refresh suppression rules before this evaluation cycle
-	if e.suppressor != nil {
-		e.suppressor.Refresh(ctx)
-	}
-	states, _ := e.db.GetSignatureStates(ctx)
-	ipIOCs, domainIOCs, hashIOCs := e.loadIOCs(ctx)
-
-	if v, _ := e.db.GetSetting(ctx, "imds_allowed_processes"); v != "" {
-		setIMDSExtraAllowed(v)
-	}
-	iocPrevalenceHosts := 3
-	if v, _ := e.db.GetSetting(ctx, "ioc_hash_prevalence_hosts"); v != "" {
-		iocPrevalenceHosts = settingInt(v, 3)
-	}
-	iocKnownGoodOn := true
-	if v, _ := e.db.GetSetting(ctx, "ioc_known_good_enabled"); v == "false" {
-		iocKnownGoodOn = false
-	}
-
-	// Check if Sigma detection is globally enabled
-	sigmaGlobalEnabled := true
-	if v, _ := e.db.GetSetting(ctx, "detection.sigma_enabled"); v == "false" {
-		sigmaGlobalEnabled = false
-	}
-
-	// Load enabled Sigma rules - pre-index by category for performance
-	// Avoids O(events * 1211 rules) - instead O(events * relevant_rules_for_os)
-	allSigmaRules, _ := e.db.ListSigmaRules(ctx, true)
-	if !sigmaGlobalEnabled {
-		allSigmaRules = nil
-	}
-	sigmaByCategory := make(map[string][]store.SigmaRule)
-	for _, r := range allSigmaRules {
-		cat := strings.ToLower(r.Category)
-		sigmaByCategory[cat] = append(sigmaByCategory[cat], r)
-	}
+	cfg := e.config(ctx)
+	states, ipIOCs, domainIOCs, hashIOCs := cfg.states, cfg.ipIOCs, cfg.domainIOCs, cfg.hashIOCs
+	iocPrevalenceHosts, iocKnownGoodOn, sigmaByCategory := cfg.iocPrevalenceHosts, cfg.iocKnownGoodOn, cfg.sigmaByCategory
+	e.lineage.observe(ctx, e.db, events)
 
 	created := 0
 	for _, ev := range events {
@@ -1600,6 +1673,7 @@ func (e *DetectionEngine) evaluateEvents(ctx context.Context, events []store.Eve
 			// linux or unknown
 			sigs = append(append(append(append([]ThreatSig{}, linuxSignatures...), usbSignatures...), linuxAccountSignatures...), dnsCatSignatures...)
 			sigs = append(sigs, softwareSignatures...)
+			sigs = append(sigs, linuxLineageSignatures...)
 			sigs = append(sigs, endpointAgentSignatures...)
 		}
 
@@ -1632,7 +1706,7 @@ func (e *DetectionEngine) evaluateEvents(ctx context.Context, events []store.Eve
 				sigs = append(sigs, gcpNewSignatures...)
 				sigs = append(sigs, gcpPolicySignatures...)
 				sigs = append(sigs, gcpEscalationSignatures...)
-			sigs = append(sigs, gcpTelemetrySignatures...)
+				sigs = append(sigs, gcpTelemetrySignatures...)
 			}
 			if provider == "azure" || provider == "cloud" {
 				// Azure-specific extended rules
@@ -1693,9 +1767,9 @@ func (e *DetectionEngine) evaluateEvents(ctx context.Context, events []store.Eve
 				dedupKey = fmt.Sprintf("sig:%s:host:%s:h:%s", sig.ID, ev.Host, hour)
 			}
 			desc := fmt.Sprintf(
-				"%s\n\nMITRE ATT&CK: %s | Category: %s\nHost: %s | OS: %s | User: %s | Process: %s\nCommand: %s",
+				"%s\n\nMITRE ATT&CK: %s | Category: %s\nHost: %s | OS: %s | User: %s | Process: %s\nCommand: %s%s",
 				sig.Description, sig.MITRE, sig.Category,
-				ev.Host, ev.OS, strOrDash(ev.UserName), strOrDash(ev.ProcessName), strOrDash(ev.CommandLine),
+				ev.Host, ev.OS, strOrDash(ev.UserName), strOrDash(ev.ProcessName), strOrDash(ev.CommandLine), chainLine(ev),
 			)
 			alert := store.Alert{
 				Title:         fmt.Sprintf("[%s] %s", sig.MITRE, sig.Name),
@@ -1748,9 +1822,9 @@ func (e *DetectionEngine) evaluateEvents(ctx context.Context, events []store.Eve
 			dedupKey := fmt.Sprintf("ioc:%s:%s:host:%s:h:%s:e:%s", ioc.Source, ioc.Value, ev.Host, hour, alertEntityKey(ev)) // D-06: entity fingerprint folded in
 			source := strings.ToUpper(ioc.Source)
 			desc := fmt.Sprintf(
-				"[%s] Matched known malicious %s: %s\n\nMalware: %s | Threat: %s | Confidence: %d%%\nHost: %s | OS: %s | Process: %s",
+				"[%s] Matched known malicious %s: %s\n\nMalware: %s | Threat: %s | Confidence: %d%%\nHost: %s | OS: %s | Process: %s%s",
 				source, ioc.IOCType, ioc.Value, ioc.Malware, ioc.ThreatType, ioc.Confidence,
-				ev.Host, ev.OS, strOrDash(ev.ProcessName),
+				ev.Host, ev.OS, strOrDash(ev.ProcessName), chainLine(ev),
 			)
 			alert := store.Alert{
 				Title:         fmt.Sprintf("[%s] %s IOC Match - %s", source, titleCase(ioc.IOCType), ioc.Value),
@@ -1803,9 +1877,9 @@ func (e *DetectionEngine) evaluateEvents(ctx context.Context, events []store.Eve
 			}
 			alert := store.Alert{
 				Title: fmt.Sprintf("[Sigma] %s", rule.Title),
-				Description: fmt.Sprintf("%s\n\nRule: %s | Level: %s | Category: %s\nMITRE: %s\nHost: %s | OS: %s | Process: %s | Command: %s",
+				Description: fmt.Sprintf("%s\n\nRule: %s | Level: %s | Category: %s\nMITRE: %s\nHost: %s | OS: %s | Process: %s | Command: %s%s",
 					rule.Description, rule.Title, rule.Level, rule.Category,
-					mitre, ev.Host, ev.OS, strOrDash(ev.ProcessName), strOrDash(ev.CommandLine)),
+					mitre, ev.Host, ev.OS, strOrDash(ev.ProcessName), strOrDash(ev.CommandLine), chainLine(ev)),
 				Severity:      sigSev,
 				AgentID:       ev.AgentID,
 				Host:          ev.Host,

@@ -10,11 +10,11 @@
 package main
 
 import (
-	"crypto/subtle"
-	"encoding/json"
 	"context"
 	"crypto/rand"
+	"crypto/subtle"
 	"encoding/hex"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
@@ -22,10 +22,10 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
-	"sync"
 	"os/signal"
 	"path/filepath"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 	"unsafe"
@@ -39,8 +39,9 @@ import (
 	"obsidianwatch/agent/internal/forwarder"
 	"obsidianwatch/agent/internal/identity"
 	"obsidianwatch/agent/internal/ownproc"
-	"obsidianwatch/agent/internal/response"
 	"obsidianwatch/agent/internal/parser"
+	"obsidianwatch/agent/internal/prevention"
+	"obsidianwatch/agent/internal/response"
 	sysmonpkg "obsidianwatch/agent/internal/sysmon"
 	"obsidianwatch/agent/pkg/schema"
 )
@@ -105,8 +106,6 @@ func main() {
 		}
 		return
 	}
-
-	enableAuditPolicies(logger)
 
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
@@ -207,6 +206,19 @@ func (s *agentService) Execute(args []string, r <-chan svc.ChangeRequest, status
 // ---------------------------------------------------------------------------
 
 func run(ctx context.Context, cfg *config.Config, logger *slog.Logger) error {
+	// Audit policy for process creation (4688/4689 with command lines) and
+	// PowerShell logging. Runs in service mode too: it used to run only when
+	// started from a console.
+	audit4688 := enableAuditPolicies(logger)
+	securityRead := false
+	if cfg.Collector.EventLog.Enabled {
+		for _, ch := range cfg.Collector.EventLog.Channels {
+			securityRead = securityRead || strings.EqualFold(ch, "Security")
+		}
+	}
+	// 4688 only replaces the ETW collector when the agent also reads the
+	// Security log; Sysmon only when its collector is on.
+	collector.ProcessSourceSuppressed = processSourceSuppressed(audit4688 && securityRead, cfg.Collector.Sysmon.Enabled)
 	// Write directly to log file first - before anything else in run()
 	logStep := func(msg string) {
 		if f, err := os.OpenFile(`C:\ProgramData\ObsidianWatch\agent.log`,
@@ -305,6 +317,7 @@ func run(ctx context.Context, cfg *config.Config, logger *slog.Logger) error {
 		logStep("forwarder init FAILED: " + err.Error())
 		return fmt.Errorf("forwarder init: %w", err)
 	}
+	fwd.DepthSink = collector.GlobalHealth.QueueDepth.Store
 	logStep("forwarder init OK")
 
 	// --- Normaliser + Enricher ---
@@ -313,6 +326,23 @@ func run(ctx context.Context, cfg *config.Config, logger *slog.Logger) error {
 
 	hashedCh := make(chan schema.Event, 256)
 	fileHasher := collector.NewFileHasher(hashedCh)
+
+	// One response handler for live response and prevention.
+	rh := response.New("", []string{cfg.Forwarder.BackendURL, cfg.Forwarder.ManagementURL}, logger)
+	go rh.Run(ctx)
+
+	// Prevention: agent-side matching against the server's indicator set.
+	var prev *prevention.Engine
+	if cfg.Prevention.On() {
+		if tlsCfg, terr := config.BuildTLSConfig(caPEMFor(cfg), cfg.Forwarder.AllowInsecureTLS); terr != nil {
+			logger.Warn("prevention: no TLS configuration, disabled", "err", terr)
+		} else {
+			prev = prevention.Start(ctx, prevention.StartOptions{
+				Dir: response.DefaultDir(), Out: eventCh, Responder: rh, AgentID: agentID, Host: hostInfo.Hostname, OS: "windows",
+				Logger: logger, BackendURL: cfg.Forwarder.BackendURL, ProtectURLs: []string{cfg.Forwarder.ManagementURL}, TLS: tlsCfg,
+			})
+		}
+	}
 
 	// Dispatcher goroutine: reads from eventCh, normalises, enriches, enqueues.
 	go func() {
@@ -323,6 +353,11 @@ func run(ctx context.Context, cfg *config.Config, logger *slog.Logger) error {
 			}
 			buf = norm.NormalizeBatch(buf)
 			enrch.EnrichBatch(buf)
+			if prev != nil {
+				for i := range buf {
+					prev.Inspect(&buf[i])
+				}
+			}
 			fwd.Enqueue(buf)
 			buf = buf[:0]
 		}
@@ -545,8 +580,6 @@ func run(ctx context.Context, cfg *config.Config, logger *slog.Logger) error {
 			lr.SetCAPEM(caPEM)
 		}
 		// One-click response actions share the tunnel; isolation survives restarts.
-		rh := response.New("", []string{cfg.Forwarder.BackendURL, cfg.Forwarder.ManagementURL}, logger)
-		go rh.Run(ctx)
 		lr.SetResponse(rh)
 		go func() { lr.Run(ctx) }()
 		activeCollectors = append(activeCollectors, "live-response")
@@ -879,7 +912,8 @@ func generateInstallKey() (string, error) {
 // the agent certificate and passes it to the management server.
 func registerInstallKey(backendURL, caCertPEM, agentID, password string) error {
 	backendURL = strings.TrimRight(backendURL, "/")
-	body := fmt.Sprintf(`{"agent_id":%q,"install_key":%q,"os":"windows"}`, agentID, password)
+	host, _ := os.Hostname()
+	body := fmt.Sprintf(`{"agent_id":%q,"install_key":%q,"os":"windows","hostname":%q}`, agentID, password, host)
 
 	// W-05: fail closed - no silent InsecureSkipVerify fallback.
 	tlsCfg, err := config.BuildTLSConfig([]byte(caCertPEM), false)
@@ -1261,7 +1295,7 @@ func elevatedSysmonSetup(logger *slog.Logger) error {
 //
 // These settings are written to the registry and take effect immediately.
 // Requires administrator privileges - silently skips on failure.
-func enableAuditPolicies(logger *slog.Logger) {
+func enableAuditPolicies(logger *slog.Logger) (processAuditOn bool) {
 	modAdvapi32Reg := windows.NewLazySystemDLL("advapi32.dll")
 	regSetValueEx := modAdvapi32Reg.NewProc("RegSetValueExW")
 	regCreateKeyEx := modAdvapi32Reg.NewProc("RegCreateKeyExW")
@@ -1300,6 +1334,26 @@ func enableAuditPolicies(logger *slog.Logger) {
 		return nil
 	}
 
+	// 0. Turn on the Process Creation and Process Termination audit
+	//    subcategories. Without them Windows writes no 4688/4689 at all; the
+	//    command-line setting below only adds a field. GUIDs keep this
+	//    working on any display language.
+	processAuditOn = true
+	for _, sub := range []struct{ name, guid string }{
+		{"Process Creation", "{0CCE922B-69AE-11D9-BED3-505054503030}"},
+		{"Process Termination", "{0CCE922C-69AE-11D9-BED3-505054503030}"},
+	} {
+		cmd := exec.Command("auditpol", "/set", "/subcategory:"+sub.guid, "/success:enable")
+		cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+		if out, err := cmd.CombinedOutput(); err != nil {
+			processAuditOn = false
+			logger.Warn("preflight: could not enable audit subcategory", "subcategory", sub.name,
+				"err", err, "output", strings.TrimSpace(string(out)))
+		} else {
+			logger.Info("preflight: audit subcategory enabled", "subcategory", sub.name)
+		}
+	}
+
 	// 1. Enable Process Creation auditing with command line inclusion (Event 4688 + cmdline)
 	//    HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System\Audit
 	//    ProcessCreationIncludeCmdLine_Enabled = 1
@@ -1307,6 +1361,7 @@ func enableAuditPolicies(logger *slog.Logger) {
 		`SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System\Audit`,
 		"ProcessCreationIncludeCmdLine_Enabled", 1); err != nil {
 		logger.Warn("preflight: could not enable 4688 command line logging (need admin)", "err", err)
+		processAuditOn = false
 	} else {
 		logger.Info("preflight: enabled Event 4688 command line inclusion")
 	}
@@ -1331,6 +1386,32 @@ func enableAuditPolicies(logger *slog.Logger) {
 		logger.Warn("preflight: could not enable PowerShell Module Logging", "err", err)
 	} else {
 		logger.Info("preflight: enabled PowerShell Module Logging (Event 4103)")
+	}
+	return processAuditOn
+}
+
+// processSourceSuppressed decides whether the ETW/polling process collector
+// should stay quiet: Sysmon reports processes when its service runs, and
+// Security 4688/4689 do when the agent enabled that auditing. The Sysmon
+// check is cached for a minute.
+func processSourceSuppressed(audit4688, sysmonCollected bool) func() bool {
+	var mu sync.Mutex
+	var checked time.Time
+	var sysmonUp bool
+	return func() bool {
+		if audit4688 {
+			return true
+		}
+		if !sysmonCollected {
+			return false
+		}
+		mu.Lock()
+		defer mu.Unlock()
+		if time.Since(checked) > time.Minute {
+			sysmonUp = sysmonpkg.Check() == sysmonpkg.StatusRunning
+			checked = time.Now()
+		}
+		return sysmonUp
 	}
 }
 
@@ -1409,4 +1490,17 @@ func hardenDataDir() {
 			"/grant:r", "*S-1-5-18:(OI)(CI)F", "*S-1-5-32-544:(OI)(CI)F",
 		).Run()
 	})
+}
+
+// caPEMFor returns the deployment CA: embedded PEM, else the CA file.
+func caPEMFor(cfg *config.Config) []byte {
+	if cfg.Forwarder.CACertPEM != "" {
+		return []byte(cfg.Forwarder.CACertPEM)
+	}
+	if cfg.Forwarder.CAFile != "" {
+		if b, err := os.ReadFile(cfg.Forwarder.CAFile); err == nil {
+			return b
+		}
+	}
+	return nil
 }

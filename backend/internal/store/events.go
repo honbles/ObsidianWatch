@@ -10,6 +10,17 @@ import (
 	"obsidianwatch/backend/pkg/schema"
 )
 
+// EventsChannel is the Postgres NOTIFY channel that tells the management
+// detection engine new events are in, so it evaluates them at once instead
+// of waiting for its next poll.
+const EventsChannel = "ow_events"
+
+// NotifyEventsInserted wakes listeners on EventsChannel. Best effort: the
+// engine still polls if a notification is lost.
+func (db *DB) NotifyEventsInserted(ctx context.Context) {
+	_, _ = db.ExecContext(ctx, `SELECT pg_notify($1, '')`, EventsChannel)
+}
+
 // InsertEvents writes a batch of events to the hypertable using a single
 // COPY-style multi-row INSERT for efficiency.
 func (db *DB) InsertEvents(ctx context.Context, events []schema.Event) error {

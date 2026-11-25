@@ -867,7 +867,7 @@ log:
 func buildWindowsYAML(cfg AgentBuilderConfig) string {
 	return fmt.Sprintf(`agent:
   id: ""
-  version: "0.2.0"
+  version: "0.3.1" # keep in step with the Linux and macOS agentVersion
 
 collector:
   event_log:

@@ -31,14 +31,16 @@ import (
 	"time"
 	"unsafe"
 
+	"github.com/cilium/ebpf"
+
 	"obsidianwatch/linux-agent/pkg/schema"
 )
 
 // Netlink proc connector constants
 const (
-	NETLINK_CONNECTOR = 11
-	CN_IDX_PROC       = 1
-	CN_VAL_PROC       = 1
+	NETLINK_CONNECTOR    = 11
+	CN_IDX_PROC          = 1
+	CN_VAL_PROC          = 1
 	PROC_CN_MCAST_LISTEN = 1
 
 	// proc_event.what values
@@ -50,14 +52,16 @@ const (
 
 // ProcessCollector monitors Linux processes.
 type ProcessCollector struct {
-	cfg         ProcessCollectorConfig
-	out         chan<- schema.Event
-	agentID     string
-	host        string
-	logger      *slog.Logger
-	seenPIDs    map[int]procEntry
-	mu          sync.Mutex
-	userCache   map[int]string // uid → username
+	cfg       ProcessCollectorConfig
+	out       chan<- schema.Event
+	agentID   string
+	host      string
+	logger    *slog.Logger
+	seenPIDs  map[int]procEntry
+	mu        sync.Mutex
+	userCache map[int]string // uid → username
+	drops     *ebpf.Map      // kernel tier ring-buffer drop counters
+	dropsSeen uint64
 }
 
 type ProcessCollectorConfig struct {
@@ -71,6 +75,16 @@ type procEntry struct {
 	args    []string // original argv, so rules can match arguments instead of a joined string
 	ppid    int
 	uid     int
+
+	// Set by the kernel tier, which knows them even after the process exits.
+	exe        string
+	guid       string
+	parentGUID string
+	source     string // "ebpf"; empty means proc connector or poll
+	cgroupID   uint64
+	truncated  bool // argv longer than the kernel copies
+	exited     bool
+	exitCode   int
 }
 
 // Caps keep a hostile or huge command line from bloating events.
@@ -110,7 +124,19 @@ func (p *ProcessCollector) Run(ctx context.Context) error {
 		return nil
 	}
 
-	// Try netlink proc connector first (requires root/CAP_NET_ADMIN)
+	// Kernel tier first: exec with argv captured in the kernel, exits and
+	// outbound connects. When it runs, the proc connector and the poll's
+	// exec reporting would only duplicate it.
+	if err := p.startKernel(ctx); err == nil {
+		p.logger.Info("process: kernel sensor active (eBPF)")
+		p.snapshotProc()
+		<-ctx.Done()
+		return nil
+	} else {
+		p.logger.Info("process: kernel sensor unavailable, using proc connector and polling", "reason", err)
+	}
+
+	// Netlink proc connector (requires root/CAP_NET_ADMIN)
 	go p.runNetlink(ctx)
 
 	// Always run /proc poll as enrichment + fallback
@@ -452,7 +478,10 @@ func (p *ProcessCollector) resolveExePath(pid int) string {
 
 func (p *ProcessCollector) emit(pid int, entry procEntry, action string, sev schema.Severity) {
 	username := p.resolveUsername(entry.uid)
-	exePath := p.resolveExePath(pid)
+	exePath := entry.exe
+	if exePath == "" && !entry.exited {
+		exePath = p.resolveExePath(pid)
+	}
 
 	rawData := map[string]interface{}{
 		"action":   action,
@@ -469,22 +498,53 @@ func (p *ProcessCollector) emit(pid int, entry procEntry, action string, sev sch
 	}
 	// Parent image path (edge baseline for the Alert Graph).
 	if entry.ppid > 0 {
-		if pe := p.resolveExePath(entry.ppid); pe != "" {
+		p.mu.Lock()
+		parent, ok := p.seenPIDs[entry.ppid]
+		p.mu.Unlock()
+		if ok && parent.exe != "" {
+			rawData["parent_exe"] = parent.exe
+		} else if pe := p.resolveExePath(entry.ppid); pe != "" {
 			rawData["parent_exe"] = pe
+		}
+		if ok && parent.name != "" {
+			rawData["parent_name"] = parent.name
 		}
 	}
 	// F-11: stable process identity (boot id + pid + start time) so PID reuse
 	// cannot merge unrelated processes in the threat graph.
-	if g := linuxProcGUID(pid); g != "" {
+	if entry.guid != "" {
+		rawData["process_guid"] = entry.guid
+	} else if g := linuxProcGUID(pid); g != "" {
 		rawData["process_guid"] = g
 	}
-	if entry.ppid > 0 {
+	if entry.parentGUID != "" {
+		rawData["parent_process_guid"] = entry.parentGUID
+	} else if entry.ppid > 0 {
 		if g := linuxProcGUID(entry.ppid); g != "" {
 			rawData["parent_process_guid"] = g
 		}
 	}
-	// L-01: hash on exec/start events (the cache makes repeats free).
-	sha := exeSHA256(pid)
+	if entry.source != "" {
+		rawData["sensor"] = entry.source
+	}
+	if entry.cgroupID != 0 {
+		rawData["cgroup_id"] = entry.cgroupID
+	}
+	if entry.truncated {
+		rawData["argv_truncated"] = true
+	}
+	if entry.exited {
+		rawData["exit_code"] = entry.exitCode
+	}
+	// L-01: hash on exec/start events (the cache makes repeats free). A
+	// process that already exited is hashed by path.
+	sha := ""
+	if action == "exec" {
+		sha = exeSHA256(pid)
+		if sha == "" && exePath != "" {
+			sha = pathSHA256(exePath)
+		}
+	}
 	if sha != "" {
 		rawData["sha256"] = sha
 		// A1: package-verified tag. Absent field = unknown; the SIEM only
@@ -506,7 +566,7 @@ func (p *ProcessCollector) emit(pid int, entry procEntry, action string, sev sch
 		EventType:   schema.EventTypeProcess,
 		FileHash:    sha,
 		Severity:    sev,
-		Source:      "proc",
+		Source:      sourceOr(entry.source, "proc"),
 		Raw:         rawJSON,
 		PID:         pid,
 		PPID:        entry.ppid,
@@ -537,9 +597,8 @@ var (
 	bootIDVal  string
 )
 
-// linuxProcGUID returns "<bootid8>-<pid>-<starttime ticks>" or "" if the
-// process is gone / unreadable.
-func linuxProcGUID(pid int) string {
+// bootID8 is the first 8 hex digits of this boot's id.
+func bootID8() string {
 	bootIDOnce.Do(func() {
 		if b, err := os.ReadFile("/proc/sys/kernel/random/boot_id"); err == nil {
 			id := strings.ReplaceAll(strings.TrimSpace(string(b)), "-", "")
@@ -549,6 +608,25 @@ func linuxProcGUID(pid int) string {
 			bootIDVal = id
 		}
 	})
+	return bootIDVal
+}
+
+func sourceOr(s, def string) string {
+	if s != "" {
+		return s
+	}
+	return def
+}
+
+func mustRaw(v any) json.RawMessage {
+	b, _ := json.Marshal(v)
+	return b
+}
+
+// linuxProcGUID returns "<bootid8>-<pid>-<starttime ticks>" or "" if the
+// process is gone / unreadable.
+func linuxProcGUID(pid int) string {
+	bootID8()
 	b, err := os.ReadFile(fmt.Sprintf("/proc/%d/stat", pid))
 	if err != nil {
 		return ""

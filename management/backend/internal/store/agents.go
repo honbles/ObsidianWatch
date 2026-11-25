@@ -51,6 +51,7 @@ func (db *DB) ListAgents(ctx context.Context) ([]Agent, error) {
 		       lat, lng, location_accuracy, COALESCE(location_source,''),
 		       COALESCE(location_city,''), COALESCE(location_country,''), location_updated
 		FROM agents
+		WHERE superseded_by IS NULL -- records replaced by a reinstall are hidden
 		ORDER BY last_seen DESC
 	`)
 	if err != nil {
@@ -164,20 +165,23 @@ func (db *DB) GetAgentByInstallKey(ctx context.Context, key string) (*Agent, err
 // already-registered agent is a no-op. Re-issuing a key for a real
 // reinstall goes through RegenerateInstallKey instead, which requires an
 // authenticated admin session.
-func (db *DB) SetInstallKey(ctx context.Context, agentID, key, os string) error {
+func (db *DB) SetInstallKey(ctx context.Context, agentID, key, os, hostname string) error {
 	if os == "" {
 		os = "unknown"
 	}
+	if hostname == "" {
+		hostname = agentID
+	}
 	_, err := db.ExecContext(ctx, `
 		INSERT INTO agents (id, hostname, os, version, first_seen, last_seen, install_key_hash, tamper_locked)
-		VALUES ($1, $1, $3, '0.0.0', NOW(), NOW(), $2, true)
+		VALUES ($1, $4, $3, '0.0.0', NOW(), NOW(), $2, true)
 		ON CONFLICT (id) DO UPDATE SET
 			install_key_hash = EXCLUDED.install_key_hash,
 			install_key      = NULL,
 			os               = EXCLUDED.os,
 			tamper_locked    = true
 		WHERE COALESCE(agents.install_key, '') = '' AND COALESCE(agents.install_key_hash, '') = ''
-	`, agentID, hashInstallKey(key), os)
+	`, agentID, hashInstallKey(key), os, hostname)
 	return err
 }
 
@@ -244,7 +248,7 @@ func (db *DB) GetAgentLocations(ctx context.Context) ([]Agent, error) {
 		       lat, lng, location_accuracy, COALESCE(location_source,''),
 		       COALESCE(location_city,''), COALESCE(location_country,''), location_updated
 		FROM agents
-		WHERE lat IS NOT NULL AND lng IS NOT NULL
+		WHERE lat IS NOT NULL AND lng IS NOT NULL AND superseded_by IS NULL
 		ORDER BY last_seen DESC
 	`)
 	if err != nil {
