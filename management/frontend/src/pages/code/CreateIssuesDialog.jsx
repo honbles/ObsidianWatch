@@ -32,7 +32,7 @@ export default function CreateIssuesDialog({ conn, repo, branch, onClose, onDone
   const work = plan ? plan.new_issues + plan.comments : 0
   return (
     <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-siem-surface border border-siem-border rounded-2xl w-full max-w-2xl max-h-[85vh] flex flex-col" onClick={e => e.stopPropagation()}>
+      <div className="bg-siem-surface border border-siem-border rounded-2xl w-full max-w-2xl max-h-[calc(85*var(--vh))] flex flex-col" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between px-5 py-4 border-b border-siem-border">
           <div>
             <div className="text-sm font-semibold text-siem-text">Create issues · <span className="font-mono">{repo}</span></div>
@@ -73,7 +73,7 @@ export default function CreateIssuesDialog({ conn, repo, branch, onClose, onDone
                 ))}
                 {(plan.groups || []).length === 0 && <div className="px-3 py-3 text-[11px] text-siem-muted">No findings at this level.</div>}
               </div>
-              <p className="text-[11px] text-siem-muted">ObsidianWatch remembers which findings each issue covers, so clicking again only adds what is new. It does not follow whether issues are open or closed; the findings here stay the source of truth. Secret values are never written.</p>
+              <p className="text-[11px] text-siem-muted">Running it again only adds new findings. Secret values are never written.</p>
             </>
           )}
           {result && (

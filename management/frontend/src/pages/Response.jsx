@@ -253,7 +253,7 @@ function RunAction({ hosts, preselect, onDone }) {
                   {TTLS.map(([l, v]) => <option key={v} value={v}>{l}</option>)}</select></Field>
                 <label className="t2" style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 12.5 }}>
                   <input type="checkbox" className="ow-check" checked={params.block_page} onChange={e => setParams(p => ({ ...p, block_page: e.target.checked }))}/>
-                  <span>Tell the user: a pop-up says the computer is isolated and to contact the administrator, at isolation and again (at most every 10 minutes) when they try to reach a site. Off: isolate silently.</span>
+                  <span>Show the user a pop-up that the computer is isolated. Off: isolate silently.</span>
                 </label>
               </>
             )}
@@ -422,7 +422,7 @@ export default function Response() {
     <div>
       <PageHeader title="Response"
         state={isolated ? 'crit' : pending ? 'warn' : undefined} stateText={isolated ? `${isolated} host${isolated === 1 ? '' : 's'} isolated` : `${pending} isolation${pending === 1 ? '' : 's'} pending`}
-        sub="Contain and clean up across the fleet. Every action records who asked, why and what happened."
+        sub="Contain and clean up across the fleet."
         actions={<button className="ow-btn" onClick={load}><RefreshCw size={13}/>Refresh</button>}
         nums={<>
           <Num k="Reachable now" v={live} unit={`of ${hosts.length}`} title="Hosts with a connected live-response tunnel"/>

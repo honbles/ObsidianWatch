@@ -5,21 +5,67 @@ Code repositories, Cloud posture boards). This file records how the console impl
 
 ## Foundations (`management/frontend/src/index.css`)
 
-- **Type.** Inter for the interface, JetBrains Mono for data (routes, hashes, paths, commands, ARNs, IDs).
-  Both ship in `src/assets/fonts` (Latin and Latin Extended, OFL, see `OFL.txt`), so an air-gapped console
-  renders the same. Tabular figures are on globally.
-- **Colour.** Graphite surfaces `--bg --s1 --s2 --s3`, borders `--line --line2`, text `--t1 --t2 --t3`,
-  one accent `--acc`. State colours `--ok --warn --crit` (plus `--*bg` tints) are used for state only.
-  Dark and light (`html.light`) use the same names.
-- **Compatibility.** The old names (`--surface`, `--text2`, `--red`, `siem-*` Tailwind colours…) are aliases
-  of the new tokens, and saturated Tailwind/inline state colours are pulled onto the state tokens, so pages not
-  yet rebuilt still follow the palette.
+Brand, colours and type are described in [brand.md](brand.md). This section is how the console applies them.
+
+- **Tokens.** Every colour is a CSS custom property. Each is defined once per theme as RGB channels
+  (`--crit-c: 255 99 105`) and resolved for use (`--crit: rgb(var(--crit-c))`), so both CSS and Tailwind can
+  add transparency. The two themes differ only in the token block at the top of `index.css`; nothing else in
+  the console says "if light".
+- **Names.** Surfaces `--bg --s1 --s2 --s3`, borders `--line --line2`, text `--t1 --t2 --t3`, accent `--acc`
+  (links, focus, selection) and `--accf` (filled buttons), state `--ok --warn --high --crit --info` with
+  `--okbg --wbg --hbg --cbg --ibg` tints, severity `--sev5`..`--sev1`, chart series `--cat1`..`--cat8`,
+  chrome `--ch-*`. The older names (`--surface`, `--text2`, `--red`, `siem-*` Tailwind colours…) remain as
+  aliases.
+- **Tailwind palette.** `tailwind.config.js` rebuilds Tailwind's colour names on the tokens: red and rose are
+  critical, orange is high, amber and yellow are warning, green, emerald and lime are OK, blue and sky are
+  information, cyan, violet, indigo and purple are the brand accent, gray, slate and zinc are the neutrals.
+  Shades keep their intent: 50–600 the colour, 700–800 a border tone, 900–950 the base for tinted backgrounds
+  (`bg-red-950/30`). There is no other palette to reach for.
+- **Type.** IBM Plex Sans for the interface, IBM Plex Mono for data. Both ship in `src/assets/fonts`.
+- **Depth.** Cards, tiles and stat panels use `--shadow-card` (a soft shadow in light, none in dark);
+  menus and dialogs use `--shadow-pop`.
+
+## Themes
+
+- Dark and light. The theme button in the context bar (and on the signed-out pages) switches them; the choice
+  is stored in the browser (`ow-theme`).
+- A first visit with nothing stored follows the operating system's preference. `public/theme-init.js` applies
+  the theme before the first paint, so the console never flashes the other one; `src/api/useTheme.js` uses the
+  same rule.
+- Terminals (live response, host terminal) stay dark in both themes (`TERMINAL_THEME` in `src/utils/brand.js`).
+
+## Display size
+
+- The whole console is drawn at a scale, `--ui-zoom` on the root element: **Compact** 1 (the size before November 2026),
+  **Default** 1.08, **Large** 1.16. People choose it under **Display size** in the user menu; the browser remembers it
+  (`ow-display`) and `public/theme-init.js` applies it before the first paint. Helpers: `src/utils/display.js`.
+- Use `--vh` / `--vw` (`calc(100 * var(--vh))`) instead of `vh` / `vw`: they stay one percent of the window at any scale.
+- Pointer positions are in window pixels. Code that subtracts positions by hand (`clientX - rect.left`, drag
+  distances) divides by `uiZoom()`. Ratios, d3 on SVG and Recharts need nothing.
+- Terminals and Leaflet maps do their own pointer maths, so they render at native scale inside `.ow-nozoom-fill`.
+
+## Rules for components
+
+- **No raw colours.** Use a token (`var(--crit)`, `var(--t2)`), a design-system class (`ow-pill crit`,
+  `c-warn`) or the Tailwind palette. `npm run build` runs `scripts/check-colours.mjs` first and fails on any
+  hex, `rgb()` or `hsl()` colour in `src/` (black and white `rgba()` overlays are allowed). The only file
+  allowed fixed colours is `src/utils/brand.js` (mark, chrome, terminal).
+- **Transparency of a token:** `tint('var(--crit)', 15)` from `src/utils/colors.js` (a `color-mix`), or
+  `rgb(var(--crit-c) / .15)`. Never append hex alpha to a colour string.
+- **Canvas** cannot read CSS variables: pass colours through `resolveColor()` from `src/utils/colors.js` at draw time.
+  SVG attributes take tokens directly (`fill="var(--ok)"`).
+- **Severity** colours come from `SEV_COLORS` / `sevState()` in `components/ui.jsx` (pills, stripes, charts) or
+  `SEV_VAR` in `utils/colors.js`. Chart series take `CAT` in order.
+- **Icons** come from `lucide-react`. Emoji are not used as icons.
+- **Copy.** Pages state facts, limits and consequences in a line; how-to explanations live in the docs. Empty states
+  say what is empty ("No routes yet."), not how to fill them. Page subtitles are one short line or left out.
 
 ## State
 
 Five states, each with a word and a shape so colour is never the only signal:
 OK (circle), Warning (diamond), Critical (square), Unknown/offline (grey circle), Info (accent circle).
-Platform severity maps as: 5 Critical, 4 High (warning colour), 3 Medium (info colour), 2 Low, 1 Info.
+Platform severity has its own five colours and maps as: 5 Critical (`crit`, square), 4 High (`high`, diamond),
+3 Medium (`med`, amber circle), 2 Low (`low`, blue circle), 1 Info (grey circle).
 
 | Page | Rule |
 |---|---|
@@ -37,10 +83,36 @@ The pill's tooltip states which rule applied.
 
 ## Shell (`src/components/Shell.jsx`)
 
-Left rail grouped by domain (Endpoint, Application, Code, Cloud, Detect, Administration),
-collapsible to icons, with fleet reachability at the foot. Context bar: breadcrumb, global search
-(Ctrl/⌘ K or `/`: pages, hosts, services, then event search or hunt), time range (only on pages that read
-`?from=&to=`, currently Applications), theme, open alerts, user menu.
+Navigation is a header in the chrome colours (both themes), so pages always use the full width.
+
+- **Products.** The mark (and wordmark from 1600 px), Overview, then one menu per product: **Endpoint** (Fleet, Hunt,
+  Prevention, Response, with fleet reachability at the foot), **Application** (Hosts, Overview, Services, Dependencies,
+  Coverage, Settings), **Code** (Repositories), **Cloud** (Posture), **Network** (Probes, beta), **ITDR** (announced:
+  its items are marked "soon" and link nowhere), and **Detect** across all of them (Alerts with the open count, Events,
+  Insights, Rules, Alert rules, Suppressions). The product of the current page is underlined.
+- **Menus.** Click opens a menu; while one is open, hovering another product switches to it. Choosing a page, clicking
+  elsewhere or Escape closes it. The menu list lives in `buildNav()`.
+- **Tools** on the right: search (Ctrl/⌘ K or `/`: pages, hosts, services, then event search or hunt), the time range
+  (only on pages that read `?from=&to=`, currently Applications), theme, open alerts, **Settings** (admins: Agent builder,
+  Users and access, Audit log, Platform settings) and the user menu (Display size, Change password, Sign out).
+- Under 1280 px the product menus fold into one **Menu** button that lists every product.
+
+## Signed-out pages
+
+- **Sign in** (`pages/Login.jsx`) is a dark obsidian stage in both themes (the `.force-dark` class re-resolves the
+  tokens in the dark theme). An animated network runs behind it (violet endpoints, teal servers, red threats,
+  traffic between them). In the middle is a large eye that fades into the stage at its edges, breathes slowly and whose
+  iris turns once every 90 s. On the left: the headline and the six domains (Endpoint, Application, Code, Cloud, Network,
+  ITDR); on the right, the form card. No logo on this page. Motion stops when the system asks for reduced motion;
+  under 880 px only the card shows. The form has username, password with show/hide, a Caps Lock hint, the server's
+  error message, and whether the server answered (from `/api/v1/setup/status`). Sign-ins and failed attempts are
+  recorded in the audit log. A wrong password shows the error in place; a 401 from `/auth/login` or `/auth/password`
+  does not end the session (`src/api/client.js`).
+- **First-run setup** (`pages/Setup.jsx`, also `/setup?rerun=1`) uses `src/components/AuthLayout.jsx`: brand panel on
+  the left (chrome colours), form on the right following the theme. Detected network, connection URLs, optional AI
+  and threat-intelligence keys.
+- **Change password** (`pages/ChangePassword.jsx`) runs inside the shell. When a password change is required it
+  says so first; after the change it returns to the Overview.
 
 ## Page patterns
 
@@ -62,6 +134,9 @@ query. Same parameters, 90-day lookback clamp and 10 s timeout as `/events/searc
 clearly labelled page-only timeline if the endpoint is missing.
 
 ## Status
+
+Brand and themes (November 2026): every page reads the tokens, so dark and light are complete across the
+console; the sign-in, setup and change-password pages are rebuilt on the shared layout.
 
 Rebuilt with the parts: shell, Overview, Alerts, Events, Fleet, service detail, Services, Code, Cloud, Rules,
 Alert rules, Suppressions, Users, Audit log. Standard header and tabs: Hunt, Insights, Platform settings, Agent builder,

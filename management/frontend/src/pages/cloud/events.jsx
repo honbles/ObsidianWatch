@@ -195,7 +195,7 @@ export function CloudEventPanel({ event, onClose }) {
 
             {/* Raw Tab */}
             {activeTab === 'raw' && rawObj && (
-              <pre className="bg-siem-bg border border-siem-border rounded-xl p-4 text-xs text-siem-accent overflow-x-auto max-h-[60vh] whitespace-pre-wrap break-all">
+              <pre className="bg-siem-bg border border-siem-border rounded-xl p-4 text-xs text-siem-accent overflow-x-auto max-h-[calc(60*var(--vh))] whitespace-pre-wrap break-all">
                 {JSON.stringify(rawObj, null, 2)}
               </pre>
             )}

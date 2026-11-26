@@ -850,7 +850,7 @@ export function TabNetwork({ agent }) {
                           <td className="px-4 py-2.5 font-bold text-siem-text">{Number(r.count).toLocaleString()}</td>
                           <td className="px-4 py-2.5">
                             <div className="h-1.5 bg-siem-border/20 rounded-full overflow-hidden w-24">
-                              <div className="h-full rounded-full" style={{width:pct+'%', background: isMalicious?'#ef4444':'rgba(var(--color-accent),0.6)'}}/>
+                              <div className="h-full rounded-full" style={{width:pct+'%', background: isMalicious?'var(--crit)':'rgba(var(--color-accent),0.6)'}}/>
                             </div>
                           </td>
                         </tr>
@@ -953,7 +953,7 @@ export function TabDNS({ agent }) {
           {newDomains.length > 0 && (
             <div>
               <div className="text-[10px] uppercase tracking-wider text-yellow-400 font-semibold mb-2 px-1 flex items-center gap-2">
-                <span>⚡</span> New Domains - First seen in selected window ({newDomains.length})
+                <Zap size={12}/> New Domains - First seen in selected window ({newDomains.length})
               </div>
               <div className="bg-yellow-900/10 border border-yellow-800/30 rounded-xl overflow-hidden">
                 <table className="w-full text-xs">
@@ -1016,7 +1016,7 @@ export function TabDNS({ agent }) {
                         </td>
                         <td className="px-4 py-2.5">
                           <div className="h-1.5 bg-siem-border/20 rounded-full overflow-hidden w-24">
-                            <div className="h-full rounded-full" style={{width:pct+'%',background:isFlagged?'#ef4444':'#22c55e'}}/>
+                            <div className="h-full rounded-full" style={{width:pct+'%',background:isFlagged?'var(--crit)':'var(--ok)'}}/>
                           </div>
                         </td>
                       </tr>

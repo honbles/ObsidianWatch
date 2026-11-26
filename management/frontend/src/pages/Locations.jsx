@@ -60,9 +60,9 @@ function AgentRow({ agent, selected, onSelect }) {
 
 // ── Map accuracy circle colour by source ─────────────────────────────────────
 function circleColor(source) {
-  if (source === 'gps')  return '#34d399'
-  if (source === 'wifi') return '#60a5fa'
-  return '#facc15'
+  if (source === 'gps')  return 'var(--ok)'
+  if (source === 'wifi') return 'var(--info)'
+  return 'var(--warn)'
 }
 
 // ── Main page ─────────────────────────────────────────────────────────────────
@@ -161,8 +161,8 @@ export default function Locations() {
         html: `
           <div style="
             width:26px; height:26px;
-            background:${online ? color : '#6b7280'};
-            border:2px solid ${online ? '#fff' : '#9ca3af'};
+            background:${online ? color : 'var(--t3)'};
+            border:2px solid ${online ? 'white' : 'var(--t2)'};
             border-radius:50% 50% 50% 0;
             transform:rotate(-45deg);
             box-shadow:0 2px 8px rgba(0,0,0,0.5);
@@ -175,13 +175,13 @@ export default function Locations() {
 
       const marker = L.marker([agent.lat, agent.lng], { icon })
         .bindPopup(`
-          <div style="font-family:monospace;font-size:12px;min-width:180px;color:#e2e8f0;background:#1e293b;padding:8px;border-radius:6px">
+          <div style="font-family:monospace;font-size:12px;min-width:180px;color:var(--t1);background:var(--s3);padding:8px;border-radius:6px">
             <div style="font-weight:700;font-size:13px;margin-bottom:6px">${agent.hostname}</div>
-            <div style="color:#94a3b8;margin-bottom:3px">📍 ${label}</div>
-            <div style="color:#94a3b8;margin-bottom:3px">🖥️ ${agent.os || 'unknown'}</div>
-            <div style="color:#94a3b8;margin-bottom:3px">📡 Source: ${agent.location_source || 'unknown'}</div>
-            ${agent.location_accuracy ? `<div style="color:#94a3b8;margin-bottom:3px">🎯 ±${Math.round(agent.location_accuracy)}m</div>` : ''}
-            <div style="color:${online ? '#34d399' : '#6b7280'};margin-top:4px">● ${online ? 'Online' : 'Offline'}</div>
+            <div style="color:var(--t2);margin-bottom:3px">${label}</div>
+            <div style="color:var(--t2);margin-bottom:3px">OS: ${agent.os || 'unknown'}</div>
+            <div style="color:var(--t2);margin-bottom:3px">Source: ${agent.location_source || 'unknown'}</div>
+            ${agent.location_accuracy ? `<div style="color:var(--t2);margin-bottom:3px">Accuracy ±${Math.round(agent.location_accuracy)}m</div>` : ''}
+            <div style="color:${online ? 'var(--ok)' : 'var(--t3)'};margin-top:4px">● ${online ? 'Online' : 'Offline'}</div>
           </div>
         `, { className: 'obsidian-popup' })
         .addTo(map)
@@ -334,28 +334,28 @@ export default function Locations() {
               Loading map…
             </div>
           )}
-          <div ref={mapRef} className="w-full h-full" style={{ background: '#0f172a', cursor: 'grab' }} />
+          <div className="w-full h-full relative"><div ref={mapRef} className="ow-nozoom-fill" style={{ background: 'var(--s2)', cursor: 'grab' }} /></div>
         </div>
       </div>
 
       {/* Leaflet popup dark style override */}
       <style>{`
         .leaflet-popup-content-wrapper, .leaflet-popup-tip {
-          background: #1e293b !important;
-          color: #e2e8f0 !important;
-          border: 1px solid #334155 !important;
+          background: var(--s3) !important;
+          color: var(--t1) !important;
+          border: 1px solid var(--line2) !important;
           box-shadow: 0 4px 20px rgba(0,0,0,0.5) !important;
         }
         .leaflet-popup-content { margin: 0 !important; }
-        .leaflet-container { background: #0f172a; }
+        .leaflet-container { background: var(--s2); }
         .leaflet-control-zoom a {
-          background: #1e293b !important;
-          color: #94a3b8 !important;
-          border-color: #334155 !important;
+          background: var(--s3) !important;
+          color: var(--t2) !important;
+          border-color: var(--line2) !important;
         }
-        .leaflet-control-zoom a:hover { background: #334155 !important; color: #e2e8f0 !important; }
-        .leaflet-control-attribution { background: rgba(15,23,42,0.8) !important; color: #475569 !important; }
-        .leaflet-control-attribution a { color: #64748b !important; }
+        .leaflet-control-zoom a:hover { background: var(--line2) !important; color: var(--t1) !important; }
+        .leaflet-control-attribution { background: rgb(var(--bg-c) / 0.8) !important; color: var(--t3) !important; }
+        .leaflet-control-attribution a { color: var(--t3) !important; }
       `}</style>
     </div>
   )

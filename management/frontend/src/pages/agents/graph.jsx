@@ -30,7 +30,7 @@ export function GraphCanvas({ graph, onNodeClick, selectedNode }) {
       .force('collision',d3.forceCollide().radius(d=>nodeRadius(d)+12))
       .force('x',d3.forceX(W/2).strength(0.04)).force('y',d3.forceY(H/2).strength(0.04))
     const link=g.append('g').selectAll('line').data(edges).join('line')
-      .attr('stroke',d=>EDGE_COLORS[d.type]||'#475569').attr('stroke-width',d=>Math.min(1+Math.log(d.count+1),4))
+      .attr('stroke',d=>EDGE_COLORS[d.type]||'var(--t3)').attr('stroke-width',d=>Math.min(1+Math.log(d.count+1),4))
       .attr('stroke-opacity',0.5).attr('marker-end',d=>`url(#ag2-${d.type||'connected'})`)
     link.append('title').text(d=>`${d.type} × ${d.count}`)
     const node=g.append('g').attr('class','nodes').selectAll('g').data(nodes).join('g').attr('cursor','pointer')
@@ -42,11 +42,11 @@ export function GraphCanvas({ graph, onNodeClick, selectedNode }) {
       .on('click',(e,d)=>{e.stopPropagation();onNodeClick(d)})
     node.each(function(d) {
       const el=d3.select(this), r=nodeRadius(d)
-      const color=selectedNode?.id===d.id?'#ffffff':(d.suspicious?'#ef4444':(NODE_COLORS[d.type]||'#6b7280'))
+      const color=selectedNode?.id===d.id?'var(--acc)':(d.suspicious?'var(--crit)':(NODE_COLORS[d.type]||'var(--t3)'))
       drawNodeShape(el,NODE_SHAPES[d.type]||'circle',r,color,d.suspicious?1:0.85,d.severity)
       if(d.severity>=4) el.append('circle').attr('r',r+4).attr('fill','none').attr('stroke',SEV_COLORS[d.severity]).attr('stroke-width',2).attr('stroke-dasharray','3,3').attr('opacity',0.7)
-      el.append('text').attr('dy',r+12).attr('text-anchor','middle').attr('font-size','10px').attr('font-family','monospace').attr('fill',d.suspicious?'#fca5a5':'#94a3b8').text(trunc(d.label,22))
-      if(d.event_count>1){el.append('circle').attr('cx',r-2).attr('cy',-r+2).attr('r',8).attr('fill','#1e293b').attr('stroke','#475569').attr('stroke-width',1);el.append('text').attr('x',r-2).attr('y',-r+6).attr('text-anchor','middle').attr('font-size','8px').attr('fill','#94a3b8').text(d.event_count>99?'99+':d.event_count)}
+      el.append('text').attr('dy',r+12).attr('text-anchor','middle').attr('font-size','10px').attr('font-family','monospace').attr('fill',d.suspicious?'var(--crit)':'var(--t2)').text(trunc(d.label,22))
+      if(d.event_count>1){el.append('circle').attr('cx',r-2).attr('cy',-r+2).attr('r',8).attr('fill','var(--s3)').attr('stroke','var(--t3)').attr('stroke-width',1);el.append('text').attr('x',r-2).attr('y',-r+6).attr('text-anchor','middle').attr('font-size','8px').attr('fill','var(--t2)').text(d.event_count>99?'99+':d.event_count)}
       el.append('title').text(`${d.label} (${d.type})\nEvents: ${d.event_count}\nSeverity: ${d.severity}`)
     })
     sim.on('tick',()=>{link.attr('x1',d=>d.source.x).attr('y1',d=>d.source.y).attr('x2',d=>d.target.x).attr('y2',d=>d.target.y);node.attr('transform',d=>`translate(${d.x},${d.y})`)})
@@ -73,7 +73,7 @@ export function NodeDetail({ node, onClose, host }) {
   if(!node) return null
   const [events, setEvents] = useState([])
   const [loadingEvts, setLoadingEvts] = useState(false)
-  const color = NODE_COLORS[node.type] || '#6b7280'
+  const color = NODE_COLORS[node.type] || 'var(--t3)'
   const meta = node.meta || {}
 
   // Fetch actual events for this node
@@ -127,7 +127,7 @@ export function NodeDetail({ node, onClose, host }) {
         </div>
         {/* Severity bar */}
         <div className="flex gap-1 mt-2">
-          {[1,2,3,4,5].map(s => <div key={s} className="h-1 flex-1 rounded-full" style={{background:s<=node.severity?SEV_COLORS[s]:'#1e293b'}}/>)}
+          {[1,2,3,4,5].map(s => <div key={s} className="h-1 flex-1 rounded-full" style={{background:s<=node.severity?SEV_COLORS[s]:'var(--s3)'}}/>)}
         </div>
       </div>
 
@@ -194,7 +194,7 @@ export function NodeDetail({ node, onClose, host }) {
                     <div className="text-[9px] font-mono text-siem-muted/60">{format(new Date(ev.time), 'HH:mm:ss')}</div>
                     <div className="mt-0.5">
                       {[1,2,3,4,5].map(s => (
-                        <span key={s} className="inline-block w-1.5 h-1.5 rounded-full mr-px" style={{background: s <= ev.severity ? SEV_COLORS[s] : '#1e293b'}}/>
+                        <span key={s} className="inline-block w-1.5 h-1.5 rounded-full mr-px" style={{background: s <= ev.severity ? SEV_COLORS[s] : 'var(--s3)'}}/>
                       ))}
                     </div>
                   </div>

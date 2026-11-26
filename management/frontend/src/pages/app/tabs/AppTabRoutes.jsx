@@ -61,7 +61,7 @@ export default function AppTabRoutes({ service, range, focus }) {
       const ps = r.params || []
       const k = r.method + ' ' + r.route
       if (!ps.length) {
-        return <span className="text-siem-muted text-xs" title="No query-string or body fields have been reported for this route. A route that takes only a path or no input shows nothing; a POST route with no fields usually means the app is not reporting request bodies (see the Node.js and Python setup guides).">no query or body fields seen</span>
+        return <span className="text-siem-muted text-xs" title="No query or body fields reported for this route.">no query or body fields seen</span>
       }
       const shown = expanded[k] ? ps : ps.slice(0, 5)
       return (
@@ -90,7 +90,7 @@ export default function AppTabRoutes({ service, range, focus }) {
     <div className="space-y-2">
       <AppSpecPanel service={service} onChanged={() => setRev(x => x + 1)} />
       {service.attrs?.route_overflow > 0 && (
-        <div className="text-[11px] text-amber-300">{appInt(service.attrs.route_overflow)} requests were counted under "other" because this service went over the agent's per-service route limit (2,000 by default; agent setting max_routes_per_service). Check that http.route is a template, not a raw path, or raise the limit.</div>
+        <div className="text-[11px] text-amber-300">{appInt(service.attrs.route_overflow)} requests counted under "other": over the route limit (agent setting max_routes_per_service, default 2,000).</div>
       )}
       <input value={q} onChange={e => setQ(e.target.value)} placeholder="Find a route: path or method, e.g. POST /orders"
         className="bg-siem-surface2 border border-siem-border rounded-lg px-2.5 py-1.5 text-xs text-siem-text w-80" />
@@ -117,8 +117,8 @@ export default function AppTabRoutes({ service, range, focus }) {
             </div>)}
         </div>)}
       <div className="card"><DataTable columns={cols} rows={rows} loading={loading} error={error} rowKey={(r) => r.method + r.route}
-        emptyText="No routes yet. Routes appear once this service sends OpenTelemetry server spans with http.route." initialSort={{ key: 'calls', dir: 'desc' }} pageSize={100} /></div>
-      <div className="text-[11px] text-siem-muted">Parameter names come from the request query string and are shown without values. Open Review on a route to choose which fields are masked and to see the requests captured for it. Dashed names are declared in the API spec and not seen yet; amber names were seen in traffic but are not in the spec (undocumented, a common sign of mass assignment). A route that shows "needs review" has not been reviewed; no parameter values are collected for it until it is.</div>
+        emptyText="No routes yet." initialSort={{ key: 'calls', dir: 'desc' }} pageSize={100} /></div>
+      <div className="text-[11px] text-siem-muted">Dashed: declared in the API spec, not seen yet. Amber: seen in traffic but not in the spec.</div>
     </div>
   )
 }

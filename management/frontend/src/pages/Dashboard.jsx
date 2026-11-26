@@ -15,17 +15,18 @@ import { PageHeader, Tabs } from '../components/ui'
 import Tactical from './overview/Tactical'
 import { useLiveFeed } from '../api/useLiveFeed'
 import { SeverityBadge } from '../components/SeverityBadge'
+import { tint } from '../utils/colors'
 
-const SEV_COLOR = { 5:'#ef4444', 4:'#f97316', 3:'#eab308', 2:'#3b82f6', 1:'#475569' }
+const SEV_COLOR = { 5:'var(--crit)', 4:'var(--high)', 3:'var(--warn)', 2:'var(--info)', 1:'var(--t3)' }
 const SEV_LABEL = { 5:'Critical', 4:'High', 3:'Medium', 2:'Low', 1:'Info' }
 const TYPE_COLOR = {
-  registry:'#a855f7', dns:'#06b6d4', network:'#3b82f6',
-  process:'#8b949e', file:'#eab308', logon:'#22c55e', health:'#475569',
-  'devops.push':'#10b981', 'devops.secret_push':'#ef4444', 'net.fw_deny':'#f97316',
+  registry:'var(--violet)', dns:'var(--cyan)', network:'var(--info)',
+  process:'var(--t2)', file:'var(--warn)', logon:'var(--ok)', health:'var(--t3)',
+  'devops.push':'var(--ok)', 'devops.secret_push':'var(--crit)', 'net.fw_deny':'var(--high)',
 }
 const SUSPICIOUS = ['rustdesk','ngrok','anydesk','cobalt','mimikatz','meterpreter']
 const isSusp = v => v && SUSPICIOUS.some(k => v.toLowerCase().includes(k))
-const TooltipStyle = { background:'#161b22', border:'1px solid #30363d', borderRadius:6, fontSize:10, padding:'4px 8px' }
+const TooltipStyle = { background:'var(--s2)', border:'1px solid var(--line2)', borderRadius:6, fontSize:10, padding:'4px 8px' }
 
 // ── Stat card ─────────────────────────────────────────────────────────────────
 function StatCard({ icon: Icon, label, value, sub, color='text-siem-accent', warn, onClick, trend }) {
@@ -84,7 +85,7 @@ function MiniBar({ value, max, color }) {
   const pct = max > 0 ? Math.round((value / max) * 100) : 0
   return (
     <div className="h-1 bg-siem-border/30 rounded-full overflow-hidden flex-1">
-      <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, background: color || '#58a6ff' }}/>
+      <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, background: color || 'var(--info)' }}/>
     </div>
   )
 }
@@ -100,7 +101,7 @@ function HostRow({ host, onClick }) {
       <div className="flex items-center gap-2">
         {host.max_severity >= 4 && (
           <span className="text-[8px] font-bold px-1.5 py-0.5 rounded border"
-            style={{ color: SEV_COLOR[host.max_severity], borderColor: SEV_COLOR[host.max_severity] + '40' }}>
+            style={{ color: SEV_COLOR[host.max_severity], borderColor: tint(SEV_COLOR[host.max_severity], 25) }}>
             {SEV_LABEL[host.max_severity]}
           </span>
         )}
@@ -117,7 +118,7 @@ function AlertRow({ alert, onClick }) {
     <div onClick={() => onClick(alert)}
       className="flex items-start gap-3 px-4 py-2.5 hover:bg-white/[0.02] cursor-pointer border-b border-siem-border/20 last:border-0 group transition-colors">
       <span className="w-1.5 h-1.5 rounded-full mt-1.5 shrink-0 animate-pulse"
-        style={{ background: SEV_COLOR[alert.severity] || '#475569' }}/>
+        style={{ background: SEV_COLOR[alert.severity] || 'var(--t3)' }}/>
       <div className="flex-1 min-w-0">
         <div className="text-[11px] text-siem-text font-medium truncate leading-snug">{alert.title}</div>
         <div className="flex items-center gap-2 mt-0.5">
@@ -147,7 +148,7 @@ function PostureScore({ stats }) {
   score -= Math.round((1 - onlineAgents / totalAgents) * 20)
   score = Math.max(0, Math.min(100, score))
 
-  const color = score >= 80 ? '#3fb950' : score >= 60 ? '#eab308' : score >= 40 ? '#f97316' : '#ef4444'
+  const color = score >= 80 ? 'var(--ok)' : score >= 60 ? 'var(--warn)' : score >= 40 ? 'var(--high)' : 'var(--crit)'
   const label = score >= 80 ? 'Good' : score >= 60 ? 'Fair' : score >= 40 ? 'At Risk' : 'Critical'
 
   return (
@@ -155,7 +156,7 @@ function PostureScore({ stats }) {
       {/* Ring */}
       <div className="relative shrink-0 w-16 h-16">
         <svg viewBox="0 0 64 64" className="w-full h-full -rotate-90">
-          <circle cx="32" cy="32" r="26" fill="none" stroke="#21262d" strokeWidth="6"/>
+          <circle cx="32" cy="32" r="26" fill="none" stroke="var(--line)" strokeWidth="6"/>
           <circle cx="32" cy="32" r="26" fill="none" stroke={color} strokeWidth="6"
             strokeDasharray={`${2 * Math.PI * 26}`}
             strokeDashoffset={`${2 * Math.PI * 26 * (1 - score / 100)}`}
@@ -268,7 +269,7 @@ export default function Dashboard() {
   const eventTypes = useMemo(() =>
     (d?.by_type || raw?.by_type || []).map(e => ({
       name: e.event_type, count: Number(e.count),
-      color: TYPE_COLOR[e.event_type] || '#8b949e'
+      color: TYPE_COLOR[e.event_type] || 'var(--t2)'
     })), [d, raw])
   const maxTypeCount = Math.max(...eventTypes.map(e => e.count), 1)
 
@@ -311,10 +312,10 @@ export default function Dashboard() {
           <div className="stagger" style={{ display:'flex', flexDirection:'column', gap:16 }}>
             <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:12 }}>
               {[
-                { label:'Cloud Connectors', value: raw?.cloud_connectors || 0, icon:'☁', color:'var(--accent)' },
-                { label:'Cloud Events (24h)', value: s?.cloud_events_today || 0, icon:'📡', color:'var(--green)' },
-                { label:'GuardDuty Findings', value: raw?.guardduty_findings || 0, icon:'🛡', color:'var(--yellow)' },
-                { label:'IAM Anomalies', value: raw?.iam_anomalies || 0, icon:'🔑', color:'var(--red)' },
+                { label:'Cloud Connectors', value: raw?.cloud_connectors || 0, color:'var(--accent)' },
+                { label:'Cloud Events (24h)', value: s?.cloud_events_today || 0, color:'var(--green)' },
+                { label:'GuardDuty Findings', value: raw?.guardduty_findings || 0, color:'var(--yellow)' },
+                { label:'IAM Anomalies', value: raw?.iam_anomalies || 0, color:'var(--red)' },
               ].map(c => (
                 <div key={c.label} className="kpi">
                   <div className="kpi-accent-line" style={{ background: `linear-gradient(90deg, ${c.color}, transparent)` }}/>
@@ -359,10 +360,10 @@ export default function Dashboard() {
           <div className="stagger" style={{ display:'flex', flexDirection:'column', gap:16 }}>
             <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:12 }}>
               {[
-                { label:'Repos Scanned',    value: raw?.sast_repos_scanned || 0,    icon:'📁', color:'var(--accent)' },
-                { label:'Total Findings',   value: raw?.sast_total_findings || 0,   icon:'🔍', color:'var(--yellow)' },
-                { label:'Critical Issues',  value: raw?.sast_critical_count || 0,   icon:'🔴', color:'var(--red)' },
-                { label:'DevOps Connectors',value: raw?.devops_connectors || 0,     icon:'⚙',  color:'var(--green)' },
+                { label:'Repos Scanned',    value: raw?.sast_repos_scanned || 0, color:'var(--accent)' },
+                { label:'Total Findings',   value: raw?.sast_total_findings || 0, color:'var(--yellow)' },
+                { label:'Critical Issues',  value: raw?.sast_critical_count || 0, color:'var(--red)' },
+                { label:'DevOps Connectors',value: raw?.devops_connectors || 0,  color:'var(--green)' },
               ].map(c => (
                 <div key={c.label} className="kpi">
                   <div className="kpi-accent-line" style={{ background: `linear-gradient(90deg, ${c.color}, transparent)` }}/>
@@ -435,8 +436,8 @@ export default function Dashboard() {
               {[
                 { label:'Total Endpoints', value: s?.total_agents || 0,  color:'var(--accent)' },
                 { label:'Online Now',      value: s?.online_agents || 0, color:'var(--green)' },
-                { label:'Windows',         value: raw?.windows_agents || 0, color:'#60a5fa' },
-                { label:'Linux',           value: raw?.linux_agents || 0,  color:'#fb923c' },
+                { label:'Windows',         value: raw?.windows_agents || 0, color:'var(--info)' },
+                { label:'Linux',           value: raw?.linux_agents || 0,  color:'var(--high)' },
               ].map(c => (
                 <div key={c.label} className="kpi">
                   <div className="kpi-accent-line" style={{ background:`linear-gradient(90deg, ${c.color}, transparent)` }}/>
@@ -517,7 +518,7 @@ export default function Dashboard() {
               <ResponsiveContainer width="100%" height={130}>
                 <AreaChart data={timeline} margin={{ top:0, right:0, left:-20, bottom:0 }}>
                   <defs>
-                    {[['high','#f87171'],['medium','#fbbf24'],['low','#38bdf8']].map(([k,c])=>(
+                    {[['high','var(--crit)'],['medium','var(--warn)'],['low','var(--info)']].map(([k,c])=>(
                       <linearGradient key={k} id={`ov_${k}`} x1="0" y1="0" x2="0" y2="1">
                         <stop offset="5%"  stopColor={c} stopOpacity={0.3}/>
                         <stop offset="95%" stopColor={c} stopOpacity={0}/>
@@ -527,9 +528,9 @@ export default function Dashboard() {
                   <XAxis dataKey="time" tick={{ fontSize:9, fill:'var(--text3)' }} tickLine={false} axisLine={false} interval={7}/>
                   <YAxis tick={{ fontSize:9, fill:'var(--text3)' }} tickLine={false} axisLine={false}/>
                   <Tooltip contentStyle={{ background:'var(--surface2)', border:'1px solid var(--border)', borderRadius:6, fontSize:10 }}/>
-                  <Area type="monotone" dataKey="high"   stroke="#f87171" strokeWidth={1.5} fill="url(#ov_high)"   stackId="1"/>
-                  <Area type="monotone" dataKey="medium" stroke="#fbbf24" strokeWidth={1.5} fill="url(#ov_medium)" stackId="1"/>
-                  <Area type="monotone" dataKey="low"    stroke="#38bdf8" strokeWidth={1.5} fill="url(#ov_low)"    stackId="1"/>
+                  <Area type="monotone" dataKey="high"   stroke="var(--crit)" strokeWidth={1.5} fill="url(#ov_high)"   stackId="1"/>
+                  <Area type="monotone" dataKey="medium" stroke="var(--warn)" strokeWidth={1.5} fill="url(#ov_medium)" stackId="1"/>
+                  <Area type="monotone" dataKey="low"    stroke="var(--info)" strokeWidth={1.5} fill="url(#ov_low)"    stackId="1"/>
                 </AreaChart>
               </ResponsiveContainer>
             </div>
@@ -541,7 +542,7 @@ export default function Dashboard() {
                 { label:'Critical', sev:5, color:'var(--red)' },
                 { label:'High',     sev:4, color:'var(--orange)' },
                 { label:'Medium',   sev:3, color:'var(--yellow)' },
-                { label:'Low',      sev:2, color:'#38bdf8' },
+                { label:'Low',      sev:2, color:'var(--info)' },
                 { label:'Info',     sev:1, color:'var(--text3)' },
               ].map(row => {
                 const count = (sevDist || []).find(x => x.severity == row.sev)?.count || 0
@@ -574,7 +575,7 @@ export default function Dashboard() {
                 <div key={i} style={{ display:'flex', alignItems:'center', gap:10, padding:'5px 16px',
                   cursor:'pointer', transition:'background 0.1s' }}
                   onClick={() => navigate(`/events?search=${encodeURIComponent(p.process_name||'')}`)}
-                  onMouseEnter={e=>e.currentTarget.style.background='rgba(56,189,248,0.03)'}
+                  onMouseEnter={e=>e.currentTarget.style.background='rgb(var(--info-c) / 0.03)'}
                   onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
                   <span style={{ fontFamily:'var(--font-data)', fontSize:11, color:'var(--text)',
                     flex:1, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
@@ -601,7 +602,7 @@ export default function Dashboard() {
               {(d?.top_domains || []).slice(0,8).map((p,i) => (
                 <div key={i} style={{ display:'flex', alignItems:'center', gap:10, padding:'5px 16px',
                   cursor:'pointer', transition:'background 0.1s' }}
-                  onMouseEnter={e=>e.currentTarget.style.background='rgba(56,189,248,0.03)'}
+                  onMouseEnter={e=>e.currentTarget.style.background='rgb(var(--info-c) / 0.03)'}
                   onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
                   <span style={{ fontFamily:'var(--font-data)', fontSize:11, color:'var(--text)',
                     flex:1, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
@@ -740,7 +741,7 @@ export default function Dashboard() {
                       borderBottom:'1px solid color-mix(in srgb, var(--border) 25%, transparent)',
                       cursor:'pointer', transition:'background 0.1s' }}
                       onClick={() => navigate('/alerts')}
-                      onMouseEnter={e=>e.currentTarget.style.background='rgba(56,189,248,0.03)'}
+                      onMouseEnter={e=>e.currentTarget.style.background='rgb(var(--info-c) / 0.03)'}
                       onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
                       <span className={`sev sev-${a.severity||1}`} style={{ flexShrink:0, marginTop:1 }}>
                         {['','INFO','LOW','MED','HIGH','CRIT'][a.severity||1]}
@@ -771,7 +772,7 @@ export default function Dashboard() {
                   borderBottom:'1px solid color-mix(in srgb, var(--border) 25%, transparent)',
                   cursor:'pointer', transition:'background 0.1s' }}
                   onClick={() => navigate(`/agents?host=${encodeURIComponent(a.hostname)}`)}
-                  onMouseEnter={e=>e.currentTarget.style.background='rgba(56,189,248,0.03)'}
+                  onMouseEnter={e=>e.currentTarget.style.background='rgb(var(--info-c) / 0.03)'}
                   onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
                   <span style={{ width:7, height:7, borderRadius:'50%', flexShrink:0,
                     background: a.online ? 'var(--green)' : 'var(--text3)' }}

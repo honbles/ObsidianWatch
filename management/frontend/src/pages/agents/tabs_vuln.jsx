@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from 'react'
 import { cveHref } from '../../utils/safeHref'
-import { Shield, Key, AlertTriangle, RefreshCw, Search, Activity, Clock, Zap, Bug, CheckCircle, MessageSquare } from 'lucide-react'
+import { Shield, Key, AlertTriangle, RefreshCw, Search, Activity, Clock, Zap, Bug, CheckCircle, MessageSquare, Lightbulb } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
 import api, { runScan } from '../../api/client'
 import { AIFindingCard, FindingCard, PortRow } from './shared.jsx'
@@ -118,8 +118,7 @@ export function TabVuln({ agent }) {
       <div className="text-center">
         <div className="text-sm font-semibold text-siem-text/70 mb-1">No vulnerability scan yet</div>
         <div className="text-xs text-siem-muted/50 max-w-xs text-center">
-          Agent scans all 65,535 TCP ports automatically on startup, then every 5 days.
-          Redeploy the agent to trigger a new scan.
+          All 65,535 TCP ports, at agent start and then every 5 days.
         </div>
       </div>
     </div>
@@ -337,7 +336,7 @@ export function TabVuln({ agent }) {
                 {cve.note}
               </div>
               {cve.status === "running" && !cve.has_api_key && (
-                <div className="text-amber-400/90">NVD allows 5 requests per 30 s without an API key, so this can take a few minutes. A free key (Settings) is about 10× faster. Results are cached for 24 h.</div>
+                <div className="text-amber-400/90">Can take a few minutes without an NVD API key (Settings).</div>
               )}
             </div>
 
@@ -388,7 +387,7 @@ export function TabVuln({ agent }) {
             {packages.length === 0 ? (
               <div className="text-center text-sm text-siem-muted py-12 px-6 space-y-1">
                 <div>No package inventory from this agent.</div>
-                <div className="text-[11px]">CVE lookups (NVD / OSV) run only on installed packages, so none were done. Ports and security findings above come from the agent's own checks. Updating the agent restores the installed-software list on Windows.</div>
+                <div className="text-[11px]">No package list from this host, so no CVE lookups ran.</div>
               </div>
             ) : (<>
               <div className="mb-3 flex items-center gap-3">
@@ -479,8 +478,7 @@ export function TabVuln({ agent }) {
                 <div className="text-center">
                   <div className="text-sm font-semibold text-siem-text mb-1">Enterprise AI Analysis</div>
                   <div className="text-xs text-siem-muted/70 max-w-sm text-center mb-4">
-                    AI analyses port scan data, service versions, and security findings to produce
-                    CVE matches, risk scoring, and a prioritised remediation plan.
+                    CVE matches, risk score and a remediation plan from the scan.
                   </div>
                   <button onClick={runAIAnalysis}
                     className="flex items-center gap-2 mx-auto px-5 py-2.5 rounded-xl text-sm font-semibold bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-500 hover:to-purple-500 text-white transition-all shadow-lg shadow-violet-900/30">
@@ -508,9 +506,9 @@ export function TabVuln({ agent }) {
                     {aiResult.risk_score != null && (
                       <div className="relative shrink-0 w-20 h-20">
                         <svg viewBox="0 0 80 80" className="w-full h-full -rotate-90">
-                          <circle cx="40" cy="40" r="32" fill="none" stroke="#21262d" strokeWidth="7"/>
+                          <circle cx="40" cy="40" r="32" fill="none" stroke="var(--line)" strokeWidth="7"/>
                           <circle cx="40" cy="40" r="32" fill="none"
-                            stroke={aiResult.risk_score>=80?"#ef4444":aiResult.risk_score>=60?"#f97316":aiResult.risk_score>=40?"#eab308":"#3fb950"}
+                            stroke={aiResult.risk_score>=80?"var(--crit)":aiResult.risk_score>=60?"var(--high)":aiResult.risk_score>=40?"var(--warn)":"var(--ok)"}
                             strokeWidth="7"
                             strokeDasharray={`${2*Math.PI*32}`}
                             strokeDashoffset={`${2*Math.PI*32*(1-aiResult.risk_score/100)}`}
@@ -864,9 +862,7 @@ export function TabRCA({ agent }) {
             {/* Privacy note */}
             <div className="bg-siem-bg border border-siem-border/50 rounded-xl p-3">
               <div className="text-[9px] text-siem-muted/60 leading-relaxed">
-                <span className="text-siem-muted/80 font-medium">What's sent to AI:</span> Alert titles, event types, process names, command lines, IPs, file paths from the ±48h window.
-                No file contents, no passwords, no customer data - only security metadata your SIEM already captures.
-                Results are cached locally in your database and never leave your infrastructure except for the AI API call.
+                <span className="text-siem-muted/80 font-medium">What's sent to AI:</span> Sends alert titles, event types, process names, command lines, IPs and file paths from ±48 h to the AI provider. No file contents or passwords.
               </div>
             </div>
           </div>
@@ -1096,7 +1092,7 @@ export function TabRCA({ agent }) {
                 <ul className="space-y-1.5">
                   {rca.detection_gaps.map((g,i) => (
                     <li key={i} className="flex items-start gap-2 text-xs text-siem-text">
-                      <span className="text-blue-400/60 shrink-0 mt-0.5">⚡</span>{g}
+                      <Zap size={12} className="text-blue-400/60 shrink-0 mt-0.5"/>{g}
                     </li>
                   ))}
                 </ul>
@@ -1149,7 +1145,7 @@ export function TabRCA({ agent }) {
                   {rca.questions_for_analyst.slice(0, 3).map((q, i) => (
                     <button key={i} onClick={() => setChatInput(q)}
                       className="text-[10px] text-left px-2.5 py-1.5 bg-violet-950/20 border border-violet-800/30 text-violet-300 rounded-lg hover:bg-violet-950/40 transition-colors max-w-xs truncate">
-                      💡 {q}
+                      <Lightbulb size={12} style={{ flexShrink: 0 }}/> {q}
                     </button>
                   ))}
                 </div>

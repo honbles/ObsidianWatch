@@ -121,13 +121,13 @@ export default function AutomationPanel({ conn }) {
         <div className="bg-siem-surface border border-siem-border rounded-xl p-4 space-y-3">
           <div className="text-[10px] uppercase tracking-wider text-siem-muted font-semibold">Pull / merge requests</div>
           <Toggle label="Scan every pull request" checked={policy.pr_checks} onChange={v => set('pr_checks', v)}
-            help="Needs the webhook for this connector with pull request (GitHub), merge request (GitLab) or pull request created/updated (Azure DevOps) events." />
+            help="Needs this connector's webhook with pull or merge request events." />
           <Toggle label="Post comments on the pull request" checked={policy.pr_comments} onChange={v => set('pr_comments', v)}
             help="A summary, and inline comments on the changed lines. Each finding is commented once." />
           <Toggle label="Run CodeQL on pull requests" checked={policy.pr_codeql} onChange={v => set('pr_codeql', v)}
             help="Deeper data-flow analysis; adds minutes per update." />
           <Toggle label="AI fix suggestions in comments" checked={policy.pr_ai_fixes} onChange={v => set('pr_ai_fixes', v)}
-            help="Up to 5 per update. One-line fixes become one-click suggestions on GitHub and GitLab. Needs an AI provider and 'send source snippets' allowed in Settings → AI." />
+            help="Up to 5 per update. Needs an AI provider and source snippets allowed in Settings." />
           <div className="flex items-center gap-2">
             <span className="text-xs text-siem-text">Fail the check on</span>
             <select value={policy.block_on} onChange={e => set('block_on', e.target.value)}
@@ -141,8 +141,7 @@ export default function AutomationPanel({ conn }) {
               className="w-16 bg-siem-bg border border-siem-border rounded-lg px-2 py-1 text-xs text-siem-text" />
           </div>
           <p className="text-[11px] text-siem-muted border-t border-siem-border pt-2">
-            Only issues on lines the change touches (and new dependency or IaC issues in files it changes) are reported.
-            To block merging, make the status <span className="font-mono text-siem-text">{STATUS_NAME[conn.provider]}</span> required: {BLOCK_HELP[conn.provider]}
+            Only issues on changed lines are reported. To block merging, make the status <span className="font-mono text-siem-text">{STATUS_NAME[conn.provider]}</span> required: {BLOCK_HELP[conn.provider]}
             {' '}The token needs write access to commit statuses and pull request comments.
           </p>
         </div>
@@ -173,7 +172,7 @@ export default function AutomationPanel({ conn }) {
             <textarea rows={3} value={(policy.repos || []).join('\n')} onChange={e => set('repos', e.target.value.split('\n').map(s => s.trim()))}
               placeholder="One per line. Empty: every repository seen for this connector."
               className="mt-1 w-full bg-siem-bg border border-siem-border rounded-lg px-2 py-1.5 text-xs text-siem-text font-mono" />
-            <p className="text-[11px] text-siem-muted mt-1">A scheduled rescan is how a fixed issue is noticed: each branch's new result replaces its old one, so fixed findings drop out. "All branches" scans every branch the provider lists (up to 2,000 per repository), one job each, through the same queue as other scans.</p>
+            <p className="text-[11px] text-siem-muted mt-1">Each rescan replaces the branch's previous result, so fixed findings drop out. All branches: up to 2,000 per repository.</p>
           </div>
         </div>
       </div>

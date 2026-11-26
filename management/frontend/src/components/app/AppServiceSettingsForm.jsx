@@ -112,7 +112,7 @@ export default function AppServiceSettingsForm({ service, requests, onSaved, com
           <option value="off">Database: names only</option>
           <option value="fingerprint">Database: statement fingerprints</option>
         </select>
-        <span>Names only sends the operation and table (SELECT, users). Fingerprints also send the statement with every value removed on the host, so <span className="font-mono">WHERE id = 5</span> becomes <span className="font-mono">where id = ?</span>, which lets slow queries be told apart. The agent applies the change within 5 minutes.</span>
+        <span>Fingerprints send the statement with every value removed on the host: <span className="font-mono">WHERE id = 5</span> becomes <span className="font-mono">where id = ?</span>.</span>
       </label></>}
 
 {tier >= 1 && <>      <label className="flex items-start gap-2 text-xs text-siem-muted">
@@ -120,13 +120,13 @@ export default function AppServiceSettingsForm({ service, requests, onSaved, com
           <option value="off">Errors: no message</option>
           <option value="masked">Errors: masked message</option>
         </select>
-        <span>Error groups always show the exception type, the route and the stack frames (function and file, no values). A masked message also shows the message with numbers, quoted text, emails, ids and long tokens replaced by <span className="font-mono">?</span>. Off by default.</span>
+        <span>A masked message replaces numbers, quoted text, emails, ids and long tokens with <span className="font-mono">?</span>. Off by default.</span>
       </label></>}
 
       {tier >= 1 && <>
       <div className="rounded-lg border border-siem-border p-3 text-xs space-y-2">
         <div className="text-siem-text font-medium">Service level objective</div>
-        <div className="text-siem-muted">Leave a field empty for the default: availability is 100 minus the error budget above (99.9% when none is set), latency is 95% of requests under the latency target, over 28 days. The SLO tab shows the budget left; alert APM-O13 fires when it burns too fast.</div>
+        <div className="text-siem-muted">Empty fields use the defaults: availability 100 minus the error budget, 95% of requests under the latency target, 28 days.</div>
         <div className="flex gap-3 flex-wrap">
           <label className="flex flex-col gap-1 text-siem-muted">Availability target (%)
             <input className="input w-32" type="number" min="1" max="99.999" step="0.01" placeholder="99.9" value={f.slo_avail} onChange={set('slo_avail')} disabled={dis} /></label>
@@ -139,7 +139,7 @@ export default function AppServiceSettingsForm({ service, requests, onSaved, com
 
       <div className="rounded-lg border border-siem-border p-3 text-xs space-y-2">
         <div className="text-siem-text font-medium">Trace sampling</div>
-        <div className="text-siem-muted">Errors, slow traces (over the latency target above) and traces with a security signal are kept. Leave a field empty for the default. The agent applies changes within 5 minutes; the Overview shows how many traces were seen and kept for each reason. When a flush is over its limit, ordinary traces are dropped first, then slow, then errors; security traces are never dropped.</div>
+        <div className="text-siem-muted">Errors, slow and security traces are always kept. Applied by the agent within 5 minutes.</div>
         <div className="flex gap-3 flex-wrap">
           <label className="flex flex-col gap-1 text-siem-muted">Ordinary traces kept (%)
             <input className="input w-32" type="number" min="0" max="100" step="0.1" placeholder="1" value={f.samp_baseline} onChange={set('samp_baseline')} disabled={dis} /></label>

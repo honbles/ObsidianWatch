@@ -185,7 +185,7 @@ export default function AlertRules() {
   return (
     <div>
       <PageHeader title="Alert rules"
-        sub="Your own match rules, evaluated every 30 seconds. Every condition must match; a blank field matches anything. The DNS domain condition only applies to dns events."
+        sub="Your own match rules. Every condition must match; a blank field matches anything."
         actions={<button className="ow-btn primary" onClick={() => { setEditing(null); setShowCreate(true) }}><Plus size={13}/>New rule</button>}
         nums={<>
           <Num k="Rules" v={rules.length}/>

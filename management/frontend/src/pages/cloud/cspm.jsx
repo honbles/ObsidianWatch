@@ -115,7 +115,7 @@ Respond with a JSON object:
     <div style={{
       background: open ? SEV_BG[sev] : 'var(--surface)',
       border: `1px solid ${open ? SEV_BORDER[sev] : 'var(--border)'}`,
-      borderLeft: `3px solid ${SEV_COLOR[sev] || '#94a3b8'}`,
+      borderLeft: `3px solid ${SEV_COLOR[sev] || 'var(--t2)'}`,
       borderRadius: 10,
       transition: 'all 0.15s',
       overflow: 'hidden',
@@ -138,7 +138,7 @@ Respond with a JSON object:
         </div>
         <div style={{ display:'flex', alignItems:'center', gap:8, flexShrink:0 }}>
           {f.mitre && (
-            <span style={{ fontSize:9, background:'rgba(0,194,224,0.1)', border:'1px solid rgba(0,194,224,0.2)', color:'var(--accent)', borderRadius:4, padding:'1px 5px', fontFamily:'var(--font-data)' }}>
+            <span style={{ fontSize:9, background:'rgb(var(--acc-c) / 0.1)', border:'1px solid rgb(var(--acc-c) / 0.2)', color:'var(--accent)', borderRadius:4, padding:'1px 5px', fontFamily:'var(--font-data)' }}>
               {f.mitre}
             </span>
           )}
@@ -153,8 +153,8 @@ Respond with a JSON object:
           <p style={{ fontSize:12, color:'var(--text2)', lineHeight:1.6, marginBottom:10 }}>{f.description}</p>
 
           {/* Remediation */}
-          <div style={{ background:'rgba(52,211,153,0.06)', border:'1px solid rgba(52,211,153,0.15)', borderRadius:7, padding:'8px 12px', marginBottom:10 }}>
-            <div style={{ fontSize:10, fontWeight:700, color:'#34d399', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:4 }}>✓ Remediation</div>
+          <div style={{ background:'rgb(var(--ok-c) / 0.06)', border:'1px solid rgb(var(--ok-c) / 0.15)', borderRadius:7, padding:'8px 12px', marginBottom:10 }}>
+            <div style={{ fontSize:10, fontWeight:700, color:'var(--ok)', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:4 }}>✓ Remediation</div>
             <p style={{ fontSize:11.5, color:'var(--text2)', lineHeight:1.6 }}>{f.remediation}</p>
           </div>
 
@@ -162,9 +162,9 @@ Respond with a JSON object:
           <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
             <button onClick={explainWithAI} disabled={aiLoading}
               style={{ display:'flex', alignItems:'center', gap:5, fontSize:11, padding:'5px 10px',
-                background: aiText ? 'rgba(139,92,246,0.15)' : 'rgba(0,194,224,0.1)',
-                border: `1px solid ${aiText ? 'rgba(139,92,246,0.3)' : 'rgba(0,194,224,0.25)'}`,
-                color: aiText ? '#a78bfa' : 'var(--accent)', borderRadius:6, cursor:'pointer', fontFamily:'inherit' }}>
+                background: aiText ? 'rgb(var(--violet-c) / 0.15)' : 'rgb(var(--acc-c) / 0.1)',
+                border: `1px solid ${aiText ? 'rgb(var(--violet-c) / 0.3)' : 'rgb(var(--acc-c) / 0.25)'}`,
+                color: aiText ? 'var(--violet)' : 'var(--accent)', borderRadius:6, cursor:'pointer', fontFamily:'inherit' }}>
               <Sparkles size={11}/>{aiLoading ? 'Explaining…' : aiText ? 'Hide AI Explanation' : 'Explain with AI'}
             </button>
             {link && (
@@ -182,8 +182,8 @@ Respond with a JSON object:
 
           {/* AI Explanation */}
           {aiText && (
-            <div style={{ marginTop:10, background:'rgba(139,92,246,0.06)', border:'1px solid rgba(139,92,246,0.2)', borderRadius:8, padding:'12px 14px' }}>
-              <div style={{ fontSize:10, fontWeight:700, color:'#a78bfa', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:8 }}>
+            <div style={{ marginTop:10, background:'rgb(var(--violet-c) / 0.06)', border:'1px solid rgb(var(--violet-c) / 0.2)', borderRadius:8, padding:'12px 14px' }}>
+              <div style={{ fontSize:10, fontWeight:700, color:'var(--violet)', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:8 }}>
                 ✦ AI Security Analyst
               </div>
               {aiText.plain_english && (
@@ -191,19 +191,19 @@ Respond with a JSON object:
               )}
               {aiText.business_impact && (
                 <div style={{ marginBottom:6 }}>
-                  <span style={{ fontSize:10, color:'#f87171', fontWeight:600 }}>Business Impact: </span>
+                  <span style={{ fontSize:10, color:'var(--crit)', fontWeight:600 }}>Business Impact: </span>
                   <span style={{ fontSize:11, color:'var(--text2)' }}>{aiText.business_impact}</span>
                 </div>
               )}
               {aiText.urgency && (
                 <div style={{ marginBottom:8 }}>
-                  <span style={{ fontSize:10, color:'#fbbf24', fontWeight:600 }}>Urgency: </span>
+                  <span style={{ fontSize:10, color:'var(--warn)', fontWeight:600 }}>Urgency: </span>
                   <span style={{ fontSize:11, color:'var(--text2)' }}>{aiText.urgency}</span>
                 </div>
               )}
               {aiText.steps?.length > 0 && (
                 <div>
-                  <div style={{ fontSize:10, color:'#34d399', fontWeight:600, marginBottom:4 }}>Steps:</div>
+                  <div style={{ fontSize:10, color:'var(--ok)', fontWeight:600, marginBottom:4 }}>Steps:</div>
                   {aiText.steps.map((s,i) => (
                     <div key={i} style={{ display:'flex', gap:6, marginBottom:3 }}>
                       <span style={{ fontSize:10, color:'var(--accent)', fontFamily:'var(--font-data)', flexShrink:0 }}>{i+1}.</span>
@@ -261,7 +261,7 @@ export function ComplianceBadges({ findings }) {
       {frameworks.map(fw => {
         const issues = fw.categories.reduce((s,c) => s+(catCount[c]||0), 0)
         const status = issues === 0 ? 'pass' : issues <= 3 ? 'warn' : 'fail'
-        const colors = { pass: ['#34d399','rgba(52,211,153,0.1)','rgba(52,211,153,0.2)'], warn: ['#fbbf24','rgba(251,191,36,0.1)','rgba(251,191,36,0.2)'], fail: ['#f87171','rgba(248,113,113,0.1)','rgba(248,113,113,0.2)'] }
+        const colors = { pass: ['var(--ok)','rgb(var(--ok-c) / 0.1)','rgb(var(--ok-c) / 0.2)'], warn: ['var(--warn)','rgb(var(--warn-c) / 0.1)','rgb(var(--warn-c) / 0.2)'], fail: ['var(--crit)','rgb(var(--crit-c) / 0.1)','rgb(var(--crit-c) / 0.2)'] }
         const [c, bg, border] = colors[status]
         return (
           <div key={fw.name} style={{ fontSize:10.5, padding:'4px 10px', borderRadius:6, background:bg, border:`1px solid ${border}`, color:c, fontWeight:600 }}>
@@ -335,7 +335,7 @@ export function AssetInventory({ findings }) {
               <span style={{ fontSize:10, color:'var(--text3)', fontWeight:600 }}>{meta.label}</span>
             </div>
             <div style={{ fontSize:18, fontWeight:700, color:'var(--text)', fontFamily:'var(--font-data)' }}>{data.resources.size}</div>
-            <div style={{ fontSize:10, color: data.issues > 0 ? '#f87171' : '#34d399' }}>
+            <div style={{ fontSize:10, color: data.issues > 0 ? 'var(--crit)' : 'var(--ok)' }}>
               {data.issues} issue{data.issues !== 1 ? 's' : ''}
             </div>
           </div>
@@ -363,7 +363,7 @@ export function NetworkExposure({ findings }) {
       {Object.entries(publicResources).slice(0,8).map(([res, issues]) => (
         <div key={res} style={{ display:'flex', alignItems:'center', gap:8, padding:'8px 10px',
           background:'var(--surface2)', border:'1px solid var(--border)', borderRadius:7 }}>
-          <Globe size={12} color={issues.some(i => i.severity === 'critical') ? '#f87171' : '#fb923c'}/>
+          <Globe size={12} color={issues.some(i => i.severity === 'critical') ? 'var(--crit)' : 'var(--high)'}/>
           <span style={{ flex:1, fontSize:11, color:'var(--text2)', fontFamily:'var(--font-data)' }}>{res}</span>
           <div style={{ display:'flex', gap:4 }}>
             {issues.map((issue,i) => (
@@ -377,7 +377,7 @@ export function NetworkExposure({ findings }) {
         </div>
       ))}
       {Object.keys(publicResources).length === 0 && (
-        <div style={{ textAlign:'center', color:'#34d399', fontSize:12, padding:16 }}>
+        <div style={{ textAlign:'center', color:'var(--ok)', fontSize:12, padding:16 }}>
           ✓ No publicly exposed resources detected
         </div>
       )}
@@ -436,7 +436,7 @@ export function IdentityRisk({ findings }) {
         )
       })}
       {!iamFindings.length && (
-        <div style={{ textAlign:'center', color:'#34d399', fontSize:12, padding:16 }}>
+        <div style={{ textAlign:'center', color:'var(--ok)', fontSize:12, padding:16 }}>
           ✓ No IAM issues detected
         </div>
       )}
@@ -514,11 +514,11 @@ ${JSON.stringify(compact)}`
           <div style={{ fontSize:13, fontWeight:700, color:'var(--text)' }}>Cloud Security Posture - {cspm?.project_id || conn.account_id}</div>
           {cspm && <div style={{ fontSize:10.5, color:'var(--text3)', marginTop:2 }}>
             Last scan: {cspm.scanned_at ? format(new Date(cspm.scanned_at), 'MMM d, yyyy HH:mm') : '-'} · {cspm.scan_duration}
-            {cspm.scc_enabled && <span style={{ color:'#34d399', marginLeft:8 }}>✓ SCC connected ({cspm.scc_findings||0} findings)</span>}
+            {cspm.scc_enabled && <span style={{ color:'var(--ok)', marginLeft:8 }}>✓ SCC connected ({cspm.scc_findings||0} findings)</span>}
             {cspm.errors?.length > 0 && (
               <button onClick={() => setShowErrors(e => !e)}
-                style={{ marginLeft:8, background:'rgba(251,146,60,0.1)', border:'1px solid rgba(251,146,60,0.25)',
-                  color:'#fb923c', borderRadius:4, padding:'1px 7px', fontSize:10.5, cursor:'pointer', fontFamily:'inherit' }}>
+                style={{ marginLeft:8, background:'rgb(var(--high-c) / 0.1)', border:'1px solid rgb(var(--high-c) / 0.25)',
+                  color:'var(--high)', borderRadius:4, padding:'1px 7px', fontSize:10.5, cursor:'pointer', fontFamily:'inherit' }}>
                 ⚠ {cspm.errors.length} check failed - click to see
               </button>
             )}
@@ -528,15 +528,15 @@ ${JSON.stringify(compact)}`
           {cspm && (
             <button onClick={runAISummary} disabled={aiLoading}
               style={{ display:'flex', alignItems:'center', gap:5, fontSize:11.5, padding:'7px 13px',
-                background:'rgba(139,92,246,0.1)', border:'1px solid rgba(139,92,246,0.25)',
-                color:'#a78bfa', borderRadius:7, cursor:aiLoading?'wait':'pointer', fontFamily:'inherit', fontWeight:600 }}>
+                background:'rgb(var(--violet-c) / 0.1)', border:'1px solid rgb(var(--violet-c) / 0.25)',
+                color:'var(--violet)', borderRadius:7, cursor:aiLoading?'wait':'pointer', fontFamily:'inherit', fontWeight:600 }}>
               <Sparkles size={12}/>{aiLoading ? 'Analysing…' : 'AI Summary'}
             </button>
           )}
           <button onClick={onRunScan} disabled={scanning}
             style={{ display:'flex', alignItems:'center', gap:6, fontSize:11.5, padding:'7px 14px',
               background: scanning ? 'var(--surface2)' : 'var(--accent)',
-              color: scanning ? 'var(--text2)' : '#000',
+              color: scanning ? 'var(--text2)' : 'var(--onacc)',
               border:'none', borderRadius:7, cursor: scanning?'wait':'pointer', fontFamily:'inherit', fontWeight:700 }}>
             <RefreshCw size={12} style={scanning ? { animation:'spin 0.8s linear infinite' } : {}}/>
             {scanning ? 'Scanning…' : 'Run Scan'}
@@ -548,10 +548,10 @@ ${JSON.stringify(compact)}`
 
         {/* ── Scan Errors Panel ── */}
         {showErrors && cspm?.errors?.length > 0 && (
-          <div style={{ marginBottom:16, background:'rgba(251,146,60,0.06)', border:'1px solid rgba(251,146,60,0.25)', borderRadius:10, overflow:'hidden' }}>
-            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'10px 14px', borderBottom:'1px solid rgba(251,146,60,0.2)' }}>
+          <div style={{ marginBottom:16, background:'rgb(var(--high-c) / 0.06)', border:'1px solid rgb(var(--high-c) / 0.25)', borderRadius:10, overflow:'hidden' }}>
+            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'10px 14px', borderBottom:'1px solid rgb(var(--high-c) / 0.2)' }}>
               <div style={{ display:'flex', alignItems:'center', gap:7 }}>
-                <span style={{ fontSize:12, fontWeight:700, color:'#fb923c' }}>⚠ Scan Check Failures</span>
+                <span style={{ fontSize:12, fontWeight:700, color:'var(--high)' }}>⚠ Scan Check Failures</span>
                 <span style={{ fontSize:10.5, color:'var(--text3)' }}>These checks could not run - usually missing IAM role or API not enabled</span>
               </div>
               <button onClick={() => setShowErrors(false)}
@@ -585,17 +585,17 @@ ${JSON.stringify(compact)}`
     org_iam:          'roles/resourcemanager.organizationViewer  (auto-granted when SCC is enabled)',
   }
               return (
-                <div key={i} style={{ padding:'10px 14px', borderBottom: i < cspm.errors.length-1 ? '1px solid rgba(251,146,60,0.1)' : 'none' }}>
+                <div key={i} style={{ padding:'10px 14px', borderBottom: i < cspm.errors.length-1 ? '1px solid rgb(var(--high-c) / 0.1)' : 'none' }}>
                   <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:4 }}>
-                    <code style={{ fontSize:11, background:'var(--surface2)', border:'1px solid var(--border)', borderRadius:4, padding:'1px 6px', color:'#fb923c', fontFamily:'var(--font-data)' }}>{checkName}</code>
-                    <span style={{ fontSize:10.5, color: is403 ? '#f87171' : is404 ? '#38bdf8' : '#fb923c' }}>
+                    <code style={{ fontSize:11, background:'var(--surface2)', border:'1px solid var(--border)', borderRadius:4, padding:'1px 6px', color:'var(--high)', fontFamily:'var(--font-data)' }}>{checkName}</code>
+                    <span style={{ fontSize:10.5, color: is403 ? 'var(--crit)' : is404 ? 'var(--info)' : 'var(--high)' }}>
                       {is403 ? '403 Permission Denied' : is404 ? '404 Not Found / API disabled' : 'Error'}
                     </span>
                   </div>
                   <div style={{ fontSize:11, color:'var(--text3)', fontFamily:'var(--font-data)', marginBottom:6, wordBreak:'break-all' }}>{errMsg.slice(0, 200)}</div>
                   {requiredRoles[checkName] && (
                     <div style={{ display:'flex', alignItems:'center', gap:5, fontSize:10.5 }}>
-                      <span style={{ color:'#34d399', fontWeight:600 }}>Fix:</span>
+                      <span style={{ color:'var(--ok)', fontWeight:600 }}>Fix:</span>
                       <code style={{ color:'var(--text2)', fontFamily:'var(--font-data)', background:'var(--surface2)', padding:'1px 6px', borderRadius:4 }}>
                         {requiredRoles[checkName]}
                       </code>
@@ -639,11 +639,11 @@ ${JSON.stringify(compact)}`
             {/* KPIs */}
             <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:8 }}>
               {[
-                { label:'Critical', value: cspm.critical, color:'#f87171' },
-                { label:'High',     value: cspm.high,     color:'#fb923c' },
-                { label:'Medium',   value: cspm.medium,   color:'#fbbf24' },
-                { label:'Low',      value: cspm.low,      color:'#38bdf8' },
-                { label:'Passed',   value: cspm.passed,   color:'#34d399' },
+                { label:'Critical', value: cspm.critical, color:'var(--crit)' },
+                { label:'High',     value: cspm.high,     color:'var(--high)' },
+                { label:'Medium',   value: cspm.medium,   color:'var(--warn)' },
+                { label:'Low',      value: cspm.low,      color:'var(--info)' },
+                { label:'Passed',   value: cspm.passed,   color:'var(--ok)' },
                 { label:'Total',    value: cspm.total_findings, color:'var(--text2)' },
               ].map(k => (
                 <div key={k.label} style={{ background:'var(--surface)', border:'1px solid var(--border)',
@@ -662,8 +662,8 @@ ${JSON.stringify(compact)}`
                 <div style={{ fontSize:10, fontWeight:700, color:'var(--text3)', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:6 }}>Security Command Center</div>
                 {cspm.scc_enabled ? (
                   <div style={{ display:'flex', alignItems:'center', gap:6 }}>
-                    <span style={{ width:7, height:7, borderRadius:'50%', background:'#34d399', display:'inline-block' }}/>
-                    <span style={{ fontSize:11, color:'#34d399', fontWeight:600 }}>Connected</span>
+                    <span style={{ width:7, height:7, borderRadius:'50%', background:'var(--ok)', display:'inline-block' }}/>
+                    <span style={{ fontSize:11, color:'var(--ok)', fontWeight:600 }}>Connected</span>
                     <span style={{ fontSize:10.5, color:'var(--text3)' }}>· {cspm.scc_findings||0} findings</span>
                   </div>
                 ) : (
@@ -688,9 +688,9 @@ ${JSON.stringify(compact)}`
 
           {/* ── AI Summary (if loaded) ── */}
           {aiSummary && (
-            <div style={{ background:'rgba(139,92,246,0.06)', border:'1px solid rgba(139,92,246,0.2)', borderRadius:10, padding:'14px 16px', marginBottom:16 }}>
+            <div style={{ background:'rgb(var(--violet-c) / 0.06)', border:'1px solid rgb(var(--violet-c) / 0.2)', borderRadius:10, padding:'14px 16px', marginBottom:16 }}>
               <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:8 }}>
-                <div style={{ fontSize:10, fontWeight:700, color:'#a78bfa', textTransform:'uppercase', letterSpacing:'0.06em' }}>✦ AI Executive Summary</div>
+                <div style={{ fontSize:10, fontWeight:700, color:'var(--violet)', textTransform:'uppercase', letterSpacing:'0.06em' }}>✦ AI Executive Summary</div>
                 <button onClick={() => setAiSummary(null)} style={{ background:'none', border:'none', color:'var(--text3)', cursor:'pointer', padding:0 }}>
                   <X size={13}/>
                 </button>
@@ -701,25 +701,25 @@ ${JSON.stringify(compact)}`
               <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:12 }}>
                 {aiSummary.top_risks?.length > 0 && (
                   <div>
-                    <div style={{ fontSize:10, color:'#f87171', fontWeight:600, marginBottom:5 }}>⚠ Top Risks</div>
+                    <div style={{ fontSize:10, color:'var(--crit)', fontWeight:600, marginBottom:5 }}>⚠ Top Risks</div>
                     {aiSummary.top_risks.map((r,i) => <div key={i} style={{ fontSize:11, color:'var(--text2)', marginBottom:3, lineHeight:1.4 }}>• {r}</div>)}
                   </div>
                 )}
                 {aiSummary.immediate_actions?.length > 0 && (
                   <div>
-                    <div style={{ fontSize:10, color:'#34d399', fontWeight:600, marginBottom:5 }}>✓ Immediate Actions</div>
+                    <div style={{ fontSize:10, color:'var(--ok)', fontWeight:600, marginBottom:5 }}>✓ Immediate Actions</div>
                     {aiSummary.immediate_actions.map((a,i) => <div key={i} style={{ fontSize:11, color:'var(--text2)', marginBottom:3, lineHeight:1.4 }}>• {a}</div>)}
                   </div>
                 )}
                 {aiSummary.positive_findings?.length > 0 && (
                   <div>
-                    <div style={{ fontSize:10, color:'#38bdf8', fontWeight:600, marginBottom:5 }}>✦ Doing Well</div>
+                    <div style={{ fontSize:10, color:'var(--info)', fontWeight:600, marginBottom:5 }}>✦ Doing Well</div>
                     {aiSummary.positive_findings.map((p,i) => <div key={i} style={{ fontSize:11, color:'var(--text2)', marginBottom:3, lineHeight:1.4 }}>• {p}</div>)}
                   </div>
                 )}
               </div>
               {aiSummary.compliance_notes && (
-                <div style={{ marginTop:8, fontSize:11, color:'var(--text3)', fontStyle:'italic', borderTop:'1px solid rgba(139,92,246,0.15)', paddingTop:8 }}>
+                <div style={{ marginTop:8, fontSize:11, color:'var(--text3)', fontStyle:'italic', borderTop:'1px solid rgb(var(--violet-c) / 0.15)', paddingTop:8 }}>
                   {aiSummary.compliance_notes}
                 </div>
               )}
@@ -736,7 +736,7 @@ ${JSON.stringify(compact)}`
             ].map(({ id, label, icon: Icon, count }) => (
               <button key={id} onClick={() => setSection(id)}
                 style={{ display:'flex', alignItems:'center', gap:5, padding:'7px 13px', fontSize:11.5,
-                  background: section===id ? 'rgba(0,194,224,0.1)' : 'transparent',
+                  background: section===id ? 'rgb(var(--acc-c) / 0.1)' : 'transparent',
                   color: section===id ? 'var(--accent)' : 'var(--text3)',
                   border:'none', borderBottom: section===id ? '2px solid var(--accent)' : '2px solid transparent',
                   cursor:'pointer', fontFamily:'inherit', fontWeight: section===id ? 600 : 400,
@@ -744,7 +744,7 @@ ${JSON.stringify(compact)}`
                 <Icon size={12}/>
                 {label}
                 {count !== null && count > 0 && (
-                  <span style={{ fontSize:9.5, background:'rgba(0,194,224,0.15)', color:'var(--accent)',
+                  <span style={{ fontSize:9.5, background:'rgb(var(--acc-c) / 0.15)', color:'var(--accent)',
                     borderRadius:10, padding:'0 5px', minWidth:16, textAlign:'center' }}>{count}</span>
                 )}
               </button>
@@ -768,8 +768,8 @@ ${JSON.stringify(compact)}`
                   {['all','critical','high','medium','low'].map(s => (
                     <button key={s} onClick={() => setSevFilter(s)}
                       style={{ fontSize:10.5, padding:'4px 10px', borderRadius:6,
-                        background: sevFilter===s ? (SEV_BG[s]||'rgba(0,194,224,0.1)') : 'var(--surface)',
-                        border: `1px solid ${sevFilter===s ? (SEV_BORDER[s]||'rgba(0,194,224,0.3)') : 'var(--border)'}`,
+                        background: sevFilter===s ? (SEV_BG[s]||'rgb(var(--acc-c) / 0.1)') : 'var(--surface)',
+                        border: `1px solid ${sevFilter===s ? (SEV_BORDER[s]||'rgb(var(--acc-c) / 0.3)') : 'var(--border)'}`,
                         color: sevFilter===s ? (SEV_COLOR[s]||'var(--accent)') : 'var(--text3)',
                         cursor:'pointer', fontFamily:'inherit', fontWeight: sevFilter===s ? 600 : 400 }}>
                       {s.charAt(0).toUpperCase()+s.slice(1)}
@@ -811,7 +811,7 @@ ${JSON.stringify(compact)}`
               })}
 
               {filteredFindings.length === 0 && (
-                <div style={{ textAlign:'center', padding:40, color:search||sevFilter!=='all' ? 'var(--text3)' : '#34d399', fontSize:13 }}>
+                <div style={{ textAlign:'center', padding:40, color:search||sevFilter!=='all' ? 'var(--text3)' : 'var(--ok)', fontSize:13 }}>
                   {search||sevFilter!=='all' ? 'No findings match your filter' : '✓ No findings - your cloud posture looks clean!'}
                 </div>
               )}

@@ -36,7 +36,7 @@ export default function AppHosts() {
       <PageHeader title="Hosts"
         state={loading ? undefined : n(h => h.top_severity === 'critical') ? 'crit' : n(h => h.top_severity === 'high') ? 'warn' : all.length ? 'ok' : 'none'}
         stateText={all.length ? `${n(h => h.top_severity === 'critical')} with critical risk` : 'No monitored hosts yet'}
-        sub="Servers with an application-monitoring agent and at least one live service in the last 24 hours. Each host joins its services with host alerts, the host vulnerability scan, and vulnerable code its services load."
+        sub="Hosts with a monitored service in the last 24 hours."
         nums={<>
           <Num k="Hosts" v={all.length}/>
           <Num k="Services" v={all.reduce((a, h) => a + h.services, 0)}/>
@@ -56,7 +56,7 @@ export default function AppHosts() {
           <DenseTable cols={cols} rows={loading ? [] : rows} rowKey={h => h.agent_id}
             rowState={h => (h.top_severity === 'critical' ? 'crit' : h.top_severity === 'high' ? 'warn' : null)}
             onRow={h => navigate(`/applications/hosts/${encodeURIComponent(h.agent_id)}`)}
-            empty={loading ? 'Loading…' : 'No hosts with monitored services. Build an agent with the app-server profile and run your application on that host.'}/>
+            empty={loading ? 'Loading…' : 'No hosts with monitored services.'}/>
         </div>
       </div>
     </div>

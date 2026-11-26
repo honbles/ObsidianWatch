@@ -98,7 +98,7 @@ const SOURCE_META = {
   },
   spamhaus_bcl: {
     label: 'Spamhaus Botnet Controller List',
-    desc: 'Spamhaus BCL: dedicated botnet C2 servers. A Spamhaus subscription product with no public download: paste the feed URL they give you (plain text or CSV).',
+    desc: 'Spamhaus BCL botnet C2 servers. Subscription feed: paste the URL Spamhaus gives you.',
     color: 'text-rose-400',
     needsKey: true,
     keyPlaceholder: 'BCL feed URL from your Spamhaus subscription (https://...)',
@@ -169,7 +169,7 @@ function SourceCard({ source, onUpdate, onSync }) {
       </div>
       {source.name === 'sigma' && source.last_error && /integrity check failed/.test(source.last_error) && (
         <div className="text-xs space-y-1.5 border border-siem-border rounded-lg p-2">
-          <div className="text-siem-muted">Open the release page, find sigma_core.zip, and type the first 8 characters of its sha256. If they match what the server downloaded, it is pinned for you.</div>
+          <div className="text-siem-muted">First 8 characters of sigma_core.zip's SHA-256 from the release page.</div>
           <div className="flex gap-2">
             <input value={pinPrefix} onChange={e => setPinPrefix(e.target.value)} placeholder="first 8 characters, e.g. 45ccbd62"
               className="flex-1 bg-siem-bg border border-siem-border rounded px-3 py-1.5 text-xs text-siem-text focus:outline-none focus:border-siem-accent" />
@@ -627,7 +627,7 @@ export default function Detections() {
           <div className="ow-card" style={{ padding: 16, display: 'flex', alignItems: 'center', gap: 16 }}>
             <div style={{ flex: 1 }}>
               <div style={{ fontWeight: 600, marginBottom: 4 }}>SigmaHQ community rules · {sigmaCount.toLocaleString()} rules</div>
-              <div className="t2" style={{ fontSize: 12.5 }}>Mapped to MITRE ATT&CK and matched against process, file, network and registry events on Windows, Linux and macOS. A rule alerts at most once per host per hour.</div>
+              <div className="t2" style={{ fontSize: 12.5 }}>Mapped to MITRE ATT&CK. A rule alerts at most once per host per hour.</div>
             </div>
             <span className="t2" style={{ fontSize: 12.5 }}>{sigmaToggling ? 'Saving…' : sigmaEnabled ? 'Enabled' : 'Disabled'}</span>
             <Switch on={sigmaEnabled} busy={sigmaToggling} onClick={toggleSigma} label="Sigma rules on or off"/>
@@ -668,7 +668,7 @@ export default function Detections() {
 
       {osTab === 'sources' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <div className="t2" style={{ fontSize: 12.5 }}>Enabled sources pull indicators (IPs, domains, hashes) daily. A match on any platform raises an alert.</div>
+          <div className="t2" style={{ fontSize: 12.5 }}>Indicators sync daily; a match raises an alert.</div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: 12 }}>
             {sources.map(s => <SourceCard key={s.name} source={s} onUpdate={updateSource} onSync={syncSource} />)}
           </div>

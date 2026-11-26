@@ -36,7 +36,7 @@ export default function ManualIOCs() {
     <div className="bg-siem-surface border border-siem-border rounded-xl p-5 space-y-3">
       <div>
         <div className="text-sm font-semibold text-siem-text">Manual indicators</div>
-        <div className="text-xs text-siem-muted">Add your own IP, domain or file hash (MD5, SHA-1 or SHA-256). Useful for incident response, partner intel and testing. They survive feed syncs.</div>
+        <div className="text-xs text-siem-muted">Your own IPs, domains and hashes (MD5, SHA-1, SHA-256). Kept across feed syncs.</div>
       </div>
       <form onSubmit={add} className="flex flex-wrap items-end gap-2 text-xs">
         <select value={type} onChange={e => setType(e.target.value)} className="bg-siem-bg border border-siem-border rounded px-2 py-1.5">

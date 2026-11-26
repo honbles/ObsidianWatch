@@ -14,10 +14,10 @@ import { QuickActions } from './ResponseActions.jsx'
 const COLW = 230, ROWH = 64, NW = 188, NH = 44, LANEW = 210, PAD = 24
 const LANES = ['ip', 'domain', 'file', 'reg', 'burst']
 const LANE_TITLE = { ip: 'Network', domain: 'DNS', file: 'Files', reg: 'Registry', burst: 'Collapsed' }
-const TYPE_COLOR = { ip: '#38bdf8', domain: '#a78bfa', file: '#fbbf24', reg: '#f472b6', burst: '#94a3b8' }
-const ROLE_COLOR = { anchor: '#ef4444', ancestor: '#64748b', descendant: '#3b82f6', gap: '#f59e0b', entity: '#94a3b8', origin: '#a855f7', executed: '#ec4899', bridge: '#fbbf24' }
-const EDGE_COLOR = { spawned: '#64748b', connected: '#38bdf8', resolved: '#a78bfa', wrote: '#fbbf24', executed: '#ec4899', modified: '#f472b6', unseen: '#f59e0b', about: '#94a3b8' }
-const SEV_COLOR = { 5: '#ef4444', 4: '#f97316', 3: '#eab308' }
+const TYPE_COLOR = { ip: 'var(--info)', domain: 'var(--violet)', file: 'var(--warn)', reg: 'var(--magenta)', burst: 'var(--t2)' }
+const ROLE_COLOR = { anchor: 'var(--crit)', ancestor: 'var(--t3)', descendant: 'var(--info)', gap: 'var(--warn)', entity: 'var(--t2)', origin: 'var(--violet)', executed: 'var(--magenta)', bridge: 'var(--warn)' }
+const EDGE_COLOR = { spawned: 'var(--t3)', connected: 'var(--info)', resolved: 'var(--violet)', wrote: 'var(--warn)', executed: 'var(--magenta)', modified: 'var(--magenta)', unseen: 'var(--warn)', about: 'var(--t2)' }
+const SEV_COLOR = { 5: 'var(--crit)', 4: 'var(--high)', 3: 'var(--warn)' }
 
 function layout(graph) {
   const nodes = graph.nodes || [], edges = graph.edges || []
@@ -70,21 +70,21 @@ function layout(graph) {
 }
 
 function NodeBox({ n, p, selected, onClick }) {
-  const color = (n.role === 'artifact' && n.type !== 'process') || n.type === 'burst' ? (TYPE_COLOR[n.type] || '#94a3b8') : (ROLE_COLOR[n.role] || '#94a3b8')
+  const color = (n.role === 'artifact' && n.type !== 'process') || n.type === 'burst' ? (TYPE_COLOR[n.type] || 'var(--t2)') : (ROLE_COLOR[n.role] || 'var(--t2)')
   const sev = SEV_COLOR[n.severity]
   const dashed = n.type === 'gap' || n.confidence === 'low'
   return (
     <g transform={`translate(${p.x},${p.y})`} onClick={onClick} style={{ cursor: 'pointer' }}>
-      <rect width={NW} height={NH} rx="8" fill="#0d1117" stroke={selected ? '#e6edf3' : color} strokeWidth={selected ? 2 : 1.3}
+      <rect width={NW} height={NH} rx="8" fill="var(--s2)" stroke={selected ? 'var(--t1)' : color} strokeWidth={selected ? 2 : 1.3}
         strokeDasharray={dashed ? '4 3' : undefined} />
       <rect width="4" height={NH} rx="2" fill={color} />
       {sev && <circle cx={NW - 10} cy={10} r="4" fill={sev} />}
-      <text x="12" y="18" fontSize="11" fontWeight="600" fill="#e6edf3">{(n.label || '').slice(0, 26)}</text>
-      <text x="12" y="33" fontSize="9" fill="#8b949e">
+      <text x="12" y="18" fontSize="11" fontWeight="600" fill="var(--t1)">{(n.label || '').slice(0, 26)}</text>
+      <text x="12" y="33" fontSize="9" fill="var(--t2)">
         {n.type === 'process' ? (n.user ? n.user.slice(0, 16) + ' · ' : '') + (n.pid ? 'pid ' + n.pid : '') : (n.detail || n.type).slice(0, 30)}
         {n.collapsed ? `  +${n.collapsed} hidden` : ''}
       </text>
-      {n.alerts?.length > 0 && <g><circle cx={NW - 10} cy={NH - 10} r="7" fill="#7f1d1d" /><text x={NW - 10} y={NH - 7} fontSize="9" textAnchor="middle" fill="#fecaca">{n.alerts.length}</text></g>}
+      {n.alerts?.length > 0 && <g><circle cx={NW - 10} cy={NH - 10} r="7" fill="var(--crit)" /><text x={NW - 10} y={NH - 7} fontSize="9" textAnchor="middle" fill="var(--crit)">{n.alerts.length}</text></g>}
     </g>
   )
 }
@@ -239,7 +239,7 @@ function AIStory({ ai, loading, err, onRun, canRun }) {
         )}
       </div>
       {err && <div className="text-[11px] text-red-400">{err}</div>}
-      {!ai && !loading && !err && <div className="text-[11px] text-siem-muted">Click a node to see what it is doing. The AI story reads the whole graph (only the nodes and links you see here) and explains how it started, what it did and what to check next.</div>}
+      {!ai && !loading && !err && <div className="text-[11px] text-siem-muted">Click a node for details.</div>}
       {ai && (<>
         <div className="flex items-center gap-2">
           <span className={`text-[10px] px-2 py-0.5 rounded-full border font-semibold ${v[1]}`}>{v[0]}</span>
@@ -292,18 +292,18 @@ function GraphBody({ graph, selected, setSelected, ai, aiLoading, aiErr, runAI }
       <div className="flex-1 min-h-[160px] overflow-auto">
         <svg width={L.width} height={L.height} className="block">
           {L.usedLanes.map(l => (
-            <text key={l} x={L.laneX[l]} y={PAD} fontSize="10" fill="#8b949e" style={{ textTransform: 'uppercase', letterSpacing: 1 }}>{LANE_TITLE[l]}</text>
+            <text key={l} x={L.laneX[l]} y={PAD} fontSize="10" fill="var(--t2)" style={{ textTransform: 'uppercase', letterSpacing: 1 }}>{LANE_TITLE[l]}</text>
           ))}
           {graph.edges.map((e, i) => {
             const a = L.pos[e.source], b = L.pos[e.target]
             if (!a || !b) return null
             const hot = selected && (e.source === selected || e.target === selected)
-            return <path key={i} d={edgePath(a, b)} fill="none" stroke={EDGE_COLOR[e.type] || '#64748b'}
+            return <path key={i} d={edgePath(a, b)} fill="none" stroke={EDGE_COLOR[e.type] || 'var(--t3)'}
               strokeWidth={hot ? 2 : 1.2} opacity={selected && !hot ? 0.25 : 0.85} strokeDasharray={e.type === 'unseen' || e.evidence === 'cmdline' ? '4 3' : undefined} />
           })}
           {graph.edges.filter(e => e.label && L.pos[e.source] && L.pos[e.target]).map((e, i) => {
             const a = L.pos[e.source], b = L.pos[e.target]
-            return <text key={'l' + i} x={(a.x + NW + b.x) / 2} y={(a.y + b.y) / 2 + NH / 2 - 4} fontSize="9" fill="#8b949e" textAnchor="middle">{e.label}</text>
+            return <text key={'l' + i} x={(a.x + NW + b.x) / 2} y={(a.y + b.y) / 2 + NH / 2 - 4} fontSize="9" fill="var(--t2)" textAnchor="middle">{e.label}</text>
           })}
           {graph.nodes.map(n => L.pos[n.id] && <NodeBox key={n.id} n={n} p={L.pos[n.id]} selected={selected === n.id} onClick={() => setSelected(selected === n.id ? null : n.id)} />)}
         </svg>

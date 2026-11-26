@@ -12,9 +12,10 @@ api.interceptors.response.use(
   r => r,
   err => {
     if (err.response?.status === 401) {
-      // Don't logout for non-critical endpoints
+      // Don't logout for non-critical endpoints. On /auth/login and /auth/password a 401 means wrong
+      // credentials, not an expired session: the page shows the error instead of reloading.
       const url = err.config?.url || ''
-      const skipLogout = ['/api/v1/ai/'].some(p => url.includes(p))
+      const skipLogout = ['/api/v1/ai/', '/auth/login', '/auth/password'].some(p => url.includes(p))
       if (!skipLogout) {
         localStorage.removeItem('token')
         localStorage.removeItem('user')

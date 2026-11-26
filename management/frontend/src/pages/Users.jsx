@@ -47,7 +47,7 @@ export default function Users() {
       <PageHeader title="Users and access"
         state={loading ? undefined : users.some(u => !u.password_changed) ? 'warn' : 'ok'}
         stateText={users.filter(u => !u.password_changed).length ? `${users.filter(u => !u.password_changed).length} still on the initial password` : 'All passwords changed'}
-        sub="Admins manage the platform, analysts triage and respond, viewers read only. Every change is in the audit log."
+        sub="Admins manage the platform, analysts triage and respond, viewers read."
         actions={<button className="ow-btn primary" onClick={() => setShowCreate(true)}><Plus size={13}/>New user</button>}
         nums={<>
           <Num k="Users" v={users.length}/>

@@ -34,14 +34,14 @@ export default function AppSettings() {
   return (
     <div className="p-6 space-y-5">
       <AppPageHeader title="Settings" range={range}
-        subtitle="Per-service tuning and learning status. Click a service to edit its exposure, criticality, trusted proxies, routes, targets and maintenance windows." />
+        subtitle="Per-service settings and learning status." />
       <div className="card"><DataTable columns={cols} rows={rows} loading={svcs.loading} error={svcs.error} rowKey={s => s.id}
         emptyText="No services yet." initialSort={{ key: 'learn', dir: 'asc' }} /></div>
 
       <div className="card">
         <div className="card-head"><span className="text-sm font-medium text-siem-text">Detection rules</span></div>
         <DataTable columns={ruleCols} rows={appRules} loading={rules.loading} error={rules.error} rowKey={r => r.id}
-          emptyText="No application rules are registered yet. Rule modes, allowlists and precision appear here as the detection catalogue ships." />
+          emptyText="No application rules registered yet." />
       </div>
 
       <div className="card p-3 text-xs text-siem-muted space-y-1">

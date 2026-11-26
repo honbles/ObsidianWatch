@@ -41,8 +41,8 @@ export default function AppTabEvents({ service, range }) {
         {data?.counts && <span className="text-xs text-siem-muted">{Object.entries(data.counts).map(([k, v]) => `${v} ${k}`).join(' · ') || 'no activity'}</span>}
       </div>
       <div className="card"><DataTable columns={cols} rows={data?.items} loading={loading} error={error} rowKey={(e, i) => `${e.time}${e.kind}${i}`}
-        emptyText="No activity in this range. Connections, process starts and file access come from the host sensor under this service's processes; lifecycle entries come from instance, version, route and dependency changes." /></div>
-      <div className="text-[11px] text-siem-muted">Newest first. Only activity under the service's own processes is shown; counts are before the row limit is applied.</div>
+        emptyText="No activity in this range." /></div>
+      <div className="text-[11px] text-siem-muted">Newest first.</div>
     </div>
   )
 }

@@ -42,11 +42,10 @@ export default function AppTabErrors({ service, range, focus }) {
       <div className="card"><DataTable columns={cols} rows={rows} loading={loading} error={error} rowKey={g => g.id}
         initialSort={{ key: 'range', dir: 'desc' }}
         onRowClick={g => navigate(errPath(g.id))}
-        emptyText="No error groups in this range. They appear when the app records exceptions on its spans (most frameworks do for failed requests)." /></div>
+        emptyText="No error groups in this range." /></div>
       {openId && <AppErrorDetail id={openId} service={service} onClose={() => setOpenId(null)} onChanged={() => setRev(x => x + 1)} />}
       <div className="text-[11px] text-siem-muted">
-        Failures are grouped by exception type, the top frames of your own code and the route, so two requests that fail at the same line with different ids are one group.
-        Resolve a group when you ship the fix; if it fails again in a different version it reopens as "regressed". The message is hidden unless you turn on masked messages in Settings.
+        Grouped by exception type, top frames and route. A resolved group reopens as regressed if it fails again.
       </div>
     </div>
   )

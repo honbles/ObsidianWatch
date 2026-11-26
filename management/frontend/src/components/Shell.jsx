@@ -2,64 +2,77 @@ import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { useNavigate, useLocation, Link } from 'react-router-dom'
 import {
   LayoutDashboard, Bell, Activity, GitBranch, Cloud, Monitor, Network, Shield, Boxes, Crosshair, Search,
-  Settings, Users, Key, ClipboardList, Terminal, LogOut, Sun, Moon, ChevronDown, PanelLeftClose, PanelLeftOpen,
+  Settings, Users, Key, ClipboardList, Terminal, LogOut, Sun, Moon, ChevronDown, Menu, X,
   Eye, Share2, Gauge, ShieldCheck, SlidersHorizontal, BellOff, ListChecks, CornerDownLeft, Server, FileSearch,
+  Check, Type, Fingerprint, UserX, Radar,
 } from 'lucide-react'
 import { useTheme } from '../api/useTheme'
 import api from '../api/client'
-import { appApi, appSplitKey } from '../api/app'
-import { useDragSize } from '../hooks/useDragSize'
+import { appApi } from '../api/app'
 import { useTimeRange, RANGE_PRESETS } from './shared/useTimeRange'
+import { MARK_SHAPES } from '../utils/brand'
+import { DISPLAY_SIZES, getDisplaySize, setDisplaySize } from '../utils/display'
 
+// The brand mark (shapes in utils/brand.js). Brand colours, the same in both themes.
 export function OWMark({ size = 22 }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 22 22" aria-hidden="true">
-      <path d="M11 1.5 20 6.5v9L11 20.5 2 15.5v-9z" fill="none" stroke="var(--acc)" strokeWidth="1.8" strokeLinejoin="round"/>
-      <circle cx="11" cy="11" r="3" fill="var(--acc)"/>
+    <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true" style={{ flexShrink: 0 }}>
+      {MARK_SHAPES.map((m, i) => <path key={i} d={m.d} fill={m.fill}/>)}
     </svg>
   )
 }
 
-// The rail is grouped by domain. Endpoint, Application, Code and Cloud are the four places.
-// Hunt, prevention and response work on endpoints only today, so they sit under Endpoint;
-// alerts, search and rules cut across all four and get their own group.
+export function OWWordmark() {
+  return <span className="ow-wordmark"><b>Obsidian</b><span>Watch</span></span>
+}
+
+// Navigation is a header: one menu per product, Detect across all of them, and Settings for the platform.
+// ITDR is announced before it is built: its menu says so and links nowhere.
 function buildNav({ alertCount, isAdmin }) {
-  const main = [
-    { id: 'dash', label: 'Overview', icon: LayoutDashboard, to: '/' },
-    { section: 'Endpoint' },
-    { id: 'fleet', label: 'Fleet', icon: Monitor, to: '/agents' },
-    { id: 'hunt', label: 'Hunt', icon: Crosshair, to: '/hunt' },
-    { id: 'prevention', label: 'Prevention', icon: ShieldCheck, to: '/prevention' },
-    { id: 'response', label: 'Response', icon: Terminal, to: '/response' },
-    { section: 'Application' },
-    { id: 'app-hosts', label: 'Hosts', icon: Server, to: '/applications', exact: true, also: '/applications/hosts' },
-    { id: 'app-overview', label: 'Overview', icon: Gauge, to: '/applications/overview' },
-    { id: 'app-services', label: 'Services', icon: Boxes, to: '/applications/services' },
-    { id: 'app-map', label: 'Dependencies', icon: Share2, to: '/applications/map' },
-    { id: 'app-coverage', label: 'Coverage', icon: ListChecks, to: '/applications/coverage' },
-    { id: 'app-settings', label: 'Settings', icon: SlidersHorizontal, to: '/applications/settings' },
-    { section: 'Code' },
-    { id: 'repos', label: 'Repositories', icon: GitBranch, to: '/devops' },
-    { section: 'Cloud' },
-    { id: 'cloud', label: 'Posture', icon: Cloud, to: '/cloud' },
-    { section: 'Detect' },
-    { id: 'alerts', label: 'Alerts', icon: Bell, to: '/alerts', badge: alertCount },
-    { id: 'events', label: 'Events', icon: Activity, to: '/events' },
-    { id: 'insights', label: 'Insights', icon: Eye, to: '/insights' },
-    { id: 'rules', label: 'Rules', icon: Shield, to: '/detections' },
-    { id: 'alert-rules', label: 'Alert rules', icon: ListChecks, to: '/alert-rules' },
-    { id: 'suppressions', label: 'Suppressions', icon: BellOff, to: '/suppressions' },
-    { section: 'Network' },
-    { id: 'network', label: 'Probes', icon: Network, to: '/network', tag: 'beta' },
+  const products = [
+    { id: 'endpoint', label: 'Endpoint', items: [
+      { id: 'fleet', label: 'Fleet', icon: Monitor, to: '/agents' },
+      { id: 'hunt', label: 'Hunt', icon: Crosshair, to: '/hunt' },
+      { id: 'prevention', label: 'Prevention', icon: ShieldCheck, to: '/prevention' },
+      { id: 'response', label: 'Response', icon: Terminal, to: '/response' },
+    ] },
+    { id: 'application', label: 'Application', items: [
+      { id: 'app-hosts', label: 'Hosts', icon: Server, to: '/applications', exact: true, also: '/applications/hosts' },
+      { id: 'app-overview', label: 'Overview', icon: Gauge, to: '/applications/overview' },
+      { id: 'app-services', label: 'Services', icon: Boxes, to: '/applications/services' },
+      { id: 'app-map', label: 'Dependencies', icon: Share2, to: '/applications/map' },
+      { id: 'app-coverage', label: 'Coverage', icon: ListChecks, to: '/applications/coverage' },
+      { id: 'app-settings', label: 'Settings', icon: SlidersHorizontal, to: '/applications/settings' },
+    ] },
+    { id: 'code', label: 'Code', items: [
+      { id: 'repos', label: 'Repositories', icon: GitBranch, to: '/devops' },
+    ] },
+    { id: 'cloud', label: 'Cloud', items: [
+      { id: 'cloud', label: 'Posture', icon: Cloud, to: '/cloud' },
+    ] },
+    { id: 'network', label: 'Network', items: [
+      { id: 'network', label: 'Probes', icon: Radar, to: '/network', tag: 'beta' },
+    ] },
+    { id: 'itdr', label: 'ITDR', soon: true, items: [
+      { id: 'itdr-threats', label: 'Identity threats', icon: Fingerprint, soon: true },
+      { id: 'itdr-accounts', label: 'Risky accounts', icon: UserX, soon: true },
+    ] },
+    { id: 'detect', label: 'Detect', items: [
+      { id: 'alerts', label: 'Alerts', icon: Bell, to: '/alerts', badge: alertCount },
+      { id: 'events', label: 'Events', icon: Activity, to: '/events' },
+      { id: 'insights', label: 'Insights', icon: Eye, to: '/insights' },
+      { id: 'rules', label: 'Rules', icon: Shield, to: '/detections' },
+      { id: 'alert-rules', label: 'Alert rules', icon: ListChecks, to: '/alert-rules' },
+      { id: 'suppressions', label: 'Suppressions', icon: BellOff, to: '/suppressions' },
+    ] },
   ]
-  const admin = isAdmin ? [
-    { section: 'Administration' },
+  const settings = isAdmin ? [
     { id: 'builder', label: 'Agent builder', icon: Key, to: '/agent-builder' },
     { id: 'users', label: 'Users and access', icon: Users, to: '/users' },
     { id: 'audit', label: 'Audit log', icon: ClipboardList, to: '/audit-log' },
     { id: 'settings', label: 'Platform settings', icon: Settings, to: '/settings' },
   ] : []
-  return { main, admin }
+  return { products, settings }
 }
 
 function isActive(loc, it) {
@@ -73,25 +86,23 @@ function isActive(loc, it) {
 const RANGE_AWARE = ['/applications']
 const rangeAware = (path) => RANGE_AWARE.some(p => path === p || path.startsWith(p + '/'))
 
-function NavItem({ it, loc, collapsed }) {
+
+function MenuItem({ it, loc, onGo }) {
   const Icon = it.icon
+  if (it.soon) return (
+    <div className="dropdown-item tn-soon" aria-disabled="true"><Icon size={14} strokeWidth={1.6}/><span style={{ flex: 1 }}>{it.label}</span><span className="sb-tag">soon</span></div>
+  )
   const active = isActive(loc, it)
   return (
-    <Link to={it.to} className={`sb-item ${active ? 'active' : ''}`} title={collapsed ? it.label : undefined} aria-current={active ? 'page' : undefined}>
-      <Icon size={15} strokeWidth={1.6}/>
-      {!collapsed && <span className="sb-label">{it.label}</span>}
-      {!collapsed && it.tag && <span className="sb-tag">{it.tag}</span>}
-      {!collapsed && it.badge > 0 && <span className="sb-badge">{it.badge > 99 ? '99+' : it.badge}</span>}
-      {collapsed && it.badge > 0 && <span className="sb-dot"/>}
+    <Link to={it.to} className={`dropdown-item ${active ? 'active' : ''}`} onClick={onGo} aria-current={active ? 'page' : undefined}>
+      <Icon size={14} strokeWidth={1.6}/><span style={{ flex: 1 }}>{it.label}</span>
+      {it.tag && <span className="sb-tag">{it.tag}</span>}
+      {it.badge > 0 && <span className="sb-badge">{it.badge > 99 ? '99+' : it.badge}</span>}
     </Link>
   )
 }
 
-function NavList({ items, loc, collapsed }) {
-  return items.map((it, i) => it.section
-    ? (collapsed ? <div key={'s' + i} className="sb-rule"/> : <div key={'s' + i} className="sb-section">{it.section}</div>)
-    : <NavItem key={it.id} it={it} loc={loc} collapsed={collapsed}/>)
-}
+const groupActive = (loc, g) => g.items.some(it => !it.soon && isActive(loc, it))
 
 function useClickAway(ref, onAway) {
   useEffect(() => {
@@ -208,36 +219,16 @@ function RangeControl() {
   )
 }
 
-// Breadcrumb: domain / page, plus the entity when the URL names one.
-function crumbsFor(loc, items, svcLabel) {
-  let group = ''
-  let found = null
-  for (const it of items) {
-    if (it.section) { group = it.section; continue }
-    if (isActive(loc, it) && (!found || it.to.length > found.it.to.length)) found = { it, group }
-  }
-  if (!found) return []
-  const out = []
-  if (found.it.to !== '/') out.push({ label: found.group })
-  out.push({ label: found.it.label, to: found.it.to })
-  const host = new URLSearchParams(loc.search).get('host')
-  if (found.it.id === 'fleet' && host) out.push({ label: host, mono: true })
-  if (svcLabel) out.push({ label: svcLabel, mono: true })
-  return out
-}
-
 export function Shell({ user, children }) {
   const navigate = useNavigate()
   const loc = useLocation()
   const { theme, toggle } = useTheme()
   const [agents, setAgents] = useState([])
   const [alertCount, setAlertCount] = useState(0)
-  const [userMenu, setUserMenu] = useState(false)
+  const [open, setOpen] = useState(null)        // id of the open header menu
   const [palette, setPalette] = useState(false)
-  const [svcNames, setSvcNames] = useState({})
-  const [collapsed, setCollapsed] = useState(() => { try { return localStorage.getItem('ow_sb_collapsed') === '1' } catch { return false } })
-  const menuRef = useRef(null)
-  const [sbw, sbHandle] = useDragSize('rail', 216, 180, 320, 'x')
+  const [display, setDisplay] = useState(getDisplaySize)
+  const navRef = useRef(null)
 
   useEffect(() => {
     const load = () => {
@@ -249,37 +240,28 @@ export function Shell({ user, children }) {
     const id = setInterval(load, 20000)
     return () => clearInterval(id)
   }, [])
-  useClickAway(menuRef, useCallback(() => setUserMenu(false), []))
-  useEffect(() => { try { localStorage.setItem('ow_sb_collapsed', collapsed ? '1' : '0') } catch { /* */ } }, [collapsed])
+  useClickAway(navRef, useCallback(() => setOpen(null), []))
+  useEffect(() => { setOpen(null) }, [loc.pathname, loc.search])
+  useEffect(() => { setDisplaySize(display) }, [display])
   useEffect(() => {
     const h = (e) => {
       const typing = /^(input|textarea|select)$/i.test(document.activeElement?.tagName || '') || document.activeElement?.isContentEditable
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); setPalette(p => !p) }
       else if (e.key === '/' && !typing && !e.metaKey && !e.ctrlKey) { e.preventDefault(); setPalette(true) }
+      else if (e.key === 'Escape') setOpen(null)
     }
     window.addEventListener('keydown', h)
     return () => window.removeEventListener('keydown', h)
   }, [])
 
   const isAdmin = user?.role === 'admin'
-  const { main, admin } = useMemo(() => buildNav({ alertCount, isAdmin }), [alertCount, isAdmin])
-  const allItems = useMemo(() => [...main, ...admin], [main, admin])
+  const { products, settings } = useMemo(() => buildNav({ alertCount, isAdmin }), [alertCount, isAdmin])
   const pages = useMemo(() => {
-    let g = 'Overview'
-    const out = []
-    for (const it of allItems) { if (it.section) { g = it.section; continue } out.push({ ...it, group: g }) }
+    const out = [{ id: 'dash', label: 'Overview', icon: LayoutDashboard, to: '/', group: 'Overview' }]
+    for (const g of products) for (const it of g.items) if (!it.soon) out.push({ ...it, group: g.label })
+    for (const it of settings) out.push({ ...it, group: 'Settings' })
     return out
-  }, [allItems])
-
-  // Service URLs carry an id or "name|environment"; the breadcrumb shows the name.
-  const svcKey = loc.pathname.match(/^\/applications\/services\/([^/]+)/)?.[1]
-  const svcParam = svcKey ? decodeURIComponent(svcKey) : null
-  useEffect(() => {
-    if (!svcParam || svcNames[svcParam] || !/^\d+$/.test(svcParam)) return
-    appApi.service(svcParam).then(d => { if (d?.service?.name) setSvcNames(m => ({ ...m, [svcParam]: d.service.name })) }).catch(() => {})
-  }, [svcParam]) // eslint-disable-line react-hooks/exhaustive-deps
-  const svcLabel = svcParam ? (svcNames[svcParam] || (/^\d+$/.test(svcParam) ? '…' : appSplitKey(svcParam).name)) : null
-  const crumb = useMemo(() => crumbsFor(loc, allItems, svcLabel), [loc, allItems, svcLabel])
+  }, [products, settings])
 
   const hosts = useMemo(() => agents.filter(a => !(a.os || '').toLowerCase().includes('network-probe')), [agents])
   const online = hosts.filter(a => a.online).length
@@ -289,42 +271,69 @@ export function Shell({ user, children }) {
     ['token', 'user', 'require_password_change'].forEach(k => localStorage.removeItem(k))
     navigate('/login')
   }
+  // Click opens a menu; while one is open, hovering another product switches to it, like a menu bar.
+  const menuProps = (id) => ({
+    onClick: () => setOpen(o => o === id ? null : id),
+    onMouseEnter: () => setOpen(o => (o && o !== id && o !== 'user' && o !== 'mobile') ? id : o),
+    'aria-haspopup': 'menu', 'aria-expanded': open === id,
+  })
+  const go = () => setOpen(null)
+  const overviewActive = loc.pathname === '/'
 
   return (
-    <div className={`shell ${collapsed ? 'collapsed' : ''}`} style={{ '--sb-w': sbw + 'px' }}>
-      <aside className="sidebar" aria-label="Main navigation">
-        <div className="sb-brand" onClick={() => navigate('/')} title="ObsidianWatch">
-          <OWMark size={22}/>{!collapsed && <span>ObsidianWatch</span>}
-        </div>
-        <nav className="sb-scroll"><NavList items={[...main, ...admin]} loc={loc} collapsed={collapsed}/></nav>
-        <div className="sb-foot">
-          <div className="sb-status" title={`${online} of ${hosts.length} hosts online`}>
-            <span className={`ow-dot ${hostState}`} style={{ color: `var(--${hostState === 'none' ? 't3' : hostState})` }}/>
-            {!collapsed && <span>{hosts.length ? `${online} of ${hosts.length} hosts online` : 'No hosts enrolled yet'}</span>}
-          </div>
-        </div>
-        {!collapsed && <div {...sbHandle}/>}
-      </aside>
-
+    <div className="shell">
       <div className="shell-main">
-        <header className="topbar">
-          <button className="tb-ctl tb-icon" onClick={() => setCollapsed(c => !c)} title={collapsed ? 'Expand menu' : 'Collapse menu'} aria-label={collapsed ? 'Expand menu' : 'Collapse menu'}>
-            {collapsed ? <PanelLeftOpen size={15}/> : <PanelLeftClose size={15}/>}
-          </button>
-          <nav className="crumb" aria-label="Breadcrumb">
-            {crumb.map((c, i) => (
-              <span key={i} className={i === crumb.length - 1 ? 'crumb-last' : ''} style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                {i > 0 && <span className="crumb-sep">/</span>}
-                {c.to && i < crumb.length - 1 ? <Link to={c.to}>{c.label}</Link> : <span className={c.mono ? 'mono' : ''}>{c.label}</span>}
-              </span>
+        <header className="topbar" ref={navRef}>
+          <Link to="/" className="tn-brand" title="ObsidianWatch" aria-label="ObsidianWatch, Overview"><OWMark size={24}/><OWWordmark/></Link>
+
+          <nav className="tn-products" aria-label="Products">
+            <Link to="/" className={`tn-link ${overviewActive ? 'on' : ''}`} aria-current={overviewActive ? 'page' : undefined}>Overview</Link>
+            {products.map(g => (
+              <div key={g.id} className="tn-menu">
+                <button className={`tn-link ${groupActive(loc, g) ? 'on' : ''} ${open === g.id ? 'open' : ''}`} {...menuProps(g.id)}>
+                  {g.label}{g.soon && <span className="tn-soon-dot" title="Coming soon"/>}
+                  {g.id === 'detect' && alertCount > 0 && <span className="tn-count">{alertCount > 99 ? '99+' : alertCount}</span>}
+                  <ChevronDown size={12} className="caret"/>
+                </button>
+                {open === g.id && (
+                  <div className="dropdown tn-drop" role="menu">
+                    {g.soon && <div className="tn-drop-note">Coming soon</div>}
+                    {g.items.map(it => <MenuItem key={it.id} it={it} loc={loc} onGo={go}/>)}
+                    {g.id === 'endpoint' && <>
+                      <div className="dropdown-divider"/>
+                      <div className="tn-drop-foot"><span className={`ow-dot ${hostState}`} style={{ color: `var(--${hostState === 'none' ? 't3' : hostState})` }}/>
+                        {hosts.length ? `${online} of ${hosts.length} hosts online` : 'No hosts enrolled yet'}</div>
+                    </>}
+                  </div>
+                )}
+              </div>
             ))}
           </nav>
-          <div className="ow-field tb-search" role="button" tabIndex={0} onClick={() => setPalette(true)}
-            onKeyDown={e => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), setPalette(true))} aria-label="Search">
-            <Search size={13}/><span className="tb-search-text">Search hosts, services, pages and events</span>
-            <span className="mono" style={{ marginLeft: 'auto', fontSize: 11 }}>{/Mac|iPhone|iPad/.test(navigator.platform) ? '⌘K' : 'Ctrl K'}</span>
+
+          <div className="tn-menu tn-mobile">
+            <button className={`tb-ctl tn-menu-btn ${open === 'mobile' ? 'open' : ''}`} onClick={() => setOpen(o => o === 'mobile' ? null : 'mobile')} aria-haspopup="menu" aria-expanded={open === 'mobile'} aria-label="Menu">
+              {open === 'mobile' ? <X size={15}/> : <Menu size={15}/>}<span>Menu</span>
+            </button>
+            {open === 'mobile' && (
+              <div className="dropdown tn-mega" role="menu">
+                <Link to="/" className={`dropdown-item ${overviewActive ? 'active' : ''}`} onClick={go}><LayoutDashboard size={14} strokeWidth={1.6}/> Overview</Link>
+                <div className="tn-mega-grid">
+                  {products.map(g => (
+                    <div key={g.id}>
+                      <div className="dropdown-section">{g.label}{g.soon && ' · soon'}</div>
+                      {g.items.map(it => <MenuItem key={it.id} it={it} loc={loc} onGo={go}/>)}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
-          <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
+
+          <div className="tn-right">
+            <button className="tb-ctl tn-search" onClick={() => setPalette(true)} aria-label="Search" title="Search hosts, services, pages and events">
+              <Search size={14}/><span className="tn-search-text">Search</span>
+              <span className="ow-kbd">{/Mac|iPhone|iPad/.test(navigator.platform) ? '⌘K' : 'Ctrl K'}</span>
+            </button>
             {rangeAware(loc.pathname) && <RangeControl/>}
             <button className="tb-ctl tb-icon" onClick={toggle} title={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'} aria-label="Toggle theme">
               {theme === 'dark' ? <Sun size={14}/> : <Moon size={14}/>}
@@ -333,19 +342,39 @@ export function Shell({ user, children }) {
               <Bell size={14}/>
               {alertCount > 0 && <span className="tb-count">{alertCount > 99 ? '99+' : alertCount}</span>}
             </button>
-            <div ref={menuRef} style={{ position: 'relative' }}>
-              <button className="tb-ctl" onClick={() => setUserMenu(o => !o)} style={{ paddingLeft: 5 }} aria-haspopup="menu" aria-expanded={userMenu}>
+            {settings.length > 0 && (
+              <div className="tn-menu">
+                <button className={`tb-ctl tb-icon ${settings.some(it => isActive(loc, it)) ? 'on' : ''}`} {...menuProps('settings')} title="Settings" aria-label="Settings">
+                  <Settings size={14}/>
+                </button>
+                {open === 'settings' && (
+                  <div className="dropdown tn-drop" role="menu" style={{ right: 0, left: 'auto' }}>
+                    <div className="dropdown-section">Settings</div>
+                    {settings.map(it => <MenuItem key={it.id} it={it} loc={loc} onGo={go}/>)}
+                  </div>
+                )}
+              </div>
+            )}
+            <div className="tn-menu">
+              <button className="tb-ctl" onClick={() => setOpen(o => o === 'user' ? null : 'user')} style={{ paddingLeft: 5 }} aria-haspopup="menu" aria-expanded={open === 'user'}>
                 <span className="tb-avatar">{user?.username?.[0]?.toUpperCase() || 'U'}</span>
-                <span style={{ fontWeight: 500 }}>{user?.username}</span>
+                <span className="tn-user">{user?.username}</span>
                 <ChevronDown size={11} className="caret"/>
               </button>
-              {userMenu && (
-                <div className="dropdown" role="menu" style={{ right: 0, left: 'auto', minWidth: 180 }}>
+              {open === 'user' && (
+                <div className="dropdown" role="menu" style={{ right: 0, left: 'auto', minWidth: 190 }}>
                   <div style={{ padding: '8px 10px', borderBottom: '1px solid var(--line)', marginBottom: 4 }}>
                     <div style={{ fontWeight: 600 }}>{user?.username}</div>
                     <div style={{ fontSize: 12, color: 'var(--t3)', textTransform: 'capitalize' }}>{user?.role}</div>
                   </div>
-                  <div className="dropdown-item" role="menuitem" onClick={() => { setUserMenu(false); navigate('/change-password') }}><Key size={13}/> Change password</div>
+                  <div className="dropdown-section" style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Type size={11}/> Display size</div>
+                  {DISPLAY_SIZES.map(d => (
+                    <div key={d.id} className={`dropdown-item ${display === d.id ? 'active' : ''}`} role="menuitemradio" aria-checked={display === d.id} onClick={() => setDisplay(d.id)}>
+                      <span style={{ width: 13, display: 'inline-flex' }}>{display === d.id && <Check size={13}/>}</span>{d.label}
+                    </div>
+                  ))}
+                  <div className="dropdown-divider"/>
+                  <div className="dropdown-item" role="menuitem" onClick={() => { setOpen(null); navigate('/change-password') }}><Key size={13}/> Change password</div>
                   <div className="dropdown-item" role="menuitem" onClick={logout} style={{ color: 'var(--crit)' }}><LogOut size={13}/> Sign out</div>
                 </div>
               )}

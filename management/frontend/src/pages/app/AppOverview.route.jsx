@@ -34,9 +34,9 @@ export default function AppOverview() {
   return (
     <div className="p-6 space-y-5">
       <AppPageHeader title="Applications" range={range}
-        subtitle="What we run, how exposed it is, what changed and where we are blind. Services are discovered from the host; OpenTelemetry adds routes and dependencies." />
+        subtitle="What runs, how exposed it is and what changed." />
       <StateBlock loading={loading} error={error} empty={empty}
-        emptyText="No services yet. Build an agent with the app-server profile (Agent Builder) and services appear as they run.">
+        emptyText="No services yet.">
         {d && (<>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <AppStatCard label="Services" value={d.services} hint={`${d.tiers['0']} host-only · ${d.tiers['1']} OTel · ${d.tiers['2']} helper`} />

@@ -50,7 +50,7 @@ const API_KEY_GROUPS = [
         plain: true,
         label: 'Groq model',
         placeholder: 'openai/gpt-oss-120b',
-        desc: 'Model ID used for Groq calls. Groq retires models without notice; if AI analysis reports that a model does not exist, pick a current one from console.groq.com/docs/models. Empty restores the default.',
+        desc: 'Groq retires models without notice. Empty restores the default.',
         badge: 'Model',
         badgeColor: 'text-emerald-400 bg-emerald-950/30 border-emerald-800/40',
       },
@@ -78,7 +78,7 @@ const API_KEY_GROUPS = [
         plain: true,
         label: 'Local model URL',
         placeholder: 'http://localhost:11434',
-        desc: 'Self-hosted OpenAI-compatible server (Ollama, vLLM, llama.cpp, LM Studio). When set together with a model name, natural-language search uses it instead of Groq/Anthropic, so the question never leaves your network.',
+        desc: 'OpenAI-compatible server (Ollama, vLLM, llama.cpp, LM Studio). With a model set, natural-language search uses it instead of Groq or Anthropic.',
         badge: 'Self-hosted',
         badgeColor: 'text-sky-400 bg-sky-950/30 border-sky-800/40',
       },
@@ -159,7 +159,7 @@ const API_KEY_GROUPS = [
         key: 'abuseipdb_api_key',
         label: 'AbuseIPDB API Key',
         placeholder: 'Your AbuseIPDB API key',
-        desc: 'IP reputation lookups (abuse score, reports, ISP, Tor). This is a key from abuseipdb.com - it is NOT the abuse.ch ThreatFox key (a different service). Results are cached 24h; capped at 900 lookups/day to stay inside the free tier.',
+        desc: 'IP reputation. An abuseipdb.com key, not the ThreatFox key. Cached 24 h; at most 900 lookups a day.',
         link: 'https://www.abuseipdb.com/account/api',
         linkLabel: 'Get free key →',
         badge: 'IP intel',
@@ -181,7 +181,7 @@ const API_KEY_GROUPS = [
         plain: true,
         label: 'Sigma sigma_core.zip SHA-256',
         placeholder: '64 hex characters',
-        desc: 'Expected SHA-256 of that release\'s sigma_core.zip. If you are unsure, enter any 64-character hash, press Sync on the Sigma card once, and compare the hash shown in the error with the release page before saving it here.',
+        desc: 'Expected SHA-256 of that release\'s sigma_core.zip.',
         badge: 'Sigma',
         badgeColor: 'text-purple-400 bg-purple-950/30 border-purple-800/40',
       },
@@ -349,8 +349,7 @@ function APIKeysSettings() {
       <div>
         <h2 className="text-sm font-semibold text-siem-text mb-1">API Keys & Integrations</h2>
         <p className="text-xs text-siem-muted">
-          Keys are stored in your local database and never leave your server except to call the respective API directly.
-          Press Enter or click Save after typing a key.
+          Stored in your database and sent only to each provider's API.
         </p>
       </div>
 
@@ -374,12 +373,6 @@ function APIKeysSettings() {
         )
       })}
 
-      <div className="bg-siem-bg border border-siem-border/50 rounded-xl p-4 text-[11px] text-siem-muted/70 leading-relaxed">
-        <p className="font-medium text-siem-muted mb-1">Security note</p>
-        <p>API keys are only transmitted directly to the respective service.
-        ObsidianWatch never proxies your API calls through any third-party infrastructure.
-        Use the minimum permission scopes required - read-only where possible.</p>
-      </div>
     </div>
   )
 }
@@ -618,7 +611,7 @@ export default function Settings() {
 
   return (
     <div>
-      <PageHeader title="Platform settings" sub="AI providers and integrations, email notifications, cloud connector defaults and detection engine options. Changes apply to the whole platform and are audited."
+      <PageHeader title="Platform settings" sub="Platform-wide settings. Every change is audited."
         tabs={<Tabs value={tab} onChange={id => setSearchParams({ tab: id })} tabs={TABS.map(t => ({ id: t.id, label: t.label }))}/>}/>
       <div className="ow-body" style={{ maxWidth: 1100 }}>
         <Active/>

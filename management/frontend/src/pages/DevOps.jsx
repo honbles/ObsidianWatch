@@ -8,7 +8,7 @@ import CreateIssuesDialog from './code/CreateIssuesDialog'
 import { GitBranch, GitCommit, Code, Bell, Activity, Search,
          RefreshCw, Plus, Trash2, ChevronRight, AlertTriangle,
          CheckCircle, XCircle, Eye, EyeOff, Clock, User,
-         Shield, FileText, Lock, Zap, Bug, ExternalLink, Hash } from 'lucide-react'
+         Shield, FileText, Lock, Zap, Bug, ExternalLink, Hash, KeyRound, Package, Settings2 } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
 import api, { runScan } from '../api/client'
 import AlertPanel from '../components/AlertPanel'
@@ -300,7 +300,7 @@ function CommitDetail({ commit, onClose }) {
               </div>
             </div>
             {d.patch && (
-              <pre className="text-[10px] font-mono overflow-x-auto p-3 bg-[#0a0f1a] max-h-64 overflow-y-auto leading-relaxed">
+              <pre className="text-[10px] font-mono overflow-x-auto p-3 bg-[var(--s2)] max-h-64 overflow-y-auto leading-relaxed">
                 {d.patch.split('\n').map((line, j) => (
                   <div key={j} className={
                     line.startsWith('+') && !line.startsWith('+++') ? 'text-emerald-400 bg-emerald-950/20' :
@@ -694,9 +694,7 @@ function ConnectorDetail({ conn, onSync, onDisconnect, syncing }) {
                 <div>
                   <div className="text-sm font-semibold text-siem-text mb-0.5">Static Application Security Testing</div>
                   <div className="text-[11px] text-siem-muted">
-                    Fetches source code from your repos and scans for security vulnerabilities using
-                    OWASP-aligned rules across Python, JavaScript/TypeScript, Go, Java, PHP, and C/C++.
-                    Covers SQL injection, XSS, command injection, deserialization, weak crypto, and more.
+                    Static analysis of your repositories (OWASP-aligned rules).
                   </div>
                 </div>
               </div>
@@ -763,7 +761,7 @@ function ConnectorDetail({ conn, onSync, onDisconnect, syncing }) {
                 <Code size={13} className={sasting ? 'animate-pulse' : ''}/>
                 {sasting ? 'Scanning source code…' : 'Run SAST Scan'}
               </button>
-              {sasting && <span className="text-[10px] text-siem-muted">Clones the repository and runs every installed engine; large repositories can take 10-30 min. Results are saved automatically.</span>}
+              {sasting && <span className="text-[10px] text-siem-muted">Large repositories can take 10–30 minutes.</span>}
               {!sasting && sastResult?.scanned_at && (
                 <span className="text-[10px] text-siem-muted/60 flex items-center gap-1">
                   <Clock size={10}/>
@@ -809,8 +807,7 @@ function ConnectorDetail({ conn, onSync, onDisconnect, syncing }) {
                 <div className="text-center">
                   <div className="text-sm font-medium text-siem-text/70 mb-1">No SAST results yet</div>
                   <div className="text-xs text-siem-muted/50 max-w-sm">
-                    Click Run SAST Scan to analyse source code for security vulnerabilities.
-                    Ensure the connector is synced and the token has repo read access.
+                    No SAST results yet.
                   </div>
                 </div>
               </div>
@@ -1157,8 +1154,7 @@ function ConnectorDetail({ conn, onSync, onDisconnect, syncing }) {
                 <div className="text-center">
                   <div className="text-sm font-medium text-siem-text/70 mb-1">No scan results</div>
                   <div className="text-xs text-siem-muted/50 max-w-xs">
-                    Scans commit history for secrets, sensitive files, dangerous code patterns, and vulnerable dependencies.
-                    Sync the connector first to pull commits.
+                    Secrets, sensitive files, risky code and vulnerable dependencies in commit history.
                   </div>
                 </div>
               </div>
@@ -1244,11 +1240,11 @@ function ConnectorDetail({ conn, onSync, onDisconnect, syncing }) {
                             info:     'text-siem-muted',
                           }[f.severity] || 'text-siem-muted'
                           const catIcon = {
-                            secret:         '🔑',
-                            sensitive_file: '📄',
-                            dangerous_code: '⚠️',
-                            dependency:     '📦',
-                            config:         '⚙️',
+                            secret:         <KeyRound size={13}/>,
+                            sensitive_file: <FileText size={13}/>,
+                            dangerous_code: <AlertTriangle size={13}/>,
+                            dependency:     <Package size={13}/>,
+                            config:         <Settings2 size={13}/>,
                           }[f.category] || '•'
                           return (
                             <div key={i} className="px-4 py-3 hover:bg-white/[0.02]">
@@ -1390,7 +1386,7 @@ function DevOpsConnectors() {
   const selectedConn = connectors.find(c => c.id === selected)
 
   return (
-    <div className="flex bg-siem-bg text-siem-text overflow-hidden" style={{ height: 'calc(100vh - var(--topbar-h) - 108px)', minHeight: 520 }}>
+    <div className="flex bg-siem-bg text-siem-text overflow-hidden" style={{ height: 'calc(100 * var(--vh) - var(--topbar-h) - 108px)', minHeight: 520 }}>
 
       {/* Sidebar */}
       <div className="w-72 flex-shrink-0 flex flex-col border-r border-siem-border">
@@ -1493,7 +1489,7 @@ function DevOpsConnectors() {
             <div className="text-center">
               <div className="text-sm font-medium text-siem-text mb-1">DevOps Security</div>
               <div className="text-xs max-w-xs text-center">
-                Connect GitHub or GitLab to monitor code changes, detect secrets in commits, and alert on supply chain threats.
+                Connect GitHub, GitLab or Azure DevOps.
               </div>
             </div>
             <div className="grid grid-cols-2 gap-2 text-[10px] mt-2 max-w-xs">

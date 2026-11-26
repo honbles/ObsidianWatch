@@ -26,28 +26,28 @@ export const OS_GROUPS = {
 
 // ── Graph constants ───────────────────────────────────────────────────────────
 
-export const NODE_COLORS = { host:'#00d4ff', process:'#6366f1', dns:'#06b6d4', ip:'#ef4444', file:'#f59e0b', registry:'#a855f7', logon:'#10b981', cloud_account:'#f97316', identity:'#ec4899', api_call:'#84cc16', resource:'#14b8a6', device:'#3b82f6', external_ip:'#ef4444', unknown_device:'#6b7280' }
+export const NODE_COLORS = { host:'var(--acc)', process:'var(--violet)', dns:'var(--cyan)', ip:'var(--crit)', file:'var(--warn)', registry:'var(--violet)', logon:'var(--ok)', cloud_account:'var(--high)', identity:'var(--magenta)', api_call:'var(--ok)', resource:'var(--teal)', device:'var(--info)', external_ip:'var(--crit)', unknown_device:'var(--t3)' }
 
 export const NODE_SHAPES = { host:'diamond', process:'circle', dns:'circle', ip:'square', file:'triangle', registry:'square', logon:'circle', cloud_account:'diamond', identity:'circle', api_call:'hexagon', resource:'square', device:'diamond', external_ip:'square', unknown_device:'circle' }
 
-export const EDGE_COLORS = { spawned:'#94a3b8', runs:'#64748b', connected:'#3b82f6', queried:'#06b6d4', wrote:'#f59e0b', created:'#22c55e', deleted:'#ef4444', modified:'#f97316', executed:'#a855f7', lateral:'#dc2626', auth:'#10b981', called:'#84cc16', accessed:'#14b8a6', from_ip:'#64748b', contains:'#475569' }
+export const EDGE_COLORS = { spawned:'var(--t2)', runs:'var(--t3)', connected:'var(--info)', queried:'var(--cyan)', wrote:'var(--warn)', created:'var(--ok)', deleted:'var(--crit)', modified:'var(--high)', executed:'var(--violet)', lateral:'var(--crit)', auth:'var(--ok)', called:'var(--ok)', accessed:'var(--teal)', from_ip:'var(--t3)', contains:'var(--t3)' }
 
-export const SEV_COLORS = { 5:'#ef4444', 4:'#f97316', 3:'#eab308', 2:'#3b82f6', 1:'#475569' }
+export const SEV_COLORS = { 5:'var(--crit)', 4:'var(--high)', 3:'var(--warn)', 2:'var(--info)', 1:'var(--t3)' }
 
 export const SEV_LABEL  = { 5:'Critical', 4:'High', 3:'Medium', 2:'Low', 1:'Info' }
 
-export const SEV_DOT    = { 5:'#ef4444', 4:'#f97316', 3:'#eab308', 2:'#3b82f6', 1:'#475569' }
+export const SEV_DOT    = { 5:'var(--crit)', 4:'var(--high)', 3:'var(--warn)', 2:'var(--info)', 1:'var(--t3)' }
 
-export const TYPE_COLOR = { registry:'#a855f7', dns:'#06b6d4', network:'#3b82f6', process:'#8b949e', file:'#eab308', logon:'#22c55e' }
+export const TYPE_COLOR = { registry:'var(--violet)', dns:'var(--cyan)', network:'var(--info)', process:'var(--t2)', file:'var(--warn)', logon:'var(--ok)' }
 
-export const CAT_COLOR  = { malware:'#ef4444', botnet_cc:'#ef4444', phishing:'#f97316', malicious:'#f97316', spam:'#eab308' }
+export const CAT_COLOR  = { malware:'var(--crit)', botnet_cc:'var(--crit)', phishing:'var(--high)', malicious:'var(--high)', spam:'var(--warn)' }
 
 // ── Graph helpers ─────────────────────────────────────────────────────────────
 
 export function nodeRadius(d) { return (d.type==='host'||d.type==='device'||d.type==='cloud_account'?18:10) + Math.min(Math.sqrt(d.event_count||1)*2,12) }
 
 export function drawNodeShape(el, shape, r, color, opacity, sev) {
-  const sc=SEV_COLORS[sev]||'#475569', sw=sev>=3?2:1
+  const sc=SEV_COLORS[sev]||'var(--t3)', sw=sev>=3?2:1
   switch(shape) {
     case 'diamond': el.append('polygon').attr('points',`0,${-r} ${r},0 0,${r} ${-r},0`).attr('fill',color).attr('opacity',opacity).attr('stroke',sc).attr('stroke-width',sw); break
     case 'square':  el.append('rect').attr('x',-r).attr('y',-r).attr('width',r*2).attr('height',r*2).attr('rx',3).attr('fill',color).attr('opacity',opacity).attr('stroke',sc).attr('stroke-width',sw); break
@@ -67,7 +67,7 @@ export function RankBar({ rows, keyField, valueField, colorFn, onDrilldown, sele
   return (
     <div className="space-y-1.5">
       {rows.map((row,i)=>{
-        const label=row[keyField], count=Number(row[valueField]), pct=Math.round((count/max)*100), isSel=selectedKey===label, color=colorFn?.(row)||'#00d4ff'
+        const label=row[keyField], count=Number(row[valueField]), pct=Math.round((count/max)*100), isSel=selectedKey===label, color=colorFn?.(row)||'var(--acc)'
         return (
           <div key={i} onClick={()=>onDrilldown?.(row)} className={`rounded-lg px-2 py-1.5 cursor-pointer transition-all ${isSel?'bg-siem-accent/10 border border-siem-accent/40':'hover:bg-white/[0.02] border border-transparent'}`}>
             <div className="flex items-center justify-between mb-1">

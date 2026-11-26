@@ -20,7 +20,7 @@ export default function AppTraceWaterfall({ trace }) {
         <span>Kept because <b className="text-siem-text">{trace.keep_reason}</b></span>
         <span>Status <b className={trace.status === 'error' ? 'text-red-300' : 'text-siem-text'}>{trace.status || '-'}</b></span>
         <span className="font-mono">{trace.trace_id}</span>
-        {rows.crit.size > 0 && <span><span className="inline-block w-2 h-2 rounded-sm bg-amber-400 align-middle" /> critical path (what decided the total time). The number beside each bar is its own time, children excluded.</span>}
+        {rows.crit.size > 0 && <span><span className="inline-block w-2 h-2 rounded-sm bg-amber-400 align-middle" /> critical path. Bar numbers are self time.</span>}
       </div>
       <div className="card divide-y divide-siem-border/50">
         {rows.list.map((s, i) => {

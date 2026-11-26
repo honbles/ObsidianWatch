@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
+import { uiZoom } from '../utils/display'
 
 // Drag-to-resize state, persisted per key. axis 'x' measures from the left edge of the
 // element the handle belongs to (or the right edge when `reverse`); axis 'y' from the bottom.
@@ -11,7 +12,7 @@ export function useDragSize(key, initial, min, max, axis = 'x', reverse = false)
   const drag = useRef(null)
   const onMove = useCallback((e) => {
     const d = drag.current; if (!d) return
-    const delta = (axis === 'x' ? e.clientX - d.x : e.clientY - d.y) * (reverse ? -1 : 1)
+    const delta = (axis === 'x' ? e.clientX - d.x : e.clientY - d.y) * (reverse ? -1 : 1) / uiZoom()
     setSize(Math.max(min, Math.min(max, d.start + delta)))
   }, [axis, reverse, min, max])
   const stop = useCallback(() => {

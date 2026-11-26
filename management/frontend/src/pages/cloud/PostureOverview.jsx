@@ -15,7 +15,7 @@ const N_SEV = { 5: 'critical', 4: 'high', 3: 'medium', 2: 'low', 1: 'info' }
 const SEV_LABEL = { critical: 'Critical', high: 'High', medium: 'Medium', low: 'Low', info: 'Info' }
 const PROVIDER = { aws: 'AWS', azure: 'Azure', gcp: 'GCP' }
 const CAT_LABEL = { iam: 'Identity and access', network: 'Network', storage: 'Storage', compute: 'Compute', logging: 'Logging', sql: 'Databases', kms: 'Keys and secrets', monitoring: 'Monitoring', database: 'Databases', keyvault: 'Keys and secrets', identity: 'Identity and access' }
-const sevState = (n) => n >= 5 ? 'crit' : n >= 4 ? 'warn' : n >= 3 ? 'info' : 'none'
+const sevState = (n) => n >= 5 ? 'crit' : n >= 4 ? 'high' : n >= 3 ? 'med' : n >= 2 ? 'low' : 'none'
 const acctName = (c) => c.account_label || c.account_id || `${PROVIDER[c.provider] || c.provider} ${c.id}`
 
 export function usePosture() {

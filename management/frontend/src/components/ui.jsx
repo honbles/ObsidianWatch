@@ -1,10 +1,11 @@
 // Design-system parts. One set of parts on every page, so a cloud finding reads like an endpoint alert
 // reads like a failing service. Styles live in index.css under the ow-* classes.
 import { useMemo, useState, useEffect } from 'react'
+import { uiZoom } from '../utils/display'
 
 // ── State ─────────────────────────────────────────────────────────────────────
 // Five states. Colour is never the only signal: each has a shape (circle, diamond, square) and a word.
-export const STATE_LABEL = { ok: 'OK', warn: 'Warning', crit: 'Critical', none: 'Unknown', info: 'Info' }
+export const STATE_LABEL = { ok: 'OK', warn: 'Warning', crit: 'Critical', none: 'Unknown', info: 'Info', high: 'High', med: 'Medium', low: 'Low' }
 
 export function StateDot({ state = 'none' }) {
   return <span className={`ow-dot ${state}`} aria-hidden="true"/>
@@ -20,7 +21,7 @@ export function StatePill({ state = 'none', children, dot = true, title }) {
 
 // Severity 1..5 (platform scale) → state + word.
 export const SEV_WORD = { 5: 'Critical', 4: 'High', 3: 'Medium', 2: 'Low', 1: 'Info' }
-export const sevState = (s) => s >= 5 ? 'crit' : s >= 4 ? 'warn' : s >= 3 ? 'info' : 'none'
+export const sevState = (s) => s >= 5 ? 'crit' : s >= 4 ? 'high' : s >= 3 ? 'med' : s >= 2 ? 'low' : 'none'
 export function SevPill({ sev }) {
   return <StatePill state={sevState(sev)}>{SEV_WORD[sev] || 'Info'}</StatePill>
 }
@@ -330,7 +331,8 @@ export function Drawer({ open, onClose, width = 620, children, label = 'Details'
   const startDrag = (e) => {
     e.preventDefault()
     const x0 = e.clientX, w0 = w
-    const mv = (ev) => setW(Math.max(420, Math.min(window.innerWidth - 320, w0 - (ev.clientX - x0))))
+    const z = uiZoom()
+    const mv = (ev) => setW(Math.max(420, Math.min(window.innerWidth / z - 320, w0 - (ev.clientX - x0) / z)))
     const up = () => { window.removeEventListener('mousemove', mv); window.removeEventListener('mouseup', up); document.body.style.userSelect = '' }
     document.body.style.userSelect = 'none'
     window.addEventListener('mousemove', mv); window.addEventListener('mouseup', up)
@@ -379,7 +381,7 @@ export function Check({ checked, indeterminate, onChange, label }) {
   )
 }
 
-export const SEV_COLORS = { 5: 'var(--crit)', 4: 'var(--warn)', 3: 'var(--acc)', 2: 'var(--t3)', 1: 'var(--line2)' }
+export const SEV_COLORS = { 5: 'var(--sev5)', 4: 'var(--sev4)', 3: 'var(--sev3)', 2: 'var(--sev2)', 1: 'var(--sev1)' }
 export const SEV_STACKS = [1, 2, 3, 4, 5].map(k => ({ k, color: SEV_COLORS[k], label: SEV_WORD[k] }))
 
 // A modal for commands that need input (assign, close with comment).
@@ -389,8 +391,8 @@ export function Dialog({ title, onClose, children, footer, width = 460 }) {
     window.addEventListener('keydown', h); return () => window.removeEventListener('keydown', h)
   }, [onClose])
   return (
-    <div className="ow-palette-back" style={{ paddingTop: '14vh' }} onMouseDown={onClose}>
-      <div className="ow-palette" role="dialog" aria-modal="true" aria-label={title} style={{ width: `min(${width}px, 92vw)` }} onMouseDown={e => e.stopPropagation()}>
+    <div className="ow-palette-back" style={{ paddingTop: 'calc(14 * var(--vh))' }} onMouseDown={onClose}>
+      <div className="ow-palette" role="dialog" aria-modal="true" aria-label={title} style={{ width: `min(${width}px, calc(92 * var(--vw)))` }} onMouseDown={e => e.stopPropagation()}>
         <div className="ow-card-bar" style={{ minHeight: 48 }}><span style={{ fontWeight: 600, fontSize: 14 }}>{title}</span>
           <button className="ow-btn quiet" style={{ marginLeft: 'auto', height: 26 }} onClick={onClose} aria-label="Close">Esc</button></div>
         <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>{children}</div>

@@ -43,7 +43,7 @@ export default function AppSpecPanel({ service, onChanged }) {
         <span className="font-medium text-siem-text">API spec</span>
         {info?.loaded
           ? <span className="text-siem-muted">{info.title || 'Loaded'}{info.version ? ` v${info.version}` : ''}: {info.routes} routes, {info.params} fields, loaded {appRel(info.loaded_at)}{info.loaded_by ? ` by ${info.loaded_by}` : ''}</span>
-          : <span className="text-siem-muted">None loaded. Load an OpenAPI or Swagger document to review routes and fields before any traffic arrives.</span>}
+          : <span className="text-siem-muted">None loaded.</span>}
         <button className="ml-auto text-siem-accent hover:underline" onClick={() => setOpen(o => !o)}>{open ? 'Hide' : info?.loaded ? 'Replace or remove' : 'Load a spec'}</button>
       </div>
       {open && (
@@ -64,8 +64,7 @@ export default function AppSpecPanel({ service, onChanged }) {
             <span className="text-siem-muted">only if the document's server path differs from what the application serves.</span>
           </div>
           <div className="text-[11px] text-siem-muted">
-            The management server fetches the URL itself, so it must be reachable from the server (not from your browser). Loopback and link-local addresses are refused. If the application is not reachable, open the URL in your browser, save the document and upload it.
-            Only path, query and header parameter names and body field names are read: never examples or defaults. Cookie parameters are skipped. Loading replaces the previous document.
+            The server fetches the URL itself; otherwise upload the file. Only parameter and field names are read. Loading replaces the previous document.
           </div>
           {info?.loaded && <button className="text-red-300 hover:underline" disabled={busy} onClick={remove}>Remove the loaded spec</button>}
         </div>

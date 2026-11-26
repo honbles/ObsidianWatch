@@ -93,7 +93,7 @@ export default function AppServices() {
       <PageHeader title="Services"
         state={loading ? undefined : n('crit') ? 'crit' : n('warn') ? 'warn' : all.length ? 'ok' : 'none'}
         stateText={n('crit') ? `${n('crit')} failing` : n('warn') ? `${n('warn')} degraded` : all.length ? 'All healthy' : 'No services yet'}
-        sub="Every service seen on a host with an application-monitoring agent. Instrumented services (T2, T1) come first, then host-only (T0) services with databases, caches, web servers and runtimes ahead of the rest. State uses error rate and the latency target."
+        sub="Services on hosts with application monitoring."
         nums={<>
           <Num k="Services" v={all.length}/>
           <Num k="Failing" v={n('crit')} tone={n('crit') ? 'crit' : undefined}/>
@@ -132,7 +132,7 @@ export default function AppServices() {
             onRow={x => navigate(`/applications/services/${encodeURIComponent(x.key)}${window.location.search}`)}
             sort={sort} onSort={k => setSort(s => ({ key: k, dir: s.key === k && s.dir === 'desc' ? 'asc' : 'desc' }))}
             {...(admin ? { selected: selection.selected, onSelect: selection.onSelect, onSelectAll: v => setPicked(v ? Object.fromEntries(shown.map(x => [x.id, true])) : {}) } : {})}
-            empty={loading ? 'Loading…' : all.length ? 'No services match these filters.' : 'No services in this range. Build an agent with the app-server profile and run your application on that host.'}/>
+            empty={loading ? 'Loading…' : all.length ? 'No services match these filters.' : 'No services in this range.'}/>
         </div>
       </div>
     </div>

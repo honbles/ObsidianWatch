@@ -182,7 +182,7 @@ function LiveTab({ library, initial }) {
               </select>
             )}
           </div>
-          {offline === 'wait' && <div className="text-[10px] text-siem-muted">Offline hosts get the question the moment they reconnect, until the window ends; then they show as expired. Late answers are marked with the time they really ran. Only these read-only questions ever wait; response actions never do.</div>}
+          {offline === 'wait' && <div className="text-[10px] text-siem-muted">Offline hosts answer when they reconnect, until the window ends.</div>}
           <div className="text-[10px] text-siem-muted">Fixed, read-only questions: nothing is executed on the host. Several words must all match; <code>col:text</code> limits a word to one column. Hosts need a live tunnel to answer.</div>
           {admin ? (
             <button onClick={run} disabled={busy || (needsMatch && !match) || (needsPath && !path)} className="w-full px-3 py-2 rounded bg-siem-accent text-white text-xs font-semibold flex items-center justify-center gap-1.5 disabled:opacity-50">
@@ -232,7 +232,7 @@ function HistoryTab({ initial }) {
           </select>
           <button onClick={() => run()} disabled={busy || !q.trim()} className="px-3 py-1.5 rounded bg-siem-accent text-white text-xs font-semibold flex items-center gap-1.5 disabled:opacity-50">{busy ? <Loader2 size={13} className="animate-spin" /> : <Search size={13} />} Hunt</button>
         </div>
-        <div className="text-[10px] text-siem-muted">Same query language as the Events page (fields: host, user, proc, cmd, image, file, hash, dst, port, type, sev, time; and / or / not; * wildcard).</div>
+        <div className="text-[10px] text-siem-muted">Same query language as Events.</div>
         {err && <div className="text-[11px] text-red-300">{err}</div>}
       </div>
       {res && (
@@ -275,7 +275,7 @@ export default function Hunt() {
   return (
     <div>
       <PageHeader title="Hunt"
-        sub="Ask a question of stored events across every host, or query the fleet live. Start from the library on the right, or write your own."
+        sub="Search stored events or query the fleet live."
         tabs={<Tabs value={tab} onChange={setTab} tabs={[{ id: 'history', label: 'Stored events' }, { id: 'live', label: 'Live fleet query' }]}/>}/>
       <div className="ow-body">
       <div className="grid xl:grid-cols-[1fr_320px] gap-4 items-start">

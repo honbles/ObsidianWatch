@@ -13,7 +13,7 @@ export default function AlertPage() {
   return (
     <div>
       <PageHeader title={`Alert #${id}`} actions={<><button className="ow-btn" onClick={() => navigate(-1)}>Back</button><Link className="ow-btn" style={{ textDecoration: 'none' }} to="/alerts">All alerts</Link></>}/>
-      <div style={{ height: 'calc(100vh - var(--topbar-h) - 86px)', display: 'flex', flexDirection: 'column' }}>
+      <div style={{ height: 'calc(100 * var(--vh) - var(--topbar-h) - 86px)', display: 'flex', flexDirection: 'column' }}>
         <AlertPanel alertId={Number(id)} users={users} onClose={() => navigate('/alerts')} onStatusChange={() => {}} inline/>
       </div>
     </div>

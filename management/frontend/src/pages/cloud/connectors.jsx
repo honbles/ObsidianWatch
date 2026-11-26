@@ -274,9 +274,9 @@ export function ConnectorDetail({ conn, onSync, onDisconnect, syncing }) {
             <span className={`text-[10px] border rounded-full px-2 py-0.5 ${statusBadge}`}>{conn.status}</span>
             {cspm && (
               <span style={{ fontSize:10, padding:'2px 8px', borderRadius:10,
-                background: cspm.critical > 0 ? 'rgba(248,113,113,0.1)' : 'rgba(52,211,153,0.1)',
-                color: cspm.critical > 0 ? '#f87171' : '#34d399',
-                border: `1px solid ${cspm.critical > 0 ? 'rgba(248,113,113,0.25)' : 'rgba(52,211,153,0.25)'}` }}>
+                background: cspm.critical > 0 ? 'rgb(var(--crit-c) / 0.1)' : 'rgb(var(--ok-c) / 0.1)',
+                color: cspm.critical > 0 ? 'var(--crit)' : 'var(--ok)',
+                border: `1px solid ${cspm.critical > 0 ? 'rgb(var(--crit-c) / 0.25)' : 'rgb(var(--ok-c) / 0.25)'}` }}>
                 {cspm.critical > 0 ? `${cspm.critical} critical` : `${cspm.total_findings} findings`}
               </span>
             )}
@@ -311,8 +311,8 @@ export function ConnectorDetail({ conn, onSync, onDisconnect, syncing }) {
                 }`}>
                 <Icon size={11}/>{label}
                 {count !== null && count > 0 && (
-                  <span style={{ fontSize:9.5, background: tab===id ? 'rgba(0,0,0,0.2)' : 'rgba(0,194,224,0.15)',
-                    color: tab===id ? '#000' : 'var(--accent)', borderRadius:10, padding:'0 5px', minWidth:15, textAlign:'center' }}>
+                  <span style={{ fontSize:9.5, background: tab===id ? 'rgba(0,0,0,0.2)' : 'rgb(var(--acc-c) / 0.15)',
+                    color: tab===id ? 'var(--onacc)' : 'var(--accent)', borderRadius:10, padding:'0 5px', minWidth:15, textAlign:'center' }}>
                     {count}
                   </span>
                 )}

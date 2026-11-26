@@ -4,7 +4,7 @@ export default function AppSetupHint({ tier, name, environment, instrumentation 
   if (instrumentation === 'ebpf') {
     return (
       <div className="rounded-xl border border-sky-800/40 bg-sky-950/20 p-3 text-xs text-sky-200/90 space-y-1">
-        <div><b>Requests are traced with eBPF</b>, without changes to the application: rate, errors, latency, endpoints and traces. Add the OpenTelemetry SDK for exception details, custom spans and runtime metrics, and the security helper for Tier 2.</div>
+        <div><b>Traced with eBPF.</b> Add the OpenTelemetry SDK for exception details and runtime metrics, and the security helper for Tier 2.</div>
       </div>
     )
   }
@@ -19,12 +19,12 @@ export default function AppSetupHint({ tier, name, environment, instrumentation 
     <div className="rounded-xl border border-sky-800/40 bg-sky-950/20 p-3 text-xs text-sky-200/90 space-y-2">
       {tier === 0 ? (
         <>
-          <div><b>Instrument with OpenTelemetry</b> to unlock routes, dependencies, request statistics and the request-based detections. Host runtime detections already run without it.</div>
+          <div><b>Instrument with OpenTelemetry</b> for routes, dependencies and request detections.</div>
           <pre className="bg-black/30 rounded p-2 text-[11px] overflow-x-auto">{lines.join('\n')}</pre>
-          <div className="text-sky-300/70">The host needs an agent built with the <b>app-server</b> profile. The receiver listens on loopback only; gRPC is not supported, use OTLP/HTTP.</div>
+          <div className="text-sky-300/70">Needs an agent with the <b>app-server</b> profile. OTLP/HTTP on loopback only.</div>
         </>
       ) : (
-        <div><b>Add the security helper</b> to report authentication, authorization, input-rejection and data-export events. Those events lift this service to Tier 2 and unlock the detections that need them.</div>
+        <div><b>Add the security helper</b> for Tier 2 (authentication, authorization, input and export events).</div>
       )}
     </div>
   )

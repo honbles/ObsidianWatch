@@ -58,7 +58,7 @@ export default function AppRouteReview() {
                   <AppStatCard label="Last seen" value={appRel(r.last_seen)} />
                 </div>
                 {(r.params || []).length === 0
-                  ? <div className="card p-4 text-xs text-siem-muted">No query or body fields have been seen on this route, so there is nothing to mask. If this route takes a request body, the application is not reporting it yet: see the Node.js or Python setup guide, section "Request fields".</div>
+                  ? <div className="card p-4 text-xs text-siem-muted">No query or body fields seen on this route.</div>
                   : <AppRoutePolicyPanel service={svc} route={r} onSaved={() => setRev(x => x + 1)} />}
                 <div className="card p-4 space-y-3">
                   <div className="flex items-center gap-3 flex-wrap">
@@ -70,7 +70,7 @@ export default function AppRouteReview() {
                     <span className="text-[11px] text-siem-muted">Admin only. Values appear only for fields left unmasked on a reviewed route.</span>
                   </div>
                   {!admin ? <div className="text-xs text-amber-300">Viewing captured requests needs the admin role.</div>
-                    : !reviewed ? <div className="text-xs text-siem-muted">Nothing is captured until this route is reviewed. Save a review above to start. The agent picks the policy up within 5 minutes.</div>
+                    : !reviewed ? <div className="text-xs text-siem-muted">Nothing is captured until this route is reviewed.</div>
                     : (
                       <StateBlock loading={list.loading && !list.data} error={list.error}>
                         <div className="overflow-x-auto">

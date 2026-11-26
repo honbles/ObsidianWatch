@@ -7,6 +7,7 @@ import { Terminal, Monitor, Server, Globe, Wifi, WifiOff,
          ChevronRight, X, Activity } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
 import api, { getWSTicket } from '../api/client'
+import { TERMINAL_THEME, TERMINAL_FONT } from '../utils/brand'
 
 // ── OS helpers ────────────────────────────────────────────────────────────────
 function OSIcon({ os }) {
@@ -109,21 +110,8 @@ function SSHTerminal({ session, onClose }) {
       term = new XTerm({
         cursorBlink: true,
         fontSize: 13,
-        fontFamily: '"JetBrains Mono", "Fira Code", "Courier New", monospace',
-        theme: {
-          background:  '#0a0f1a',
-          foreground:  '#e2e8f0',
-          cursor:      '#34d399',
-          black:       '#1e293b',
-          red:         '#f87171',
-          green:       '#34d399',
-          yellow:      '#fbbf24',
-          blue:        '#60a5fa',
-          magenta:     '#c084fc',
-          cyan:        '#22d3ee',
-          white:       '#e2e8f0',
-          brightBlack: '#475569',
-        },
+        fontFamily: TERMINAL_FONT,
+        theme: TERMINAL_THEME,
         rows: 30,
         cols: 120,
       })
@@ -194,7 +182,7 @@ function SSHTerminal({ session, onClose }) {
   }[status]
 
   return (
-    <div className="flex flex-col h-full bg-[#0a0f1a]">
+    <div className="flex flex-col h-full bg-[var(--s2)]">
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-2 bg-siem-surface border-b border-siem-border flex-shrink-0">
         <div className="flex items-center gap-3">
@@ -225,7 +213,7 @@ function SSHTerminal({ session, onClose }) {
         </div>
       )}
 
-      <div ref={termRef} className="flex-1 p-2 overflow-hidden" />
+      <div className="flex-1 min-h-0 relative"><div ref={termRef} className="ow-nozoom-fill p-2 overflow-hidden"/></div>
     </div>
   )
 }

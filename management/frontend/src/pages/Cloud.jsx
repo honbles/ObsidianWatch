@@ -50,7 +50,7 @@ function CloudConnectors({ initialSelected }) {
   const selectedConn = connectors.find(c => c.id === selected)
 
   return (
-    <div className="flex bg-siem-bg text-siem-text overflow-hidden" style={{ height: 'calc(100vh - var(--topbar-h) - 108px)', minHeight: 520 }}>
+    <div className="flex bg-siem-bg text-siem-text overflow-hidden" style={{ height: 'calc(100 * var(--vh) - var(--topbar-h) - 108px)', minHeight: 520 }}>
       {/* Sidebar */}
       <div className="w-64 flex-shrink-0 flex flex-col border-r border-siem-border">
         <div className="flex-shrink-0 px-4 py-3 border-b border-siem-border bg-siem-surface">

@@ -99,7 +99,7 @@ export function ProcessTree({ agent, onKill, onBlock, canKill }) {
         <span className="text-[11px] text-siem-muted">{rows.length} processes{at ? ` · read ${at.toLocaleTimeString()}` : ''}</span>
       </div>
       {error && <div className="rounded border border-red-800 bg-red-950/20 p-2 text-xs text-red-200">{error}. Needs the agent online with Live Response enabled.</div>}
-      <div className="rounded-lg border border-siem-border overflow-auto max-h-[60vh]">
+      <div className="rounded-lg border border-siem-border overflow-auto max-h-[calc(60*var(--vh))]">
         <table className="w-full text-xs">
           <thead className="sticky top-0 bg-siem-surface text-siem-muted">
             <tr><th className="text-left p-1.5">Name</th><th className="text-left p-1.5">PID</th><th className="text-left p-1.5">PPID</th>

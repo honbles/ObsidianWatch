@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
-import { RefreshCw, Database, Key, ChevronDown, Sparkles } from 'lucide-react'
+import { RefreshCw, Database, Key, ChevronDown, Sparkles, ClipboardList } from 'lucide-react'
 import api, { runScan } from '../../api/client'
+import { tint } from '../../utils/colors'
 
 // ── CISControlCard - expandable with AI explain ───────────────────────────────
 export function CISControlCard({ control }) {
@@ -8,8 +9,8 @@ export function CISControlCard({ control }) {
   const [aiText, setAiText]   = useState(null)
   const [aiLoading, setAiLoading] = useState(false)
 
-  const statusColors = { PASS:'#34d399', FAIL:'#f87171', UNKNOWN:'var(--text3)', NOT_APPLICABLE:'var(--text3)' }
-  const statusBg     = { PASS:'rgba(52,211,153,0.05)', FAIL:'rgba(248,113,113,0.05)', UNKNOWN:'rgba(100,116,139,0.03)', NOT_APPLICABLE:'rgba(100,116,139,0.03)' }
+  const statusColors = { PASS:'var(--ok)', FAIL:'var(--crit)', UNKNOWN:'var(--text3)', NOT_APPLICABLE:'var(--text3)' }
+  const statusBg     = { PASS:'rgb(var(--ok-c) / 0.05)', FAIL:'rgb(var(--crit-c) / 0.05)', UNKNOWN:'rgb(var(--t3-c) / 0.03)', NOT_APPLICABLE:'rgb(var(--t3-c) / 0.03)' }
   const col = statusColors[control.status] || 'var(--text3)'
 
   const explainAI = async (e) => {
@@ -43,7 +44,7 @@ Return ONLY this JSON (no markdown):
   return (
     <div style={{
       background: open ? statusBg[control.status] : 'var(--surface)',
-      border: `1px solid ${open ? col + '40' : 'var(--border)'}`,
+      border: `1px solid ${open ? tint(col, 25) : 'var(--border)'}`,
       borderLeft: `3px solid ${col}`,
       borderRadius: 8, overflow: 'hidden', transition: 'all 0.15s',
     }}>
@@ -66,7 +67,7 @@ Return ONLY this JSON (no markdown):
               {control.section}
             </span>
             {control.mitre && (
-              <span style={{ fontSize:9.5, background:'rgba(0,194,224,0.08)', border:'1px solid rgba(0,194,224,0.2)', borderRadius:4, padding:'1px 5px', color:'var(--accent)', flexShrink:0 }}>
+              <span style={{ fontSize:9.5, background:'rgb(var(--acc-c) / 0.08)', border:'1px solid rgb(var(--acc-c) / 0.2)', borderRadius:4, padding:'1px 5px', color:'var(--accent)', flexShrink:0 }}>
                 {control.mitre}
               </span>
             )}
@@ -85,8 +86,8 @@ Return ONLY this JSON (no markdown):
           <p style={{ fontSize:12, color:'var(--text2)', lineHeight:1.6, margin:'10px 0' }}>{control.description}</p>
 
           {control.status === 'FAIL' && (
-            <div style={{ background:'rgba(52,211,153,0.06)', border:'1px solid rgba(52,211,153,0.2)', borderRadius:7, padding:'8px 12px', marginBottom:10 }}>
-              <div style={{ fontSize:10, fontWeight:700, color:'#34d399', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:4 }}>✓ Remediation</div>
+            <div style={{ background:'rgb(var(--ok-c) / 0.06)', border:'1px solid rgb(var(--ok-c) / 0.2)', borderRadius:7, padding:'8px 12px', marginBottom:10 }}>
+              <div style={{ fontSize:10, fontWeight:700, color:'var(--ok)', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:4 }}>✓ Remediation</div>
               <p style={{ fontSize:11.5, color:'var(--text2)', lineHeight:1.6, margin:0 }}>{control.remediation}</p>
             </div>
           )}
@@ -95,33 +96,33 @@ Return ONLY this JSON (no markdown):
           <div style={{ display:'flex', gap:8, alignItems:'center', flexWrap:'wrap' }}>
             <button onClick={explainAI} disabled={aiLoading}
               style={{ display:'flex', alignItems:'center', gap:5, fontSize:11, padding:'5px 10px',
-                background: aiText ? 'rgba(139,92,246,0.15)' : 'rgba(0,194,224,0.08)',
-                border: `1px solid ${aiText ? 'rgba(139,92,246,0.3)' : 'rgba(0,194,224,0.2)'}`,
-                color: aiText ? '#a78bfa' : 'var(--accent)', borderRadius:6, cursor:'pointer', fontFamily:'inherit' }}>
+                background: aiText ? 'rgb(var(--violet-c) / 0.15)' : 'rgb(var(--acc-c) / 0.08)',
+                border: `1px solid ${aiText ? 'rgb(var(--violet-c) / 0.3)' : 'rgb(var(--acc-c) / 0.2)'}`,
+                color: aiText ? 'var(--violet)' : 'var(--accent)', borderRadius:6, cursor:'pointer', fontFamily:'inherit' }}>
               <Sparkles size={11}/>{aiLoading ? 'Analysing…' : aiText ? 'Hide AI' : 'Explain with AI'}
             </button>
           </div>
 
           {/* AI panel */}
           {aiText && (
-            <div style={{ marginTop:10, background:'rgba(139,92,246,0.06)', border:'1px solid rgba(139,92,246,0.2)', borderRadius:8, padding:'12px 14px' }}>
-              <div style={{ fontSize:10, fontWeight:700, color:'#a78bfa', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:8 }}>✦ AI Analysis</div>
+            <div style={{ marginTop:10, background:'rgb(var(--violet-c) / 0.06)', border:'1px solid rgb(var(--violet-c) / 0.2)', borderRadius:8, padding:'12px 14px' }}>
+              <div style={{ fontSize:10, fontWeight:700, color:'var(--violet)', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:8 }}>✦ AI Analysis</div>
               {aiText.plain_english && <p style={{ fontSize:12, color:'var(--text)', lineHeight:1.6, marginBottom:8 }}>{aiText.plain_english}</p>}
               {aiText.risk_if_failed && (
                 <div style={{ marginBottom:8 }}>
-                  <span style={{ fontSize:10, color:'#f87171', fontWeight:600 }}>Risk: </span>
+                  <span style={{ fontSize:10, color:'var(--crit)', fontWeight:600 }}>Risk: </span>
                   <span style={{ fontSize:11, color:'var(--text2)' }}>{aiText.risk_if_failed}</span>
                 </div>
               )}
               {aiText.time_to_fix && (
                 <div style={{ marginBottom:8 }}>
-                  <span style={{ fontSize:10, color:'#fbbf24', fontWeight:600 }}>Time to fix: </span>
+                  <span style={{ fontSize:10, color:'var(--warn)', fontWeight:600 }}>Time to fix: </span>
                   <span style={{ fontSize:11, color:'var(--text2)' }}>{aiText.time_to_fix}</span>
                 </div>
               )}
               {aiText.steps?.length > 0 && (
                 <div>
-                  <div style={{ fontSize:10, color:'#34d399', fontWeight:600, marginBottom:4 }}>Steps:</div>
+                  <div style={{ fontSize:10, color:'var(--ok)', fontWeight:600, marginBottom:4 }}>Steps:</div>
                   {aiText.steps.map((s, i) => (
                     <div key={i} style={{ display:'flex', gap:6, marginBottom:4 }}>
                       <span style={{ fontSize:10, color:'var(--accent)', fontFamily:'var(--font-data)', flexShrink:0 }}>{i+1}.</span>
@@ -145,14 +146,14 @@ export function ComplianceControlCard({ ctrl, frameworkColors }) {
   const [aiLoading, setAiLoading] = useState(false)
 
   const FRAMEWORK_COLORS = frameworkColors || {
-    'SOC2':        { color:'#a78bfa', bg:'rgba(167,139,250,0.08)', border:'rgba(167,139,250,0.25)' },
-    'PCI-DSS':     { color:'#fb923c', bg:'rgba(251,146,60,0.08)',  border:'rgba(251,146,60,0.25)'  },
-    'ISO27001':    { color:'#38bdf8', bg:'rgba(56,189,248,0.08)',  border:'rgba(56,189,248,0.25)'  },
-    'NIST-800-53': { color:'#34d399', bg:'rgba(52,211,153,0.08)', border:'rgba(52,211,153,0.25)'  },
+    'SOC2':        { color:'var(--violet)', bg:'rgb(var(--violet-c) / 0.08)', border:'rgb(var(--violet-c) / 0.25)' },
+    'PCI-DSS':     { color:'var(--high)', bg:'rgb(var(--high-c) / 0.08)',  border:'rgb(var(--high-c) / 0.25)'  },
+    'ISO27001':    { color:'var(--info)', bg:'rgb(var(--info-c) / 0.08)',  border:'rgb(var(--info-c) / 0.25)'  },
+    'NIST-800-53': { color:'var(--ok)', bg:'rgb(var(--ok-c) / 0.08)', border:'rgb(var(--ok-c) / 0.25)'  },
   }
   const fc = FRAMEWORK_COLORS[ctrl.framework] || { color:'var(--text2)', bg:'var(--surface2)', border:'var(--border)' }
   const isFail = ctrl.status === 'FAIL'
-  const statusColor = isFail ? '#f87171' : ctrl.status === 'PASS' ? '#34d399' : 'var(--text3)'
+  const statusColor = isFail ? 'var(--crit)' : ctrl.status === 'PASS' ? 'var(--ok)' : 'var(--text3)'
 
   const explainAI = async (e) => {
     e.stopPropagation()
@@ -184,8 +185,8 @@ Return ONLY this JSON (no markdown):
 
   return (
     <div style={{
-      background: open ? (isFail ? 'rgba(248,113,113,0.04)' : 'var(--surface2)') : 'var(--surface)',
-      border: `1px solid ${open ? (isFail ? 'rgba(248,113,113,0.25)' : fc.border) : 'var(--border)'}`,
+      background: open ? (isFail ? 'rgb(var(--crit-c) / 0.04)' : 'var(--surface2)') : 'var(--surface)',
+      border: `1px solid ${open ? (isFail ? 'rgb(var(--crit-c) / 0.25)' : fc.border) : 'var(--border)'}`,
       borderLeft: `3px solid ${statusColor}`,
       borderRadius: 8, overflow:'hidden', transition:'all 0.15s',
     }}>
@@ -206,7 +207,7 @@ Return ONLY this JSON (no markdown):
           </div>
           <p style={{ fontSize:11, color:'var(--text3)', margin:0, lineHeight:1.4 }}>{ctrl.description}</p>
           {ctrl.finding_ids?.length > 0 && (
-            <span style={{ fontSize:10, color:'#f87171', marginTop:3, display:'block' }}>
+            <span style={{ fontSize:10, color:'var(--crit)', marginTop:3, display:'block' }}>
               {ctrl.finding_ids.length} CSPM finding{ctrl.finding_ids.length !== 1 ? 's' : ''} contributing
             </span>
           )}
@@ -223,9 +224,9 @@ Return ONLY this JSON (no markdown):
           <div style={{ display:'flex', gap:8, alignItems:'center', marginTop:10, flexWrap:'wrap' }}>
             <button onClick={explainAI} disabled={aiLoading}
               style={{ display:'flex', alignItems:'center', gap:5, fontSize:11, padding:'5px 10px',
-                background: aiText ? 'rgba(139,92,246,0.15)' : 'rgba(0,194,224,0.08)',
-                border:`1px solid ${aiText ? 'rgba(139,92,246,0.3)' : 'rgba(0,194,224,0.2)'}`,
-                color: aiText ? '#a78bfa' : 'var(--accent)', borderRadius:6, cursor:'pointer', fontFamily:'inherit' }}>
+                background: aiText ? 'rgb(var(--violet-c) / 0.15)' : 'rgb(var(--acc-c) / 0.08)',
+                border:`1px solid ${aiText ? 'rgb(var(--violet-c) / 0.3)' : 'rgb(var(--acc-c) / 0.2)'}`,
+                color: aiText ? 'var(--violet)' : 'var(--accent)', borderRadius:6, cursor:'pointer', fontFamily:'inherit' }}>
               <Sparkles size={11}/>{aiLoading ? 'Analysing…' : aiText ? 'Hide AI' : 'Explain with AI'}
             </button>
             {ctrl.finding_ids?.length > 0 && (
@@ -236,30 +237,30 @@ Return ONLY this JSON (no markdown):
           </div>
 
           {aiText && (
-            <div style={{ marginTop:10, background:'rgba(139,92,246,0.06)', border:'1px solid rgba(139,92,246,0.2)', borderRadius:8, padding:'12px 14px' }}>
-              <div style={{ fontSize:10, fontWeight:700, color:'#a78bfa', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:8 }}>✦ AI Compliance Analysis</div>
+            <div style={{ marginTop:10, background:'rgb(var(--violet-c) / 0.06)', border:'1px solid rgb(var(--violet-c) / 0.2)', borderRadius:8, padding:'12px 14px' }}>
+              <div style={{ fontSize:10, fontWeight:700, color:'var(--violet)', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:8 }}>✦ AI Compliance Analysis</div>
               {aiText.plain_english && <p style={{ fontSize:12, color:'var(--text)', lineHeight:1.6, marginBottom:8 }}>{aiText.plain_english}</p>}
               {aiText.business_risk && (
                 <div style={{ marginBottom:6 }}>
-                  <span style={{ fontSize:10, color:'#f87171', fontWeight:600 }}>Business risk: </span>
+                  <span style={{ fontSize:10, color:'var(--crit)', fontWeight:600 }}>Business risk: </span>
                   <span style={{ fontSize:11, color:'var(--text2)' }}>{aiText.business_risk}</span>
                 </div>
               )}
               {aiText.evidence_needed && (
                 <div style={{ marginBottom:6 }}>
-                  <span style={{ fontSize:10, color:'#38bdf8', fontWeight:600 }}>Auditor evidence needed: </span>
+                  <span style={{ fontSize:10, color:'var(--info)', fontWeight:600 }}>Auditor evidence needed: </span>
                   <span style={{ fontSize:11, color:'var(--text2)' }}>{aiText.evidence_needed}</span>
                 </div>
               )}
               {aiText.remediation_priority && (
                 <div style={{ marginBottom: aiText.steps?.length ? 8 : 0 }}>
-                  <span style={{ fontSize:10, color:'#fbbf24', fontWeight:600 }}>Priority: </span>
+                  <span style={{ fontSize:10, color:'var(--warn)', fontWeight:600 }}>Priority: </span>
                   <span style={{ fontSize:11, color:'var(--text2)', textTransform:'capitalize' }}>{aiText.remediation_priority}</span>
                 </div>
               )}
               {aiText.steps?.length > 0 && (
                 <div>
-                  <div style={{ fontSize:10, color:'#34d399', fontWeight:600, marginBottom:4 }}>Actions:</div>
+                  <div style={{ fontSize:10, color:'var(--ok)', fontWeight:600, marginBottom:4 }}>Actions:</div>
                   {aiText.steps.map((s, i) => (
                     <div key={i} style={{ display:'flex', gap:6, marginBottom:3 }}>
                       <span style={{ fontSize:10, color:'var(--accent)', fontFamily:'var(--font-data)', flexShrink:0 }}>{i+1}.</span>
@@ -304,10 +305,10 @@ export function PanelCompliance({ connId, provider }) {
   }
 
   const FRAMEWORK_COLORS = {
-    'SOC2':        { color: '#a78bfa', bg: 'rgba(167,139,250,0.08)', border: 'rgba(167,139,250,0.25)' },
-    'PCI-DSS':     { color: '#fb923c', bg: 'rgba(251,146,60,0.08)',  border: 'rgba(251,146,60,0.25)'  },
-    'ISO27001':    { color: '#38bdf8', bg: 'rgba(56,189,248,0.08)',  border: 'rgba(56,189,248,0.25)'  },
-    'NIST-800-53': { color: '#34d399', bg: 'rgba(52,211,153,0.08)', border: 'rgba(52,211,153,0.25)'  },
+    'SOC2':        { color: 'var(--violet)', bg: 'rgb(var(--violet-c) / 0.08)', border: 'rgb(var(--violet-c) / 0.25)' },
+    'PCI-DSS':     { color: 'var(--high)', bg: 'rgb(var(--high-c) / 0.08)',  border: 'rgb(var(--high-c) / 0.25)'  },
+    'ISO27001':    { color: 'var(--info)', bg: 'rgb(var(--info-c) / 0.08)',  border: 'rgb(var(--info-c) / 0.25)'  },
+    'NIST-800-53': { color: 'var(--ok)', bg: 'rgb(var(--ok-c) / 0.08)', border: 'rgb(var(--ok-c) / 0.25)'  },
   }
 
   const controls  = report?.controls || []
@@ -334,7 +335,7 @@ export function PanelCompliance({ connId, provider }) {
           <button onClick={run} disabled={running}
             style={{ display:'flex', alignItems:'center', gap:7, padding:'8px 16px',
               background: running ? 'var(--surface2)' : 'var(--accent)',
-              color: running ? 'var(--text2)' : '#000',
+              color: running ? 'var(--text2)' : 'var(--onacc)',
               border:'none', borderRadius:8, fontSize:12, fontWeight:600,
               cursor: running ? 'wait' : 'pointer', fontFamily:'inherit', flexShrink:0 }}>
             <RefreshCw size={12} style={running ? { animation:'spin 0.8s linear infinite' } : {}}/>
@@ -355,15 +356,15 @@ export function PanelCompliance({ connId, provider }) {
                     borderTop:`3px solid ${fc.color}`, borderRadius:10, cursor:'pointer', fontFamily:'inherit', textAlign:'left', transition:'all 0.15s' }}>
                   <div style={{ fontSize:10, fontWeight:700, color:'var(--text3)', textTransform:'uppercase', letterSpacing:'0.07em', marginBottom:6 }}>{s.framework}</div>
                   <div style={{ display:'flex', alignItems:'baseline', gap:4, marginBottom:6 }}>
-                    <span style={{ fontSize:26, fontWeight:800, color: pct>=80?'#34d399':pct>=60?'#fbbf24':'#f87171', fontFamily:'var(--font-data)' }}>{pct}%</span>
+                    <span style={{ fontSize:26, fontWeight:800, color: pct>=80?'var(--ok)':pct>=60?'var(--warn)':'var(--crit)', fontFamily:'var(--font-data)' }}>{pct}%</span>
                     <span style={{ fontSize:10.5, color:'var(--text3)' }}>compliant</span>
                   </div>
                   <div style={{ height:4, background:'var(--surface2)', borderRadius:3, overflow:'hidden', marginBottom:6 }}>
-                    <div style={{ height:'100%', borderRadius:3, background:pct>=80?'#34d399':pct>=60?'#fbbf24':'#f87171', width:`${pct}%`, transition:'width 0.6s ease' }}/>
+                    <div style={{ height:'100%', borderRadius:3, background:pct>=80?'var(--ok)':pct>=60?'var(--warn)':'var(--crit)', width:`${pct}%`, transition:'width 0.6s ease' }}/>
                   </div>
                   <div style={{ display:'flex', gap:8, fontSize:10.5 }}>
-                    <span style={{ color:'#34d399' }}>✓ {s.passed} passed</span>
-                    <span style={{ color:'#f87171' }}>✗ {s.failed} failed</span>
+                    <span style={{ color:'var(--ok)' }}>✓ {s.passed} passed</span>
+                    <span style={{ color:'var(--crit)' }}>✗ {s.failed} failed</span>
                   </div>
                 </button>
               )
@@ -380,7 +381,7 @@ export function PanelCompliance({ connId, provider }) {
                   border:'none', borderBottom: framework===fw ? '2px solid var(--accent)' : '2px solid transparent',
                   cursor:'pointer', fontFamily:'inherit', fontWeight: framework===fw ? 600 : 400, marginBottom:-1 }}>
                 {fw === 'all' ? 'All Frameworks' : fw}
-                <span style={{ marginLeft:5, fontSize:10, background:framework===fw?'rgba(0,194,224,0.15)':'var(--surface2)',
+                <span style={{ marginLeft:5, fontSize:10, background:framework===fw?'rgb(var(--acc-c) / 0.15)':'var(--surface2)',
                   color:framework===fw?'var(--accent)':'var(--text3)', borderRadius:10, padding:'0 5px' }}>
                   {fw==='all' ? controls.length : controls.filter(c => c.framework===fw).length}
                 </span>
@@ -398,13 +399,13 @@ export function PanelCompliance({ connId, provider }) {
         )}
         {!loading && !report && (
           <div style={{ display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', height:280, color:'var(--text3)', gap:10 }}>
-            <div style={{ fontSize:36 }}>📋</div>
+            <ClipboardList size={34} strokeWidth={1.4} style={{ color:'var(--t3)' }}/>
             <div style={{ fontSize:14, fontWeight:600, color:'var(--text2)' }}>No compliance report yet</div>
             <div style={{ fontSize:12, maxWidth:360, textAlign:'center', lineHeight:1.6 }}>
               {provider === 'aws' ? 'Run the CIS benchmark first (CIS tab), then click "Remap Compliance" to generate framework mappings.' : 'Run a CSPM scan first, then click "Remap Compliance" to generate framework mappings.'}
             </div>
             <button onClick={run} disabled={running}
-              style={{ marginTop:8, padding:'8px 20px', background:'var(--accent)', color:'#000',
+              style={{ marginTop:8, padding:'8px 20px', background:'var(--accent)', color: 'var(--onacc)',
                 border:'none', borderRadius:8, fontSize:12, fontWeight:600, cursor:'pointer', fontFamily:'inherit' }}>
               {running ? 'Mapping…' : 'Generate Compliance Report'}
             </button>
@@ -413,7 +414,7 @@ export function PanelCompliance({ connId, provider }) {
         {report && !loading && (
           <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
             {failedFirst.length === 0 && (
-              <div style={{ textAlign:'center', padding:40, color:'#34d399', fontSize:13 }}>
+              <div style={{ textAlign:'center', padding:40, color:'var(--ok)', fontSize:13 }}>
                 ✓ All controls passing for the selected framework
               </div>
             )}
@@ -494,7 +495,7 @@ export function PanelCISBenchmark({ cis, loading, scanning, onRunScan, conn }) {
             <button onClick={onRunScan} disabled={scanning}
               style={{ display:'flex', alignItems:'center', gap:7, padding:'8px 16px',
                 background: scanning ? 'var(--surface2)' : 'var(--accent)',
-                color: scanning ? 'var(--text2)' : '#000',
+                color: scanning ? 'var(--text2)' : 'var(--onacc)',
                 border:'none', borderRadius:8, fontSize:12.5, fontWeight:600,
                 cursor: scanning ? 'wait' : 'pointer', fontFamily:'inherit' }}>
               {scanning ? '⟳ Scanning…' : '⟳ Run Assessment'}
@@ -561,7 +562,7 @@ export function PanelCISBenchmark({ cis, loading, scanning, onRunScan, conn }) {
 
         {!loading && !cis && !scanning && (
           <div style={{ textAlign:'center', padding:60, color:'var(--text3)' }}>
-            <div style={{ fontSize:32, marginBottom:12 }}>📋</div>
+            <ClipboardList size={30} strokeWidth={1.4} style={{ color:'var(--t3)', marginBottom:12 }}/>
             <div style={{ fontSize:14, fontWeight:500, color:'var(--text2)', marginBottom:6 }}>
               No CIS assessment yet
             </div>

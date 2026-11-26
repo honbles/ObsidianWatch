@@ -34,10 +34,9 @@ export default function AppTabDatabase({ service, range }) {
       </div>
       <div className="card"><DataTable columns={cols} rows={rows} loading={loading} error={error}
         rowKey={q => [q.system, q.operation, q.table, q.fingerprint].join('|')}
-        emptyText="No database calls in this range. They appear once the service sends client spans with db.system (most database instrumentations do)." /></div>
+        emptyText="No database calls in this range." /></div>
       <div className="text-[11px] text-siem-muted">
-        Only the operation and table names are sent by default. Turn on statement fingerprints in Settings to see the query shape; every value is removed on the host first and the raw statement never leaves it.
-        A route that repeats one query many times in a request is tagged N+1 on the Routes tab and in the trace.
+        Operation and table names only, unless statement fingerprints are on in Settings.
       </div>
     </div>
   )

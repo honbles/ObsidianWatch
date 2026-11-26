@@ -36,8 +36,8 @@ export default function AgentMap({ lat, lng, accuracy, label }) {
       L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
       attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors', maxZoom: 19, className: 'ow-dark-tiles',
     }).addTo(map)
-      L.circle([lat, lng], { radius: accuracy || 5000, color: '#38bdf8', fillColor: '#38bdf8', fillOpacity: 0.1, weight: 1 }).addTo(map)
-      L.circleMarker([lat, lng], { radius: 7, color: '#fff', weight: 2, fillColor: '#38bdf8', fillOpacity: 1 })
+      L.circle([lat, lng], { radius: accuracy || 5000, color: 'var(--info)', fillColor: 'var(--info)', fillOpacity: 0.1, weight: 1 }).addTo(map)
+      L.circleMarker([lat, lng], { radius: 7, color: 'white', weight: 2, fillColor: 'var(--info)', fillOpacity: 1 })
         .bindTooltip(label || 'Agent', { permanent: false }).addTo(map)
       // the tab lays out after mount; without this Leaflet mis-measures and drag feels dead
       ro = new ResizeObserver(() => map && map.invalidateSize())
@@ -48,5 +48,5 @@ export default function AgentMap({ lat, lng, accuracy, label }) {
   }, [lat, lng, accuracy, label])
 
   if (err) return <div className="p-4 text-xs text-red-400">{err}</div>
-  return <div ref={el} className="w-full h-full" style={{ minHeight: 320, background: '#0f172a', cursor: 'grab' }} />
+  return <div className="w-full h-full relative" style={{ minHeight: 320 }}><div ref={el} className="ow-nozoom-fill" style={{ background: 'var(--s2)', cursor: 'grab' }} /></div>
 }

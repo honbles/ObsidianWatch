@@ -6,7 +6,7 @@ export default function Prevention() {
   return (
     <div>
       <PageHeader title="Prevention"
-        sub="Agents block known-malicious addresses, files and domains from threat intelligence. Each type is off, audit (alert only) or enforce."/>
+        sub="Block known-malicious addresses, files and domains from threat intelligence."/>
       <div className="ow-body" style={{ maxWidth: 1100 }}>
         <PreventionSettings/>
       </div>

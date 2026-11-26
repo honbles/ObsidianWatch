@@ -26,7 +26,7 @@ export default function AppTabSecurity({ service, range }) {
         <option value="">All security events</option>{NAMES.map(n => <option key={n}>{n}</option>)}
       </select>
       <div className="card"><DataTable columns={cols} rows={data?.events} loading={loading} error={error} rowKey={e => e.id}
-        emptyText="No security events in this range. They appear once the security helper reports authentication, authorization and export events (Tier 2)." /></div>
+        emptyText="No security events in this range." /></div>
       <div className="text-[11px] text-siem-muted">User identifiers are shown as hashes unless cleartext is enabled for this service.</div>
     </div>
   )

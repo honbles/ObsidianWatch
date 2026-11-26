@@ -101,12 +101,13 @@ The first build compiles the management image and installs the code scanners; it
 ### 2.3 First login
 
 1. Open `https://<server>` (self-signed certificate unless you supplied your own domain and certificate).
-2. The setup wizard opens before login: backend and management URLs (pre-filled), optional backend domain, optional AI keys (Groq, Anthropic) and threat-intel keys (ThreatFox, OTX). Run it again later from **Agent builder → Reconfigure setup**.
+2. The setup wizard opens before login: backend and management URLs (pre-filled), optional backend domain, optional AI keys (Groq, Anthropic, NVD) and threat-intel keys (ThreatFox, OTX). Run it again later from **Agent builder → Re-run setup**.
 3. The first start creates `admin` with a one-time password:
    ```bash
    sudo docker compose logs mgmt-api | grep -A4 "First-run admin"
    ```
    Sign in and change it.
+4. The console has a dark and a light theme. On a first visit it follows the operating system's setting; the sun/moon button in the top bar switches it. **Display size** in the user menu (Compact, Default, Large) scales the whole console. Navigation is the header: one menu per product (Endpoint, Application, Code, Cloud, Network, ITDR) plus Detect; Agent builder, users, the audit log and platform settings are under the gear (Settings). Each browser remembers theme and size.
 
 ### 2.4 Roles
 
@@ -237,7 +238,7 @@ Development agents without an embedded config read `agent.yaml` from disk: copy 
 
 Application monitoring samples and an end-to-end check against the real agent receiver: `samples/app` (`verify.sh`).
 
-Contributing: keep each platform's signatures limited to fields its collectors fill, register new signature sets in `sig_registry.go`, and add a new migration for schema changes (never edit an applied one). UI conventions: [docs/development/design-language.md](docs/development/design-language.md).
+Contributing: keep each platform's signatures limited to fields its collectors fill, register new signature sets in `sig_registry.go`, and add a new migration for schema changes (never edit an applied one). UI conventions: [docs/development/design-language.md](docs/development/design-language.md) (brand: [docs/development/brand.md](docs/development/brand.md)); the console build fails on hard-coded colours.
 
 ## License
 

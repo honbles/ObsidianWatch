@@ -1,12 +1,13 @@
 import { useState, useEffect, useRef } from 'react'
 import api from '../api/client'
 import { PageHeader } from '../components/ui'
+import { Server, Monitor, Laptop, Radar, Network, Lock } from 'lucide-react'
 
 const PLATFORMS = [
   {
     id: 'linux',
     label: 'Linux',
-    icon: '🐧',
+    icon: Server,
     desc: 'Ubuntu · Debian · RHEL · CentOS',
     sub: 'Installs as systemd service',
     installCmd: 'chmod +x obsidianwatch-linux-agent && sudo ./obsidianwatch-linux-agent install',
@@ -17,7 +18,7 @@ const PLATFORMS = [
   {
     id: 'windows',
     label: 'Windows',
-    icon: '⊞',
+    icon: Monitor,
     desc: 'Windows 10/11 · Server 2016+',
     sub: 'Installs as Windows Service with tamper DACL',
     installCmd: '.\\obsidianwatch-win-agent.exe install',
@@ -29,7 +30,7 @@ const PLATFORMS = [
   {
     id: 'macos-arm64',
     label: 'macOS (Apple Silicon)',
-    icon: '🍎',
+    icon: Laptop,
     desc: 'M1/M2/M3 Macs · macOS 12+',
     sub: 'Native arm64 build. Installs as launchd daemon',
     installCmd: 'chmod +x obsidianwatch-macos-agent && sudo ./obsidianwatch-macos-agent install',
@@ -40,7 +41,7 @@ const PLATFORMS = [
   {
     id: 'macos',
     label: 'macOS (Intel)',
-    icon: '🍎',
+    icon: Laptop,
     desc: 'macOS 12 Monterey+',
     sub: 'Installs as launchd daemon',
     installCmd: 'chmod +x obsidianwatch-macos-agent && sudo ./obsidianwatch-macos-agent install',
@@ -51,7 +52,7 @@ const PLATFORMS = [
   {
     id: 'network',
     label: 'Network Probe',
-    icon: '📡',
+    icon: Radar,
     desc: 'Any Linux host on the network',
     sub: 'Receives syslog · NetFlow · SNMP from all network devices',
     installCmd: 'chmod +x obsidianwatch-network-probe && sudo ./obsidianwatch-network-probe install',
@@ -66,18 +67,18 @@ const PLATFORMS = [
 const FIELD_GROUPS = [
   {
     title: 'Connection',
-    icon: '⬡',
+    icon: Network,
     fields: [
-      { key: 'backend_url',    label: 'Backend URL',    placeholder: 'https://192.168.1.140:8443', required: true, hint: 'The only address agents connect to: events, live response and enrollment. Use whatever host and port your backend is published on.' },
+      { key: 'backend_url',    label: 'Backend URL',    placeholder: 'https://192.168.1.140:8443', required: true, hint: 'Where agents send events, enroll and open live response.' },
       { key: 'management_url', label: 'Management URL', placeholder: 'https://192.168.1.140',      required: false, hint: 'Optional. Agents do not connect to it; it is only kept reachable while a host is isolated.' },
-      { key: 'enroll_days',    label: 'Enrollment token valid for (days)', placeholder: '30', required: false, hint: 'Each build embeds a new enrollment token instead of an API key. Hosts must be installed within this time (1 to 90 days). Enrolled agents are not affected when it expires.' },
-      { key: 'enroll_max_uses', label: 'Maximum hosts for this build', placeholder: '500', required: false, hint: 'How many hosts can enroll with this build. Revoke the token in Platform settings → Agent enrollment if the file leaks.' },
+      { key: 'enroll_days',    label: 'Enrollment token valid for (days)', placeholder: '30', required: false, hint: '1 to 90 days. Enrolled agents are not affected when it expires.' },
+      { key: 'enroll_max_uses', label: 'Maximum hosts for this build', placeholder: '500', required: false, hint: 'Revoke the token in Platform settings → Agent enrollment if the file leaks.' },
       { key: 'site_name',      label: 'Site Name (Network Probe only)', placeholder: 'HQ-Network', required: false, hint: 'Friendly name for this network probe location', probeOnly: true },
     ],
   },
   {
     title: 'CA Certificate',
-    icon: '🔒',
+    icon: Lock,
     fields: [
       { key: 'ca_cert', label: 'Backend CA Certificate (PEM)', placeholder: '-----BEGIN CERTIFICATE-----\n...', hint: 'CA cert for the agent backend (:8443) - embedded in the binary', textarea: true },
       { key: 'management_ca_cert', label: 'Management CA Certificate (PEM)', placeholder: '-----BEGIN CERTIFICATE-----\n...', hint: 'Only needed if management uses HTTPS with a self-signed cert. Leave empty if HTTP.', textarea: true, optional: true },
@@ -116,7 +117,7 @@ function PlatformCard({ platform, status, form, onBuild, onDownloadCached, build
       {/* Header */}
       <div className="p-5 border-b border-siem-border flex items-start justify-between gap-3">
         <div className="flex items-center gap-3">
-          <span className="text-3xl">{p.icon}</span>
+          <span className="ow-tile-icon"><p.icon size={20} strokeWidth={1.6}/></span>
           <div>
             <div className="font-semibold text-siem-text">{p.label}</div>
             <div className="text-xs text-siem-muted">{p.desc}</div>
@@ -283,7 +284,7 @@ export default function AgentBuilder() {
     <div>
       <PageHeader title="Agent builder"
         state={anyBuilding ? 'info' : undefined} stateText="Compiling"
-        sub="Configure the agents once. The server compiles each platform with these settings built in, so nothing needs configuring at install time."
+        sub="Settings are compiled into each agent package."
         actions={<a href="/setup?rerun=1" className="ow-btn" style={{ textDecoration: 'none' }}>Re-run setup</a>}/>
       <div className="ow-body" style={{ maxWidth: 1180 }}>
       {/* Config form */}
@@ -292,7 +293,7 @@ export default function AgentBuilder() {
           <div key={group.title} className="rounded-xl border border-siem-border bg-siem-surface overflow-hidden">
             <div className="px-5 py-3 border-b border-siem-border flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <span className="text-siem-muted">{group.icon}</span>
+                <group.icon size={15} strokeWidth={1.7} className="text-siem-muted"/>
                 <span className="text-sm font-semibold text-siem-text">{group.title}</span>
               </div>
               {group.note && <span className="text-xs text-siem-muted/60">{group.note}</span>}
@@ -309,7 +310,7 @@ export default function AgentBuilder() {
                 <div className="space-y-2">
                   <label className="flex items-start gap-2 text-xs text-siem-muted">
                     <input type="checkbox" checked={!!form.enable_app_profile} onChange={e => setForm(f => ({ ...f, enable_app_profile: e.target.checked }))} />
-                    <span><b className="text-siem-text">Enable the app-server profile (Application Monitoring)</b> - off by default. Starts a local OpenTelemetry receiver (loopback only) and, on Linux, the host runtime sensor. Use it on hosts that run your applications.</span>
+                    <span><b className="text-siem-text">Enable the app-server profile (Application Monitoring)</b> - local OpenTelemetry receiver and, on Linux, the runtime sensor. For application hosts.</span>
                   </label>
                   {form.enable_app_profile && (
                     <div className="ml-6 grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -341,7 +342,7 @@ export default function AgentBuilder() {
                       </div>
                       <label className="md:col-span-2 flex items-start gap-2 text-xs text-siem-muted">
                         <input type="checkbox" checked={!!form.app_requests_ebpf} onChange={e => setForm(f => ({ ...f, app_requests_ebpf: e.target.checked }))} />
-                        <span><b className="text-siem-text">Trace requests without code changes (eBPF, Linux)</b> - bundles OpenTelemetry eBPF Instrumentation (OBI). Discovered services get request rate, errors, latency, endpoints and traces (Tier 1) with nothing added to the application. Needs Linux 5.8+ with BTF and the agent running as root.</span>
+                        <span><b className="text-siem-text">Trace requests without code changes (eBPF, Linux)</b> - requests, errors, latency and traces without code changes (Tier 1). Linux 5.8+ with BTF, agent as root.</span>
                       </label>
                     </div>
                   )}

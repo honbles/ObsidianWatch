@@ -66,7 +66,7 @@ export default function AppT0Overview({ service, detail, alerts, edges, go }) {
 
       <div className="ow-card" style={{ padding: '12px 14px' }}>
         <div style={{ fontWeight: 600, marginBottom: 6 }}>Watched without instrumentation</div>
-        <div className="t2" style={{ fontSize: 12.5, marginBottom: 8 }}>The host agent watches this service's processes. These detections run on it now; request-based detections, endpoints, errors and traces need OpenTelemetry.</div>
+        <div className="t2" style={{ fontSize: 12.5, marginBottom: 8 }}>Host detections run now. Requests, errors and traces need OpenTelemetry.</div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 4, fontSize: 12.5 }}>
           {HOST_RULES.map(([id, t]) => <div key={id}><span className="mono t3">{id}</span> <span className="t2">{t}</span></div>)}
         </div>

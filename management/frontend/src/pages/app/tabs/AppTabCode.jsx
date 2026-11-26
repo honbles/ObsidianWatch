@@ -57,7 +57,7 @@ function LinkDialog({ service, onClose, onSaved }) {
         <button className="ow-btn primary" disabled={!conn || !repo || state.busy} onClick={save}>{state.busy ? 'Linking…' : 'Link'}</button>
       </>}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-        <div className="t2" style={{ fontSize: 12.5 }}>Pick the repository and branch this service is built from. Its findings then show on this service, checked against what this service's processes actually run. If the branch has not been scanned yet, a scan is queued.</div>
+        <div className="t2" style={{ fontSize: 12.5 }}>The repository and branch this service is built from.</div>
         <Field label="Code connector">
           <select className={sel} value={conn} onChange={e => setConn(e.target.value)}>
             <option value="">Choose…</option>
@@ -177,7 +177,7 @@ export default function AppTabCode({ service }) {
             {admin && <button className="ow-btn primary" style={{ marginLeft: 'auto' }} onClick={() => setOpen(true)}>Link repository</button>}
           </div>
           <DenseTable rowKey={l => l.id} rows={links}
-            empty={admin ? 'No repository linked. Link the repository and branch this service is built from to see its code findings here, checked against what runs.' : 'No repository linked. An admin can link one.'}
+            empty={admin ? 'No repository linked.' : 'No repository linked. An admin can link one.'}
             cols={[
               { key: 'r', label: 'Repository', width: 'minmax(180px, 1.4fr)', render: l => <Link className="mono t1" to={`/devops/repos/${l.connector_id}/${encodeURIComponent(l.repo)}`}>{l.repo}</Link> },
               { key: 'b', label: 'Branch', width: '130px', render: l => <span className="mono t2">{l.branch || 'default'}{l.is_default && l.branch ? <span className="t3"> (default)</span> : null}</span> },

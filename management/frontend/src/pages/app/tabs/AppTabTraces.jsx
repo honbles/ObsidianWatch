@@ -40,7 +40,7 @@ export default function AppTabTraces({ service, range, traceId, onSelect }) {
       </div>
       <div className="card"><DataTable columns={cols} rows={list.data?.traces} loading={list.loading} error={list.error} rowKey={t => t.trace_id}
         onRowClick={t => navigate(`/applications/traces/${encodeURIComponent(t.trace_id)}?svc=${encodeURIComponent(`${service.name}|${service.environment}`)}`)}
-        emptyText="No sampled traces in this range. Errors, slow requests and requests touched by a security event are always kept; others are sampled at 1%." /></div>
+        emptyText="No sampled traces in this range." /></div>
     </div>
   )
 }

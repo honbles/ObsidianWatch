@@ -221,6 +221,7 @@ All of these are admin-only unless stated.
 | Setting | Default | Effect |
 |---|---|---|
 | Intel sources (ThreatFox, OTX, Feodo, Spamhaus BCL, Sigma) | enabled when a key is set; Feodo needs no key | Synced at start and every 24 h, or on demand. |
+| AbuseIPDB key (`ti.abuseipdb_api_key`, **Platform settings → API keys**) | unset | IP reputation in lookups (abuse score, reports, ISP, Tor). A key from abuseipdb.com, not the ThreatFox key. Results are cached 24 h; at most 900 lookups a day. |
 | `threat_intel.retro_hunt` | on | After a sync, new IOCs are searched in stored events (up to 500 alerts per sync). |
 | Manual IOCs | **Rules** / `POST /api/v1/iocs/manual` | Analyst IOCs, treated like feed IOCs. |
 | `ioc_known_good_enabled` | true | Lowers hash-IOC hits on package-verified or OS binaries. |

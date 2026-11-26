@@ -26,7 +26,7 @@ export default function NetworkProbes() {
   return (
     <div>
       <PageHeader title="Network" state="info" stateText="Beta"
-        sub="Network probes collect syslog, NetFlow and SNMP from network devices. Network monitoring is under development and not yet a supported feature."
+        sub="Syslog, NetFlow and SNMP from network devices. In development, not yet supported."
         actions={<>
           <button className="ow-btn" onClick={load}><RefreshCw size={13} className={loading ? 'animate-spin' : ''}/>Refresh</button>
           <button className="ow-btn primary" onClick={() => navigate('/agent-builder')}>Deploy probe</button>
@@ -37,9 +37,7 @@ export default function NetworkProbes() {
         <div className="flex items-start gap-3">
           <Radio size={14} className="text-cyan-400 mt-0.5 shrink-0"/>
           <div className="text-[11px] text-cyan-300/80 leading-relaxed">
-            Network probes sit inside your network, receive syslog from all devices (port 514),
-            NetFlow from routers (port 2055), and poll SNMP for device health. All analysis runs locally -
-            only alerts and summaries are sent to this management server.
+            Syslog (514), NetFlow (2055) and SNMP, analysed on the probe. Only alerts and summaries reach this server.
           </div>
         </div>
       </div>
@@ -57,8 +55,7 @@ export default function NetworkProbes() {
           <div className="text-center">
             <div className="text-sm font-medium text-siem-text mb-1">No network probes deployed</div>
             <div className="text-xs text-siem-muted max-w-sm text-center mb-4">
-              Deploy a probe to any Linux host on each network segment you want to monitor.
-              One probe per site is enough.
+              One probe per site, on any Linux host.
             </div>
             <button onClick={() => navigate('/agent-builder')}
               className="text-xs bg-cyan-600 hover:bg-cyan-500 text-white px-4 py-2 rounded-lg transition-colors">

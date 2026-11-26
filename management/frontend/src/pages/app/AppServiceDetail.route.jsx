@@ -246,7 +246,7 @@ export default function AppServiceDetail() {
             {red.data?.percentile_method && red.data.percentile_method !== 'sketch' && (
               <div className="t3" style={{ fontSize: 12 }}>Percentiles are estimated from a coarse histogram (capped at 10 s) because {red.data.percentile_method === 'mixed' ? 'some agents in this range are older and do not send latency sketches' : 'this range is longer than 7 days or no agent sends latency sketches yet'}. Update agents for exact percentiles with no ceiling.</div>)}
             <StateBlock loading={red.loading && !red.data} error={red.error} empty={!red.loading && series.length === 0}
-              emptyText="No request statistics in this range. They appear once this service sends OpenTelemetry server spans.">
+              emptyText="No request statistics in this range.">
               <AppREDCharts series={series} deploys={deploys} step={red.data?.step_seconds || 60} />
             </StateBlock>
 

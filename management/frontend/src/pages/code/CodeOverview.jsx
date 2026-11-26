@@ -107,7 +107,7 @@ export function buildRepos(findings, repoList, connectors) {
 }
 
 const SEV_ORDER = ['critical', 'high', 'medium', 'low', 'info', 'clean']
-const sevState = (n) => n >= 5 ? 'crit' : n >= 4 ? 'warn' : n >= 3 ? 'info' : n >= 1 ? 'none' : 'ok'
+const sevState = (n) => n >= 5 ? 'crit' : n >= 4 ? 'high' : n >= 3 ? 'med' : n >= 2 ? 'low' : n >= 1 ? 'none' : 'ok'
 
 export function FilterBar({ value, onChange, placeholder, count, total, children }) {
   return (

@@ -58,7 +58,7 @@ export default function Prevention() {
       <Section title="Indicator types" sub="What agents match and what they do on a match"
         actions={<button className="ow-btn quiet" onClick={load}><RefreshCw size={13}/>Refresh</button>}>
         <p className="t2" style={{ margin: '0 0 12px', fontSize: 13 }}>
-          Audit raises an alert and changes nothing; enforce also acts. Start in audit, then enforce on a canary tag before the whole fleet.
+          Audit alerts only; enforce also blocks.
         </p>
         <div style={{ display: 'grid', gap: 10 }}>
           {TYPES.map(([k, label, how]) => (

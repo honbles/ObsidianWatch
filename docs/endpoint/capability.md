@@ -318,6 +318,15 @@ Implemented in: `events_search.go`, `store/event_query.go`, `graph_alert.go`, `g
 - **Endpoint threat graph** (host page): host, process, DNS, IP, file, registry and logon nodes for one host.
 - **Live process list** (host page, admin): read from the host through the tunnel.
 - **Prevalence**: how many hosts ran a binary and when it was first seen.
+- **Insights** (**Detect → Insights**), one tab each:
+  - *Incidents*: open alerts on the same host within 2 hours of each other become one incident with a risk score (0–100), highest first. Set a status (open, investigating, resolved, false positive) and an owner per row; the filter shows resolved, false-positive or all incidents. Grouping is by time, not by attack chain, so check that grouped alerts belong together.
+  - *Inventory*: which hosts run a package or service (name and optional version prefix, e.g. `openssl` `1.1.1`), from each host's latest vulnerability scan (at agent start, then every 5 days). Hosts that never scanned do not appear.
+  - *Code findings*: SAST, code scan and repository posture findings from the code connectors in one list, duplicates merged, with minimum-severity and scanner filters.
+  - *Log sources*: events per collector in the last hour and 24 hours; a stream that normally sends but has stopped is marked silent. Only the last 24 hours are read, so a stream silent for longer drops off the list instead of being flagged.
+  - *Coverage*: enabled rules mapped to MITRE ATT&CK per platform, with known data gaps. Covered means a rule exists, not that it has been tested or has fired.
+  - *Prevalence*: hosts that ran a hash, path or process name, and when it was first seen. On a small fleet "rare" means little.
+  - *Identity*: one person's activity across endpoints, cloud and code in one timeline. Domain and e-mail parts are ignored (`DOMAIN\alice` and `alice@corp` match); add aliases to join different names. Generic names such as `admin` or `root` merge everyone who uses them.
+  - *Scheduled searches*: a search saved on the Events page, run on a schedule (interval, look-back, match threshold, alert severity). Only the person who saved it can schedule it; a search that keeps matching alerts once per run.
 - **Host page in Fleet**: inventory, online state, vulnerabilities (OSV for Debian, Ubuntu and Alpine; NVD fallback), endpoint compliance (Windows 22 checks, macOS 9, Linux 10; unknown values never show as a pass), locations, tamper panel.
 
 ---

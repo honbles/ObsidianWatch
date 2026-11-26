@@ -18,7 +18,7 @@ Also:
 - [endpoint/prevention.md](endpoint/prevention.md): IP, hash and domain prevention from threat intelligence (audit and enforce).
 - [application/node-security-guide.md](application/node-security-guide.md): the long Node.js walkthrough with helper files.
 - [cloud/gcp/main.tf](cloud/gcp/main.tf): Terraform for the read-only GCP collector account.
-- [development/](development/): UI design language and the device-management design notes.
+- [development/](development/): brand ([brand.md](development/brand.md)), UI design language and themes ([design-language.md](development/design-language.md)), and the device-management design notes.
 - [known-issues.md](known-issues.md): defects found while writing these docs, not yet fixed.
 
 The docs describe the code as it is.

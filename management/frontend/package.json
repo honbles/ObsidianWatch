@@ -4,7 +4,8 @@
   "private": true,
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "node scripts/check-colours.mjs && vite build",
+    "check:colours": "node scripts/check-colours.mjs",
     "preview": "vite preview"
   },
   "dependencies": {

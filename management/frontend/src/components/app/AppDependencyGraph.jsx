@@ -2,7 +2,7 @@ import { useMemo } from 'react'
 import { ForceGraph, DataTable } from '../shared'
 import { appInt, appRel } from './appFormat'
 
-const KIND_COLOR = { service: '#60a5fa', database: '#a78bfa', queue: '#2dd4bf', external: '#f59e0b' }
+const KIND_COLOR = { service: 'var(--info)', database: 'var(--violet)', queue: 'var(--teal)', external: 'var(--warn)' }
 
 // One-hop dependency map of a service plus a table. New edges (first seen inside the
 // range, after the service's own baseline) are highlighted.
@@ -20,7 +20,7 @@ export default function AppDependencyGraph({ service, edges, loading, error }) {
     }
     return { nodes: ns, links: ls }
   }, [edges, service, centre])
-  const colorFor = (n) => (n.kind === 'self' ? '#38bdf8' : n.isNew ? '#f97316' : KIND_COLOR[n.kind] || '#94a3b8')
+  const colorFor = (n) => (n.kind === 'self' ? 'var(--info)' : n.isNew ? 'var(--high)' : KIND_COLOR[n.kind] || 'var(--t2)')
 
   const cols = [
     { key: 'dst_kind', label: 'Kind', width: 90 },
@@ -38,8 +38,8 @@ export default function AppDependencyGraph({ service, edges, loading, error }) {
           <ForceGraph nodes={nodes} links={links} width={760} height={340} colorFor={colorFor} />
           <div className="flex gap-3 text-[10px] text-siem-muted px-2 pb-1 flex-wrap">
             {Object.entries(KIND_COLOR).map(([k, c]) => <span key={k}><span style={{ color: c }}>●</span> {k}</span>)}
-            <span><span style={{ color: '#f97316' }}>●</span> new in range</span>
-            <span><span style={{ color: '#ef4444' }}>-</span> error volume above 5%</span>
+            <span><span style={{ color: 'var(--high)' }}>●</span> new in range</span>
+            <span><span style={{ color: 'var(--crit)' }}>-</span> error volume above 5%</span>
           </div>
         </div>
       )}

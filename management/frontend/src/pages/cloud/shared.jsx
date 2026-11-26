@@ -43,25 +43,25 @@ export const PROVIDERS = {
 
 export const PROVIDER_COLORS = { aws: 'text-orange-400', azure: 'text-blue-400', gcp: 'text-green-400' }
 
-export const SEV_COLOR = { critical: '#f87171', high: '#fb923c', medium: '#fbbf24', low: '#38bdf8', info: '#94a3b8' }
+export const SEV_COLOR = { critical: 'var(--crit)', high: 'var(--high)', medium: 'var(--warn)', low: 'var(--info)', info: 'var(--t2)' }
 
-export const SEV_BG    = { critical: 'rgba(248,113,113,0.08)', high: 'rgba(249,115,22,0.08)', medium: 'rgba(251,191,36,0.08)', low: 'rgba(56,189,248,0.08)', info: 'rgba(148,163,184,0.06)' }
+export const SEV_BG    = { critical: 'rgb(var(--crit-c) / 0.08)', high: 'rgb(var(--high-c) / 0.08)', medium: 'rgb(var(--warn-c) / 0.08)', low: 'rgb(var(--info-c) / 0.08)', info: 'rgb(var(--t2-c) / 0.06)' }
 
-export const SEV_BORDER= { critical: 'rgba(248,113,113,0.25)', high: 'rgba(249,115,22,0.25)', medium: 'rgba(251,191,36,0.25)', low: 'rgba(56,189,248,0.25)', info: 'rgba(148,163,184,0.15)' }
+export const SEV_BORDER= { critical: 'rgb(var(--crit-c) / 0.25)', high: 'rgb(var(--high-c) / 0.25)', medium: 'rgb(var(--warn-c) / 0.25)', low: 'rgb(var(--info-c) / 0.25)', info: 'rgb(var(--t2-c) / 0.15)' }
 
 // Category → icon + label mapping
 export const CAT_META = {
-  network:       { icon: Wifi,      label: 'Network',          color: '#f87171' },
-  iam:           { icon: Lock,      label: 'Identity & Access', color: '#c084fc' },
-  storage:       { icon: HardDrive, label: 'Storage',          color: '#38bdf8' },
-  compute:       { icon: Server,    label: 'Compute',          color: '#fb923c' },
-  sql:           { icon: Database,  label: 'Database',         color: '#34d399' },
-  logging:       { icon: FileText,  label: 'Logging',          color: '#fbbf24' },
-  kms:           { icon: Key,       label: 'KMS / Crypto',     color: '#a78bfa' },
-  threat:        { icon: Zap,       label: 'Threat Detection', color: '#f87171' },
-  vulnerability: { icon: AlertTriangle, label: 'Vulnerability', color: '#fb923c' },
-  security:      { icon: Shield,    label: 'Security',         color: '#94a3b8' },
-  default:       { icon: Shield,    label: 'Security',         color: '#94a3b8' },
+  network:       { icon: Wifi,      label: 'Network',          color: 'var(--crit)' },
+  iam:           { icon: Lock,      label: 'Identity & Access', color: 'var(--violet)' },
+  storage:       { icon: HardDrive, label: 'Storage',          color: 'var(--info)' },
+  compute:       { icon: Server,    label: 'Compute',          color: 'var(--high)' },
+  sql:           { icon: Database,  label: 'Database',         color: 'var(--ok)' },
+  logging:       { icon: FileText,  label: 'Logging',          color: 'var(--warn)' },
+  kms:           { icon: Key,       label: 'KMS / Crypto',     color: 'var(--violet)' },
+  threat:        { icon: Zap,       label: 'Threat Detection', color: 'var(--crit)' },
+  vulnerability: { icon: AlertTriangle, label: 'Vulnerability', color: 'var(--high)' },
+  security:      { icon: Shield,    label: 'Security',         color: 'var(--t2)' },
+  default:       { icon: Shield,    label: 'Security',         color: 'var(--t2)' },
 }
 
 export const CIS_MAPPING = {
@@ -110,11 +110,11 @@ export function riskScore(cspm) {
 }
 
 export function riskLabel(score) {
-  if (score >= 80) return { label: 'Critical Risk',   color: '#f87171' }
-  if (score >= 60) return { label: 'High Risk',       color: '#fb923c' }
-  if (score >= 40) return { label: 'Medium Risk',     color: '#fbbf24' }
-  if (score >= 20) return { label: 'Low Risk',        color: '#38bdf8' }
-  return               { label: 'Minimal Risk',      color: '#34d399' }
+  if (score >= 80) return { label: 'Critical Risk',   color: 'var(--crit)' }
+  if (score >= 60) return { label: 'High Risk',       color: 'var(--high)' }
+  if (score >= 40) return { label: 'Medium Risk',     color: 'var(--warn)' }
+  if (score >= 20) return { label: 'Low Risk',        color: 'var(--info)' }
+  return               { label: 'Minimal Risk',      color: 'var(--ok)' }
 }
 
 // ── CloudEventsAlerts - clickable event + alert rows with slide-out panels ────
@@ -122,12 +122,12 @@ export const SEV_LABELS = ['', 'Info', 'Low', 'Medium', 'High', 'Critical']
 
 export const SEV_COLORS_CLS = ['', 'text-siem-muted', 'text-blue-400', 'text-yellow-400', 'text-orange-400', 'text-red-400']
 
-export const RISK_COLORS_BLAST = { critical:'#f87171', high:'#fb923c', medium:'#fbbf24', low:'#60a5fa', none:'#475569' }
+export const RISK_COLORS_BLAST = { critical:'var(--crit)', high:'var(--high)', medium:'var(--warn)', low:'var(--info)', none:'var(--t3)' }
 
 export const NODE_COLORS_BLAST  = {
-  vm:'#60a5fa', virtual_machine:'#60a5fa', service_account:'#a78bfa', storage_bucket:'#fbbf24',
-  storage_account:'#fbbf24', cloud_sql:'#34d399', sql_server:'#34d399', internet:'#f87171',
-  network:'#94a3b8', firewall:'#fb923c', iam_role:'#e879f9', secret:'#2dd4bf',
-  key_vault:'#2dd4bf', user:'#f9a8d4', principal:'#f9a8d4', default:'#64748b'
+  vm:'var(--info)', virtual_machine:'var(--info)', service_account:'var(--violet)', storage_bucket:'var(--warn)',
+  storage_account:'var(--warn)', cloud_sql:'var(--ok)', sql_server:'var(--ok)', internet:'var(--crit)',
+  network:'var(--t2)', firewall:'var(--high)', iam_role:'var(--magenta)', secret:'var(--teal)',
+  key_vault:'var(--teal)', user:'var(--magenta)', principal:'var(--magenta)', default:'var(--t3)'
 }
 

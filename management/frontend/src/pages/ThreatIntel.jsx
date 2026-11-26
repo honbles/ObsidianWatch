@@ -8,27 +8,28 @@ import { format, formatDistanceToNow } from 'date-fns'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import api from '../api/client'
 import { SeverityBadge } from '../components/SeverityBadge'
+import { tint } from '../utils/colors'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-const SEV_DOT = { 5:'#ef4444', 4:'#f97316', 3:'#eab308', 2:'#3b82f6', 1:'#475569' }
+const SEV_DOT = { 5:'var(--crit)', 4:'var(--high)', 3:'var(--warn)', 2:'var(--info)', 1:'var(--t3)' }
 const SEV_LABEL = { 5:'Critical', 4:'High', 3:'Medium', 2:'Low', 1:'Info' }
 
 const TYPE_COLOR = {
-  registry:'#a855f7', dns:'#06b6d4', network:'#3b82f6',
-  process:'#8b949e', file:'#eab308', logon:'#22c55e',
-  'cloud.cloudtrail':'#f97316', 'cloud.guardduty':'#ef4444',
-  'cloud.azure_activity':'#3b82f6', 'cloud.gcp_audit':'#22c55e',
+  registry:'var(--violet)', dns:'var(--cyan)', network:'var(--info)',
+  process:'var(--t2)', file:'var(--warn)', logon:'var(--ok)',
+  'cloud.cloudtrail':'var(--high)', 'cloud.guardduty':'var(--crit)',
+  'cloud.azure_activity':'var(--info)', 'cloud.gcp_audit':'var(--ok)',
 }
 
 const CAT_COLOR = {
-  malware:    '#ef4444',
-  botnet_cc:  '#ef4444',
-  phishing:   '#f97316',
-  malicious:  '#f97316',
-  spam:       '#eab308',
-  abuse:      '#eab308',
-  clean:      '#22c55e',
+  malware:    'var(--crit)',
+  botnet_cc:  'var(--crit)',
+  phishing:   'var(--high)',
+  malicious:  'var(--high)',
+  spam:       'var(--warn)',
+  abuse:      'var(--warn)',
+  clean:      'var(--ok)',
 }
 
 // ── Sub-components ────────────────────────────────────────────────────────────
@@ -73,7 +74,7 @@ function RankBar({ rows, keyField, valueField, colorFn, onDrilldown, selectedKey
         const count = Number(row[valueField])
         const pct = Math.round((count / max) * 100)
         const isSel = selectedKey === label
-        const color = colorFn?.(row) || '#00d4ff'
+        const color = colorFn?.(row) || 'var(--acc)'
         return (
           <div key={i} onClick={() => onDrilldown?.(row)}
             className={`rounded-lg px-2 py-1.5 cursor-pointer transition-all ${
@@ -120,7 +121,7 @@ function Section({ title, icon: Icon, color = 'text-siem-accent', children, coun
 
 // Alert row in Alerts section
 function AlertRow({ alert }) {
-  const sevColor = SEV_DOT[alert.severity] || '#475569'
+  const sevColor = SEV_DOT[alert.severity] || 'var(--t3)'
   return (
     <div className="flex items-start gap-3 bg-siem-bg/60 rounded-lg px-3 py-2.5 text-[10px]">
       <div className="w-1.5 h-1.5 rounded-full mt-1.5 shrink-0" style={{ background: sevColor }} />
@@ -139,7 +140,7 @@ function AlertRow({ alert }) {
 
 // IOC match row
 function IOCRow({ ioc }) {
-  const sevColor = SEV_DOT[ioc.severity] || '#ef4444'
+  const sevColor = SEV_DOT[ioc.severity] || 'var(--crit)'
   return (
     <div className="flex items-start gap-3 bg-red-950/20 border border-red-900/30 rounded-lg px-3 py-2.5 text-[10px]">
       <AlertTriangle size={12} className="text-red-400 mt-0.5 shrink-0" />
@@ -150,7 +151,7 @@ function IOCRow({ ioc }) {
           </span>
           {ioc.dst_port > 0 && <span className="text-siem-muted">:{ioc.dst_port}</span>}
           <span className="ml-auto text-[9px] px-1.5 py-0.5 rounded-full font-bold"
-            style={{ background: sevColor + '30', color: sevColor }}>
+            style={{ background: tint(sevColor, 19), color: sevColor }}>
             {SEV_LABEL[ioc.severity] || 'High'}
           </span>
         </div>
@@ -169,7 +170,7 @@ function IOCRow({ ioc }) {
 function DNSCatRow({ entry }) {
   const cats = (entry.categories || '').split(',').filter(Boolean)
   const maxCat = cats.find(c => CAT_COLOR[c]) || cats[0]
-  const catColor = CAT_COLOR[maxCat] || '#f97316'
+  const catColor = CAT_COLOR[maxCat] || 'var(--high)'
   return (
     <div className="flex items-center gap-3 bg-siem-bg/60 rounded-lg px-3 py-2 text-[10px]">
       <div className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: catColor }} />
@@ -177,7 +178,7 @@ function DNSCatRow({ entry }) {
       <div className="flex gap-1 flex-wrap justify-end">
         {cats.map(cat => (
           <span key={cat} className="px-1.5 py-0.5 rounded-full text-[8px] font-bold uppercase"
-            style={{ background: (CAT_COLOR[cat] || '#f97316') + '25', color: CAT_COLOR[cat] || '#f97316' }}>
+            style={{ background: tint(CAT_COLOR[cat] || 'var(--high)', 15), color: CAT_COLOR[cat] || 'var(--high)' }}>
             {cat}
           </span>
         ))}
@@ -189,7 +190,7 @@ function DNSCatRow({ entry }) {
 
 // Flagged IP row
 function FlaggedIPRow({ entry }) {
-  const sevColor = SEV_DOT[entry.ioc_severity] || '#ef4444'
+  const sevColor = SEV_DOT[entry.ioc_severity] || 'var(--crit)'
   return (
     <div className="flex items-center gap-3 bg-red-950/20 border border-red-900/30 rounded-lg px-3 py-2 text-[10px]">
       <AlertTriangle size={10} className="text-red-400 shrink-0" />
@@ -198,7 +199,7 @@ function FlaggedIPRow({ entry }) {
       </span>
       {entry.malware && <span className="text-orange-400 truncate max-w-[100px]">{entry.malware}</span>}
       <span className="text-[9px] px-1.5 py-0.5 rounded-full font-bold shrink-0"
-        style={{ background: sevColor + '30', color: sevColor }}>
+        style={{ background: tint(sevColor, 19), color: sevColor }}>
         {entry.ioc_source?.toUpperCase()}
       </span>
       <span className="text-siem-muted shrink-0">{Number(entry.connection_count).toLocaleString()}×</span>
@@ -275,7 +276,7 @@ export default function ThreatIntel() {
     (data?.event_types || []).map(e => ({
       name: e.event_type,
       count: Number(e.count),
-      color: TYPE_COLOR[e.event_type] || '#8b949e',
+      color: TYPE_COLOR[e.event_type] || 'var(--t2)',
     })),
     [data]
   )
@@ -482,14 +483,14 @@ export default function ThreatIntel() {
                   <AreaChart data={timeline}>
                     <defs>
                       <linearGradient id="tg" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%"  stopColor="#00d4ff" stopOpacity={0.3} />
-                        <stop offset="95%" stopColor="#00d4ff" stopOpacity={0} />
+                        <stop offset="5%"  stopColor="var(--acc)" stopOpacity={0.3} />
+                        <stop offset="95%" stopColor="var(--acc)" stopOpacity={0} />
                       </linearGradient>
                     </defs>
-                    <XAxis dataKey="time" tick={{ fontSize: 9, fill: '#8b949e' }} interval="preserveStartEnd" />
-                    <YAxis tick={{ fontSize: 9, fill: '#8b949e' }} width={30} />
-                    <Tooltip contentStyle={{ background:'#161b22', border:'1px solid #30363d', borderRadius:6, fontSize:10 }} />
-                    <Area type="monotone" dataKey="count" stroke="#00d4ff" fill="url(#tg)" strokeWidth={1.5} />
+                    <XAxis dataKey="time" tick={{ fontSize: 9, fill: 'var(--t2)' }} interval="preserveStartEnd" />
+                    <YAxis tick={{ fontSize: 9, fill: 'var(--t2)' }} width={30} />
+                    <Tooltip contentStyle={{ background:'var(--s2)', border:'1px solid var(--line2)', borderRadius:6, fontSize:10 }} />
+                    <Area type="monotone" dataKey="count" stroke="var(--acc)" fill="url(#tg)" strokeWidth={1.5} />
                   </AreaChart>
                 </ResponsiveContainer>
               </div>
@@ -500,9 +501,9 @@ export default function ThreatIntel() {
                 </div>
                 <ResponsiveContainer width="100%" height={140}>
                   <BarChart data={eventTypes} layout="vertical">
-                    <XAxis type="number" tick={{ fontSize: 9, fill: '#8b949e' }} />
-                    <YAxis dataKey="name" type="category" width={55} tick={{ fontSize: 9, fill: '#8b949e' }} />
-                    <Tooltip contentStyle={{ background:'#161b22', border:'1px solid #30363d', borderRadius:6, fontSize:10 }} />
+                    <XAxis type="number" tick={{ fontSize: 9, fill: 'var(--t2)' }} />
+                    <YAxis dataKey="name" type="category" width={55} tick={{ fontSize: 9, fill: 'var(--t2)' }} />
+                    <Tooltip contentStyle={{ background:'var(--s2)', border:'1px solid var(--line2)', borderRadius:6, fontSize:10 }} />
                     <Bar dataKey="count" radius={[0, 3, 3, 0]}>
                       {eventTypes.map((e, i) => <Cell key={i} fill={e.color} />)}
                     </Bar>
@@ -524,7 +525,7 @@ export default function ThreatIntel() {
                       onClick={() => goToEvents({ host: selected.hostname, severity: '3', event_type: e.event_type })}
                       className="flex items-start gap-3 bg-siem-bg/60 rounded-lg px-3 py-2 text-[10px] cursor-pointer hover:bg-white/[0.03]">
                       <div className="w-1.5 h-1.5 rounded-full mt-1 shrink-0"
-                        style={{ background: SEV_DOT[e.severity] || '#475569' }} />
+                        style={{ background: SEV_DOT[e.severity] || 'var(--t3)' }} />
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2">
                           <span className="font-mono text-siem-text">{e.event_type}</span>
@@ -559,8 +560,8 @@ export default function ThreatIntel() {
                   valueField="count"
                   colorFn={r => {
                     const flagged = dnsCatFlags.find(f => f.domain === r.domain)
-                    if (flagged) return CAT_COLOR[flagged.categories?.split(',')[0]] || '#f97316'
-                    return '#06b6d4'
+                    if (flagged) return CAT_COLOR[flagged.categories?.split(',')[0]] || 'var(--high)'
+                    return 'var(--cyan)'
                   }}
                   onDrilldown={r => setDrilldown({ type: 'domain', value: r.domain })}
                   selectedKey={drilldown?.type === 'domain' ? drilldown.value : null}
@@ -577,7 +578,7 @@ export default function ThreatIntel() {
                   valueField="count"
                   colorFn={r => {
                     const flagged = flaggedIPs.find(f => f.dst_ip === r.dst_ip)
-                    return flagged ? '#ef4444' : '#3b82f6'
+                    return flagged ? 'var(--crit)' : 'var(--info)'
                   }}
                   onDrilldown={r => setDrilldown({ type: 'ip', value: r.dst_ip, port: r.dst_port })}
                   selectedKey={drilldown?.type === 'ip' ? `${drilldown.value}:${drilldown.port}` : null}
@@ -590,7 +591,7 @@ export default function ThreatIntel() {
                   rows={data.top_processes}
                   keyField="process_name"
                   valueField="count"
-                  colorFn={r => SEV_DOT[r.max_severity] || '#a855f7'}
+                  colorFn={r => SEV_DOT[r.max_severity] || 'var(--violet)'}
                   onDrilldown={r => setDrilldown({ type: 'process', value: r.process_name })}
                   selectedKey={drilldown?.type === 'process' ? drilldown.value : null}
                 />
@@ -602,7 +603,7 @@ export default function ThreatIntel() {
                   rows={data.top_users}
                   keyField="user_name"
                   valueField="count"
-                  colorFn={() => '#22c55e'}
+                  colorFn={() => 'var(--ok)'}
                   onDrilldown={r => setDrilldown({ type: 'user', value: r.user_name })}
                   selectedKey={drilldown?.type === 'user' ? drilldown.value : null}
                 />
@@ -614,7 +615,7 @@ export default function ThreatIntel() {
                   rows={(data.top_registry || []).filter(r => r.reg_key)}
                   keyField="reg_key"
                   valueField="count"
-                  colorFn={() => '#f97316'}
+                  colorFn={() => 'var(--high)'}
                   onDrilldown={r => setDrilldown({ type: 'reg', value: r.reg_key })}
                   selectedKey={drilldown?.type === 'reg' ? drilldown.value : null}
                 />
@@ -626,7 +627,7 @@ export default function ThreatIntel() {
                   rows={(data.top_files || []).filter(r => r.file_path)}
                   keyField="file_path"
                   valueField="count"
-                  colorFn={() => '#eab308'}
+                  colorFn={() => 'var(--warn)'}
                   onDrilldown={r => setDrilldown({ type: 'file', value: r.file_path })}
                   selectedKey={drilldown?.type === 'file' ? drilldown.value : null}
                 />

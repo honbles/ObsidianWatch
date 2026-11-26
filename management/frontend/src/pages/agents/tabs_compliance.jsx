@@ -48,8 +48,7 @@ export function TabCompliance({ agent }) {
       {state === 'error' && <div className="text-sm text-red-400">{err}</div>}
       {state === 'waiting' && (
         <div className="text-sm text-siem-muted bg-siem-surface border border-siem-border rounded-xl p-4">
-          Waiting for the first scan from this host. The agent runs a scan about 30 seconds after it starts, then every 5 days.
-          If this host was installed before the compliance collector existed, rebuild the agent in Agent Builder and reinstall it.
+          Waiting for the first scan (30 seconds after the agent starts, then every 5 days).
         </div>
       )}
       {state === 'ok' && (<>
@@ -61,7 +60,7 @@ export function TabCompliance({ agent }) {
         </div>
         {!hasPosture && (
           <div className="mb-3 text-xs text-amber-400 bg-siem-surface border border-siem-border rounded-xl p-3">
-            This scan has no posture results - the agent on this host is an older build. Rebuild it in Agent Builder and reinstall to get the full compliance checks.
+            No posture results: this agent is an older build. Rebuild and reinstall it.
           </div>
         )}
         <div className="bg-siem-surface border border-siem-border rounded-xl">

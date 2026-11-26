@@ -11,7 +11,7 @@ import { format, formatDistanceToNow } from 'date-fns'
 import api from '../api/client'
 import { SeverityBadge } from './SeverityBadge'
 
-const SEV_COLOR = { 5:'#ef4444', 4:'#f97316', 3:'#eab308', 2:'#3b82f6', 1:'#475569' }
+const SEV_COLOR = { 5:'var(--crit)', 4:'var(--high)', 3:'var(--warn)', 2:'var(--info)', 1:'var(--t3)' }
 const SEV_LABEL = { 5:'Critical', 4:'High', 3:'Medium', 2:'Low', 1:'Info' }
 
 function StatusBadge({ status }) {
@@ -30,15 +30,15 @@ function StatusBadge({ status }) {
 
 // ── Risk score ring ───────────────────────────────────────────────────────────
 function RiskRing({ score, fp }) {
-  const riskColor = score >= 80 ? '#ef4444' : score >= 60 ? '#f97316' : score >= 40 ? '#eab308' : '#3b82f6'
-  const fpColor   = fp >= 60 ? '#3fb950' : fp >= 30 ? '#eab308' : '#ef4444'
+  const riskColor = score >= 80 ? 'var(--crit)' : score >= 60 ? 'var(--high)' : score >= 40 ? 'var(--warn)' : 'var(--info)'
+  const fpColor   = fp >= 60 ? 'var(--ok)' : fp >= 30 ? 'var(--warn)' : 'var(--crit)'
   return (
     <div className="flex items-center gap-5">
       {/* Risk score */}
       <div className="flex flex-col items-center gap-1">
         <div className="relative w-16 h-16">
           <svg viewBox="0 0 64 64" className="w-full h-full -rotate-90">
-            <circle cx="32" cy="32" r="26" fill="none" stroke="#21262d" strokeWidth="6"/>
+            <circle cx="32" cy="32" r="26" fill="none" stroke="var(--line)" strokeWidth="6"/>
             <circle cx="32" cy="32" r="26" fill="none" stroke={riskColor} strokeWidth="6"
               strokeDasharray={`${2 * Math.PI * 26}`}
               strokeDashoffset={`${2 * Math.PI * 26 * (1 - score / 100)}`}
@@ -55,7 +55,7 @@ function RiskRing({ score, fp }) {
       <div className="flex flex-col items-center gap-1">
         <div className="relative w-16 h-16">
           <svg viewBox="0 0 64 64" className="w-full h-full -rotate-90">
-            <circle cx="32" cy="32" r="26" fill="none" stroke="#21262d" strokeWidth="6"/>
+            <circle cx="32" cy="32" r="26" fill="none" stroke="var(--line)" strokeWidth="6"/>
             <circle cx="32" cy="32" r="26" fill="none" stroke={fpColor} strokeWidth="6"
               strokeDasharray={`${2 * Math.PI * 26}`}
               strokeDashoffset={`${2 * Math.PI * 26 * (1 - fp / 100)}`}
@@ -79,16 +79,14 @@ function VerdictBadge({ verdict }) {
     LIKELY_FP:    'bg-yellow-950/30 border-yellow-700 text-yellow-300',
     FALSE_POSITIVE:'bg-emerald-950/30 border-emerald-700 text-emerald-300',
   }
-  const icons = {
-    THREAT: '🔴', SUSPICIOUS: '🟠', LIKELY_FP: '🟡', FALSE_POSITIVE: '🟢'
-  }
+  const shapes = { THREAT: 'crit', SUSPICIOUS: 'high', LIKELY_FP: 'warn', FALSE_POSITIVE: 'ok' }
   const labels = {
     THREAT: 'Confirmed Threat', SUSPICIOUS: 'Suspicious',
     LIKELY_FP: 'Likely False Positive', FALSE_POSITIVE: 'False Positive'
   }
   return (
     <span className={`inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1 rounded-full border ${styles[verdict] || styles.SUSPICIOUS}`}>
-      {icons[verdict] || '🟠'} {labels[verdict] || verdict}
+      <span className={`ow-dot ${shapes[verdict] || 'high'}`} aria-hidden="true"/> {labels[verdict] || verdict}
     </span>
   )
 }

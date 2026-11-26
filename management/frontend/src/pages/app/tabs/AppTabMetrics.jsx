@@ -41,7 +41,7 @@ export default function AppTabMetrics({ service, range }) {
       <div className="card">
         {error ? <div className="p-4 text-xs text-red-300">{String(error)}</div>
           : loading ? <div className="p-4 text-xs text-siem-muted">Loading...</div>
-          : rows.length === 0 ? <div className="p-4 text-xs text-siem-muted">No runtime metrics in this range. Turn on the OpenTelemetry metrics exporter in the application (see the setup guide); only runtime and connection-pool metrics are kept.</div>
+          : rows.length === 0 ? <div className="p-4 text-xs text-siem-muted">No runtime metrics in this range.</div>
           : (
             <table className="w-full text-xs">
               <thead><tr className="text-siem-muted text-left"><th className="px-3 py-2">Metric</th><th>Detail</th><th className="text-right">Latest</th><th className="text-right">Average</th><th className="text-right">Max</th><th className="text-right px-3">Instances</th></tr></thead>
@@ -59,7 +59,7 @@ export default function AppTabMetrics({ service, range }) {
               </tbody>
             </table>)}
       </div>
-      <div className="text-[11px] text-siem-muted">Only an allowlist of runtime and pool metrics is accepted (CPU, memory, event loop, garbage collection, connection pools). Attributes are limited to states and pool names; nothing else leaves the host. Rule APM-O07 alerts when an instance stays saturated.</div>
+      <div className="text-[11px] text-siem-muted">Only runtime and connection-pool metrics are accepted.</div>
     </div>
   )
 }

@@ -50,7 +50,7 @@ export default function AuditLog() {
   const tone = (a) => /^(delete|remove|bulk_close|disable)/.test(a) ? 'var(--crit)' : /^(create|add|enable)/.test(a) ? 'var(--ok)' : /^(update|edit|set|assign|bulk)/.test(a) ? 'var(--warn)' : 'var(--t2)'
   return (
     <div>
-      <PageHeader title="Audit log" sub={`${total.toLocaleString()} recorded actions by people and integrations. Facets and filter apply to the ${entries.length} entries on this page.`}
+      <PageHeader title="Audit log" sub={`${total.toLocaleString()} actions. Filters apply to the ${entries.length} on this page.`}
         actions={<>
           <button className="ow-btn" disabled={!rows.length} onClick={() => downloadCSV(`audit-${new Date().toISOString().slice(0, 10)}.csv`, ['time', 'user', 'action', 'target', 'detail', 'ip'], rows.map(e => [e.created_at, e.username, e.action, e.target, e.detail, e.ip_address]))}><Download size={13}/>Export page</button>
           <button className="ow-btn" onClick={() => load(page)}><RefreshCw size={13}/>Refresh</button>

@@ -937,7 +937,7 @@ function SavedSearchPanel({ onSelect, onClose }) {
                 }`}>
                 <Icon size={10}/>
                 {group}
-                {isCloud && <span className="ml-auto text-[8px] text-orange-400/60">☁</span>}
+                {isCloud && <Cloud size={10} className="ml-auto text-orange-400/60"/>}
               </button>
             )
           })}

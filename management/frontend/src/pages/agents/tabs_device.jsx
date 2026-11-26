@@ -8,6 +8,7 @@ import api, { getWSTicket } from '../../api/client'
 import AgentMap from '../../components/AgentMap'
 import { ProcessTree } from '../../components/ProcessList.jsx'
 import { runAction, isAdminUser } from '../../components/ResponseActions.jsx'
+import { TERMINAL_THEME, TERMINAL_FONT } from '../../utils/brand'
 
 // CPU% from older agents could be a raw tick count (trillions); treat anything
 // outside 0-6400 as unknown and cap the rest at 100 so the chart stays honest.
@@ -44,7 +45,7 @@ export function TabDevice({ agent }) {
 
   const MetricBar = ({ label, value, total, unit='%', warnAt=60, critAt=80, barColor }) => {
     const pct = total ? (value / total * 100) : value
-    const bg  = barColor || (pct > critAt ? '#ef4444' : pct > warnAt ? '#f97316' : '#22c55e')
+    const bg  = barColor || (pct > critAt ? 'var(--crit)' : pct > warnAt ? 'var(--high)' : 'var(--ok)')
     const display = total
       ? `${Number(value).toFixed(1)} / ${Number(total).toFixed(0)} ${unit}`
       : `${Number(value).toFixed(1)}${unit}`
@@ -78,8 +79,8 @@ export function TabDevice({ agent }) {
                   <stop offset="95%" stopColor={color} stopOpacity={0}/>
                 </linearGradient>
               </defs>
-              <XAxis dataKey="t" tick={{ fontSize: 8, fill: '#64748b' }} interval="preserveStartEnd" tickLine={false} axisLine={false}/>
-              <Tooltip contentStyle={{ background: '#0f1923', border: '1px solid #1e3a4a', borderRadius: 6, fontSize: 10 }} formatter={v => [`${Number(v).toFixed(1)}${unit}`, label]}/>
+              <XAxis dataKey="t" tick={{ fontSize: 8, fill: 'var(--t3)' }} interval="preserveStartEnd" tickLine={false} axisLine={false}/>
+              <Tooltip contentStyle={{ background: 'var(--s2)', border: '1px solid var(--line2)', borderRadius: 6, fontSize: 10 }} formatter={v => [`${Number(v).toFixed(1)}${unit}`, label]}/>
               <Area type="monotone" dataKey="v" stroke={color} fill={`url(#grad-${label})`} strokeWidth={1.5} dot={false}/>
             </AreaChart>
           </ResponsiveContainer>
@@ -115,7 +116,7 @@ export function TabDevice({ agent }) {
         <div className="bg-siem-surface border border-siem-border rounded-xl p-6 text-center space-y-2">
           <div className="text-sm text-siem-muted">No health data yet</div>
           <div className="text-[10px] text-siem-muted/50 max-w-xs mx-auto">
-            Reinstall the agent from the dashboard to get the latest version with system metrics. Health events fire every 60s.
+            This agent version sends no system metrics. Update the agent.
           </div>
         </div>
       )}
@@ -124,8 +125,8 @@ export function TabDevice({ agent }) {
 
         {/* History charts */}
         <div className="grid grid-cols-2 gap-3">
-          <MiniChart data={cpuHistory}  color="#22c55e" label="CPU"    unit="%"/>
-          <MiniChart data={memHistory}  color="#3b82f6" label="Memory" unit="%"/>
+          <MiniChart data={cpuHistory}  color="var(--ok)" label="CPU"    unit="%"/>
+          <MiniChart data={memHistory}  color="var(--info)" label="Memory" unit="%"/>
         </div>
 
         {/* Current resource bars */}
@@ -143,9 +144,9 @@ export function TabDevice({ agent }) {
               label={`Memory (${Number(raw.mem_total_mb/1024).toFixed(1)} GB)`}
               value={raw.mem_used_mb} total={raw.mem_total_mb} unit="MB"
               warnAt={70} critAt={85}
-              barColor={raw.mem_percent > 85 ? '#ef4444' : raw.mem_percent > 70 ? '#f97316' : '#3b82f6'}/>
+              barColor={raw.mem_percent > 85 ? 'var(--crit)' : raw.mem_percent > 70 ? 'var(--high)' : 'var(--info)'}/>
           ) : raw.memory_percent != null &&
-            <MetricBar label="Memory" value={raw.memory_percent} unit="%" warnAt={70} critAt={85} barColor="#3b82f6"/>
+            <MetricBar label="Memory" value={raw.memory_percent} unit="%" warnAt={70} critAt={85} barColor="var(--info)"/>
           }
         </div>
 
@@ -161,7 +162,7 @@ export function TabDevice({ agent }) {
                 label={`${d.mount}  (${Number(d.total_gb).toFixed(0)} GB)`}
                 value={d.used_gb} total={d.total_gb} unit="GB"
                 warnAt={75} critAt={90}
-                barColor={d.free_percent < 10 ? '#ef4444' : d.free_percent < 25 ? '#f97316' : '#22c55e'}/>
+                barColor={d.free_percent < 10 ? 'var(--crit)' : d.free_percent < 25 ? 'var(--high)' : 'var(--ok)'}/>
             ))}
           </div>
         )}
@@ -180,12 +181,12 @@ export function TabDevice({ agent }) {
               <div className="h-28">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={cpuTop(raw.top_processes)} layout="vertical" margin={{ top:0, right:40, bottom:0, left:80 }}>
-                    <XAxis type="number" domain={[0, 100]} tick={{ fontSize: 9, fill: '#64748b' }} tickLine={false} axisLine={false}/>
-                    <YAxis type="category" dataKey="name" tick={{ fontSize: 9, fill: '#94a3b8' }} width={80} tickLine={false} axisLine={false}/>
-                    <Tooltip contentStyle={{ background:'#0f1923', border:'1px solid #1e3a4a', borderRadius:6, fontSize:10 }} formatter={v => [`${Number(v).toFixed(1)}%`, 'CPU']}/>
+                    <XAxis type="number" domain={[0, 100]} tick={{ fontSize: 9, fill: 'var(--t3)' }} tickLine={false} axisLine={false}/>
+                    <YAxis type="category" dataKey="name" tick={{ fontSize: 9, fill: 'var(--t2)' }} width={80} tickLine={false} axisLine={false}/>
+                    <Tooltip contentStyle={{ background:'var(--s2)', border:'1px solid var(--line2)', borderRadius:6, fontSize:10 }} formatter={v => [`${Number(v).toFixed(1)}%`, 'CPU']}/>
                     <Bar dataKey="cpu_percent" radius={[0,3,3,0]}>
                       {cpuTop(raw.top_processes).map((p,i) => (
-                        <Cell key={i} fill={p.cpu_percent > 50 ? '#ef4444' : p.cpu_percent > 20 ? '#f97316' : '#22c55e'}/>
+                        <Cell key={i} fill={p.cpu_percent > 50 ? 'var(--crit)' : p.cpu_percent > 20 ? 'var(--high)' : 'var(--ok)'}/>
                       ))}
                     </Bar>
                   </BarChart>
@@ -198,12 +199,12 @@ export function TabDevice({ agent }) {
               <div className="h-28">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={[...raw.top_processes].sort((a,b) => b.mem_mb - a.mem_mb).slice(0,10)} layout="vertical" margin={{ top:0, right:40, bottom:0, left:80 }}>
-                    <XAxis type="number" tick={{ fontSize: 9, fill: '#64748b' }} tickLine={false} axisLine={false}/>
-                    <YAxis type="category" dataKey="name" tick={{ fontSize: 9, fill: '#94a3b8' }} width={80} tickLine={false} axisLine={false}/>
-                    <Tooltip contentStyle={{ background:'#0f1923', border:'1px solid #1e3a4a', borderRadius:6, fontSize:10 }} formatter={v => [`${Number(v).toFixed(0)} MB`, 'Memory']}/>
+                    <XAxis type="number" tick={{ fontSize: 9, fill: 'var(--t3)' }} tickLine={false} axisLine={false}/>
+                    <YAxis type="category" dataKey="name" tick={{ fontSize: 9, fill: 'var(--t2)' }} width={80} tickLine={false} axisLine={false}/>
+                    <Tooltip contentStyle={{ background:'var(--s2)', border:'1px solid var(--line2)', borderRadius:6, fontSize:10 }} formatter={v => [`${Number(v).toFixed(0)} MB`, 'Memory']}/>
                     <Bar dataKey="mem_mb" radius={[0,3,3,0]}>
                       {raw.top_processes.slice(0,10).map((p,i) => (
-                        <Cell key={i} fill="#3b82f6"/>
+                        <Cell key={i} fill="var(--info)"/>
                       ))}
                     </Bar>
                   </BarChart>
@@ -431,21 +432,8 @@ export function TabTerminal({ agent }) {
       const term = new XTerm({
         cursorBlink: true,
         fontSize:    13,
-        fontFamily:  '"JetBrains Mono","Fira Code","Courier New",monospace',
-        theme: {
-          background:  '#0a0f1a',
-          foreground:  '#e2e8f0',
-          cursor:      '#34d399',
-          black:       '#1e293b',
-          red:         '#f87171',
-          green:       '#34d399',
-          yellow:      '#fbbf24',
-          blue:        '#60a5fa',
-          magenta:     '#c084fc',
-          cyan:        '#22d3ee',
-          white:       '#e2e8f0',
-          brightBlack: '#475569',
-        },
+        fontFamily: TERMINAL_FONT,
+        theme: TERMINAL_THEME,
         rows: 30, cols: 120,
       })
 
@@ -518,7 +506,7 @@ export function TabTerminal({ agent }) {
 
   // ── Session active - show terminal ────────────────────────────────────────
   return (
-    <div className="flex flex-col h-full bg-[#0a0f1a]">
+    <div className="flex flex-col h-full bg-[var(--s2)]">
       {/* Terminal toolbar */}
       <div className="flex items-center justify-between px-4 py-2 bg-siem-surface border-b border-siem-border shrink-0">
         <div className="flex items-center gap-3">
@@ -551,7 +539,7 @@ export function TabTerminal({ agent }) {
       )}
 
       {/* xterm.js container */}
-      <div ref={termRef} className="flex-1 p-2 overflow-hidden"/>
+      <div className="flex-1 min-h-0 relative"><div ref={termRef} className="ow-nozoom-fill p-2 overflow-hidden"/></div>
     </div>
   )
 }

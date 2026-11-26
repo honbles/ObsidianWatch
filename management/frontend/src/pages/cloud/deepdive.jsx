@@ -79,15 +79,15 @@ export function PanelDeepDive({ cspm, conn }) {
         {sections.map(({ id, label, icon: Icon, count, desc }) => (
           <button key={id} onClick={() => setSection(id)}
             style={{ display:'flex', flexDirection:'column', width:'100%', padding:'10px 10px', marginBottom:4,
-              background: section===id ? 'rgba(0,194,224,0.1)' : 'transparent',
-              border: `1px solid ${section===id ? 'rgba(0,194,224,0.3)' : 'transparent'}`,
+              background: section===id ? 'rgb(var(--acc-c) / 0.1)' : 'transparent',
+              border: `1px solid ${section===id ? 'rgb(var(--acc-c) / 0.3)' : 'transparent'}`,
               borderRadius:8, cursor:'pointer', textAlign:'left', fontFamily:'inherit' }}>
             <div style={{ display:'flex', alignItems:'center', gap:7, marginBottom:4 }}>
               <Icon size={12} color={section===id ? 'var(--accent)' : 'var(--text3)'}/>
               <span style={{ fontSize:11.5, fontWeight:600, color: section===id ? 'var(--accent)' : 'var(--text)' }}>{label}</span>
               {count > 0 && (
-                <span style={{ marginLeft:'auto', fontSize:10, background: count>0 ? 'rgba(248,113,113,0.15)' : 'var(--surface2)',
-                  color: count>0 ? '#f87171' : 'var(--text3)', border:`1px solid ${count>0 ? 'rgba(248,113,113,0.3)' : 'var(--border)'}`,
+                <span style={{ marginLeft:'auto', fontSize:10, background: count>0 ? 'rgb(var(--crit-c) / 0.15)' : 'var(--surface2)',
+                  color: count>0 ? 'var(--crit)' : 'var(--text3)', border:`1px solid ${count>0 ? 'rgb(var(--crit-c) / 0.3)' : 'var(--border)'}`,
                   borderRadius:10, padding:'0 5px', fontFamily:'var(--font-data)' }}>{count}</span>
               )}
             </div>
@@ -147,7 +147,7 @@ export function PanelDeepDive({ cspm, conn }) {
             Identity & access misconfigurations, privilege escalation paths, external grants
           </div>
           {iamFindings.length === 0
-            ? <div style={{ fontSize:12, color:'#34d399', padding:'30px 0', textAlign:'center' }}>✓ No IAM findings - access looks well configured</div>
+            ? <div style={{ fontSize:12, color:'var(--ok)', padding:'30px 0', textAlign:'center' }}>✓ No IAM findings - access looks well configured</div>
             : Object.entries(iamGroups).map(([title, items]) => renderGroup(title, items))
           }
         </>)}
@@ -158,7 +158,7 @@ export function PanelDeepDive({ cspm, conn }) {
             {isAzure ? 'Storage accounts, SQL databases with security issues' : 'Cloud Storage buckets, BigQuery datasets, and Secrets with security issues'}
           </div>
           {storageFindings.length === 0
-            ? <div style={{ fontSize:12, color:'#34d399', padding:'30px 0', textAlign:'center' }}>✓ No storage findings</div>
+            ? <div style={{ fontSize:12, color:'var(--ok)', padding:'30px 0', textAlign:'center' }}>✓ No storage findings</div>
             : <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
                 {storageFindings.map((f,i) => <FindingCard key={f.id||i} f={f} provider={conn?.provider || "gcp"} projectId={cspm?.project_id} subscriptionId={cspm?.subscription_id}/>)}
               </div>
@@ -171,7 +171,7 @@ export function PanelDeepDive({ cspm, conn }) {
             {isAzure ? 'Virtual Machines, AKS clusters, App Services, Function Apps, Container Registries' : 'Compute instances, GKE clusters, and node pool security configurations'}
           </div>
           {computeFindings.length === 0
-            ? <div style={{ fontSize:12, color:'#34d399', padding:'30px 0', textAlign:'center' }}>✓ No compute findings</div>
+            ? <div style={{ fontSize:12, color:'var(--ok)', padding:'30px 0', textAlign:'center' }}>✓ No compute findings</div>
             : <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
                 {computeFindings.map((f,i) => <FindingCard key={f.id||i} f={f} provider={conn?.provider || "gcp"} projectId={cspm?.project_id} subscriptionId={cspm?.subscription_id}/>)}
               </div>
@@ -184,7 +184,7 @@ export function PanelDeepDive({ cspm, conn }) {
             {isAzure ? 'Network Security Groups, Application Gateways and network-level exposure' : 'Firewall rules, VPC subnets, DNS policies and network-level exposure'}
           </div>
           {netFindings.length === 0
-            ? <div style={{ fontSize:12, color:'#34d399', padding:'30px 0', textAlign:'center' }}>✓ No network findings</div>
+            ? <div style={{ fontSize:12, color:'var(--ok)', padding:'30px 0', textAlign:'center' }}>✓ No network findings</div>
             : <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
                 {netFindings.map((f,i) => <FindingCard key={f.id||i} f={f} provider={conn?.provider || "gcp"} projectId={cspm?.project_id} subscriptionId={cspm?.subscription_id}/>)}
               </div>

@@ -65,8 +65,8 @@ export default function AppTabRuntime({ service, range }) {
         {data?.counts && <span className="text-xs text-siem-muted">{Object.entries(data.counts).map(([k, v]) => `${v} ${k}`).join(' · ') || 'no activity'}</span>}
       </div>
       <div className="card"><DataTable columns={ecols} rows={data?.events} loading={loading} error={error} rowKey={e => e.id}
-        emptyText="No host activity under this service in this range. Events appear when the host sensor sees processes started by the service, its outbound connections, or access to watched files." /></div>
-      <div className="text-[11px] text-siem-muted">Only activity under the service's own processes is shown. Command lines are redacted on the host; credentials in arguments never leave it.</div>
+        emptyText="No host activity under this service in this range." /></div>
+      <div className="text-[11px] text-siem-muted">Command lines are redacted on the host.</div>
     </div>
   )
 }

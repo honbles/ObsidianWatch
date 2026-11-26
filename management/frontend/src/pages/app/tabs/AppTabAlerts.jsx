@@ -26,7 +26,7 @@ export default function AppTabAlerts({ service }) {
         <Link to="/alerts" className="text-xs text-siem-accent hover:underline">Open the Alerts page</Link>
       </div>
       <div className="card"><DataTable columns={cols} rows={data?.alerts} loading={loading} error={error} rowKey={a => a.id}
-        emptyText="No alerts linked to this service. Application detections are in observe mode first, so a quiet list is normal while baselines learn." initialSort={{ key: 'created_at', dir: 'desc' }} /></div>
+        emptyText="No alerts linked to this service." initialSort={{ key: 'created_at', dir: 'desc' }} /></div>
     </div>
   )
 }

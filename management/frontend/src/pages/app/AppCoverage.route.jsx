@@ -52,7 +52,7 @@ export default function AppCoverage() {
   ]
   return (
     <div className="p-6 space-y-5">
-      <AppPageHeader title="Coverage" range={range} subtitle="What each service tells us today. T0 is host discovery only, T1 adds OpenTelemetry, T2 adds security-helper events. Anything not set up is what to add for the next tier." />
+      <AppPageHeader title="Coverage" range={range} subtitle="T0 host discovery, T1 OpenTelemetry, T2 security helper." />
       <div className="card"><DataTable columns={cols} rows={rows} loading={svcs.loading} error={svcs.error} rowKey={s => s.id}
         emptyText="No services in this range." initialSort={{ key: 'tier', dir: 'asc' }} /></div>
 

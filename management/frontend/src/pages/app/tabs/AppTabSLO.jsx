@@ -36,7 +36,7 @@ export default function AppTabSLO({ service }) {
         : loading ? <div className="card p-4 text-xs text-siem-muted">Loading...</div>
         : slos.map(s => <Slo key={s.name} s={s} days={data.window_days} />)}
       {!loading && !error && !service.settings?.latency_target_ms && <div className="text-[11px] text-siem-muted">Set a latency target in Settings to add a latency objective.</div>}
-      <div className="text-[11px] text-siem-muted">Availability counts requests that did not fail. By default the objective is 100 minus the service's error budget (99.9% when none is set); change it, the window (7 or 28 days) and the latency share in Settings. Latency is estimated from the latency histogram. Rule APM-O13 alerts when the budget is spent far faster than the objective allows, over a long and a short window together.</div>
+      <div className="text-[11px] text-siem-muted">Objective, window and latency share are set in the service settings.</div>
     </div>
   )
 }

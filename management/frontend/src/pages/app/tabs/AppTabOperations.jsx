@@ -12,7 +12,7 @@ export default function AppTabOperations({ service, range }) {
       <div className="card">
         {error ? <div className="p-4 text-xs text-red-300">{String(error)}</div>
           : loading ? <div className="p-4 text-xs text-siem-muted">Loading...</div>
-          : rows.length === 0 ? <div className="p-4 text-xs text-siem-muted">No jobs or message consumers in this range. Wrap a scheduled function with the ow-jobs helper, or use an instrumentation that reports consumer spans (Kafka, RabbitMQ, SQS).</div> : (
+          : rows.length === 0 ? <div className="p-4 text-xs text-siem-muted">No jobs or message consumers in this range.</div> : (
             <table className="w-full text-xs">
               <thead><tr className="text-siem-muted text-left"><th className="px-3 py-2">Name</th><th>Kind</th><th className="text-right">Runs</th><th className="text-right">Failures</th><th className="text-right">p50</th><th className="text-right">p95</th><th className="text-right">Usually every</th><th className="text-right px-3">Last run</th></tr></thead>
               <tbody>{rows.map(o => (
@@ -25,7 +25,7 @@ export default function AppTabOperations({ service, range }) {
                   <td className="text-right px-3">{appRel(o.last_run)}</td></tr>))}</tbody>
             </table>)}
       </div>
-      <div className="text-[11px] text-siem-muted">Only names are sent: the job name, or the messaging system, queue or topic and operation, with ids replaced by ?. Rules APM-O10 (a job stopped running) and APM-O11 (a job fails often) read this data.</div>
+      <div className="text-[11px] text-siem-muted">Only job and queue names are sent.</div>
     </div>
   )
 }

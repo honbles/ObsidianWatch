@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { Eye, EyeOff, AlertCircle } from 'lucide-react'
 import api from '../api/client'
+import { AuthLayout } from '../components/AuthLayout'
 
 export default function Setup() {
   const navigate = useNavigate()
@@ -51,164 +53,71 @@ export default function Setup() {
   }
 
   if (!status) return (
-    <div className="min-h-screen bg-siem-bg flex items-center justify-center">
-      <div className="text-siem-muted text-sm">Loading...</div>
+    <AuthLayout><div className="auth-sub" style={{ textAlign: 'center' }}>Loading…</div></AuthLayout>
+  )
+
+  // A plain render function, not a component, so inputs keep focus while typing.
+  const secret = (k, label, placeholder) => (
+    <div key={k}>
+      <label className="auth-label" htmlFor={'setup-' + k}>{label}</label>
+      <div className="auth-pass">
+        <input id={'setup-' + k} className="input auth-input" type={showPwd[k] ? 'text' : 'password'} value={form[k]}
+          onChange={e => set(k, e.target.value)} placeholder={placeholder} autoComplete="off" spellCheck={false}/>
+        <button type="button" className="auth-reveal" onClick={() => setShowPwd(s => ({ ...s, [k]: !s[k] }))}
+          aria-label={showPwd[k] ? 'Hide key' : 'Show key'}>{showPwd[k] ? <EyeOff size={15}/> : <Eye size={15}/>}</button>
+      </div>
     </div>
   )
 
   return (
-    <div className="min-h-screen bg-siem-bg flex items-center justify-center p-6">
-      <div className="w-full max-w-xl">
+    <AuthLayout wide>
+      <div className="auth-eyebrow" style={{ color: 'var(--acc)', marginBottom: 10 }}>First-run setup</div>
+      <h1 className="auth-title">Welcome to ObsidianWatch</h1>
+      <p className="auth-sub">How agents and people reach this server. You can change this later.</p>
 
-        {/* Header */}
-        <div className="text-center mb-8">
-          <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-cyan-500/20 to-blue-600/20 ring-2 ring-cyan-500/30 flex items-center justify-center text-2xl mx-auto mb-4">👁</div>
-          <h1 className="text-2xl font-bold text-siem-text mb-1">Welcome to ObsidianWatch</h1>
-          <p className="text-siem-muted text-sm">Complete setup to deploy agents and start collecting events</p>
+      <div className="setup-sec">
+        <div className="setup-h">Detected network</div>
+        <div className="setup-grid">
+          <div><div className="setup-k">Private IP</div><div className="mono t1">{status.private_ip || '-'}</div></div>
+          <div><div className="setup-k">Public IP</div><div className="mono t1">{status.public_ip || '-'}</div></div>
         </div>
-
-        {/* Detected IPs */}
-        <div className="rounded-xl border border-siem-border bg-siem-surface p-4 mb-5">
-          <p className="text-xs font-medium text-siem-muted uppercase tracking-wider mb-3">Auto-detected network</p>
-          <div className="grid grid-cols-2 gap-3 text-sm">
-            <div>
-              <div className="text-xs text-siem-muted mb-0.5">Private IP</div>
-              <div className="font-mono text-cyan-400">{status.private_ip || '-'}</div>
-            </div>
-            <div>
-              <div className="text-xs text-siem-muted mb-0.5">Public IP</div>
-              <div className="font-mono text-cyan-400">{status.public_ip || '-'}</div>
-            </div>
-          </div>
-          <p className="text-xs text-siem-muted mt-3">
-            TLS certificate already includes both IPs. Agents connecting to either will work.
-          </p>
-        </div>
-
-        <div className="space-y-4 mb-5">
-
-          {/* Agents need no shared key any more */}
-          <div className="rounded-xl border border-siem-border bg-siem-surface p-4 text-xs text-siem-muted leading-relaxed">
-            <span className="text-siem-text font-semibold">No agent API key.</span> Agents authenticate with their own certificate.
-            Each build from the Agent builder carries a short-lived enrollment token; on install the agent enrolls and gets its certificate.
-          </div>
-
-          {/* Optional domain */}
-          <div className="rounded-xl border border-siem-border bg-siem-surface overflow-hidden">
-            <div className="px-4 py-2.5 border-b border-siem-border flex items-center gap-2">
-              <span className="text-siem-text text-sm font-semibold">🌐 Backend Domain</span>
-              <span className="text-xs text-siem-muted ml-auto">Optional</span>
-            </div>
-            <div className="p-4">
-              <input
-                type="text"
-                value={form.backend_domain}
-                onChange={e => set('backend_domain', e.target.value)}
-                placeholder="e.g. siem.company.com (leave blank to use IP)"
-                className="w-full bg-siem-bg border border-siem-border rounded-lg px-3 py-2 text-sm text-siem-text placeholder-siem-muted focus:outline-none focus:border-cyan-500/50"
-              />
-              <p className="text-xs text-siem-muted mt-1.5">
-                If set, the domain is recorded and the agent cache cleared. To add it to the TLS certificate, set EXTRA_SAN_DNS in .env and run "docker compose up cert-init" (the CA key is kept out of the running services).
-              </p>
-            </div>
-          </div>
-
-          {/* URL overrides */}
-          <div className="rounded-xl border border-siem-border bg-siem-surface overflow-hidden">
-            <div className="px-4 py-2.5 border-b border-siem-border">
-              <span className="text-siem-text text-sm font-semibold">⬡ Connection URLs</span>
-            </div>
-            <div className="p-4 space-y-3">
-              <div>
-                <label className="text-xs font-medium text-siem-text mb-1 block">Backend URL</label>
-                <input type="text" value={form.backend_url}
-                  onChange={e => set('backend_url', e.target.value)}
-                  className="w-full bg-siem-bg border border-siem-border rounded-lg px-3 py-2 text-sm text-siem-text focus:outline-none focus:border-cyan-500/50" />
-                <p className="text-xs text-siem-muted mt-1">Agent event ingest - auto-detected from public IP</p>
-              </div>
-              <div>
-                <label className="text-xs font-medium text-siem-text mb-1 block">Management URL</label>
-                <input type="text" value={form.management_url}
-                  onChange={e => set('management_url', e.target.value)}
-                  className="w-full bg-siem-bg border border-siem-border rounded-lg px-3 py-2 text-sm text-siem-text focus:outline-none focus:border-cyan-500/50" />
-                <p className="text-xs text-siem-muted mt-1">Dashboard URL - auto-detected from private IP</p>
-              </div>
-            </div>
-          </div>
-
-          {/* AI keys */}
-          <div className="rounded-xl border border-purple-500/20 bg-siem-surface overflow-hidden">
-            <div className="px-4 py-2.5 bg-purple-500/10 border-b border-purple-500/20">
-              <span className="text-purple-400 text-sm font-semibold">◈ AI Analysis</span>
-              <span className="text-xs text-purple-400/70 ml-2">Optional - AI-powered alert analysis</span>
-            </div>
-            <div className="p-4 space-y-3">
-              {[
-                { key: 'groq_api_key', label: 'Groq API Key', placeholder: 'gsk_... - free at console.groq.com' },
-                { key: 'nvd_api_key', label: 'NVD API Key (CVE Database)', placeholder: 'Optional - get free key at nvd.nist.gov/developers - raises rate limit for faster CVE lookups' },
-                { key: 'anthropic_api_key', label: 'Anthropic API Key', placeholder: 'sk-ant-... - console.anthropic.com' },
-              ].map(f => (
-                <div key={f.key}>
-                  <label className="text-xs font-medium text-siem-text mb-1 block">{f.label}</label>
-                  <div className="relative">
-                    <input type={showPwd[f.key] ? 'text' : 'password'}
-                      value={form[f.key]} onChange={e => set(f.key, e.target.value)}
-                      placeholder={f.placeholder}
-                      className="w-full bg-siem-bg border border-siem-border rounded-lg px-3 py-2 text-sm text-siem-text placeholder-siem-muted focus:outline-none focus:border-cyan-500/50 pr-12" />
-                    <button type="button" onClick={() => setShowPwd(s => ({...s, [f.key]: !s[f.key]}))}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-siem-muted hover:text-siem-text">
-                      {showPwd[f.key] ? 'hide' : 'show'}
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Threat Intel keys */}
-          <div className="rounded-xl border border-orange-500/20 bg-siem-surface overflow-hidden">
-            <div className="px-4 py-2.5 bg-orange-500/10 border-b border-orange-500/20">
-              <span className="text-orange-400 text-sm font-semibold">◉ Threat Intelligence</span>
-              <span className="text-xs text-orange-400/70 ml-2">Optional - IOC feeds for automated detection</span>
-            </div>
-            <div className="p-4 space-y-3">
-              {[
-                { key: 'threatfox_api_key', label: 'ThreatFox API Key', placeholder: 'Free at threatfox.abuse.ch' },
-                { key: 'otx_api_key', label: 'OTX API Key', placeholder: 'Free at otx.alienvault.com' },
-              ].map(f => (
-                <div key={f.key}>
-                  <label className="text-xs font-medium text-siem-text mb-1 block">{f.label}</label>
-                  <div className="relative">
-                    <input type={showPwd[f.key] ? 'text' : 'password'}
-                      value={form[f.key]} onChange={e => set(f.key, e.target.value)}
-                      placeholder={f.placeholder}
-                      className="w-full bg-siem-bg border border-siem-border rounded-lg px-3 py-2 text-sm text-siem-text placeholder-siem-muted focus:outline-none focus:border-cyan-500/50 pr-12" />
-                    <button type="button" onClick={() => setShowPwd(s => ({...s, [f.key]: !s[f.key]}))}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-siem-muted hover:text-siem-text">
-                      {showPwd[f.key] ? 'hide' : 'show'}
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        {error && (
-          <div className="mb-4 px-4 py-3 rounded-lg bg-red-500/10 border border-red-500/30 text-red-400 text-sm">
-            {error}
-          </div>
-        )}
-
-        <button onClick={submit} disabled={saving}
-          className="w-full py-3.5 rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 disabled:opacity-50 text-white font-semibold text-sm transition-all shadow-lg shadow-cyan-900/20">
-          {saving ? '⟳ Saving...' : 'Complete Setup →'}
-        </button>
-
-        <p className="text-center text-xs text-siem-muted mt-4">
-          You can change these settings later in Agent Builder and Settings
-        </p>
+        <p className="setup-note">The TLS certificate covers both addresses.</p>
       </div>
-    </div>
+
+      <div className="setup-sec">
+        <div className="setup-h">Connection <span className="setup-opt">Backend domain optional</span></div>
+        <label className="auth-label" htmlFor="setup-domain">Backend domain</label>
+        <input id="setup-domain" className="input auth-input" type="text" value={form.backend_domain}
+          onChange={e => set('backend_domain', e.target.value)} placeholder="siem.company.com"/>
+        <p className="setup-note">Blank uses the IP address. To add the domain to the TLS certificate, set EXTRA_SAN_DNS in .env and run docker compose up cert-init.</p>
+        <label className="auth-label" htmlFor="setup-backend">Backend URL</label>
+        <input id="setup-backend" className="input auth-input mono" type="text" value={form.backend_url} onChange={e => set('backend_url', e.target.value)}/>
+        <p className="setup-note">Where agents send events. Detected from the public IP.</p>
+        <label className="auth-label" htmlFor="setup-mgmt">Management URL</label>
+        <input id="setup-mgmt" className="input auth-input mono" type="text" value={form.management_url} onChange={e => set('management_url', e.target.value)}/>
+        <p className="setup-note">Where people open this console. Detected from the private IP.</p>
+      </div>
+
+      <div className="setup-sec">
+        <div className="setup-h">AI analysis <span className="setup-opt">Optional</span></div>
+        <p className="setup-note" style={{ marginTop: 0 }}>Explains alerts and suggests next steps. The NVD key raises the CVE lookup rate limit.</p>
+        {secret('groq_api_key', 'Groq API key', 'gsk_…  (free at console.groq.com)')}
+        {secret('anthropic_api_key', 'Anthropic API key', 'sk-ant-…  (console.anthropic.com)')}
+        {secret('nvd_api_key', 'NVD API key', 'Free at nvd.nist.gov/developers')}
+      </div>
+
+      <div className="setup-sec">
+        <div className="setup-h">Threat intelligence <span className="setup-opt">Optional</span></div>
+        <p className="setup-note" style={{ marginTop: 0 }}>Indicator feeds used by automated detection.</p>
+        {secret('threatfox_api_key', 'ThreatFox API key', 'Free at threatfox.abuse.ch')}
+        {secret('otx_api_key', 'OTX API key', 'Free at otx.alienvault.com')}
+      </div>
+
+      {error && <div className="auth-error" role="alert"><AlertCircle size={15}/><span>{error}</span></div>}
+
+      <button onClick={submit} disabled={saving} className="ow-btn primary auth-submit" style={{ width: '100%' }}>
+        {saving ? <><span className="ow-spin" aria-hidden="true"/>Saving…</> : 'Complete setup'}
+      </button>
+    </AuthLayout>
   )
 }

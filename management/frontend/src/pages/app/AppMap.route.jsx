@@ -8,14 +8,14 @@ import { appInt, appRel } from '../../components/app/appFormat'
 
 export const appPath = '/applications/map'
 
-const KIND_COLOR = { database: '#a78bfa', queue: '#2dd4bf', external: '#94a3b8' }
+const KIND_COLOR = { database: 'var(--violet)', queue: 'var(--teal)', external: 'var(--t2)' }
 const sel = 'bg-siem-surface2 border border-siem-border rounded-lg px-2.5 py-1.5 text-xs text-siem-text'
 const nodeColor = (n) => {
-  if (n.type !== 'service') return KIND_COLOR[n.type] || '#94a3b8'
-  if (n.reachable_from_internet && ['high', 'critical'].includes(n.criticality) && n.exposure !== 'internet') return '#dc2626' // critical, reachable from the internet
-  if (n.exposure === 'internet') return '#f97316'
-  if (n.reachable_from_internet) return '#fbbf24'
-  return '#38bdf8'
+  if (n.type !== 'service') return KIND_COLOR[n.type] || 'var(--t2)'
+  if (n.reachable_from_internet && ['high', 'critical'].includes(n.criticality) && n.exposure !== 'internet') return 'var(--crit)' // critical, reachable from the internet
+  if (n.exposure === 'internet') return 'var(--high)'
+  if (n.reachable_from_internet) return 'var(--warn)'
+  return 'var(--info)'
 }
 
 // Dependencies: the estate map. Which services talk to what, what is new, and which critical
@@ -67,7 +67,7 @@ export default function AppMap() {
   return (
     <div className="p-6 space-y-4">
       <AppPageHeader title="Dependencies" range={range}
-        subtitle="Which services call which databases, queues and external hosts. Highlighted: new dependencies and critical services an internet-facing service can reach." />
+        subtitle="Highlighted: new dependencies and critical services reachable from the internet." />
       <StateBlock loading={loading && !data} error={error} empty={empty} emptyText="No dependencies yet. They appear once services send OpenTelemetry client spans.">
         {data && (<>
           <div className="flex flex-wrap gap-2 items-center">
@@ -82,12 +82,12 @@ export default function AppMap() {
               {nodes.length === 0 ? <div className="p-8 text-center text-xs text-siem-muted">Nothing matches these filters.</div>
                 : <ForceGraph nodes={nodes} links={links} width={820} height={460} colorFor={nodeColor} onNodeClick={onNodeClick} />}
               <div className="flex gap-3 text-[10px] text-siem-muted px-2 pb-1 flex-wrap">
-                <span><span style={{ color: '#f97316' }}>●</span> internet-facing</span>
-                <span><span style={{ color: '#fbbf24' }}>●</span> reachable from the internet</span>
-                <span><span style={{ color: '#dc2626' }}>●</span> critical, reachable</span>
-                <span><span style={{ color: '#38bdf8' }}>●</span> internal service</span>
+                <span><span style={{ color: 'var(--high)' }}>●</span> internet-facing</span>
+                <span><span style={{ color: 'var(--warn)' }}>●</span> reachable from the internet</span>
+                <span><span style={{ color: 'var(--crit)' }}>●</span> critical, reachable</span>
+                <span><span style={{ color: 'var(--info)' }}>●</span> internal service</span>
                 {Object.entries(KIND_COLOR).map(([k, c]) => <span key={k}><span style={{ color: c }}>●</span> {k}</span>)}
-                <span><span style={{ color: '#ef4444' }}>-</span> errors above 5%</span>
+                <span><span style={{ color: 'var(--crit)' }}>-</span> errors above 5%</span>
               </div>
             </div>
             <div className="space-y-3">

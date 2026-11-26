@@ -19,7 +19,7 @@ export default function AppTabCompare({ service, versions }) {
   const [b, setB] = useState(vs[0] || '')
   const ready = a && b && a !== b
   const { data, loading, error } = useAppLoad(() => (ready ? appApi.compare(service.id, a, b) : Promise.resolve(null)), [service.id, a, b])
-  if (vs.length < 2) return <div className="card p-4 text-xs text-siem-muted">Compare needs two versions. Set service.version in the OpenTelemetry resource attributes and deploy a second version.</div>
+  if (vs.length < 2) return <div className="card p-4 text-xs text-siem-muted">Needs two versions of this service (service.version).</div>
   const sel = (val, set) => <select className="bg-siem-surface2 border border-siem-border rounded px-1.5 py-1 text-siem-text" value={val} onChange={e => set(e.target.value)}>{vs.map(v => <option key={v}>{v}</option>)}</select>
   const row = (label, x, y, f, worseUp = true) => (
     <tr className="border-t border-siem-border/50"><td className="px-3 py-1.5 text-siem-muted">{label}</td><td className="text-right">{f(x)}</td><td className="text-right">{f(y)}</td><td className="text-right px-3">{delta(x, y, f, worseUp)}</td></tr>)
@@ -52,7 +52,7 @@ export default function AppTabCompare({ service, versions }) {
                   <td className="text-right">{r.a ? pct(r.a.error_rate) : '-'}</td><td className="text-right">{r.b ? pct(r.b.error_rate) : '-'}</td>
                   <td className="text-right">{r.a ? appMs(r.a.p95_ms) : '-'}</td><td className="text-right">{r.b ? appMs(r.b.p95_ms) : '-'}</td>
                   <td className="text-right px-3">{r.a && r.b ? delta(r.a.p95_ms, r.b.p95_ms, appMs) : '-'}</td></tr>))}</tbody></table></div>
-            <div className="text-[11px] text-siem-muted">A version's window runs from when it was first seen to when the next version appeared. Latency comes from the histogram, so it is coarse. Rule APM-O12 watches the first 30 minutes of a new version against the day before.</div>
+            <div className="text-[11px] text-siem-muted">Latency comes from the histogram, so it is approximate.</div>
           </>)}
     </div>
   )

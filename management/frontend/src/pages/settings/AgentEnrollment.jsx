@@ -49,7 +49,7 @@ function CreateTokenDialog({ onClose, onCreated }) {
         <button className="ow-btn" onClick={copy}>{copied ? <CheckIcon size={13}/> : <Copy size={13}/>}{copied ? 'Copied' : 'Copy'}</button>
       </div>
       <p style={{ margin: '12px 0 0', fontSize: 12, color: 'var(--t3)' }}>
-        Put it in the agent's install configuration. Each host enrolls once at first boot and gets its own certificate and a random agent ID, so a cloned image still yields one identity per machine.
+        Each host enrolls once and gets its own certificate and agent ID.
       </p>
     </Dialog>
   )

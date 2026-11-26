@@ -11,20 +11,20 @@ import api from '../api/client'
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const NODE_COLORS = {
-  host:           '#00d4ff',
-  process:        '#6366f1',
-  dns:            '#06b6d4',
-  ip:             '#ef4444',
-  file:           '#f59e0b',
-  registry:       '#a855f7',
-  logon:          '#10b981',
-  cloud_account:  '#f97316',
-  identity:       '#ec4899',
-  api_call:       '#84cc16',
-  resource:       '#14b8a6',
-  device:         '#3b82f6',
-  external_ip:    '#ef4444',
-  unknown_device: '#6b7280',
+  host:           'var(--acc)',
+  process:        'var(--violet)',
+  dns:            'var(--cyan)',
+  ip:             'var(--crit)',
+  file:           'var(--warn)',
+  registry:       'var(--violet)',
+  logon:          'var(--ok)',
+  cloud_account:  'var(--high)',
+  identity:       'var(--magenta)',
+  api_call:       'var(--ok)',
+  resource:       'var(--teal)',
+  device:         'var(--info)',
+  external_ip:    'var(--crit)',
+  unknown_device: 'var(--t3)',
 }
 
 const NODE_SHAPES = {
@@ -45,24 +45,24 @@ const NODE_SHAPES = {
 }
 
 const EDGE_COLORS = {
-  spawned:   '#94a3b8',
-  runs:      '#64748b',
-  connected: '#3b82f6',
-  queried:   '#06b6d4',
-  wrote:     '#f59e0b',
-  created:   '#22c55e',
-  deleted:   '#ef4444',
-  modified:  '#f97316',
-  executed:  '#a855f7',
-  lateral:   '#dc2626',
-  auth:      '#10b981',
-  called:    '#84cc16',
-  accessed:  '#14b8a6',
-  from_ip:   '#64748b',
-  contains:  '#475569',
+  spawned:   'var(--t2)',
+  runs:      'var(--t3)',
+  connected: 'var(--info)',
+  queried:   'var(--cyan)',
+  wrote:     'var(--warn)',
+  created:   'var(--ok)',
+  deleted:   'var(--crit)',
+  modified:  'var(--high)',
+  executed:  'var(--violet)',
+  lateral:   'var(--crit)',
+  auth:      'var(--ok)',
+  called:    'var(--ok)',
+  accessed:  'var(--teal)',
+  from_ip:   'var(--t3)',
+  contains:  'var(--t3)',
 }
 
-const SEV_COLORS = { 5: '#ef4444', 4: '#f97316', 3: '#eab308', 2: '#3b82f6', 1: '#475569' }
+const SEV_COLORS = { 5: 'var(--crit)', 4: 'var(--high)', 3: 'var(--warn)', 2: 'var(--info)', 1: 'var(--t3)' }
 
 const TABS = [
   { id: 'endpoint', label: 'Endpoint', Icon: Monitor },
@@ -169,7 +169,7 @@ function GraphCanvas({ graph, onNodeClick, onEdgeClick, selectedNode, selectedEd
     const link = edgeG.selectAll('line.visible')
       .data(edges).join('line')
       .attr('class', d => `visible edge edge-src-${d.source.id || d.source} edge-dst-${d.target.id || d.target}`)
-      .attr('stroke', d => EDGE_COLORS[d.type] || '#475569')
+      .attr('stroke', d => EDGE_COLORS[d.type] || 'var(--t3)')
       .attr('stroke-width', d => Math.min(1 + Math.log(d.count + 1), 4))
       .attr('stroke-opacity', 0.45)
       .attr('pointer-events', 'none')
@@ -192,25 +192,25 @@ function GraphCanvas({ graph, onNodeClick, onEdgeClick, selectedNode, selectedEd
       const el  = d3.select(this)
       const r   = nodeRadius(d)
       const susp = showSuspicious && d.suspicious
-      const color = susp ? '#ef4444' : (NODE_COLORS[d.type] || '#6b7280')
+      const color = susp ? 'var(--crit)' : (NODE_COLORS[d.type] || 'var(--t3)')
       drawNodeShape(el, NODE_SHAPES[d.type] || 'circle', r, color, susp ? 1 : 0.85, d.severity)
 
       if (showSuspicious && d.severity >= 4) {
         el.append('circle').attr('r', r + 5).attr('fill', 'none')
-          .attr('stroke', SEV_COLORS[d.severity] || '#ef4444')
+          .attr('stroke', SEV_COLORS[d.severity] || 'var(--crit)')
           .attr('stroke-width', 1.5).attr('stroke-dasharray', '3,3').attr('opacity', 0.6)
       }
 
       el.append('text').attr('dy', r + 13).attr('text-anchor', 'middle')
         .attr('font-size', '10px').attr('font-family', 'monospace')
-        .attr('fill', susp ? '#fca5a5' : '#94a3b8')
+        .attr('fill', susp ? 'var(--crit)' : 'var(--t2)')
         .text(truncate(d.label, 20))
 
       if (d.event_count > 1) {
         el.append('circle').attr('cx', r - 2).attr('cy', -r + 2).attr('r', 8)
-          .attr('fill', '#1e293b').attr('stroke', '#475569').attr('stroke-width', 1)
+          .attr('fill', 'var(--s3)').attr('stroke', 'var(--t3)').attr('stroke-width', 1)
         el.append('text').attr('x', r - 2).attr('y', -r + 6)
-          .attr('text-anchor', 'middle').attr('font-size', '8px').attr('fill', '#94a3b8')
+          .attr('text-anchor', 'middle').attr('font-size', '8px').attr('fill', 'var(--t2)')
           .text(d.event_count > 99 ? '99+' : d.event_count)
       }
       el.append('title').text(`${d.label}\nType: ${d.type}\nEvents: ${d.event_count}\nSeverity: ${d.severity}`)
@@ -294,7 +294,7 @@ function nodeRadius(d) {
 }
 
 function drawNodeShape(el, shape, r, color, opacity, sev) {
-  const strokeColor = SEV_COLORS[sev] || '#475569'
+  const strokeColor = SEV_COLORS[sev] || 'var(--t3)'
   const strokeWidth = sev >= 3 ? 2 : 1
 
   switch (shape) {
@@ -347,7 +347,7 @@ function EdgeDetail({ edge, graph, onClose }) {
   if (!edge) return null
 
   const navigate = useNavigate()
-  const color  = EDGE_COLORS[edge.type] || '#475569'
+  const color  = EDGE_COLORS[edge.type] || 'var(--t3)'
 
   // Resolve source/target node labels from graph
   const nodes    = graph?.nodes || []
@@ -411,7 +411,7 @@ function EdgeDetail({ edge, graph, onClose }) {
             <div className="text-[9px] text-siem-muted">occurrences</div>
           </div>
           <div className="bg-siem-bg border border-siem-border rounded-lg px-3 py-2 text-center">
-            <div className="text-lg font-bold font-mono" style={{ color: SEV_COLORS[edge.severity] || '#475569' }}>
+            <div className="text-lg font-bold font-mono" style={{ color: SEV_COLORS[edge.severity] || 'var(--t3)' }}>
               {['','Info','Low','Med','High','Crit'][edge.severity] || '-'}
             </div>
             <div className="text-[9px] text-siem-muted">max severity</div>
@@ -461,7 +461,7 @@ function EdgeDetail({ edge, graph, onClose }) {
           <div className="space-y-1.5">
             {[['Source', srcNode, srcLabel], ['Target', dstNode, dstLabel]].map(([role, node, label]) => (
               <div key={role} className="flex items-center gap-2 bg-siem-bg border border-siem-border rounded-lg px-3 py-1.5">
-                <div className="w-2 h-2 rounded-full shrink-0" style={{ background: node ? (NODE_COLORS[node.type] || '#6b7280') : '#475569' }}/>
+                <div className="w-2 h-2 rounded-full shrink-0" style={{ background: node ? (NODE_COLORS[node.type] || 'var(--t3)') : 'var(--t3)' }}/>
                 <div className="flex-1 min-w-0">
                   <div className="text-[9px] text-siem-muted">{role} · {node?.type || '?'}</div>
                   <div className="text-[10px] font-mono text-siem-text truncate">{label}</div>
@@ -489,7 +489,7 @@ function EdgeDetail({ edge, graph, onClose }) {
 function NodeDetail({ node, onClose, host }) {
   if (!node) return null
   const navigate = useNavigate()
-  const color = NODE_COLORS[node.type] || '#6b7280'
+  const color = NODE_COLORS[node.type] || 'var(--t3)'
   const meta  = node.meta || {}
 
   // Build Events drilldown URL for this node
@@ -532,7 +532,7 @@ function NodeDetail({ node, onClose, host }) {
         <div className="flex gap-1 mt-2">
           {[1,2,3,4,5].map(s => (
             <div key={s} className="h-1 flex-1 rounded-full"
-              style={{ background: s <= node.severity ? SEV_COLORS[s] : '#1e293b' }}/>
+              style={{ background: s <= node.severity ? SEV_COLORS[s] : 'var(--s3)' }}/>
           ))}
         </div>
       </div>
