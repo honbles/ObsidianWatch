@@ -63,7 +63,7 @@ function CloudConnectors({ initialSelected }) {
               <RefreshCw size={12} className={loading ? 'animate-spin' : ''}/>
             </button>
           </div>
-          <div className="text-[10px] text-siem-muted mt-1">
+          <div className="text-mini text-siem-muted mt-1">
             {connectors.length} connected · {connectors.filter(c => c.status === 'connected').length} healthy
           </div>
         </div>
@@ -83,7 +83,7 @@ function CloudConnectors({ initialSelected }) {
                   <div className="text-xs font-medium text-siem-text truncate">
                     {conn.account_label || conn.account_id || `${conn.provider.toUpperCase()} account`}
                   </div>
-                  <div className="flex items-center gap-1.5 text-[10px] text-siem-muted">
+                  <div className="flex items-center gap-1.5 text-mini text-siem-muted">
                     <span className={`w-1.5 h-1.5 rounded-full ${
                       conn.status === 'connected' ? 'bg-emerald-400' : conn.status === 'error' ? 'bg-red-400' : 'bg-yellow-400'
                     }`}/>
@@ -102,7 +102,7 @@ function CloudConnectors({ initialSelected }) {
         </div>
 
         <div className="flex-shrink-0 border-t border-siem-border p-3 space-y-1">
-          <p className="text-[10px] uppercase tracking-wider text-siem-muted mb-2">Add account</p>
+          <p className="text-2xs uppercase tracking-wider text-siem-muted mb-2">Add account</p>
           {Object.entries(PROVIDERS).map(([provider, cfg]) => (
             <button key={provider} onClick={() => { setAdding(provider); setSelected(null) }}
               className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs border transition-colors ${
@@ -142,7 +142,7 @@ function CloudConnectors({ initialSelected }) {
               <div className="text-sm font-medium text-siem-text mb-1">Cloud Security Posture</div>
               <div className="text-xs max-w-xs text-center">Connect AWS, Azure, or GCP to start monitoring your cloud security posture.</div>
             </div>
-            <div className="flex gap-3 text-[10px] mt-2">
+            <div className="flex gap-3 text-mini mt-2">
               {Object.entries(PROVIDERS).map(([p, cfg]) => (
                 <button key={p} onClick={() => setAdding(p)}
                   className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border ${cfg.border} ${cfg.color} transition-colors`}>

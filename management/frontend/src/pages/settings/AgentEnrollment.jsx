@@ -48,7 +48,7 @@ function CreateTokenDialog({ onClose, onCreated }) {
         <input className="input mono" readOnly value={made} style={{ flex: 1 }} onFocus={e => e.target.select()} aria-label="Enrollment token"/>
         <button className="ow-btn" onClick={copy}>{copied ? <CheckIcon size={13}/> : <Copy size={13}/>}{copied ? 'Copied' : 'Copy'}</button>
       </div>
-      <p style={{ margin: '12px 0 0', fontSize: 12, color: 'var(--t3)' }}>
+      <p style={{ margin: '12px 0 0', fontSize: 13.5, color: 'var(--t3)' }}>
         Each host enrolls once and gets its own certificate and agent ID.
       </p>
     </Dialog>
@@ -65,7 +65,7 @@ function CreateTokenDialog({ onClose, onCreated }) {
           <Field label="Valid for (hours)" hint="1 to 2160 (90 days)"><input className="input mono" value={ttl} onChange={e => setTtl(e.target.value.replace(/\D/g, ''))}/></Field>
           <Field label="Maximum enrollments" hint="Hosts that may use it"><input className="input mono" value={uses} onChange={e => setUses(e.target.value.replace(/\D/g, ''))}/></Field>
         </div>
-        {err && <div style={{ color: 'var(--crit)', fontSize: 12.5 }}>{err}</div>}
+        {err && <div style={{ color: 'var(--crit)', fontSize: 13.5 }}>{err}</div>}
       </div>
     </Dialog>
   )
@@ -88,7 +88,7 @@ function RevokeIdentityDialog({ identity, onClose, onDone }) {
         The agent's live response tunnel closes now and ingest refuses its certificate within a minute. The host has to enroll again with a new token to report.
       </p>
       <Field label="Reason (audited)"><input className="input" value={reason} maxLength={500} onChange={e => setReason(e.target.value)} placeholder="Host reimaged, identity copied, decommissioned…"/></Field>
-      {err && <div style={{ color: 'var(--crit)', fontSize: 12.5, marginTop: 8 }}>{err}</div>}
+      {err && <div style={{ color: 'var(--crit)', fontSize: 13.5, marginTop: 8 }}>{err}</div>}
     </Dialog>
   )
 }
@@ -143,7 +143,7 @@ export default function AgentEnrollment() {
           rowState={i => i.revoked_at ? 'crit' : null}
           cols={[
             { key: 'host', label: 'Host', width: '1.4fr', render: i => <>{i.hostname || '—'} <span className="t3">{i.os}</span></> },
-            { key: 'id', label: 'Agent ID', width: '2fr', render: i => <span className="mono" style={{ fontSize: 12 }}>{i.agent_id}</span> },
+            { key: 'id', label: 'Agent ID', width: '2fr', render: i => <span className="mono" style={{ fontSize: 13.5 }}>{i.agent_id}</span> },
             { key: 'state', label: 'Certificate', width: '150px', render: i => { const s = identityState(i); return <StatePill state={s.state} title={i.revoke_reason || undefined}>{s.label}</StatePill> } },
             { key: 'exp', label: 'Expires', width: '120px', render: i => <span title={i.cert_not_after}>{relTime(i.cert_not_after)}</span> },
             { key: 'tok', label: 'Enrolled with', width: '1.2fr', render: i => <>{i.token_label || (i.token_id ? `token #${i.token_id}` : 'fleet key')} <span className="t3">{relTime(i.enrolled_at)}</span></> },

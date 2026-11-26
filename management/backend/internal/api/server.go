@@ -134,6 +134,9 @@ func New(cfg *config.Config, db *store.DB, backendDB *store.DB, logger *slog.Log
 	protected.HandleFunc("PATCH /api/v1/alerts/{id}/notes", handleUpdateCaseNotes(db))
 	protected.HandleFunc("PATCH /api/v1/alerts/{id}/close-review", handleCloseWithReview(db))
 	protected.HandleFunc("PATCH /api/v1/alerts/{id}/close", handleCloseAlert(db))
+	protected.HandleFunc("GET /api/v1/alerts/{id}/false-positive", handleFalsePositivePreview(db))
+	protected.HandleFunc("POST /api/v1/alerts/{id}/false-positive", handleFalsePositive(db))
+	protected.HandleFunc("PATCH /api/v1/alerts/{id}/reopen", handleReopenAlert(db))
 	protected.HandleFunc("POST /api/v1/alerts/bulk", handleBulkAlerts(db))
 	protected.HandleFunc("GET /api/v1/alerts/sla", handleAlertSLA(db))
 

@@ -52,7 +52,7 @@ export default function AppTabCompare({ service, versions }) {
                   <td className="text-right">{r.a ? pct(r.a.error_rate) : '-'}</td><td className="text-right">{r.b ? pct(r.b.error_rate) : '-'}</td>
                   <td className="text-right">{r.a ? appMs(r.a.p95_ms) : '-'}</td><td className="text-right">{r.b ? appMs(r.b.p95_ms) : '-'}</td>
                   <td className="text-right px-3">{r.a && r.b ? delta(r.a.p95_ms, r.b.p95_ms, appMs) : '-'}</td></tr>))}</tbody></table></div>
-            <div className="text-[11px] text-siem-muted">Latency comes from the histogram, so it is approximate.</div>
+            <div className="text-xs text-siem-muted">Latency comes from the histogram, so it is approximate.</div>
           </>)}
     </div>
   )

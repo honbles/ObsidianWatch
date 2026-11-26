@@ -21,7 +21,7 @@ export default function AppHosts() {
   const n = (f) => all.filter(f).length
   const cols = [
     { key: 's', label: 'Top risk', width: '100px', render: h => <SevWord sev={h.top_severity}/> },
-    { key: 'h', label: 'Host', width: 'minmax(170px, 1.3fr)', render: h => <span><span className="mono t1">{h.host || h.agent_id}</span> <span className="t3" style={{ fontSize: 11.5 }}>{h.os}</span></span> },
+    { key: 'h', label: 'Host', width: 'minmax(170px, 1.3fr)', render: h => <span><span className="mono t1">{h.host || h.agent_id}</span> <span className="t3" style={{ fontSize: 13 }}>{h.os}</span></span> },
     { key: 'svc', label: 'Services', width: '150px', render: h => <Counts parts={[[h.by_tier[2], 'T2'], [h.by_tier[1], 'T1'], [h.by_tier[0], 'T0']]}/> },
     { key: 'al', label: 'Open alerts', width: '150px', render: h => <Counts parts={[[h.service_alerts, 'service', 'var(--warn)'], [h.host_alerts, 'host']]}/> },
     { key: 'v', label: 'Host scan', width: 'minmax(150px, 1fr)', render: h => h.vuln?.scanned_at
@@ -50,7 +50,7 @@ export default function AppHosts() {
             <label className="ow-field" style={{ flex: 1, maxWidth: 380, height: 28 }}>
               <input value={q} onChange={e => setQ(e.target.value)} placeholder="Filter by host, address or OS" aria-label="Filter hosts"/>
             </label>
-            <span className="t2" style={{ fontSize: 12 }}>{rows.length} of {all.length}</span>
+            <span className="t2" style={{ fontSize: 13.5 }}>{rows.length} of {all.length}</span>
           </div>
           {error && <div className="c-crit" style={{ padding: '10px 14px' }}>{String(error)}</div>}
           <DenseTable cols={cols} rows={loading ? [] : rows} rowKey={h => h.agent_id}

@@ -80,7 +80,7 @@ func (e *DetectionEngine) alertRareBinaries(ctx context.Context, events []store.
 		return
 	}
 	for k, ev := range cands {
-		if counts[k] != 1 {
+		if counts[k] != 1 || endpointSuppressed(rareBinaryRuleID, ev) {
 			continue
 		}
 		a := store.Alert{
@@ -92,6 +92,8 @@ func (e *DetectionEngine) alertRareBinaries(ctx context.Context, events []store.
 			// each time, and keying on the hash opened a new alert for every version.
 			EventID: "prev:rare:" + sha12(strings.ToLower(derefStr(ev.ProcessName))+"|"+ev.Host+"|"+time.Now().UTC().Format("2006-01-02")),
 			SourceEventID: ev.ID,
+			RuleID:        rareBinaryRuleID,
+			Evidence:      endpointEvidence("prevalence", ev),
 		}
 		if _, _, err := e.db.CreateAlertDeduped(ctx, a); err != nil {
 			e.logger.Warn("prevalence: rare-binary alert failed", "err", err)

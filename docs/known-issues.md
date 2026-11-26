@@ -11,6 +11,7 @@ Fixed since: the agent queue is at-least-once with fsync and health reports its 
 - macOS `config_change` events have a type no rule matches.
 - The network probe's dependencies are commented out in the management Dockerfile.
 - Windows and macOS uninstall leave files behind.
+- Windows logon events (4624, 4625, 4648 and similar) take the user from `SubjectUserName` before `TargetUserName` (`agents/windows/internal/collector/eventlog.go`, about line 335). For a logon, the subject is usually the machine account or the calling service, so `user:` searches and user-based rules see that account rather than the user who logged on.
 - Installing the Windows agent overwrites an existing Sysmon configuration.
 - Analysts can edit alert rules and suppressions (should be admin only).
 - The tamper-lock toggle in the UI has no effect.

@@ -114,18 +114,18 @@ function ConnectorForm({ provider, onSaved, onCancel }) {
         <div className="bg-siem-bg border border-siem-border rounded-xl p-4 space-y-3">
           <p className="text-xs font-medium text-siem-text">Webhook setup (optional but recommended for real-time alerts)</p>
           <div>
-            <label className="block text-[10px] uppercase tracking-wider text-siem-muted mb-1">Webhook URL</label>
+            <label className="block text-2xs uppercase tracking-wider text-siem-muted mb-1">Webhook URL</label>
             <div className="font-mono text-xs text-siem-accent bg-siem-surface border border-siem-border rounded-lg px-3 py-2 break-all">
               {webhookURL}
             </div>
           </div>
           <div>
-            <label className="block text-[10px] uppercase tracking-wider text-siem-muted mb-1">Webhook Secret</label>
+            <label className="block text-2xs uppercase tracking-wider text-siem-muted mb-1">Webhook Secret</label>
             <div className="font-mono text-xs text-siem-accent bg-siem-surface border border-siem-border rounded-lg px-3 py-2">
               {webhookInfo.webhook_secret}
             </div>
           </div>
-          <p className="text-[11px] text-siem-muted">
+          <p className="text-xs text-siem-muted">
             {cfg.webhookHelp}<br/>
             {cfg.webhookEvents.length > 0 && <>Events to subscribe: <span className="text-siem-text">{cfg.webhookEvents.join(', ')}</span><br/></>}
             Saving this connector again keeps the same secret.
@@ -142,7 +142,7 @@ function ConnectorForm({ provider, onSaved, onCancel }) {
   return (
     <div className="space-y-4">
       <div>
-        <label className="block text-[10px] uppercase tracking-wider text-siem-muted mb-1">
+        <label className="block text-2xs uppercase tracking-wider text-siem-muted mb-1">
           {provider === 'github' ? 'Organization or Username' : provider === 'azuredevops' ? 'Organization Name' : 'Group Path or Project'}
         </label>
         <input value={org} onChange={e => setOrg(e.target.value)}
@@ -152,7 +152,7 @@ function ConnectorForm({ provider, onSaved, onCancel }) {
 
       {cfg.fields.map(f => (
         <div key={f.key}>
-          <label className="block text-[10px] uppercase tracking-wider text-siem-muted mb-1">{f.label}</label>
+          <label className="block text-2xs uppercase tracking-wider text-siem-muted mb-1">{f.label}</label>
           <div className="relative">
             <input
               type={f.secret && !show[f.key] ? 'password' : 'text'}
@@ -168,7 +168,7 @@ function ConnectorForm({ provider, onSaved, onCancel }) {
               </button>
             )}
           </div>
-          {f.help && <p className="text-[10px] text-siem-muted mt-1">{f.help}</p>}
+          {f.help && <p className="text-mini text-siem-muted mt-1">{f.help}</p>}
         </div>
       ))}
 
@@ -194,13 +194,13 @@ function ConnectorForm({ provider, onSaved, onCancel }) {
       </div>
 
       <div className="bg-siem-bg border border-siem-border/40 rounded-xl p-3 space-y-1">
-        <p className="text-[10px] text-siem-muted font-medium uppercase tracking-wider">What will be pulled</p>
+        <p className="text-2xs text-siem-muted font-medium uppercase tracking-wider">What will be pulled</p>
         {cfg.pulls.map(p => (
           <div key={p} className="flex items-center gap-2 text-xs text-siem-muted">
             <span className="w-1 h-1 rounded-full bg-siem-accent/60 shrink-0"/>{p}
           </div>
         ))}
-        <p className="text-[10px] text-siem-muted/50 pt-1">Polled every 5 minutes · Secret scanning on every commit</p>
+        <p className="text-mini text-siem-muted/50 pt-1">Polled every 5 minutes · Secret scanning on every commit</p>
       </div>
     </div>
   )
@@ -217,10 +217,10 @@ function CommitRow({ commit, onClick }) {
         <GitCommit size={14} className="text-siem-muted mt-0.5 shrink-0"/>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
-            <span className="font-mono text-[10px] text-siem-muted shrink-0">{commit.id.slice(0,7)}</span>
+            <span className="font-mono text-mini text-siem-muted shrink-0">{commit.id.slice(0,7)}</span>
             <span className="text-xs text-siem-text truncate">{commit.message?.split('\n')[0]}</span>
           </div>
-          <div className="flex items-center gap-3 text-[10px] text-siem-muted mt-1">
+          <div className="flex items-center gap-3 text-mini text-siem-muted mt-1">
             <span className="flex items-center gap-1"><User size={9}/>{commit.author_username || commit.author_name}</span>
             <span className="truncate">{commit.repo}</span>
             {commit.branch && commit.branch !== 'unknown' && (
@@ -231,7 +231,7 @@ function CommitRow({ commit, onClick }) {
             </span>
           </div>
           {hasDiff && (
-            <div className="flex items-center gap-2 mt-1 text-[10px]">
+            <div className="flex items-center gap-2 mt-1 text-mini">
               <span className="text-emerald-400">+{commit.additions}</span>
               <span className="text-red-400">-{commit.deletions}</span>
               <span className="text-siem-muted">{commit.files_changed} files</span>
@@ -266,7 +266,7 @@ function CommitDetail({ commit, onClose }) {
           <div><span className="text-siem-muted">Repo: </span><span className="text-siem-text">{commit.repo}</span></div>
           <div><span className="text-siem-muted">When: </span><span className="text-siem-text">{commit.pushed_at ? formatDistanceToNow(new Date(commit.pushed_at), { addSuffix: true }) : ''}</span></div>
         </div>
-        <div className="flex items-center gap-4 mt-2 text-[11px]">
+        <div className="flex items-center gap-4 mt-2 text-xs">
           <span className="text-emerald-400 font-medium">+{commit.additions} additions</span>
           <span className="text-red-400 font-medium">-{commit.deletions} deletions</span>
           <span className="text-siem-muted">{commit.files_changed} files changed</span>
@@ -286,10 +286,10 @@ function CommitDetail({ commit, onClose }) {
         {diffs.map((d, i) => (
           <div key={i} className="border border-siem-border rounded-lg overflow-hidden">
             <div className="flex items-center justify-between px-3 py-2 bg-siem-surface border-b border-siem-border">
-              <span className="font-mono text-[11px] text-siem-text">{d.file}</span>
-              <div className="flex items-center gap-2 text-[10px]">
+              <span className="font-mono text-xs text-siem-text">{d.file}</span>
+              <div className="flex items-center gap-2 text-mini">
                 {d.status && (
-                  <span className={`px-1.5 py-0.5 rounded text-[9px] font-medium ${
+                  <span className={`px-1.5 py-0.5 rounded text-2xs font-medium ${
                     d.status === 'added' ? 'bg-emerald-950/40 text-emerald-400' :
                     d.status === 'removed' ? 'bg-red-950/40 text-red-400' :
                     'bg-blue-950/40 text-blue-400'
@@ -300,7 +300,7 @@ function CommitDetail({ commit, onClose }) {
               </div>
             </div>
             {d.patch && (
-              <pre className="text-[10px] font-mono overflow-x-auto p-3 bg-[var(--s2)] max-h-64 overflow-y-auto leading-relaxed">
+              <pre className="text-mini font-mono overflow-x-auto p-3 bg-[var(--s2)] max-h-64 overflow-y-auto leading-relaxed">
                 {d.patch.split('\n').map((line, j) => (
                   <div key={j} className={
                     line.startsWith('+') && !line.startsWith('+++') ? 'text-emerald-400 bg-emerald-950/20' :
@@ -571,9 +571,9 @@ function ConnectorDetail({ conn, onSync, onDisconnect, syncing }) {
             </span>
             <div>
               <div className="text-sm font-semibold text-siem-text">{conn.org}</div>
-              <div className="text-[11px] text-siem-muted">{conn.label}</div>
+              <div className="text-xs text-siem-muted">{conn.label}</div>
             </div>
-            <span className={`text-[10px] border rounded-full px-2 py-0.5 ${statusBadge}`}>
+            <span className={`text-mini border rounded-full px-2 py-0.5 ${statusBadge}`}>
               {conn.status}
             </span>
           </div>
@@ -664,14 +664,14 @@ function ConnectorDetail({ conn, onSync, onDisconnect, syncing }) {
                 <div key={ev.id} onClick={() => setSelectedEvent(ev)} className="px-4 py-3 hover:bg-siem-surface/50 cursor-pointer">
                   <div className="flex items-center justify-between gap-3">
                     <div className="flex items-center gap-2 min-w-0">
-                      <span className={`text-[10px] shrink-0 ${SEVERITY_COLORS[ev.severity] || 'text-siem-muted'}`}>
+                      <span className={`text-mini shrink-0 ${SEVERITY_COLORS[ev.severity] || 'text-siem-muted'}`}>
                         {SEVERITY_LABELS[ev.severity] || ev.severity}
                       </span>
-                      <span className="font-mono text-[10px] text-siem-muted shrink-0">{ev.event_type}</span>
+                      <span className="font-mono text-mini text-siem-muted shrink-0">{ev.event_type}</span>
                       {ev.user_name && <span className="text-xs text-siem-text truncate">{ev.user_name}</span>}
-                      {(() => { const f = Object.fromEntries(devopsFields(ev).filter(([, v]) => v)); return (f.Repo || f.Message) ? <span className="text-[11px] text-siem-muted truncate">{[f.Repo, f.Message && String(f.Message).split('\n')[0]].filter(Boolean).join(' - ')}</span> : null })()}
+                      {(() => { const f = Object.fromEntries(devopsFields(ev).filter(([, v]) => v)); return (f.Repo || f.Message) ? <span className="text-xs text-siem-muted truncate">{[f.Repo, f.Message && String(f.Message).split('\n')[0]].filter(Boolean).join(' - ')}</span> : null })()}
                     </div>
-                    <span className="text-[10px] text-siem-muted shrink-0">
+                    <span className="text-mini text-siem-muted shrink-0">
                       {ev.time ? formatDistanceToNow(new Date(ev.time), { addSuffix: true }) : ''}
                     </span>
                   </div>
@@ -693,7 +693,7 @@ function ConnectorDetail({ conn, onSync, onDisconnect, syncing }) {
                 <Code size={16} className="text-siem-accent mt-0.5"/>
                 <div>
                   <div className="text-sm font-semibold text-siem-text mb-0.5">Static Application Security Testing</div>
-                  <div className="text-[11px] text-siem-muted">
+                  <div className="text-xs text-siem-muted">
                     Static analysis of your repositories (OWASP-aligned rules).
                   </div>
                 </div>
@@ -704,7 +704,7 @@ function ConnectorDetail({ conn, onSync, onDisconnect, syncing }) {
             {sastRepos.length > 0 && (
               <div className="flex items-center gap-3 flex-wrap">
                 <div className="flex flex-col gap-1">
-                  <label className="text-[10px] uppercase tracking-wider text-siem-muted font-semibold">Repository</label>
+                  <label className="text-2xs uppercase tracking-wider text-siem-muted font-semibold">Repository</label>
                   <select value={sastSelRepo} onChange={e => {
                     const repo = e.target.value
                     setSastSelRepo(repo)
@@ -724,7 +724,7 @@ function ConnectorDetail({ conn, onSync, onDisconnect, syncing }) {
                 </div>
                 {sastSelRepo && (
                   <div className="flex flex-col gap-1">
-                    <label className="text-[10px] uppercase tracking-wider text-siem-muted font-semibold">Branch</label>
+                    <label className="text-2xs uppercase tracking-wider text-siem-muted font-semibold">Branch</label>
                     <select value={sastSelBranch} onChange={e => {
                         const b = e.target.value
                         setSastSelBranch(b)
@@ -761,9 +761,9 @@ function ConnectorDetail({ conn, onSync, onDisconnect, syncing }) {
                 <Code size={13} className={sasting ? 'animate-pulse' : ''}/>
                 {sasting ? 'Scanning source code…' : 'Run SAST Scan'}
               </button>
-              {sasting && <span className="text-[10px] text-siem-muted">Large repositories can take 10–30 minutes.</span>}
+              {sasting && <span className="text-mini text-siem-muted">Large repositories can take 10–30 minutes.</span>}
               {!sasting && sastResult?.scanned_at && (
-                <span className="text-[10px] text-siem-muted/60 flex items-center gap-1">
+                <span className="text-mini text-siem-muted/60 flex items-center gap-1">
                   <Clock size={10}/>
                   Last scanned {formatDistanceToNow(new Date(sastResult.scanned_at), { addSuffix: true })}
                   {sastResult.repo && <span className="text-siem-accent/60 ml-1">· {sastResult.repo.split('/').slice(-1)[0]}</span>}
@@ -818,7 +818,7 @@ function ConnectorDetail({ conn, onSync, onDisconnect, syncing }) {
                 {['Cloning the repository', 'Scanning history for secrets', 'Checking dependencies, IaC and licences', 'Running code analysis', 'Deduplicating findings'].map((msg, i) => (
                   <div key={i} className="flex items-center gap-2">
                     <div className="w-1.5 h-1.5 rounded-full bg-siem-accent/60 animate-pulse" style={{animationDelay:`${i*400}ms`}}/>
-                    <span className="text-[11px] text-siem-muted">{msg}…</span>
+                    <span className="text-xs text-siem-muted">{msg}…</span>
                   </div>
                 ))}
               </div>
@@ -838,7 +838,7 @@ function ConnectorDetail({ conn, onSync, onDisconnect, syncing }) {
                   ].map(([label, val, color]) => (
                     <div key={label} className="bg-siem-surface border border-siem-border rounded-xl p-3 text-center">
                       <div className={`text-xl font-bold font-mono ${color}`}>{val ?? 0}</div>
-                      <div className="text-[9px] text-siem-muted uppercase tracking-wide mt-0.5">{label}</div>
+                      <div className="text-2xs text-siem-muted uppercase tracking-wide mt-0.5">{label}</div>
                     </div>
                   ))}
                 </div>
@@ -851,7 +851,7 @@ function ConnectorDetail({ conn, onSync, onDisconnect, syncing }) {
                       const label = name === 'source' ? `source: ${status === 'git' ? 'git clone' : 'API download'}` : name
                       return (
                         <span key={name} title={status}
-                          className={`text-[10px] px-2 py-0.5 rounded-full border ${ok ? 'border-emerald-800/50 text-emerald-400/90' : 'border-siem-border text-siem-muted/60 line-through'}`}>
+                          className={`text-mini px-2 py-0.5 rounded-full border ${ok ? 'border-emerald-800/50 text-emerald-400/90' : 'border-siem-border text-siem-muted/60 line-through'}`}>
                           {label}{name === 'codeql' && sastResult.engines?.['codeql-languages'] ? ` (${sastResult.engines['codeql-languages']})` : ''}
                         </span>
                       )
@@ -861,7 +861,7 @@ function ConnectorDetail({ conn, onSync, onDisconnect, syncing }) {
                         const p = new URLSearchParams({ repo: sastResult.repo || sastSelRepo })
                         if (sastResult.branch) p.set('branch', sastResult.branch)
                         navigate(`/devops/sbom/${conn.id}?${p}`)
-                      }} className="ml-auto text-[10px] px-3 py-1 rounded-lg bg-siem-accent text-white hover:opacity-90">
+                      }} className="ml-auto text-mini px-3 py-1 rounded-lg bg-siem-accent text-white hover:opacity-90">
                         View SBOM
                       </button>
                     )}
@@ -878,7 +878,7 @@ function ConnectorDetail({ conn, onSync, onDisconnect, syncing }) {
                           a.click()
                           URL.revokeObjectURL(a.href)
                         } catch (e) { setSastError('SBOM download failed') }
-                      }} className="text-[10px] px-3 py-1 rounded-lg border border-siem-accent/40 text-siem-accent hover:bg-siem-accent/10">
+                      }} className="text-mini px-3 py-1 rounded-lg border border-siem-accent/40 text-siem-accent hover:bg-siem-accent/10">
                         Download
                       </button>
                     )}
@@ -890,9 +890,9 @@ function ConnectorDetail({ conn, onSync, onDisconnect, syncing }) {
                   <div className="bg-violet-950/15 border border-violet-800/25 rounded-xl p-4 space-y-3">
                     <div className="flex items-center gap-2 flex-wrap">
                       <Zap size={13} className="text-violet-400"/>
-                      <span className="text-[10px] uppercase tracking-wider text-violet-400/80 font-semibold">AI Security Triage</span>
+                      <span className="text-2xs uppercase tracking-wider text-violet-400/80 font-semibold">AI Security Triage</span>
                       {aiSast.risk_label && (
-                        <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full border ml-auto ${
+                        <span className={`text-2xs font-bold px-2 py-0.5 rounded-full border ml-auto ${
                           aiSast.risk_label === 'Critical' ? 'text-red-400 border-red-800 bg-red-950/30' :
                           aiSast.risk_label === 'High'     ? 'text-orange-400 border-orange-800 bg-orange-950/20' :
                           aiSast.risk_label === 'Medium'   ? 'text-yellow-400 border-yellow-800 bg-yellow-950/20' :
@@ -900,7 +900,7 @@ function ConnectorDetail({ conn, onSync, onDisconnect, syncing }) {
                         }`}>{aiSast.risk_label}</span>
                       )}
                       {aiSast.true_positive_rate != null && (
-                        <span className="text-[9px] text-siem-muted border border-siem-border rounded-full px-2 py-0.5">
+                        <span className="text-2xs text-siem-muted border border-siem-border rounded-full px-2 py-0.5">
                           ~{aiSast.true_positive_rate}% true positive
                         </span>
                       )}
@@ -908,7 +908,7 @@ function ConnectorDetail({ conn, onSync, onDisconnect, syncing }) {
                     {aiSast.executive_summary && <p className="text-xs text-siem-text leading-relaxed">{aiSast.executive_summary}</p>}
                     {aiSast.systemic_issues?.length > 0 && (
                       <div>
-                        <div className="text-[9px] uppercase text-orange-400/70 font-semibold mb-1.5">Systemic Issues</div>
+                        <div className="text-2xs uppercase text-orange-400/70 font-semibold mb-1.5">Systemic Issues</div>
                         <ul className="space-y-1">
                           {aiSast.systemic_issues.map((s, i) => (
                             <li key={i} className="text-xs text-siem-muted flex gap-2">
@@ -920,10 +920,10 @@ function ConnectorDetail({ conn, onSync, onDisconnect, syncing }) {
                     )}
                     {aiSast.false_positive_indicators?.length > 0 && (
                       <div>
-                        <div className="text-[9px] uppercase text-emerald-400/60 font-semibold mb-1.5">Likely False Positives</div>
+                        <div className="text-2xs uppercase text-emerald-400/60 font-semibold mb-1.5">Likely False Positives</div>
                         <ul className="space-y-1">
                           {aiSast.false_positive_indicators.map((fp, i) => (
-                            <li key={i} className="text-[10px] text-siem-muted/70 flex gap-2">
+                            <li key={i} className="text-mini text-siem-muted/70 flex gap-2">
                               <span className="text-emerald-400/40 shrink-0">→</span>{fp}
                             </li>
                           ))}
@@ -932,7 +932,7 @@ function ConnectorDetail({ conn, onSync, onDisconnect, syncing }) {
                     )}
                     {aiSast.immediate_actions?.length > 0 && (
                       <div>
-                        <div className="text-[9px] uppercase text-red-400/70 font-semibold mb-1.5">Immediate Actions</div>
+                        <div className="text-2xs uppercase text-red-400/70 font-semibold mb-1.5">Immediate Actions</div>
                         <ul className="space-y-1">
                           {aiSast.immediate_actions.map((a, i) => (
                             <li key={i} className="text-xs text-siem-text flex gap-2">
@@ -950,7 +950,7 @@ function ConnectorDetail({ conn, onSync, onDisconnect, syncing }) {
                   <div className="flex gap-1">
                     {['all','critical','high','medium','low','info'].map(sev => (
                       <button key={sev} onClick={() => setSastFilter(sev)}
-                        className={`text-[10px] px-2.5 py-1 rounded-full border transition-colors capitalize ${
+                        className={`text-mini px-2.5 py-1 rounded-full border transition-colors capitalize ${
                           sastFilter === sev
                             ? 'bg-siem-accent border-siem-accent text-white'
                             : 'border-siem-border text-siem-muted hover:text-siem-text'
@@ -966,10 +966,10 @@ function ConnectorDetail({ conn, onSync, onDisconnect, syncing }) {
                   <div className="bg-siem-surface border border-siem-border rounded-xl overflow-hidden">
                     <div className="px-4 py-2.5 border-b border-siem-border/40 flex items-center gap-2">
                       <Code size={13} className="text-siem-accent"/>
-                      <span className="text-[10px] uppercase tracking-wider text-siem-muted font-semibold">
+                      <span className="text-2xs uppercase tracking-wider text-siem-muted font-semibold">
                         Findings ({sastResult.findings.filter(f => sastFilter === 'all' || f.severity === sastFilter).length})
                       </span>
-                      <label className="ml-auto flex items-center gap-1.5 text-[10px] text-siem-muted cursor-pointer">
+                      <label className="ml-auto flex items-center gap-1.5 text-mini text-siem-muted cursor-pointer">
                         <input type="checkbox" checked={showDismissed} onChange={e => setShowDismissed(e.target.checked)} className="accent-siem-accent"/>
                         Show dismissed ({sastResult.findings.filter(f => f.triage && ['false_positive','accepted_risk'].includes(f.triage.status)).length})
                       </label>
@@ -995,14 +995,14 @@ function ConnectorDetail({ conn, onSync, onDisconnect, syncing }) {
                               <div className="px-4 py-3 hover:bg-white/[0.02] cursor-pointer" onClick={toggle}>
                                 <div className="flex items-center justify-between gap-3">
                                   <div className="flex items-center gap-2 flex-wrap flex-1 min-w-0">
-                                    <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded border shrink-0 ${sevBg} ${sevColor}`}>{f.severity}</span>
+                                    <span className={`text-2xs font-bold uppercase px-1.5 py-0.5 rounded border shrink-0 ${sevBg} ${sevColor}`}>{f.severity}</span>
                                     <span className="text-xs font-semibold text-siem-text">{f.title}</span>
-                                    {f.cwe && <span className="text-[9px] text-violet-400/60 shrink-0">{f.cwe}</span>}
+                                    {f.cwe && <span className="text-2xs text-violet-400/60 shrink-0">{f.cwe}</span>}
                                     <ReachBadge reach={f.reachability} />
                                     <TriageBadge f={f} />
-                                    {f.issue_url && <a href={f.issue_url} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()} className="text-[9px] px-1.5 py-0.5 rounded border border-siem-accent/40 text-siem-accent shrink-0">issue</a>}
+                                    {f.issue_url && <a href={f.issue_url} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()} className="text-2xs px-1.5 py-0.5 rounded border border-siem-accent/40 text-siem-accent shrink-0">issue</a>}
                                     {f.engine && f.engine !== 'semgrep' && (
-                                      <span className={`text-[9px] px-1 rounded shrink-0 ${
+                                      <span className={`text-2xs px-1 rounded shrink-0 ${
                                         f.engine === 'codeql' ? 'bg-blue-950/40 text-blue-400' :
                                         f.engine?.includes('+') ? 'bg-purple-950/40 text-purple-400' :
                                         'bg-siem-surface text-siem-muted'
@@ -1010,14 +1010,14 @@ function ConnectorDetail({ conn, onSync, onDisconnect, syncing }) {
                                     )}
                                   </div>
                                   <div className="flex items-center gap-3 shrink-0">
-                                    <span className="text-[10px] font-mono text-siem-muted/50 hidden sm:block">{f.file?.split('/').slice(-2).join('/')}</span>
-                                    {f.line > 0 && <span className="text-[10px] text-siem-muted/50">{f.end_line && f.end_line > f.line ? `:${f.line}–${f.end_line}` : `:${f.line}`}</span>}
+                                    <span className="text-mini font-mono text-siem-muted/50 hidden sm:block">{f.file?.split('/').slice(-2).join('/')}</span>
+                                    {f.line > 0 && <span className="text-mini text-siem-muted/50">{f.end_line && f.end_line > f.line ? `:${f.line}–${f.end_line}` : `:${f.line}`}</span>}
                                     <span className="text-siem-muted/40 text-xs">{expanded ? '▲' : '▼'}</span>
                                   </div>
                                 </div>
                                 {/* Snippet always shown collapsed */}
                                 {f.snippet && !expanded && (
-                                  <code className="block text-[10px] font-mono bg-siem-bg border border-siem-border/30 rounded px-2 py-1 text-siem-muted/60 truncate mt-1.5">
+                                  <code className="block text-mini font-mono bg-siem-bg border border-siem-border/30 rounded px-2 py-1 text-siem-muted/60 truncate mt-1.5">
                                     {f.snippet}
                                   </code>
                                 )}
@@ -1028,7 +1028,7 @@ function ConnectorDetail({ conn, onSync, onDisconnect, syncing }) {
                                 <div className="px-4 pb-4 space-y-3 bg-siem-surface/30">
 
                                   {/* File + location */}
-                                  <div className="flex items-center gap-2 text-[10px] pt-1">
+                                  <div className="flex items-center gap-2 text-mini pt-1">
                                     <span className="text-siem-muted/50">File</span>
                                     <code className="font-mono text-siem-accent/80">{f.file}</code>
                                     {f.line > 0 && <span className="text-siem-muted/50">{f.end_line && f.end_line > f.line ? `lines ${f.line}–${f.end_line}` : `line ${f.line}`}</span>}
@@ -1036,7 +1036,7 @@ function ConnectorDetail({ conn, onSync, onDisconnect, syncing }) {
                                   </div>
 
                                   {/* Rule ID + OWASP */}
-                                  <div className="flex items-center gap-3 flex-wrap text-[10px]">
+                                  <div className="flex items-center gap-3 flex-wrap text-mini">
                                     <div className="flex items-center gap-1.5">
                                       <span className="text-siem-muted/50">Rule</span>
                                       <code className="font-mono text-siem-muted border border-siem-border/40 rounded px-1.5 py-0.5">{f.rule_id}</code>
@@ -1062,8 +1062,8 @@ function ConnectorDetail({ conn, onSync, onDisconnect, syncing }) {
                                   {/* Code snippet - full, not truncated */}
                                   {f.snippet && (
                                     <div>
-                                      <div className="text-[9px] uppercase tracking-wider text-siem-muted/40 mb-1">Matched code</div>
-                                      <code className="block text-[11px] font-mono bg-black/30 border border-siem-border/40 rounded px-3 py-2 text-green-400/80 whitespace-pre-wrap break-all">
+                                      <div className="text-2xs uppercase tracking-wider text-siem-muted/40 mb-1">Matched code</div>
+                                      <code className="block text-xs font-mono bg-black/30 border border-siem-border/40 rounded px-3 py-2 text-green-400/80 whitespace-pre-wrap break-all">
                                         {f.snippet}
                                       </code>
                                     </div>
@@ -1071,15 +1071,15 @@ function ConnectorDetail({ conn, onSync, onDisconnect, syncing }) {
 
                                   {/* Description */}
                                   <div>
-                                    <div className="text-[9px] uppercase tracking-wider text-siem-muted/40 mb-1">What this means</div>
-                                    <p className="text-[11px] text-siem-muted leading-relaxed">{f.detail}</p>
+                                    <div className="text-2xs uppercase tracking-wider text-siem-muted/40 mb-1">What this means</div>
+                                    <p className="text-xs text-siem-muted leading-relaxed">{f.detail}</p>
                                   </div>
 
                                   {/* Fix */}
                                   {f.fix && (
                                     <div className="bg-emerald-950/20 border border-emerald-800/30 rounded-lg px-3 py-2">
-                                      <div className="text-[9px] uppercase tracking-wider text-emerald-400/60 mb-1">Recommended fix</div>
-                                      <p className="text-[11px] text-emerald-300/80 leading-relaxed">{f.fix}</p>
+                                      <div className="text-2xs uppercase tracking-wider text-emerald-400/60 mb-1">Recommended fix</div>
+                                      <p className="text-xs text-emerald-300/80 leading-relaxed">{f.fix}</p>
                                     </div>
                                   )}
                                   <FindingActions conn={conn} f={f} repo={sastResult.repo || sastSelRepo} branch={sastResult.branch || sastSelBranch} onChanged={reloadSAST} />
@@ -1174,7 +1174,7 @@ function ConnectorDetail({ conn, onSync, onDisconnect, syncing }) {
                   ].map(([label, val, color]) => (
                     <div key={label} className="bg-siem-surface border border-siem-border rounded-xl p-3 text-center">
                       <div className={`text-2xl font-bold font-mono ${color}`}>{val ?? 0}</div>
-                      <div className="text-[9px] text-siem-muted uppercase tracking-wide mt-0.5">{label}</div>
+                      <div className="text-2xs text-siem-muted uppercase tracking-wide mt-0.5">{label}</div>
                     </div>
                   ))}
                 </div>
@@ -1184,9 +1184,9 @@ function ConnectorDetail({ conn, onSync, onDisconnect, syncing }) {
                   <div className="bg-violet-950/15 border border-violet-800/25 rounded-xl p-4 space-y-3">
                     <div className="flex items-center gap-2">
                       <Zap size={13} className="text-violet-400"/>
-                      <span className="text-[10px] uppercase tracking-wider text-violet-400/80 font-semibold">AI Security Assessment</span>
+                      <span className="text-2xs uppercase tracking-wider text-violet-400/80 font-semibold">AI Security Assessment</span>
                       {aiScan.risk_label && (
-                        <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full border ml-auto ${
+                        <span className={`text-2xs font-bold px-2 py-0.5 rounded-full border ml-auto ${
                           aiScan.risk_label === 'Critical' ? 'text-red-400 border-red-800 bg-red-950/30' :
                           aiScan.risk_label === 'High'     ? 'text-orange-400 border-orange-800 bg-orange-950/20' :
                           aiScan.risk_label === 'Medium'   ? 'text-yellow-400 border-yellow-800 bg-yellow-950/20' :
@@ -1197,13 +1197,13 @@ function ConnectorDetail({ conn, onSync, onDisconnect, syncing }) {
                     {aiScan.executive_summary && <p className="text-xs text-siem-text leading-relaxed">{aiScan.executive_summary}</p>}
                     {aiScan.patterns && (
                       <div className="bg-siem-bg/50 rounded-lg p-3">
-                        <div className="text-[9px] uppercase text-siem-muted/60 font-semibold mb-1">Patterns Detected</div>
+                        <div className="text-2xs uppercase text-siem-muted/60 font-semibold mb-1">Patterns Detected</div>
                         <p className="text-xs text-siem-muted/80">{aiScan.patterns}</p>
                       </div>
                     )}
                     {aiScan.immediate_actions?.length > 0 && (
                       <div>
-                        <div className="text-[9px] uppercase text-emerald-400/70 font-semibold mb-2">Immediate Actions</div>
+                        <div className="text-2xs uppercase text-emerald-400/70 font-semibold mb-2">Immediate Actions</div>
                         <ul className="space-y-1">
                           {aiScan.immediate_actions.map((a, i) => (
                             <li key={i} className="flex items-start gap-2 text-xs text-siem-text">
@@ -1221,7 +1221,7 @@ function ConnectorDetail({ conn, onSync, onDisconnect, syncing }) {
                   <div className="bg-siem-surface border border-siem-border rounded-xl overflow-hidden">
                     <div className="px-4 py-2.5 border-b border-siem-border/40 flex items-center gap-2">
                       <Bug size={13} className="text-siem-accent"/>
-                      <span className="text-[10px] uppercase tracking-wider text-siem-muted font-semibold">
+                      <span className="text-2xs uppercase tracking-wider text-siem-muted font-semibold">
                         Findings ({scanResult.findings.length})
                       </span>
                     </div>
@@ -1252,21 +1252,21 @@ function ConnectorDetail({ conn, onSync, onDisconnect, syncing }) {
                                 <span className="text-sm shrink-0 mt-0.5">{catIcon}</span>
                                 <div className="flex-1 min-w-0">
                                   <div className="flex items-center gap-2 mb-0.5 flex-wrap">
-                                    <span className={`text-[10px] font-bold uppercase ${sevColor}`}>{f.severity}</span>
+                                    <span className={`text-2xs font-bold uppercase ${sevColor}`}>{f.severity}</span>
                                     <span className="text-xs font-medium text-siem-text truncate">{f.title}</span>
                                   </div>
-                                  <div className="text-[10px] text-siem-muted truncate">{f.file}</div>
-                                  {f.detail && <div className="text-[10px] text-siem-muted/60 mt-0.5">{f.detail}</div>}
+                                  <div className="text-mini text-siem-muted truncate">{f.file}</div>
+                                  {f.detail && <div className="text-mini text-siem-muted/60 mt-0.5">{f.detail}</div>}
                                   <div className="flex items-center gap-3 mt-1.5 flex-wrap">
-                                    {f.repo && <span className="text-[9px] text-siem-muted/50 font-mono">{f.repo}</span>}
-                                    {f.author && <span className="text-[9px] text-siem-muted/50">by {f.author}</span>}
+                                    {f.repo && <span className="text-2xs text-siem-muted/50 font-mono">{f.repo}</span>}
+                                    {f.author && <span className="text-2xs text-siem-muted/50">by {f.author}</span>}
                                     {f.commit && (
-                                      <span className="text-[9px] font-mono text-violet-400/60">
+                                      <span className="text-2xs font-mono text-violet-400/60">
                                         {f.commit.slice(0, 7)}
                                       </span>
                                     )}
                                     {f.remediation && (
-                                      <div className="w-full mt-1 text-[9px] text-emerald-400/70 bg-emerald-950/10 border border-emerald-800/20 rounded px-2 py-1">
+                                      <div className="w-full mt-1 text-2xs text-emerald-400/70 bg-emerald-950/10 border border-emerald-800/20 rounded px-2 py-1">
                                         Fix: {f.remediation}
                                       </div>
                                     )}
@@ -1308,19 +1308,19 @@ function ConnectorDetail({ conn, onSync, onDisconnect, syncing }) {
                   onClick={() => setSelectedAlertId(a.id)}>
                   <div className="flex items-center justify-between gap-3">
                     <div className="flex items-center gap-2 min-w-0">
-                      <span className={`text-[10px] shrink-0 ${SEVERITY_COLORS[a.severity] || 'text-siem-muted'}`}>
+                      <span className={`text-mini shrink-0 ${SEVERITY_COLORS[a.severity] || 'text-siem-muted'}`}>
                         {SEVERITY_LABELS[a.severity] || a.severity}
                       </span>
                       <span className="text-xs text-siem-text truncate">{a.title}</span>
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
-                      <span className={`text-[10px] ${STATUS_COLORS[a.status] || 'text-siem-muted'}`}>{a.status}</span>
-                      <span className="text-[10px] text-siem-muted">
+                      <span className={`text-mini ${STATUS_COLORS[a.status] || 'text-siem-muted'}`}>{a.status}</span>
+                      <span className="text-mini text-siem-muted">
                         {a.created_at ? formatDistanceToNow(new Date(a.created_at), { addSuffix: true }) : ''}
                       </span>
                     </div>
                   </div>
-                  {a.description && <div className="text-[10px] text-siem-muted mt-1 line-clamp-1">{a.description}</div>}
+                  {a.description && <div className="text-mini text-siem-muted mt-1 line-clamp-1">{a.description}</div>}
                 </div>
               ))}
           </div>
@@ -1401,7 +1401,7 @@ function DevOpsConnectors() {
               <RefreshCw size={13} className={loading ? 'animate-spin' : ''}/>
             </button>
           </div>
-          <div className="text-[10px] text-siem-muted mt-1">
+          <div className="text-mini text-siem-muted mt-1">
             {connectors.length} connected · GitHub, GitLab
           </div>
         </div>
@@ -1418,7 +1418,7 @@ function DevOpsConnectors() {
                 <Code size={14} className={cfg.color || 'text-siem-muted'}/>
                 <div className="flex-1 min-w-0">
                   <div className="text-xs font-medium text-siem-text truncate">{conn.org}</div>
-                  <div className="flex items-center gap-1.5 text-[10px] text-siem-muted">
+                  <div className="flex items-center gap-1.5 text-mini text-siem-muted">
                     <span className={`w-1.5 h-1.5 rounded-full ${
                       conn.status === 'connected' ? 'bg-emerald-400' :
                       conn.status === 'error' ? 'bg-red-400' : 'bg-yellow-400'
@@ -1439,7 +1439,7 @@ function DevOpsConnectors() {
         </div>
 
         <div className="flex-shrink-0 border-t border-siem-border p-3 space-y-1">
-          <p className="text-[10px] uppercase tracking-wider text-siem-muted mb-2">Add connector</p>
+          <p className="text-2xs uppercase tracking-wider text-siem-muted mb-2">Add connector</p>
           {Object.entries(PROVIDERS).map(([provider, cfg]) => (
             <button key={provider}
               onClick={() => { setAdding(provider); setSelected(null) }}
@@ -1492,7 +1492,7 @@ function DevOpsConnectors() {
                 Connect GitHub, GitLab or Azure DevOps.
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-2 text-[10px] mt-2 max-w-xs">
+            <div className="grid grid-cols-2 gap-2 text-mini mt-2 max-w-xs">
               {[
                 { icon: Lock, text: 'Secret detection on every push' },
                 { icon: Shield, text: 'CI/CD pipeline tamper detection' },

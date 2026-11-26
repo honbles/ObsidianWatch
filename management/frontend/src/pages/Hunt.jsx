@@ -40,8 +40,8 @@ const KINDS = [
 function Table({ cols, rows }) {
   return (
     <div className="overflow-x-auto max-h-80 border border-siem-border/50 rounded">
-      <table className="w-full text-[11px]">
-        <thead><tr className="bg-siem-surface/60 sticky top-0">{cols.map(c => <th key={c} className="text-left px-2 py-1 text-[9px] uppercase text-siem-muted">{c}</th>)}</tr></thead>
+      <table className="w-full text-xs">
+        <thead><tr className="bg-siem-surface/60 sticky top-0">{cols.map(c => <th key={c} className="text-left px-2 py-1 text-2xs uppercase text-siem-muted">{c}</th>)}</tr></thead>
         <tbody>{rows.map((r, i) => <tr key={i} className="border-t border-siem-border/30">{r.map((v, j) => <td key={j} className="px-2 py-1 font-mono break-all max-w-[420px]">{v}</td>)}</tr>)}</tbody>
       </table>
     </div>
@@ -76,13 +76,13 @@ function HuntResults({ id }) {
     <div className="space-y-3">
       <div className="flex items-center gap-3 flex-wrap">
         <div className="text-sm font-semibold text-siem-text">{hunt.name}</div>
-        <span className="text-[10px] text-siem-muted">{hunt.responded}/{hunt.agents_total} hosts answered</span>
-        <span className="text-[10px] text-siem-muted">{hunt.hosts_with_hits} with hits · {hunt.total_rows} rows</span>
-        {!done && <span className="text-[10px] text-amber-300 flex items-center gap-1"><Loader2 size={11} className="animate-spin" /> {hunt.queued > 0 ? `${hunt.queued} waiting for hosts to come online` : 'collecting…'}</span>}
-        {hunt.skipped > 0 && <span className="text-[10px] text-siem-muted">{hunt.skipped} skipped (offline)</span>}
-        {hunt.expired > 0 && <span className="text-[10px] text-siem-muted">{hunt.expired} expired</span>}
-        {hunt.expires_at && !done && <span className="text-[10px] text-siem-muted">window ends {formatDistanceToNow(new Date(hunt.expires_at), { addSuffix: true })}</span>}
-        <button onClick={download} className="ml-auto text-[11px] text-siem-muted hover:text-siem-text flex items-center gap-1"><Download size={12} /> CSV</button>
+        <span className="text-mini text-siem-muted">{hunt.responded}/{hunt.agents_total} hosts answered</span>
+        <span className="text-mini text-siem-muted">{hunt.hosts_with_hits} with hits · {hunt.total_rows} rows</span>
+        {!done && <span className="text-mini text-amber-300 flex items-center gap-1"><Loader2 size={11} className="animate-spin" /> {hunt.queued > 0 ? `${hunt.queued} waiting for hosts to come online` : 'collecting…'}</span>}
+        {hunt.skipped > 0 && <span className="text-mini text-siem-muted">{hunt.skipped} skipped (offline)</span>}
+        {hunt.expired > 0 && <span className="text-mini text-siem-muted">{hunt.expired} expired</span>}
+        {hunt.expires_at && !done && <span className="text-mini text-siem-muted">window ends {formatDistanceToNow(new Date(hunt.expires_at), { addSuffix: true })}</span>}
+        <button onClick={download} className="ml-auto text-xs text-siem-muted hover:text-siem-text flex items-center gap-1"><Download size={12} /> CSV</button>
       </div>
       <div className="rounded-xl border border-siem-border overflow-hidden">
         {results.map(r => {
@@ -94,9 +94,9 @@ function HuntResults({ id }) {
               <div className={`flex items-center gap-2 px-3 py-2 ${hit ? 'cursor-pointer hover:bg-white/[0.03]' : ''}`} onClick={() => hit && setOpen(o => ({ ...o, [r.agent_id]: !o[r.agent_id] }))}>
                 {hit ? (isOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />) : <span className="w-3" />}
                 <span className="text-xs font-medium text-siem-text">{r.hostname}</span>
-                <span className="text-[10px] text-siem-muted">{r.os}</span>
+                <span className="text-mini text-siem-muted">{r.os}</span>
                 {r.late && <span className="ow-pill warn" title={r.ran_at ? `Ran ${new Date(r.ran_at).toLocaleString()} (host was offline when the hunt started)` : undefined}>late · ran {r.ran_at ? formatDistanceToNow(new Date(r.ran_at), { addSuffix: true }) : ''}</span>}
-                <span className={`ml-auto text-[10px] ${r.status === 'ok' ? (hit ? 'text-orange-300' : 'text-siem-muted') : (r.state === 'running' || r.state === 'queued') ? 'text-amber-300' : (r.state === 'skipped' || r.state === 'expired') ? 'text-siem-muted' : 'text-red-300'}`}>
+                <span className={`ml-auto text-mini ${r.status === 'ok' ? (hit ? 'text-orange-300' : 'text-siem-muted') : (r.state === 'running' || r.state === 'queued') ? 'text-amber-300' : (r.state === 'skipped' || r.state === 'expired') ? 'text-siem-muted' : 'text-red-300'}`}>
                   {r.status === 'ok' ? `${r.row_count} row${r.row_count === 1 ? '' : 's'}${r.truncated ? '+' : ''}`
                     : r.state === 'queued' ? 'queued · runs when the host reconnects'
                     : r.state === 'running' ? 'waiting…'
@@ -156,7 +156,7 @@ function LiveTab({ library, initial }) {
               </optgroup>
             ))}
           </select>
-          {spec?.[4] && <div className="text-[10px] text-siem-muted">Answered by {spec[4]} hosts; others reply "not available".</div>}
+          {spec?.[4] && <div className="text-mini text-siem-muted">Answered by {spec[4]} hosts; others reply "not available".</div>}
           <input value={match} onChange={e => setMatch(e.target.value)} placeholder={hint} className="w-full bg-siem-bg border border-siem-border rounded px-2 py-1.5 text-xs text-siem-text font-mono" />
           {kind === 'file_find' && <input value={path} onChange={e => setPath(e.target.value)} placeholder="Folder to search (default: C:\Users or /)" className="w-full bg-siem-bg border border-siem-border rounded px-2 py-1.5 text-xs text-siem-text font-mono" />}
           {kind === 'recent_files' && (
@@ -182,22 +182,22 @@ function LiveTab({ library, initial }) {
               </select>
             )}
           </div>
-          {offline === 'wait' && <div className="text-[10px] text-siem-muted">Offline hosts answer when they reconnect, until the window ends.</div>}
-          <div className="text-[10px] text-siem-muted">Fixed, read-only questions: nothing is executed on the host. Several words must all match; <code>col:text</code> limits a word to one column. Hosts need a live tunnel to answer.</div>
+          {offline === 'wait' && <div className="text-mini text-siem-muted">Offline hosts answer when they reconnect, until the window ends.</div>}
+          <div className="text-mini text-siem-muted">Fixed, read-only questions: nothing is executed on the host. Several words must all match; <code>col:text</code> limits a word to one column. Hosts need a live tunnel to answer.</div>
           {admin ? (
             <button onClick={run} disabled={busy || (needsMatch && !match) || (needsPath && !path)} className="w-full px-3 py-2 rounded bg-siem-accent text-white text-xs font-semibold flex items-center justify-center gap-1.5 disabled:opacity-50">
               {busy ? <Loader2 size={13} className="animate-spin" /> : <Play size={13} />} Run on fleet
             </button>
-          ) : <div className="text-[11px] text-amber-300">Admin role required to run live queries.</div>}
-          {err && <div className="text-[11px] text-red-300">{err}</div>}
+          ) : <div className="text-xs text-amber-300">Admin role required to run live queries.</div>}
+          {err && <div className="text-xs text-red-300">{err}</div>}
         </div>
         <div className="rounded-xl border border-siem-border bg-siem-surface/40 p-3">
-          <div className="text-[10px] uppercase tracking-wider text-siem-muted mb-1.5">Recent live hunts</div>
+          <div className="text-2xs uppercase tracking-wider text-siem-muted mb-1.5">Recent live hunts</div>
           {hunts.length === 0 && <div className="text-xs text-siem-muted">None yet.</div>}
           {hunts.map(h => (
             <button key={h.id} onClick={() => setActive(h.id)} className={`w-full text-left px-2 py-1.5 rounded text-xs hover:bg-white/[0.04] ${active === h.id ? 'bg-white/[0.06]' : ''}`}>
               <div className="text-siem-text truncate">{h.name}</div>
-              <div className="text-[10px] text-siem-muted">{h.hosts_with_hits}/{h.agents_total} hosts with hits · {formatDistanceToNow(new Date(h.created_at), { addSuffix: true })} · {h.requested_by}</div>
+              <div className="text-mini text-siem-muted">{h.hosts_with_hits}/{h.agents_total} hosts with hits · {formatDistanceToNow(new Date(h.created_at), { addSuffix: true })} · {h.requested_by}</div>
             </button>
           ))}
         </div>
@@ -232,24 +232,24 @@ function HistoryTab({ initial }) {
           </select>
           <button onClick={() => run()} disabled={busy || !q.trim()} className="px-3 py-1.5 rounded bg-siem-accent text-white text-xs font-semibold flex items-center gap-1.5 disabled:opacity-50">{busy ? <Loader2 size={13} className="animate-spin" /> : <Search size={13} />} Hunt</button>
         </div>
-        <div className="text-[10px] text-siem-muted">Same query language as Events.</div>
-        {err && <div className="text-[11px] text-red-300">{err}</div>}
+        <div className="text-mini text-siem-muted">Same query language as Events.</div>
+        {err && <div className="text-xs text-red-300">{err}</div>}
       </div>
       {res && (
         <div className="rounded-xl border border-siem-border overflow-hidden">
           <div className="px-3 py-2 bg-siem-surface/40 text-xs text-siem-text"><b>{res.total_hosts}</b> host{res.total_hosts === 1 ? '' : 's'} · <b>{res.total_events?.toLocaleString()}</b> events</div>
           {res.hosts.length === 0 ? <div className="p-4 text-xs text-siem-muted">No host matches in this window.</div> : (
             <table className="w-full text-xs">
-              <thead><tr className="text-[9px] uppercase text-siem-muted"><th className="text-left px-3 py-1.5">Host</th><th className="text-right px-3 py-1.5">Events</th><th className="text-left px-3 py-1.5">First / last</th><th className="text-left px-3 py-1.5">Latest sample</th><th /></tr></thead>
+              <thead><tr className="text-2xs uppercase text-siem-muted"><th className="text-left px-3 py-1.5">Host</th><th className="text-right px-3 py-1.5">Events</th><th className="text-left px-3 py-1.5">First / last</th><th className="text-left px-3 py-1.5">Latest sample</th><th /></tr></thead>
               <tbody>
                 {res.hosts.map(h => (
                   <tr key={h.agent_id + h.host} className="border-t border-siem-border/40 align-top">
-                    <td className="px-3 py-2 font-medium text-siem-text">{h.host}<div className="text-[10px] text-siem-muted">{(h.event_types || []).join(', ')}</div></td>
+                    <td className="px-3 py-2 font-medium text-siem-text">{h.host}<div className="text-mini text-siem-muted">{(h.event_types || []).join(', ')}</div></td>
                     <td className="px-3 py-2 text-right">{h.count.toLocaleString()}</td>
-                    <td className="px-3 py-2 text-[10px] text-siem-muted whitespace-nowrap">{formatDistanceToNow(new Date(h.first), { addSuffix: true })}<br />{formatDistanceToNow(new Date(h.last), { addSuffix: true })}</td>
-                    <td className="px-3 py-2 font-mono text-[10px] break-all max-w-[420px]">{h.sample}</td>
+                    <td className="px-3 py-2 text-mini text-siem-muted whitespace-nowrap">{formatDistanceToNow(new Date(h.first), { addSuffix: true })}<br />{formatDistanceToNow(new Date(h.last), { addSuffix: true })}</td>
+                    <td className="px-3 py-2 font-mono text-mini break-all max-w-[420px]">{h.sample}</td>
                     <td className="px-3 py-2 text-right whitespace-nowrap">
-                      <button onClick={() => nav(`/events?host=${encodeURIComponent(h.host)}&search=${encodeURIComponent(q)}`)} className="text-siem-accent hover:underline text-[11px]">Open events</button>
+                      <button onClick={() => nav(`/events?host=${encodeURIComponent(h.host)}&search=${encodeURIComponent(q)}`)} className="text-siem-accent hover:underline text-xs">Open events</button>
                     </td>
                   </tr>
                 ))}
@@ -287,8 +287,8 @@ export default function Hunt() {
               <div className="ow-lbl" style={{ marginBottom: 4 }}>{l}</div>
               {groups[m].map(h => (
                 <button key={h.id} onClick={() => choose(h)} className="ow-fc" style={{ height: 'auto', padding: '6px 8px', flexDirection: 'column', alignItems: 'flex-start', gap: 2 }}>
-                  <span className="t1" style={{ whiteSpace: 'normal' }}>{h.title || h.name}{h.attack && <span className="mono t3" style={{ marginLeft: 6, fontSize: 11 }}>{h.attack}</span>}</span>
-                  {h.desc && <span className="t3" style={{ fontSize: 11.5, whiteSpace: 'normal' }}>{h.desc}</span>}
+                  <span className="t1" style={{ whiteSpace: 'normal' }}>{h.title || h.name}{h.attack && <span className="mono t3" style={{ marginLeft: 6, fontSize: 13 }}>{h.attack}</span>}</span>
+                  {h.desc && <span className="t3" style={{ fontSize: 13, whiteSpace: 'normal' }}>{h.desc}</span>}
                 </button>
               ))}
             </div>

@@ -4,6 +4,7 @@ import { Search, Wifi, Download, X, ChevronRight, Cloud, Monitor, Terminal,
          GitBranch, GitCommit, Trash2, User, Boxes } from 'lucide-react'
 import { format, formatDistanceToNow } from 'date-fns'
 import api from '../api/client'
+import { LIBRARY_GROUPS, tagsToQuery, legacyToQuery, queryChip, searchError } from './events/library'
 import { useLiveFeed } from '../api/useLiveFeed'
 import { SeverityBadge } from '../components/SeverityBadge'
 import { PageHeader, Histogram, SEV_STACKS, SEV_WORD, SevPill, fmtCompact } from '../components/ui'
@@ -68,599 +69,6 @@ function EventTypeBadge({ type }) {
 
 // ── Preconfigured saved searches ─────────────────────────────────────────────
 
-export const SAVED_SEARCHES = [
-  // ── Windows ───────────────────────────────────────────────────────────────
-  {
-    group: 'Windows',
-    searches: [
-      // Execution
-      {
-        label: 'PowerShell Encoded Command',
-        desc: 'T1059.001 - -EncodedCommand or -enc flag, used to hide malicious scripts',
-        tags: [{ field: 'os', label: 'OS: windows', value: 'windows' },
-               { field: 'event_type', label: 'Type: process', value: 'process' },
-               { field: 'search', label: 'encodedcommand', value: 'encodedcommand' }],
-      },
-      {
-        label: 'PowerShell Download Cradle',
-        desc: 'T1059.001 - DownloadString / IEX / WebClient used to pull remote payloads',
-        tags: [{ field: 'os', label: 'OS: windows', value: 'windows' },
-               { field: 'event_type', label: 'Type: process', value: 'process' },
-               { field: 'search', label: 'downloadstring', value: 'downloadstring' }],
-      },
-      {
-        label: 'MSHTA / WScript Execution',
-        desc: 'T1218.005 / T1059.005 - LOLBin script execution via mshta or wscript',
-        tags: [{ field: 'os', label: 'OS: windows', value: 'windows' },
-               { field: 'event_type', label: 'Type: process', value: 'process' },
-               { field: 'search', label: 'mshta', value: 'mshta' }],
-      },
-      {
-        label: 'Regsvr32 / Rundll32 Abuse',
-        desc: 'T1218.010 / T1218.011 - LOLBins used to execute unsigned code',
-        tags: [{ field: 'os', label: 'OS: windows', value: 'windows' },
-               { field: 'event_type', label: 'Type: process', value: 'process' },
-               { field: 'search', label: 'regsvr32', value: 'regsvr32' }],
-      },
-      {
-        label: 'WMI Process Creation',
-        desc: 'T1047 - wmic process call create, used for lateral movement and persistence',
-        tags: [{ field: 'os', label: 'OS: windows', value: 'windows' },
-               { field: 'event_type', label: 'Type: process', value: 'process' },
-               { field: 'search', label: 'wmic', value: 'wmic' }],
-      },
-      // Persistence
-      {
-        label: 'Registry Run Key Persistence',
-        desc: 'T1547.001 - HKCU/HKLM CurrentVersion\\Run key modification',
-        tags: [{ field: 'os', label: 'OS: windows', value: 'windows' },
-               { field: 'event_type', label: 'Type: registry', value: 'registry' },
-               { field: 'search', label: 'currentversion\\run', value: 'currentversion\\run' }],
-      },
-      {
-        label: 'Scheduled Task Created',
-        desc: 'T1053.005 - schtasks /create or New-ScheduledTask',
-        tags: [{ field: 'os', label: 'OS: windows', value: 'windows' },
-               { field: 'event_type', label: 'Type: process', value: 'process' },
-               { field: 'search', label: 'schtasks /create', value: 'schtasks /create' }],
-      },
-      {
-        label: 'New Service Installed',
-        desc: 'T1543.003 - sc.exe create or New-Service - persistence or lateral movement',
-        tags: [{ field: 'os', label: 'OS: windows', value: 'windows' },
-               { field: 'event_type', label: 'Type: process', value: 'process' },
-               { field: 'search', label: 'sc create', value: 'sc create' }],
-      },
-      // Privilege Escalation
-      {
-        label: 'UAC Bypass Attempt',
-        desc: 'T1548.002 - fodhelper, eventvwr, sdclt, computerdefaults UAC bypass',
-        tags: [{ field: 'os', label: 'OS: windows', value: 'windows' },
-               { field: 'event_type', label: 'Type: process', value: 'process' },
-               { field: 'search', label: 'fodhelper', value: 'fodhelper' }],
-      },
-      // Defence Evasion
-      {
-        label: 'AMSI Bypass',
-        desc: 'T1562.001 - amsiutils, [Ref].Assembly or AmsiContext patching',
-        tags: [{ field: 'os', label: 'OS: windows', value: 'windows' },
-               { field: 'event_type', label: 'Type: process', value: 'process' },
-               { field: 'search', label: 'amsiutils', value: 'amsiutils' }],
-      },
-      {
-        label: 'Event Log Cleared',
-        desc: 'T1070.001 - wevtutil cl or Clear-EventLog - attacker hiding tracks',
-        tags: [{ field: 'os', label: 'OS: windows', value: 'windows' },
-               { field: 'search', label: 'wevtutil cl', value: 'wevtutil cl' }],
-      },
-      {
-        label: 'Defender / AV Disabled',
-        desc: 'T1562.001 - Set-MpPreference or sc stop windefend',
-        tags: [{ field: 'os', label: 'OS: windows', value: 'windows' },
-               { field: 'event_type', label: 'Type: process', value: 'process' },
-               { field: 'search', label: 'disablerealtimemonitoring', value: 'disablerealtimemonitoring' }],
-      },
-      // Credential Access
-      {
-        label: 'LSASS / Mimikatz',
-        desc: 'T1003.001 - lsass dump via procdump, comsvcs.dll, or mimikatz',
-        tags: [{ field: 'os', label: 'OS: windows', value: 'windows' },
-               { field: 'search', label: 'lsass', value: 'lsass' }],
-      },
-      {
-        label: 'SAM / NTDS Dump',
-        desc: 'T1003.002 - reg save HKLM\\SAM or ntdsutil - AD credential dump',
-        tags: [{ field: 'os', label: 'OS: windows', value: 'windows' },
-               { field: 'search', label: 'ntds', value: 'ntds' }],
-      },
-      {
-        label: 'Failed Logons (4625)',
-        desc: 'T1110 - repeated Event ID 4625 - brute force indicator',
-        tags: [{ field: 'os', label: 'OS: windows', value: 'windows' },
-               { field: 'event_type', label: 'Type: logon', value: 'logon' },
-               { field: 'search', label: '4625', value: '4625' }],
-      },
-      // Lateral Movement
-      {
-        label: 'SMB Lateral Movement',
-        desc: 'T1021.002 - outbound port 445 connections',
-        tags: [{ field: 'os', label: 'OS: windows', value: 'windows' },
-               { field: 'event_type', label: 'Type: network', value: 'network' },
-               { field: 'dst_port', label: 'Port: 445', value: '445' }],
-      },
-      {
-        label: 'RDP Lateral Movement',
-        desc: 'T1021.001 - outbound port 3389 - Remote Desktop',
-        tags: [{ field: 'os', label: 'OS: windows', value: 'windows' },
-               { field: 'event_type', label: 'Type: network', value: 'network' },
-               { field: 'dst_port', label: 'Port: 3389', value: '3389' }],
-      },
-      {
-        label: 'PsExec / Remote Exec',
-        desc: 'T1570 - psexec, paexec, wmiexec remote execution tools',
-        tags: [{ field: 'os', label: 'OS: windows', value: 'windows' },
-               { field: 'event_type', label: 'Type: process', value: 'process' },
-               { field: 'search', label: 'psexec', value: 'psexec' }],
-      },
-      // Impact
-      {
-        label: 'Shadow Copy Deletion',
-        desc: 'T1490 - vssadmin delete shadows - ransomware pre-encryption step',
-        tags: [{ field: 'os', label: 'OS: windows', value: 'windows' },
-               { field: 'event_type', label: 'Type: process', value: 'process' },
-               { field: 'search', label: 'vssadmin delete', value: 'vssadmin delete' }],
-      },
-      // Discovery
-      {
-        label: 'Process / Account Discovery',
-        desc: 'T1057 / T1087 - tasklist, net user, whoami /all, Get-ADUser',
-        tags: [{ field: 'os', label: 'OS: windows', value: 'windows' },
-               { field: 'event_type', label: 'Type: process', value: 'process' },
-               { field: 'search', label: 'tasklist', value: 'tasklist' }],
-      },
-      {
-        label: 'High Severity Windows',
-        desc: 'All critical/high severity events on Windows hosts',
-        tags: [{ field: 'os', label: 'OS: windows', value: 'windows' },
-               { field: 'severity', label: 'Severity: 4', value: '4' }],
-      },
-    ],
-  },
-  // ── Linux ─────────────────────────────────────────────────────────────────
-  {
-    group: 'Linux',
-    searches: [
-      // Execution
-      {
-        label: 'Reverse Shell (bash -i)',
-        desc: 'T1059.004 - bash -i >& /dev/tcp/... interactive shell to attacker',
-        tags: [{ field: 'os', label: 'OS: linux', value: 'linux' },
-               { field: 'event_type', label: 'Type: process', value: 'process' },
-               { field: 'search', label: 'bash -i', value: 'bash -i' }],
-      },
-      {
-        label: 'Python / Perl Shell',
-        desc: 'T1059.006 - python/perl one-liner reverse shell or exec',
-        tags: [{ field: 'os', label: 'OS: linux', value: 'linux' },
-               { field: 'event_type', label: 'Type: process', value: 'process' },
-               { field: 'search', label: 'python -c', value: 'python -c' }],
-      },
-      {
-        label: 'curl / wget Download',
-        desc: 'T1105 - file download to /tmp - staging malware',
-        tags: [{ field: 'os', label: 'OS: linux', value: 'linux' },
-               { field: 'event_type', label: 'Type: process', value: 'process' },
-               { field: 'search', label: 'curl -o /tmp', value: 'curl -o /tmp' }],
-      },
-      // Persistence
-      {
-        label: 'Cron Persistence',
-        desc: 'T1053.003 - crontab -e or /etc/cron* modifications',
-        tags: [{ field: 'os', label: 'OS: linux', value: 'linux' },
-               { field: 'search', label: 'crontab', value: 'crontab' }],
-      },
-      {
-        label: 'New Systemd Service',
-        desc: 'T1543.002 - new .service file linked - persistence',
-        tags: [{ field: 'os', label: 'OS: linux', value: 'linux' },
-               { field: 'search', label: 'Created symlink', value: 'Created symlink' }],
-      },
-      {
-        label: 'SSH Authorized Keys Modified',
-        desc: 'T1098.004 - ~/.ssh/authorized_keys written - backdoor access',
-        tags: [{ field: 'os', label: 'OS: linux', value: 'linux' },
-               { field: 'event_type', label: 'Type: file', value: 'file' },
-               { field: 'search', label: 'authorized_keys', value: 'authorized_keys' }],
-      },
-      // Privilege Escalation
-      {
-        label: 'SUID Binary Set',
-        desc: 'T1548.001 - chmod +s or u+s - creates setuid binary for privesc',
-        tags: [{ field: 'os', label: 'OS: linux', value: 'linux' },
-               { field: 'search', label: 'chmod +s', value: 'chmod +s' }],
-      },
-      {
-        label: 'Sudo Root Shell',
-        desc: 'T1548.003 - sudo used to spawn /bin/bash or /bin/sh as root',
-        tags: [{ field: 'os', label: 'OS: linux', value: 'linux' },
-               { field: 'event_type', label: 'Type: logon', value: 'logon' },
-               { field: 'search', label: 'COMMAND=/bin/bash', value: 'COMMAND=/bin/bash' }],
-      },
-      {
-        label: 'Kernel Module Loaded',
-        desc: 'T1547.006 - insmod / modprobe - rootkit installation',
-        tags: [{ field: 'os', label: 'OS: linux', value: 'linux' },
-               { field: 'search', label: 'insmod', value: 'insmod' }],
-      },
-      // Credential Access
-      {
-        label: 'SSH Brute Force',
-        desc: 'T1110.001 - repeated sshd Failed password from single source',
-        tags: [{ field: 'os', label: 'OS: linux', value: 'linux' },
-               { field: 'event_type', label: 'Type: logon', value: 'logon' },
-               { field: 'search', label: 'Failed password', value: 'Failed password' }],
-      },
-      {
-        label: 'Shadow File Access',
-        desc: 'T1003.008 - /etc/shadow read - credential dumping attempt',
-        tags: [{ field: 'os', label: 'OS: linux', value: 'linux' },
-               { field: 'event_type', label: 'Type: file', value: 'file' },
-               { field: 'search', label: '/etc/shadow', value: '/etc/shadow' }],
-      },
-      // Defence Evasion
-      {
-        label: '/etc Changes',
-        desc: 'T1565.001 - config file tampering under /etc',
-        tags: [{ field: 'os', label: 'OS: linux', value: 'linux' },
-               { field: 'event_type', label: 'Type: file', value: 'file' },
-               { field: 'search', label: '/etc/', value: '/etc/' }],
-      },
-      {
-        label: 'History File Cleared',
-        desc: 'T1070.003 - unset HISTFILE or > ~/.bash_history - anti-forensics',
-        tags: [{ field: 'os', label: 'OS: linux', value: 'linux' },
-               { field: 'search', label: 'bash_history', value: 'bash_history' }],
-      },
-      // Discovery
-      {
-        label: 'Network Port Scanning',
-        desc: 'T1046 - nmap, masscan, or rustscan process',
-        tags: [{ field: 'os', label: 'OS: linux', value: 'linux' },
-               { field: 'event_type', label: 'Type: process', value: 'process' },
-               { field: 'search', label: 'nmap', value: 'nmap' }],
-      },
-      // C2 / Exfiltration
-      {
-        label: 'Cloud Metadata SSRF',
-        desc: 'T1552.005 - 169.254.169.254 access - EC2/GCP/Azure credential theft',
-        tags: [{ field: 'os', label: 'OS: linux', value: 'linux' },
-               { field: 'search', label: '169.254.169.254', value: '169.254.169.254' }],
-      },
-      {
-        label: 'DNS Reconnaissance',
-        desc: 'T1590 - dig/nslookup used for zone transfers or internal recon',
-        tags: [{ field: 'os', label: 'OS: linux', value: 'linux' },
-               { field: 'event_type', label: 'Type: process', value: 'process' },
-               { field: 'search', label: 'dig axfr', value: 'dig axfr' }],
-      },
-      {
-        label: 'High Severity Linux',
-        desc: 'All critical/high severity events on Linux hosts',
-        tags: [{ field: 'os', label: 'OS: linux', value: 'linux' },
-               { field: 'severity', label: 'Severity: 4', value: '4' }],
-      },
-    
-      // From the former Search page
-      { label: "All Linux process events", desc: "type:process os:linux", tags: [{ field: 'kql', label: "type:process os:linux", value: "type:process os:linux" }] },
-      { label: "Shell executions (bash/sh/zsh)", desc: "type:process bash", tags: [{ field: 'kql', label: "type:process bash", value: "type:process bash" }] },
-      { label: "Python interpreter executions", desc: "type:process python", tags: [{ field: 'kql', label: "type:process python", value: "type:process python" }] },
-      { label: "Perl executions", desc: "type:process perl", tags: [{ field: 'kql', label: "type:process perl", value: "type:process perl" }] },
-      { label: "Curl / wget commands", desc: "type:process curl", tags: [{ field: 'kql', label: "type:process curl", value: "type:process curl" }] },
-      { label: "Ncat / netcat usage", desc: "type:process ncat", tags: [{ field: 'kql', label: "type:process ncat", value: "type:process ncat" }] },
-      { label: "chmod +x executions", desc: "type:process cmd:chmod", tags: [{ field: 'kql', label: "type:process cmd:chmod", value: "type:process cmd:chmod" }] },
-      { label: "Process from /tmp", desc: "type:process /tmp/", tags: [{ field: 'kql', label: "type:process /tmp/", value: "type:process /tmp/" }] },
-      { label: "Process from /dev/shm", desc: "type:process /dev/shm", tags: [{ field: 'kql', label: "type:process /dev/shm", value: "type:process /dev/shm" }] },
-      { label: "LD_PRELOAD in command line", desc: "type:process ld_preload", tags: [{ field: 'kql', label: "type:process ld_preload", value: "type:process ld_preload" }] },
-      { label: "strace / ptrace usage", desc: "type:process strace", tags: [{ field: 'kql', label: "type:process strace", value: "type:process strace" }] },
-      { label: "nmap scanning", desc: "type:process nmap", tags: [{ field: 'kql', label: "type:process nmap", value: "type:process nmap" }] },
-      { label: "High severity Linux processes", desc: "type:process sev>=4", tags: [{ field: 'kql', label: "type:process sev>=4", value: "type:process sev>=4" }] },
-      { label: "All sudo executions", desc: "type:process proc:sudo", tags: [{ field: 'kql', label: "type:process proc:sudo", value: "type:process proc:sudo" }] },
-      { label: "sudo auth failures", desc: "type:logon sudo_failed", tags: [{ field: 'kql', label: "type:logon sudo_failed", value: "type:logon sudo_failed" }] },
-      { label: "SSH logins (accepted)", desc: "type:logon ssh_login", tags: [{ field: 'kql', label: "type:logon ssh_login", value: "type:logon ssh_login" }] },
-      { label: "SSH failures (brute force)", desc: "type:logon ssh_failed", tags: [{ field: 'kql', label: "type:logon ssh_failed", value: "type:logon ssh_failed" }] },
-      { label: "su / user switching", desc: "type:logon su_login", tags: [{ field: 'kql', label: "type:logon su_login", value: "type:logon su_login" }] },
-      { label: "PAM auth failures", desc: "type:logon pam_auth_failed", tags: [{ field: 'kql', label: "type:logon pam_auth_failed", value: "type:logon pam_auth_failed" }] },
-      { label: "All Linux logon events", desc: "type:logon os:linux", tags: [{ field: 'kql', label: "type:logon os:linux", value: "type:logon os:linux" }] },
-      { label: "User account added", desc: "type:logon ADD_USER", tags: [{ field: 'kql', label: "type:logon ADD_USER", value: "type:logon ADD_USER" }] },
-      { label: "User account deleted", desc: "type:logon DEL_USER", tags: [{ field: 'kql', label: "type:logon DEL_USER", value: "type:logon DEL_USER" }] },
-      { label: "Root account activity (uid=0)", desc: "type:process user:root", tags: [{ field: 'kql', label: "type:process user:root", value: "type:process user:root" }] },
-      { label: "All FIM events", desc: "type:file source:inotify", tags: [{ field: 'kql', label: "type:file source:inotify", value: "type:file source:inotify" }] },
-      { label: "/etc/passwd modifications", desc: "type:file file:/etc/passwd", tags: [{ field: 'kql', label: "type:file file:/etc/passwd", value: "type:file file:/etc/passwd" }] },
-      { label: "/etc/shadow modifications", desc: "type:file file:/etc/shadow", tags: [{ field: 'kql', label: "type:file file:/etc/shadow", value: "type:file file:/etc/shadow" }] },
-      { label: "/etc/sudoers modifications", desc: "type:file file:/etc/sudoers", tags: [{ field: 'kql', label: "type:file file:/etc/sudoers", value: "type:file file:/etc/sudoers" }] },
-      { label: "SSH config changes", desc: "type:file file:/etc/ssh", tags: [{ field: 'kql', label: "type:file file:/etc/ssh", value: "type:file file:/etc/ssh" }] },
-      { label: "Crontab modifications", desc: "type:file file:cron", tags: [{ field: 'kql', label: "type:file file:cron", value: "type:file file:cron" }] },
-      { label: "/tmp file drops", desc: "type:file file:/tmp/", tags: [{ field: 'kql', label: "type:file file:/tmp/", value: "type:file file:/tmp/" }] },
-      { label: "/dev/shm file drops", desc: "type:file file:/dev/shm", tags: [{ field: 'kql', label: "type:file file:/dev/shm", value: "type:file file:/dev/shm" }] },
-      { label: "ld.so.preload changes", desc: "type:file file:ld.so.preload", tags: [{ field: 'kql', label: "type:file file:ld.so.preload", value: "type:file file:ld.so.preload" }] },
-      { label: "Systemd unit file changes", desc: "type:file file:systemd", tags: [{ field: 'kql', label: "type:file file:systemd", value: "type:file file:systemd" }] },
-      { label: "Binary replaced in /usr/bin", desc: "type:file file:/usr/bin", tags: [{ field: 'kql', label: "type:file file:/usr/bin", value: "type:file file:/usr/bin" }] },
-      { label: "Profile/bashrc modifications", desc: "type:file .bashrc", tags: [{ field: 'kql', label: "type:file .bashrc", value: "type:file .bashrc" }] },
-      { label: "High severity FIM events", desc: "type:file sev>=4", tags: [{ field: 'kql', label: "type:file sev>=4", value: "type:file sev>=4" }] },
-      { label: "All auditd events", desc: "source:auditd", tags: [{ field: 'kql', label: "source:auditd", value: "source:auditd" }] },
-      { label: "All journald events", desc: "source:journald", tags: [{ field: 'kql', label: "source:journald", value: "source:journald" }] },
-      { label: "Kernel OOM kills", desc: "oom_kill", tags: [{ field: 'kql', label: "oom_kill", value: "oom_kill" }] },
-      { label: "Kernel module loads", desc: "kernel_module_load", tags: [{ field: 'kql', label: "kernel_module_load", value: "kernel_module_load" }] },
-      { label: "Cron job executions", desc: "cron_exec", tags: [{ field: 'kql', label: "cron_exec", value: "cron_exec" }] },
-      { label: "Service failures (systemd)", desc: "service_failed", tags: [{ field: 'kql', label: "service_failed", value: "service_failed" }] },
-      { label: "Segfault / crash events", desc: "segfault", tags: [{ field: 'kql', label: "segfault", value: "segfault" }] },
-      { label: "All Linux health events", desc: "type:health os:linux", tags: [{ field: 'kql', label: "type:health os:linux", value: "type:health os:linux" }] },
-    ],
-  },
-  // ── macOS ─────────────────────────────────────────────────────────────────
-  {
-    group: 'macOS',
-    searches: [
-      // Persistence
-      {
-        label: 'LaunchDaemon Installed',
-        desc: 'T1543.004 - /Library/LaunchDaemons/ write - system-wide persistence',
-        tags: [{ field: 'os', label: 'OS: darwin', value: 'darwin' },
-               { field: 'search', label: 'LaunchDaemon', value: 'LaunchDaemon' }],
-      },
-      {
-        label: 'LaunchAgent Installed',
-        desc: 'T1543.001 - ~/Library/LaunchAgents/ write - user-level persistence',
-        tags: [{ field: 'os', label: 'OS: darwin', value: 'darwin' },
-               { field: 'search', label: 'LaunchAgents', value: 'LaunchAgents' }],
-      },
-      {
-        label: 'Login Item Added',
-        desc: 'T1547.015 - SMLoginItem or login item plist - persistence at login',
-        tags: [{ field: 'os', label: 'OS: darwin', value: 'darwin' },
-               { field: 'search', label: 'loginitems', value: 'loginitems' }],
-      },
-      // Privilege Escalation / Defence Evasion
-      {
-        label: 'Gatekeeper Bypass',
-        desc: 'T1553.001 - spctl --master-disable or xattr -d com.apple.quarantine',
-        tags: [{ field: 'os', label: 'OS: darwin', value: 'darwin' },
-               { field: 'search', label: 'spctl', value: 'spctl' }],
-      },
-      {
-        label: 'SIP Bypass (csrutil)',
-        desc: 'T1562.001 - csrutil disable - System Integrity Protection removed',
-        tags: [{ field: 'os', label: 'OS: darwin', value: 'darwin' },
-               { field: 'search', label: 'csrutil', value: 'csrutil' }],
-      },
-      {
-        label: 'TCC Database Access',
-        desc: 'T1562.001 - TCC.db read/write - privacy permission bypass',
-        tags: [{ field: 'os', label: 'OS: darwin', value: 'darwin' },
-               { field: 'event_type', label: 'Type: file', value: 'file' },
-               { field: 'search', label: 'TCC.db', value: 'TCC.db' }],
-      },
-      // Credential Access
-      {
-        label: 'Keychain Access',
-        desc: 'T1555.001 - security command or keychain database accessed',
-        tags: [{ field: 'os', label: 'OS: darwin', value: 'darwin' },
-               { field: 'search', label: 'keychain', value: 'keychain' }],
-      },
-      // Execution
-      {
-        label: 'osascript (AppleScript)',
-        desc: 'T1059.002 - osascript execution - phishing dialogs, UAC bypass',
-        tags: [{ field: 'os', label: 'OS: darwin', value: 'darwin' },
-               { field: 'event_type', label: 'Type: process', value: 'process' },
-               { field: 'search', label: 'osascript', value: 'osascript' }],
-      },
-      {
-        label: 'curl Download',
-        desc: 'T1105 - curl used to pull remote files - staging malware',
-        tags: [{ field: 'os', label: 'OS: darwin', value: 'darwin' },
-               { field: 'event_type', label: 'Type: process', value: 'process' },
-               { field: 'search', label: 'curl', value: 'curl' }],
-      },
-      {
-        label: 'Python / Perl Exec',
-        desc: 'T1059.006 - scripting language one-liner or reverse shell',
-        tags: [{ field: 'os', label: 'OS: darwin', value: 'darwin' },
-               { field: 'event_type', label: 'Type: process', value: 'process' },
-               { field: 'search', label: 'python -c', value: 'python -c' }],
-      },
-      {
-        label: 'High Severity macOS',
-        desc: 'All critical/high severity events on macOS hosts',
-        tags: [{ field: 'os', label: 'OS: darwin', value: 'darwin' },
-               { field: 'severity', label: 'Severity: 4', value: '4' }],
-      },
-    ],
-  },
-  {
-    group: "Process",
-    searches: [
-      { label: "All processes on all hosts", desc: "type:process", tags: [{ field: 'kql', label: "type:process", value: "type:process" }] },
-      { label: "All PowerShell executions", desc: "type:process proc:powershell", tags: [{ field: 'kql', label: "type:process proc:powershell", value: "type:process proc:powershell" }] },
-      { label: "PowerShell encoded commands", desc: "type:process cmd:-enc", tags: [{ field: 'kql', label: "type:process cmd:-enc", value: "type:process cmd:-enc" }] },
-      { label: "PowerShell download cradles", desc: "type:process cmd:downloadstring", tags: [{ field: 'kql', label: "type:process cmd:downloadstring", value: "type:process cmd:downloadstring" }] },
-      { label: "CMD executions", desc: "type:process proc:cmd.exe", tags: [{ field: 'kql', label: "type:process proc:cmd.exe", value: "type:process proc:cmd.exe" }] },
-      { label: "Rundll32 executions", desc: "type:process proc:rundll32", tags: [{ field: 'kql', label: "type:process proc:rundll32", value: "type:process proc:rundll32" }] },
-      { label: "MSHTA executions", desc: "type:process proc:mshta", tags: [{ field: 'kql', label: "type:process proc:mshta", value: "type:process proc:mshta" }] },
-      { label: "WScript / CScript", desc: "type:process wscript", tags: [{ field: 'kql', label: "type:process wscript", value: "type:process wscript" }] },
-      { label: "Regsvr32 executions", desc: "type:process proc:regsvr32", tags: [{ field: 'kql', label: "type:process proc:regsvr32", value: "type:process proc:regsvr32" }] },
-      { label: "Certutil abuse", desc: "type:process proc:certutil", tags: [{ field: 'kql', label: "type:process proc:certutil", value: "type:process proc:certutil" }] },
-      { label: "BITSAdmin executions", desc: "type:process bitsadmin", tags: [{ field: 'kql', label: "type:process bitsadmin", value: "type:process bitsadmin" }] },
-      { label: "Scheduled task creation", desc: "type:process cmd:schtasks", tags: [{ field: 'kql', label: "type:process cmd:schtasks", value: "type:process cmd:schtasks" }] },
-      { label: "New service (sc create)", desc: "type:process cmd:\"sc create\"", tags: [{ field: 'kql', label: "type:process cmd:\"sc create\"", value: "type:process cmd:\"sc create\"" }] },
-      { label: "PsExec remote execution", desc: "type:process psexec", tags: [{ field: 'kql', label: "type:process psexec", value: "type:process psexec" }] },
-      { label: "High severity process events", desc: "type:process sev>=4", tags: [{ field: 'kql', label: "type:process sev>=4", value: "type:process sev>=4" }] },
-      { label: "Net.exe account commands", desc: "type:process \"net user\"", tags: [{ field: 'kql', label: "type:process \"net user\"", value: "type:process \"net user\"" }] },
-      { label: "whoami execution", desc: "type:process cmd:whoami", tags: [{ field: 'kql', label: "type:process cmd:whoami", value: "type:process cmd:whoami" }] },
-      { label: "WMIC command execution", desc: "type:process proc:wmic", tags: [{ field: 'kql', label: "type:process proc:wmic", value: "type:process proc:wmic" }] },
-      { label: "bcdedit (recovery disabled)", desc: "type:process cmd:bcdedit", tags: [{ field: 'kql', label: "type:process cmd:bcdedit", value: "type:process cmd:bcdedit" }] },
-    ],
-  },
-  {
-    group: "Credential",
-    searches: [
-      { label: "All logon events", desc: "type:logon", tags: [{ field: 'kql', label: "type:logon", value: "type:logon" }] },
-      { label: "Failed logons (Event 4625)", desc: "type:logon event_id:4625", tags: [{ field: 'kql', label: "type:logon event_id:4625", value: "type:logon event_id:4625" }] },
-      { label: "Successful logons (Event 4624)", desc: "type:logon event_id:4624", tags: [{ field: 'kql', label: "type:logon event_id:4624", value: "type:logon event_id:4624" }] },
-      { label: "Logon with explicit creds (4648)", desc: "type:logon event_id:4648", tags: [{ field: 'kql', label: "type:logon event_id:4648", value: "type:logon event_id:4648" }] },
-      { label: "LSASS access attempts", desc: "type:process lsass", tags: [{ field: 'kql', label: "type:process lsass", value: "type:process lsass" }] },
-      { label: "Mimikatz indicators", desc: "type:process mimikatz", tags: [{ field: 'kql', label: "type:process mimikatz", value: "type:process mimikatz" }] },
-      { label: "Procdump usage", desc: "type:process procdump", tags: [{ field: 'kql', label: "type:process procdump", value: "type:process procdump" }] },
-      { label: "SAM registry access", desc: "type:registry reg:SAM", tags: [{ field: 'kql', label: "type:registry reg:SAM", value: "type:registry reg:SAM" }] },
-      { label: "Password string search", desc: "type:process cmd:password", tags: [{ field: 'kql', label: "type:process cmd:password", value: "type:process cmd:password" }] },
-      { label: "High severity logon events", desc: "type:logon sev>=4", tags: [{ field: 'kql', label: "type:logon sev>=4", value: "type:logon sev>=4" }] },
-    ],
-  },
-  {
-    group: "Network",
-    searches: [
-      { label: "All network connections", desc: "type:network", tags: [{ field: 'kql', label: "type:network", value: "type:network" }] },
-      { label: "Outbound RDP (port 3389)", desc: "type:network port:3389", tags: [{ field: 'kql', label: "type:network port:3389", value: "type:network port:3389" }] },
-      { label: "Outbound SMB (port 445)", desc: "type:network port:445", tags: [{ field: 'kql', label: "type:network port:445", value: "type:network port:445" }] },
-      { label: "Outbound SSH (port 22)", desc: "type:network port:22", tags: [{ field: 'kql', label: "type:network port:22", value: "type:network port:22" }] },
-      { label: "Outbound FTP (port 21)", desc: "type:network port:21", tags: [{ field: 'kql', label: "type:network port:21", value: "type:network port:21" }] },
-      { label: "HTTP traffic (port 80)", desc: "type:network port:80", tags: [{ field: 'kql', label: "type:network port:80", value: "type:network port:80" }] },
-      { label: "HTTPS traffic (port 443)", desc: "type:network port:443", tags: [{ field: 'kql', label: "type:network port:443", value: "type:network port:443" }] },
-      { label: "DNS traffic (port 53)", desc: "type:network port:53", tags: [{ field: 'kql', label: "type:network port:53", value: "type:network port:53" }] },
-      { label: "SMTP outbound (port 587)", desc: "type:network port:587", tags: [{ field: 'kql', label: "type:network port:587", value: "type:network port:587" }] },
-      { label: "WinRM (port 5985)", desc: "type:network port:5985", tags: [{ field: 'kql', label: "type:network port:5985", value: "type:network port:5985" }] },
-      { label: "LDAP (port 389)", desc: "type:network port:389", tags: [{ field: 'kql', label: "type:network port:389", value: "type:network port:389" }] },
-      { label: "Kerberos (port 88)", desc: "type:network port:88", tags: [{ field: 'kql', label: "type:network port:88", value: "type:network port:88" }] },
-      { label: "SQL Server (port 1433)", desc: "type:network port:1433", tags: [{ field: 'kql', label: "type:network port:1433", value: "type:network port:1433" }] },
-      { label: "All TCP connections", desc: "type:network proto:tcp", tags: [{ field: 'kql', label: "type:network proto:tcp", value: "type:network proto:tcp" }] },
-      { label: "High severity network events", desc: "type:network sev>=4", tags: [{ field: 'kql', label: "type:network sev>=4", value: "type:network sev>=4" }] },
-    ],
-  },
-  {
-    group: "DNS / Web",
-    searches: [
-      { label: "All websites visited (DNS)", desc: "type:dns", tags: [{ field: 'kql', label: "type:dns", value: "type:dns" }] },
-      { label: "RustDesk DNS queries", desc: "type:dns rustdesk", tags: [{ field: 'kql', label: "type:dns rustdesk", value: "type:dns rustdesk" }] },
-      { label: "WPAD proxy discovery", desc: "type:dns wpad", tags: [{ field: 'kql', label: "type:dns wpad", value: "type:dns wpad" }] },
-      { label: "Urban VPN queries", desc: "type:dns urban-vpn", tags: [{ field: 'kql', label: "type:dns urban-vpn", value: "type:dns urban-vpn" }] },
-      { label: "ngrok tunnel queries", desc: "type:dns ngrok", tags: [{ field: 'kql', label: "type:dns ngrok", value: "type:dns ngrok" }] },
-      { label: "Pastebin lookups", desc: "type:dns pastebin", tags: [{ field: 'kql', label: "type:dns pastebin", value: "type:dns pastebin" }] },
-      { label: "TOR / .onion domains", desc: "type:dns .onion", tags: [{ field: 'kql', label: "type:dns .onion", value: "type:dns .onion" }] },
-      { label: "AnyDesk DNS queries", desc: "type:dns anydesk", tags: [{ field: 'kql', label: "type:dns anydesk", value: "type:dns anydesk" }] },
-      { label: "TeamViewer DNS queries", desc: "type:dns teamviewer", tags: [{ field: 'kql', label: "type:dns teamviewer", value: "type:dns teamviewer" }] },
-      { label: "High severity DNS events", desc: "type:dns sev>=4", tags: [{ field: 'kql', label: "type:dns sev>=4", value: "type:dns sev>=4" }] },
-    ],
-  },
-  {
-    group: "File",
-    searches: [
-      { label: "All file events", desc: "type:file", tags: [{ field: 'kql', label: "type:file", value: "type:file" }] },
-      { label: "Temp directory writes", desc: "type:file file:\\\\temp\\\\", tags: [{ field: 'kql', label: "type:file file:\\\\temp\\\\", value: "type:file file:\\\\temp\\\\" }] },
-      { label: "AppData writes", desc: "type:file file:appdata", tags: [{ field: 'kql', label: "type:file file:appdata", value: "type:file file:appdata" }] },
-      { label: "Desktop file drops", desc: "type:file file:\\\\desktop\\\\", tags: [{ field: 'kql', label: "type:file file:\\\\desktop\\\\", value: "type:file file:\\\\desktop\\\\" }] },
-      { label: "Executable files written (.exe)", desc: "type:file file:.exe", tags: [{ field: 'kql', label: "type:file file:.exe", value: "type:file file:.exe" }] },
-      { label: "PowerShell scripts written (.ps1)", desc: "type:file file:.ps1", tags: [{ field: 'kql', label: "type:file file:.ps1", value: "type:file file:.ps1" }] },
-      { label: "Startup folder writes", desc: "type:file file:startup", tags: [{ field: 'kql', label: "type:file file:startup", value: "type:file file:startup" }] },
-      { label: "System32 writes", desc: "type:file file:system32", tags: [{ field: 'kql', label: "type:file file:system32", value: "type:file file:system32" }] },
-      { label: "Encrypted file extensions", desc: "type:file .locked", tags: [{ field: 'kql', label: "type:file .locked", value: "type:file .locked" }] },
-      { label: "High severity file events", desc: "type:file sev>=4", tags: [{ field: 'kql', label: "type:file sev>=4", value: "type:file sev>=4" }] },
-    ],
-  },
-  {
-    group: "Registry",
-    searches: [
-      { label: "All registry events", desc: "type:registry", tags: [{ field: 'kql', label: "type:registry", value: "type:registry" }] },
-      { label: "Run key modifications", desc: "type:registry reg:CurrentVersion\\\\Run", tags: [{ field: 'kql', label: "type:registry reg:CurrentVersion\\\\Run", value: "type:registry reg:CurrentVersion\\\\Run" }] },
-      { label: "RunOnce key modifications", desc: "type:registry reg:RunOnce", tags: [{ field: 'kql', label: "type:registry reg:RunOnce", value: "type:registry reg:RunOnce" }] },
-      { label: "Security policy changes", desc: "type:registry reg:Policies", tags: [{ field: 'kql', label: "type:registry reg:Policies", value: "type:registry reg:Policies" }] },
-      { label: "Service registry changes", desc: "type:registry reg:Services", tags: [{ field: 'kql', label: "type:registry reg:Services", value: "type:registry reg:Services" }] },
-      { label: "LSA registry changes", desc: "type:registry reg:Lsa", tags: [{ field: 'kql', label: "type:registry reg:Lsa", value: "type:registry reg:Lsa" }] },
-      { label: "Winlogon key changes", desc: "type:registry reg:Winlogon", tags: [{ field: 'kql', label: "type:registry reg:Winlogon", value: "type:registry reg:Winlogon" }] },
-      { label: "AppInit DLLs", desc: "type:registry reg:AppInit_DLLs", tags: [{ field: 'kql', label: "type:registry reg:AppInit_DLLs", value: "type:registry reg:AppInit_DLLs" }] },
-      { label: "IE Zone settings", desc: "type:registry reg:ZoneMap", tags: [{ field: 'kql', label: "type:registry reg:ZoneMap", value: "type:registry reg:ZoneMap" }] },
-      { label: "High severity registry events", desc: "type:registry sev>=4", tags: [{ field: 'kql', label: "type:registry sev>=4", value: "type:registry sev>=4" }] },
-    ],
-  },
-  {
-    group: "User",
-    searches: [
-      { label: "All events for SYSTEM account", desc: "user:SYSTEM", tags: [{ field: 'kql', label: "user:SYSTEM", value: "user:SYSTEM" }] },
-      { label: "All events for administrator", desc: "user:administrator", tags: [{ field: 'kql', label: "user:administrator", value: "user:administrator" }] },
-      { label: "Guest account activity", desc: "user:guest", tags: [{ field: 'kql', label: "user:guest", value: "user:guest" }] },
-      { label: "Network service account", desc: "user:\"NETWORK SERVICE\"", tags: [{ field: 'kql', label: "user:\"NETWORK SERVICE\"", value: "user:\"NETWORK SERVICE\"" }] },
-      { label: "All logon events", desc: "type:logon", tags: [{ field: 'kql', label: "type:logon", value: "type:logon" }] },
-      { label: "Service account logons", desc: "type:logon svc", tags: [{ field: 'kql', label: "type:logon svc", value: "type:logon svc" }] },
-      { label: "Account creation (Event 4720)", desc: "event_id:4720", tags: [{ field: 'kql', label: "event_id:4720", value: "event_id:4720" }] },
-      { label: "High severity user events", desc: "sev>=4", tags: [{ field: 'kql', label: "sev>=4", value: "sev>=4" }] },
-    ],
-  },
-  {
-    group: "Sysmon",
-    searches: [
-      { label: "All Sysmon events", desc: "type:sysmon", tags: [{ field: 'kql', label: "type:sysmon", value: "type:sysmon" }] },
-      { label: "Sysmon process creation (ID 1)", desc: "type:sysmon event_id:1", tags: [{ field: 'kql', label: "type:sysmon event_id:1", value: "type:sysmon event_id:1" }] },
-      { label: "Sysmon network connection (ID 3)", desc: "type:sysmon event_id:3", tags: [{ field: 'kql', label: "type:sysmon event_id:3", value: "type:sysmon event_id:3" }] },
-      { label: "Sysmon file creation (ID 11)", desc: "type:sysmon event_id:11", tags: [{ field: 'kql', label: "type:sysmon event_id:11", value: "type:sysmon event_id:11" }] },
-      { label: "Sysmon registry event (ID 12)", desc: "type:sysmon event_id:12", tags: [{ field: 'kql', label: "type:sysmon event_id:12", value: "type:sysmon event_id:12" }] },
-      { label: "Sysmon image loaded (ID 7)", desc: "type:sysmon event_id:7", tags: [{ field: 'kql', label: "type:sysmon event_id:7", value: "type:sysmon event_id:7" }] },
-      { label: "Sysmon process access (ID 10)", desc: "type:sysmon event_id:10", tags: [{ field: 'kql', label: "type:sysmon event_id:10", value: "type:sysmon event_id:10" }] },
-      { label: "All critical severity events", desc: "sev>=5", tags: [{ field: 'kql', label: "sev>=5", value: "sev>=5" }] },
-      { label: "All high severity events", desc: "sev>=4", tags: [{ field: 'kql', label: "sev>=4", value: "sev>=4" }] },
-      { label: "Windows Security channel", desc: "channel:Security", tags: [{ field: 'kql', label: "channel:Security", value: "channel:Security" }] },
-      { label: "Windows System channel", desc: "channel:System", tags: [{ field: 'kql', label: "channel:System", value: "channel:System" }] },
-      { label: "PowerShell Operational channel", desc: "channel:PowerShell", tags: [{ field: 'kql', label: "channel:PowerShell", value: "channel:PowerShell" }] },
-      { label: "Event log cleared (ID 1102)", desc: "event_id:1102", tags: [{ field: 'kql', label: "event_id:1102", value: "event_id:1102" }] },
-      { label: "AppLocker block events (8004)", desc: "event_id:8004", tags: [{ field: 'kql', label: "event_id:8004", value: "event_id:8004" }] },
-      { label: "All raw events", desc: "type:raw", tags: [{ field: 'kql', label: "type:raw", value: "type:raw" }] },
-    ],
-  },
-  {
-    group: "Code",
-    searches: [
-      { label: "All code-platform events", desc: "type:devops.*", tags: [{ field: 'kql', label: "type:devops.*", value: "type:devops.*" }] },
-      { label: "Secrets pushed to a repository", desc: "type:devops.secret_push", tags: [{ field: 'kql', label: "type:devops.secret_push", value: "type:devops.secret_push" }] },
-      { label: "CI/CD pipeline or workflow changed", desc: "type:devops.cicd_modified", tags: [{ field: 'kql', label: "type:devops.cicd_modified", value: "type:devops.cicd_modified" }] },
-      { label: "Sensitive files changed", desc: "type:devops.sensitive_file", tags: [{ field: 'kql', label: "type:devops.sensitive_file", value: "type:devops.sensitive_file" }] },
-      { label: "Repositories made public", desc: "type:devops.repo_publicized", tags: [{ field: 'kql', label: "type:devops.repo_publicized", value: "type:devops.repo_publicized" }] },
-      { label: "Repositories deleted", desc: "type:devops.repo_deleted", tags: [{ field: 'kql', label: "type:devops.repo_deleted", value: "type:devops.repo_deleted" }] },
-      { label: "Members added to the organisation", desc: "type:devops.member_added", tags: [{ field: 'kql', label: "type:devops.member_added", value: "type:devops.member_added" }] },
-      { label: "Dependency changes", desc: "type:devops.dependency_change", tags: [{ field: 'kql', label: "type:devops.dependency_change", value: "type:devops.dependency_change" }] },
-      { label: "Mass deletion", desc: "type:devops.mass_deletion", tags: [{ field: 'kql', label: "type:devops.mass_deletion", value: "type:devops.mass_deletion" }] },
-      { label: "Pipeline runs", desc: "type:(devops.pipeline_run or devops.workflow_run)", tags: [{ field: 'kql', label: "type:(devops.pipeline_run or devops.workflow_run)", value: "type:(devops.pipeline_run or devops.workflow_run)" }] },
-      { label: "Platform audit log", desc: "type:devops.audit", tags: [{ field: 'kql', label: "type:devops.audit", value: "type:devops.audit" }] },
-      { label: "High-severity code events", desc: "type:devops.* sev:high", tags: [{ field: 'kql', label: "type:devops.* sev:high", value: "type:devops.* sev:high" }] },
-    ],
-  },
-  {
-    group: "Cloud",
-    searches: [
-      { label: "All cloud events", desc: "type:cloud.*", tags: [{ field: 'kql', label: "type:cloud.*", value: "type:cloud.*" }] },
-      { label: "AWS CloudTrail", desc: "type:(cloud.cloudtrail or cloud.aws_cloudtrail)", tags: [{ field: 'kql', label: "type:(cloud.cloudtrail or cloud.aws_cloudtrail)", value: "type:(cloud.cloudtrail or cloud.aws_cloudtrail)" }] },
-      { label: "AWS GuardDuty findings", desc: "type:cloud.guardduty", tags: [{ field: 'kql', label: "type:cloud.guardduty", value: "type:cloud.guardduty" }] },
-      { label: "AWS Security Hub", desc: "type:cloud.securityhub", tags: [{ field: 'kql', label: "type:cloud.securityhub", value: "type:cloud.securityhub" }] },
-      { label: "Azure activity log", desc: "type:cloud.azure_activity", tags: [{ field: 'kql', label: "type:cloud.azure_activity", value: "type:cloud.azure_activity" }] },
-      { label: "Azure Defender alerts", desc: "type:cloud.azure_defender", tags: [{ field: 'kql', label: "type:cloud.azure_defender", value: "type:cloud.azure_defender" }] },
-      { label: "Entra ID sign-ins", desc: "type:cloud.entra_signin", tags: [{ field: 'kql', label: "type:cloud.entra_signin", value: "type:cloud.entra_signin" }] },
-      { label: "Entra ID audit", desc: "type:cloud.entra_audit", tags: [{ field: 'kql', label: "type:cloud.entra_audit", value: "type:cloud.entra_audit" }] },
-      { label: "GCP audit log", desc: "type:cloud.gcp_audit", tags: [{ field: 'kql', label: "type:cloud.gcp_audit", value: "type:cloud.gcp_audit" }] },
-      { label: "GKE audit log", desc: "type:cloud.gcp_gke_audit", tags: [{ field: 'kql', label: "type:cloud.gcp_gke_audit", value: "type:cloud.gcp_gke_audit" }] },
-      { label: "GCP policy denials", desc: "type:cloud.gcp_policy_denied", tags: [{ field: 'kql', label: "type:cloud.gcp_policy_denied", value: "type:cloud.gcp_policy_denied" }] },
-      { label: "GCP Security Command Center", desc: "type:cloud.gcp_scc", tags: [{ field: 'kql', label: "type:cloud.gcp_scc", value: "type:cloud.gcp_scc" }] },
-      { label: "Cloud posture findings", desc: "type:cloud.cspm", tags: [{ field: 'kql', label: "type:cloud.cspm", value: "type:cloud.cspm" }] },
-      { label: "Cloud anomalies and correlations", desc: "type:(cloud.aws_anomaly or cloud.azure_anomaly or cloud.gcp_anomaly or cloud.azure_correlation or cloud.gcp_correlation)", tags: [{ field: 'kql', label: "type:(cloud.aws_anomaly or cloud.azure_anomaly or cloud.gcp_anomaly or cloud.azure_correlation or cloud.gcp_correlation)", value: "type:(cloud.aws_anomaly or cloud.azure_anomaly or cloud.gcp_anomaly or cloud.azure_correlation or cloud.gcp_correlation)" }] },
-      { label: "High-severity cloud events", desc: "type:cloud.* sev:high", tags: [{ field: 'kql', label: "type:cloud.* sev:high", value: "type:cloud.* sev:high" }] },
-    ],
-  },
-  {
-    group: "Application",
-    searches: [
-      { label: "Application security alerts", desc: "type:app.alert", tags: [{ field: 'kql', label: "type:app.alert", value: "type:app.alert" }] },
-      { label: "High-severity application alerts", desc: "type:app.alert sev:high", tags: [{ field: 'kql', label: "type:app.alert sev:high", value: "type:app.alert sev:high" }] },
-      { label: "Application logs", desc: "type:applog", tags: [{ field: 'kql', label: "type:applog", value: "type:applog" }] },
-      { label: "All application events", desc: "type:app.*", tags: [{ field: 'kql', label: "type:app.*", value: "type:app.*" }] },
-    ],
-  },
-]
 
 
 // ── EventPanel (detail slide-out) ─────────────────────────────────────────────
@@ -907,8 +315,8 @@ function CreateAlertFromEvent({ event }) {
 // ── Saved Searches Panel ──────────────────────────────────────────────────────
 
 function SavedSearchPanel({ onSelect, onClose }) {
-  const [activeGroup, setActiveGroup] = useState(SAVED_SEARCHES[0].group)
-  const group = SAVED_SEARCHES.find(g => g.group === activeGroup)
+  const [activeGroup, setActiveGroup] = useState(LIBRARY_GROUPS[0].group)
+  const group = LIBRARY_GROUPS.find(g => g.group === activeGroup)
 
   const GROUP_ICONS = {
     Windows: Monitor, Linux: Terminal, macOS: Monitor,
@@ -925,12 +333,12 @@ function SavedSearchPanel({ onSelect, onClose }) {
       <div className="flex">
         {/* Group tabs */}
         <div className="w-28 border-r border-siem-border shrink-0">
-          {SAVED_SEARCHES.map(({ group }) => {
+          {LIBRARY_GROUPS.map(({ group }) => {
             const Icon = GROUP_ICONS[group] || Shield
             const isCloud = false
             return (
               <button key={group} onClick={() => setActiveGroup(group)}
-                className={`w-full flex items-center gap-1.5 px-3 py-2 text-[10px] transition-colors text-left ${
+                className={`w-full flex items-center gap-1.5 px-3 py-2 text-mini transition-colors text-left ${
                   activeGroup === group
                     ? 'bg-siem-accent/10 text-siem-accent border-r-2 border-siem-accent'
                     : 'text-siem-muted hover:text-siem-text'
@@ -945,10 +353,11 @@ function SavedSearchPanel({ onSelect, onClose }) {
         {/* Searches */}
         <div className="flex-1 p-2 space-y-1 max-h-72 overflow-y-auto">
           {group?.searches.map((s, i) => (
-            <button key={i} onClick={() => { onSelect(s.tags); onClose() }}
+            <button key={i} onClick={() => { onSelect([queryChip(s.q)]); onClose() }}
               className="w-full text-left px-3 py-2 rounded-lg border border-transparent hover:border-siem-border hover:bg-white/[0.02] transition-colors group">
-              <div className="text-[11px] font-medium text-siem-text group-hover:text-siem-accent">{s.label}</div>
-              <div className="text-[9px] text-siem-muted mt-0.5">{s.desc}</div>
+              <div className="text-xs font-medium text-siem-text group-hover:text-siem-accent flex items-center gap-2">{s.label}
+                {s.needs && <span className="tag" style={{ height: 16, fontSize: 12 }} title={`Needs ${s.needs}`}>{s.needs}</span>}</div>
+              <div className="text-mini text-siem-muted mt-0.5 mono">{s.q}</div>
             </button>
           ))}
         </div>
@@ -976,7 +385,7 @@ const TAG_COLORS = {
 // or and/or/not make the input a query rather than a plain search word.
 const KQL_FIELDS = new Set(['host','os','user','proc','process','cmd','cmdline','image','file','path','hash','reg','regkey',
   'regvalue','domain','channel','source','proto','guid','logon','src','src_ip','dst','dst_ip','ip','pid','ppid','port',
-  'dstport','srcport','event_id','eid','sev','severity','type','event','time'])
+  'dstport','srcport','event_id','eid','sev','severity','type','event','time','dns','query','action'])
 export function looksLikeKQL(raw) {
   const l = ' ' + String(raw).toLowerCase() + ' '
   if (/[()]/.test(l) || / (and|or|not) /.test(l)) return true
@@ -993,6 +402,9 @@ const KQL_HELP = [
   ['user=SYSTEM   user!=SYSTEM', '= exact, != not equal'],
   ['port>1024   pid<100   severity=critical', 'numbers compare with > >= < <= ; sev:high means high or worse'],
   ['dst:203.0.113.7   ip:10.0.', 'dst/src/ip: exact for a full IP, otherwise contains'],
+  ['dns:ngrok   domain:corp.local', 'dns: DNS query names; domain: also logon domains'],
+  ['action:ssh_login_failure', "the collector's action tag (Linux journald and auditd, file actions)"],
+  ['os:macos   type:sysmon', 'macos and darwin are the same; type:sysmon covers Sysmon events of every type'],
   ['time>=2026-11-14T10:30', 'UTC date or date-time'],
   ['-chrome   not user:SYSTEM', 'exclude'],
 ]
@@ -1049,8 +461,7 @@ export default function Events() {
   }
   const applyNL = () => {
     if (!nlResult?.q) return
-    const terms = nlResult.q.match(/-?"[^"]*"|\S+/g) || []
-    setTags(terms.map(raw => ({ id: Date.now() + Math.random(), ...classifyTerm(raw.replace(/^"|"$/g, '')) })).filter(t => t.field))
+    setTags([{ id: Date.now() + Math.random(), ...queryChip(nlResult.q) }])
     const ms = { '15m': 9e5, '1h': 36e5, '6h': 216e5, '24h': 864e5, '7d': 6048e5, '30d': 2592e6 }[nlResult.since] || 864e5
     setSince(toLocalInput(Date.now() - ms)); setUntil(''); setPreset(Object.entries({ '15m': 9e5, '1h': 36e5, '24h': 864e5, '7d': 6048e5, '30d': 2592e6 }).find(([, v]) => v === ms)?.[0] || '')
   }
@@ -1069,7 +480,8 @@ export default function Events() {
 
   const saveQuery = async () => {
     if (!saveQueryName.trim()) return
-    const queryStr = tags.map(t => t.label).join(' ')
+    const queryStr = [tagsToQuery(tags), inputVal.trim()].filter(Boolean).join(' ')
+    if (!queryStr) return
     try {
       await api.post('/api/v1/events/saved-queries', { name: saveQueryName, query: queryStr })
       setSaveQueryName('')
@@ -1152,65 +564,44 @@ export default function Events() {
       setTags(t => t.slice(0, -1))
   }
 
+  // Every chip and the typed text become one query in the server's query language.
+  const buildQuery = useCallback((liveInput = '') => {
+    const live = liveInput.trim()
+    return [tagsToQuery(tags), live ? (looksLikeKQL(live) ? '(' + live + ')' : live) : ''].filter(Boolean).join(' ')
+  }, [tags])
+
   const buildParams = useCallback((p = 0) => {
     const params = { limit, offset: p * limit }
-    const searchTerms = []
-    const kql = []
-    tags.forEach(tag => {
-      if (tag.field === 'kql') {
-        kql.push('(' + tag.value + ')')
-      } else if (tag.field === 'src_or_dst_ip' || tag.field === 'search') {
-        searchTerms.push(tag.value)
-      } else {
-        params[tag.field] = tag.value
-      }
-    })
-    if (searchTerms.length > 0) params.search = searchTerms.join(' ')
-    if (kql.length > 0) params.q = kql.join(' ')
     if (since) params.since = new Date(since).toISOString()
     if (until) params.until = new Date(until + ':59').toISOString()
     return params
-  }, [tags, since, until])
+  }, [since, until])
 
   const fetchEvents = useCallback(async (p = 0, liveInput = '') => {
     setLoading(true)
-    try {
-      const params = buildParams(p)
-      // Combine tag-based search terms with live input
-      const searchTokens = tags.filter(t => t.field === 'search').map(t => t.value)
-      const kqlTokens = tags.filter(t => t.field === 'kql').map(t => '(' + t.value + ')')
-      // A query typed live is kept whole; plain words are split as before.
-      const live = liveInput.trim()
-      const liveTokens = !live ? [] : looksLikeKQL(live) ? ['(' + live + ')'] : live.split(/\s+/).filter(Boolean)
-      const allTokens = [...kqlTokens, ...searchTokens, ...liveTokens]
-      setQueryErr('')
-
-      // Timeline and facet counts over the whole query (not just this page), when the server offers them.
+    setQueryErr('')
+    const params = buildParams(p)
+    const q = buildQuery(liveInput)
+    // Timeline and facet counts over the whole query (not just this page), when the server offers them.
+    if (p === 0) {
       const sumParams = { ...params }
       delete sumParams.limit; delete sumParams.offset
-      if (allTokens.length > 0) { sumParams.q = allTokens.join(' '); delete sumParams.search }
-      if (p === 0) api.get('/api/v1/events/summary', { params: sumParams })
+      if (q) sumParams.q = q
+      api.get('/api/v1/events/summary', { params: sumParams })
         .then(r => { setSummary(r.data?.summary || null); setSummaryOK(!!r.data?.summary) })
         .catch(() => { setSummary(null); setSummaryOK(false) })
-      if (allTokens.length > 0) {
-        const searchParams = { ...params, q: allTokens.join(' ') }
-        delete searchParams.search
-        // If no time range set, search all time (let user narrow with time picker)
-        if (!since && !until) searchParams.since = 'all'
-        const { data } = await api.get('/api/v1/events/search', { params: searchParams })
-        setEvents(data.events || [])
-        setTotal(data.total || 0)
-      } else {
-        const { data } = await api.get('/api/v1/events', { params })
-        setEvents(data.events || [])
-        setTotal(data.total || 0)
-      }
+    }
+    try {
+      const { data } = q
+        ? await api.get('/api/v1/events/search', { params: { ...params, q } })
+        : await api.get('/api/v1/events', { params })
+      setEvents(data.events || [])
+      setTotal(data.total || 0)
     } catch (e) {
-      // A bad query is the user's to fix: show why, keep the previous results.
-      const msg = e?.response?.status === 400 ? e.response.data?.error : ''
-      if (msg) setQueryErr(msg)
+      // Say why: a bad query, a timeout or a server error. Keep the previous results on screen.
+      setQueryErr(searchError(e))
     } finally { setLoading(false) }
-  }, [buildParams, tags])
+  }, [buildParams, buildQuery])
 
   useEffect(() => {
     // Debounce search - fire 300ms after last change
@@ -1255,7 +646,9 @@ export default function Events() {
 
   const exportEvents = async (fmt) => {
     const params = new URLSearchParams({ format: fmt, limit: 10000 })
-    Object.entries(buildParams()).forEach(([k, v]) => { if (v) params.set(k, String(v)) })
+    Object.entries(buildParams()).forEach(([k, v]) => { if (v && k !== 'limit' && k !== 'offset') params.set(k, String(v)) })
+    const q = buildQuery(inputVal)
+    if (q) params.set('q', q)
     const token = localStorage.getItem('token')
     const res = await fetch(`/api/v1/events/export?${params}`, { headers: { Authorization: `Bearer ${token}` } })
     const blob = await res.blob()
@@ -1376,7 +769,7 @@ export default function Events() {
                     <button onClick={e => { e.stopPropagation(); removeTag(tag.id) }} aria-label={`Remove ${tag.label}`} style={{ background: 'none', border: 0, color: 'inherit', cursor: 'pointer', padding: 0, marginLeft: 2 }}>×</button>
                   </span>
                 ))}
-                <input ref={inputRef} className="mono" style={{ minWidth: 200, fontSize: 12.5 }}
+                <input ref={inputRef} className="mono" style={{ minWidth: 200, fontSize: 13.5 }}
                   placeholder={tags.length === 0 ? 'host:web* and proc:powershell, an IP, a user, or any text. Enter adds a filter.' : 'Add a filter…'}
                   value={inputVal} onChange={e => setInputVal(e.target.value)} onKeyDown={handleKeyDown} aria-label="Event query"/>
                 {(tags.length > 0 || inputVal) && <button className="ow-btn quiet" style={{ height: 22, padding: '0 4px' }} onClick={() => { setTags([]); setInputVal('') }}>Clear</button>}
@@ -1392,7 +785,7 @@ export default function Events() {
             </div>
 
             {showCustom && (
-              <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', fontSize: 12 }}>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', fontSize: 13.5 }}>
                 <span className="t2">From</span>
                 <input type="datetime-local" className="input" style={{ width: 200 }} value={since} onChange={e => { setPreset(''); setSince(e.target.value) }}/>
                 <span className="t2">to</span>
@@ -1401,7 +794,7 @@ export default function Events() {
               </div>
             )}
 
-            {queryErr && <div className="c-crit" style={{ fontSize: 12.5 }}>Query problem: {queryErr}</div>}
+            {queryErr && <div className="c-crit" style={{ fontSize: 13.5 }}>{queryErr}</div>}
 
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
               <button className={`ow-btn quiet ${showHelp ? 'c-acc' : ''}`} style={{ height: 24, padding: '0 6px' }} onClick={() => setShowHelp(h => !h)}>Query syntax</button>
@@ -1412,7 +805,7 @@ export default function Events() {
                 {savedQueries.map(sq => (
                   <span key={sq.id} className="tag" style={{ paddingRight: 4 }}>
                     <button style={{ background: 'none', border: 0, color: 'var(--t1)', cursor: 'pointer', font: 'inherit', padding: 0 }} title={sq.query}
-                      onClick={() => { const nt = sq.query.split(' ').filter(Boolean).map(t => { const c = classifyTerm(t); return c ? { id: Date.now() + Math.random(), ...c } : null }).filter(Boolean); if (nt.length) setTags(nt) }}>{sq.name}</button>
+                      onClick={() => { const q = legacyToQuery(sq.query).trim(); if (q) setTags([{ id: Date.now() + Math.random(), ...queryChip(q) }]) }}>{sq.name}</button>
                     <button onClick={() => deleteSavedQuery(sq.id)} aria-label={`Delete saved query ${sq.name}`} style={{ background: 'none', border: 0, color: 'var(--t3)', cursor: 'pointer', padding: 0 }}><X size={10}/></button>
                   </span>
                 ))}
@@ -1430,12 +823,12 @@ export default function Events() {
               <div className="ow-card" style={{ padding: 12, background: 'var(--s2)', display: 'flex', flexDirection: 'column', gap: 6 }}>
                 <div className="ow-lbl">Query language · click an example to add it</div>
                 {KQL_HELP.map(([q, d]) => (
-                  <div key={q} style={{ display: 'flex', gap: 14, fontSize: 12.5 }}>
+                  <div key={q} style={{ display: 'flex', gap: 14, fontSize: 13.5 }}>
                     <button onClick={() => addTag(q)} className="mono c-acc" style={{ background: 'none', border: 0, cursor: 'pointer', textAlign: 'left', minWidth: 300, padding: 0 }}>{q}</button>
                     <span className="t2">{d}</span>
                   </div>
                 ))}
-                <div className="t3" style={{ fontSize: 12 }}>Fields: <span className="mono">host os user proc cmd image file hash reg domain channel source proto src dst ip port pid ppid eid sev type time</span></div>
+                <div className="t3" style={{ fontSize: 13.5 }}>Fields: <span className="mono">host os user proc cmd image file hash reg domain channel source proto src dst ip port pid ppid eid sev type time</span></div>
               </div>
             )}
 
@@ -1446,9 +839,9 @@ export default function Events() {
                     placeholder='e.g. "PowerShell started by Word in the last 7 days"'/>
                   <button className="ow-btn" onClick={askNL} disabled={nlBusy || !nlQuestion.trim()}>{nlBusy ? 'Thinking…' : 'Propose query'}</button>
                 </div>
-                {nlErr && <div className="c-crit" style={{ fontSize: 12.5 }}>{nlErr}</div>}
+                {nlErr && <div className="c-crit" style={{ fontSize: 13.5 }}>{nlErr}</div>}
                 {nlResult && (
-                  <div style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 12.5 }}>
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 13.5 }}>
                     <span className="t2">Review, then apply:</span>
                     <input className="input mono" style={{ flex: 1 }} value={nlResult.q} onChange={e => setNlResult(r => ({ ...r, q: e.target.value }))}/>
                     <span className="t3">last {nlResult.since}</span>
@@ -1466,8 +859,8 @@ export default function Events() {
           <div className="ow-card" style={{ padding: '12px 16px' }}>
             <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 8 }}>
               <span style={{ fontWeight: 500 }}>{summary ? <><span className="mono">{fmtCompact(summaryTotal)}</span> events</> : 'Events'} over time</span>
-              <span className="t3" style={{ fontSize: 12 }}>{summary ? `${summary.step} buckets · click a bar to zoom` : summaryOK ? 'Loading…' : `of the ${events.length} on this page (the server has no summary endpoint)`}</span>
-              <span style={{ marginLeft: 'auto', display: 'flex', gap: 12, fontSize: 11.5, color: 'var(--t3)' }}>
+              <span className="t3" style={{ fontSize: 13.5 }}>{summary ? `${summary.step} buckets · click a bar to zoom` : summaryOK ? 'Loading…' : `of the ${events.length} on this page (the server has no summary endpoint)`}</span>
+              <span style={{ marginLeft: 'auto', display: 'flex', gap: 12, fontSize: 13, color: 'var(--t3)' }}>
                 {SEV_STACKS.slice().reverse().map(x => <span key={x.k} style={{ display: 'flex', alignItems: 'center', gap: 5 }}><span style={{ width: 8, height: 8, borderRadius: 2, background: x.color }}/>{x.label}</span>)}
               </span>
             </div>
@@ -1481,7 +874,7 @@ export default function Events() {
         <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }}>
           {!live && (
             <aside className="ow-facets" aria-label="Facets">
-              <div className="t3" style={{ fontSize: 11.5 }}>{facetData.scope === 'all' ? 'Counts over the whole query. Click to filter.' : `Counts in the ${events.length} shown. Click to filter.`}</div>
+              <div className="t3" style={{ fontSize: 13 }}>{facetData.scope === 'all' ? 'Counts over the whole query. Click to filter.' : `Counts in the ${events.length} shown. Click to filter.`}</div>
               {facetData.sev.length > 0 && (
                 <div><div className="ow-lbl" style={{ marginBottom: 6 }}>Severity</div>
                   {facetData.sev.map(x => <button key={x.v} className="ow-fc" onClick={() => addFacet('severity', x.v)} title={`Severity ${SEV_WORD[x.v]} or worse`}><span>{SEV_WORD[x.v]}</span><b>{fmtCompact(x.n)}</b></button>)}
@@ -1504,11 +897,11 @@ export default function Events() {
               ) : displayed.map((ev, i) => (
                 <div key={ev.id || i} className={`ow-grid click ${(ev.severity || 1) >= 5 ? 's-crit' : (ev.severity || 1) >= 4 ? 's-warn' : ''}`} role="row" tabIndex={0}
                   style={{ gridTemplateColumns: tpl, minHeight: 34 }} onClick={() => setSelected(ev)} onKeyDown={e => { if (e.key === 'Enter') setSelected(ev) }}>
-                  <span className="mono t2" style={{ fontSize: 12 }} title={new Date(ev.time).toISOString()}>{format(new Date(ev.time), 'MMM dd HH:mm:ss')}</span>
-                  <span>{(ev.severity || 1) >= 3 ? <SevPill sev={ev.severity}/> : <span className="t3" style={{ fontSize: 12 }}>{SEV_WORD[ev.severity || 1]}</span>}</span>
+                  <span className="mono t2" style={{ fontSize: 13.5 }} title={new Date(ev.time).toISOString()}>{format(new Date(ev.time), 'MMM dd HH:mm:ss')}</span>
+                  <span>{(ev.severity || 1) >= 3 ? <SevPill sev={ev.severity}/> : <span className="t3" style={{ fontSize: 13.5 }}>{SEV_WORD[ev.severity || 1]}</span>}</span>
                   <span className="mono t1" title={ev.host}>{ev.host || '—'}</span>
                   <span><EventTypeBadge type={ev.event_type}/></span>
-                  <span className="mono t2" style={{ fontSize: 12 }} title={summaryOf(ev)}>{summaryOf(ev)}</span>
+                  <span className="mono t2" style={{ fontSize: 13.5 }} title={summaryOf(ev)}>{summaryOf(ev)}</span>
                 </div>
               ))}
             {!live && total > limit && (

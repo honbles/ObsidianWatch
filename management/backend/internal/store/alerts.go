@@ -1,6 +1,7 @@
 package store
 
 import (
+	"encoding/json"
 	"context"
 	"database/sql"
 	"fmt"
@@ -30,6 +31,12 @@ type Alert struct {
 	AIAnalysedAt    *string    `json:"ai_analysed_at,omitempty"`
 	OccurrenceCount int        `json:"occurrence_count,omitempty"`
 	LastSeen        time.Time  `json:"last_seen,omitempty"`
+	// Endpoint alerts: the rule that raised it and its evidence (api/alert_fp.go). Set at creation.
+	RuleID   string          `json:"rule_id,omitempty"`
+	Evidence json.RawMessage `json:"evidence,omitempty"`
+	// How the alert was closed (false_positive) and the suppression a false-positive close created.
+	Disposition   *string `json:"disposition,omitempty"`
+	SuppressionID *int64  `json:"suppression_id,omitempty"`
 }
 
 func (db *DB) ListAlerts(ctx context.Context, status string, limit int) ([]Alert, error) {
@@ -41,7 +48,8 @@ func (db *DB) ListAlerts(ctx context.Context, status string, limit int) ([]Alert
 		       COALESCE(agent_id,''), COALESCE(host,''), COALESCE(event_type,''),
 		       COALESCE(event_id,''), COALESCE(source_event_id,''), acknowledged_by, acknowledged_at,
 		       assigned_to, case_notes, closed_by, closed_at, review_comment,
-		       ai_analysis, ai_analysed_at, occurrence_count, last_seen
+		       ai_analysis, ai_analysed_at, occurrence_count, last_seen,
+		       COALESCE(rule_id,''), evidence, disposition, suppression_id
 		FROM alerts`
 	args := []interface{}{}
 	if status != "" {
@@ -65,6 +73,7 @@ func (db *DB) ListAlerts(ctx context.Context, status string, limit int) ([]Alert
 			&a.AcknowledgedBy, &a.AcknowledgedAt,
 			&a.AssignedTo, &a.CaseNotes, &a.ClosedBy, &a.ClosedAt, &a.ReviewComment,
 			&a.AIAnalysis, &a.AIAnalysedAt, &a.OccurrenceCount, &a.LastSeen,
+			&a.RuleID, (*[]byte)(&a.Evidence), &a.Disposition, &a.SuppressionID,
 		); err != nil {
 			return nil, err
 		}
@@ -214,15 +223,16 @@ func (db *DB) CreateAlertDeduped(ctx context.Context, a Alert) (int64, bool, err
 	var id int64
 	var inserted bool
 	err = tx.QueryRowContext(ctx, `
-		INSERT INTO alerts (title, description, severity, status, agent_id, host, event_type, event_id, source_event_id, occurrence_count, last_seen)
-		VALUES ($1,$2,$3,'open',$4,$5,$6,$7,$8,1,NOW())
+		INSERT INTO alerts (title, description, severity, status, agent_id, host, event_type, event_id, source_event_id, occurrence_count, last_seen,
+			rule_id, evidence)
+		VALUES ($1,$2,$3,'open',$4,$5,$6,$7,$8,1,NOW(),$9,$10)
 		ON CONFLICT (event_id) WHERE event_id IS NOT NULL AND event_id != '' DO UPDATE SET
 			occurrence_count = alerts.occurrence_count + 1,
 			last_seen        = NOW()
 		RETURNING id, (xmax = 0)
 	`, a.Title, a.Description, a.Severity,
 		nullableStr(a.AgentID), nullableStr(a.Host), nullableStr(a.EventType),
-		nullableStr(a.EventID), nullableStr(a.SourceEventID),
+		nullableStr(a.EventID), nullableStr(a.SourceEventID), nullableStr(a.RuleID), nullableJSON(a.Evidence),
 	).Scan(&id, &inserted)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -251,7 +261,8 @@ func (db *DB) GetAlert(ctx context.Context, id int64) (*Alert, error) {
 		       COALESCE(agent_id,''), COALESCE(host,''), COALESCE(event_type,''),
 		       COALESCE(event_id,''), COALESCE(source_event_id,''), acknowledged_by, acknowledged_at,
 		       assigned_to, case_notes, closed_by, closed_at, review_comment,
-		       ai_analysis, ai_analysed_at
+		       ai_analysis, ai_analysed_at,
+		       COALESCE(rule_id,''), evidence, disposition, suppression_id
 		FROM alerts WHERE id = $1
 	`, id).Scan(
 		&a.ID, &a.CreatedAt, &a.Title, &a.Description, &a.Severity, &a.Status,
@@ -259,6 +270,7 @@ func (db *DB) GetAlert(ctx context.Context, id int64) (*Alert, error) {
 		&a.AcknowledgedBy, &a.AcknowledgedAt,
 		&a.AssignedTo, &a.CaseNotes, &a.ClosedBy, &a.ClosedAt, &a.ReviewComment,
 		&a.AIAnalysis, &a.AIAnalysedAt,
+		&a.RuleID, (*[]byte)(&a.Evidence), &a.Disposition, &a.SuppressionID,
 	)
 	if err != nil {
 		return nil, err
@@ -317,7 +329,8 @@ func (db *DB) ListAlertsForHost(ctx context.Context, host string, since time.Tim
 		       COALESCE(agent_id,''), COALESCE(host,''), COALESCE(event_type,''),
 		       COALESCE(event_id,''), COALESCE(source_event_id,''), acknowledged_by, acknowledged_at,
 		       assigned_to, case_notes, closed_by, closed_at, review_comment,
-		       ai_analysis, ai_analysed_at
+		       ai_analysis, ai_analysed_at,
+		       COALESCE(rule_id,''), evidence, disposition, suppression_id
 		FROM alerts
 		WHERE host = $1 AND created_at >= $2
 		ORDER BY severity DESC, created_at DESC
@@ -336,6 +349,7 @@ func (db *DB) ListAlertsForHost(ctx context.Context, host string, since time.Tim
 			&a.AcknowledgedBy, &a.AcknowledgedAt,
 			&a.AssignedTo, &a.CaseNotes, &a.ClosedBy, &a.ClosedAt, &a.ReviewComment,
 			&a.AIAnalysis, &a.AIAnalysedAt,
+			&a.RuleID, (*[]byte)(&a.Evidence), &a.Disposition, &a.SuppressionID,
 		); err != nil {
 			return nil, err
 		}
@@ -364,4 +378,11 @@ func (db *DB) weighAlert(ctx context.Context, a Alert) Alert {
 		}
 	}
 	return a
+}
+
+func nullableJSON(b json.RawMessage) interface{} {
+	if len(b) == 0 {
+		return nil
+	}
+	return []byte(b)
 }

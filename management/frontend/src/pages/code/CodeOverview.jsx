@@ -117,7 +117,7 @@ export function FilterBar({ value, onChange, placeholder, count, total, children
         <input value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder} aria-label="Filter"/>
         {value && <button onClick={() => onChange('')} aria-label="Clear filter" style={{ background: 'none', border: 0, color: 'var(--t3)', cursor: 'pointer' }}><X size={12}/></button>}
       </label>
-      <span className="t2" style={{ fontSize: 12 }}>{count.toLocaleString()} of {total.toLocaleString()}</span>
+      <span className="t2" style={{ fontSize: 13.5 }}>{count.toLocaleString()} of {total.toLocaleString()}</span>
       {children}
     </div>
   )

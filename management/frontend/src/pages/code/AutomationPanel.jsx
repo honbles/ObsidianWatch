@@ -25,7 +25,7 @@ function Toggle({ label, help, checked, onChange }) {
       <input type="checkbox" checked={!!checked} onChange={e => onChange(e.target.checked)} className="mt-0.5 accent-siem-accent" />
       <span>
         <span className="text-xs text-siem-text">{label}</span>
-        {help && <span className="block text-[11px] text-siem-muted mt-0.5">{help}</span>}
+        {help && <span className="block text-xs text-siem-muted mt-0.5">{help}</span>}
       </span>
     </label>
   )
@@ -48,7 +48,7 @@ function TriageRules({ conn }) {
   const remove = async (id) => { try { await api.delete(`/api/v1/devops-connectors/${conn.id}/triage-rules/${id}`); load() } catch { /* admin only */ } }
   return (
     <div className="bg-siem-surface border border-siem-border rounded-xl overflow-hidden">
-      <div className="px-4 py-2 text-[10px] uppercase tracking-wider text-siem-muted font-semibold border-b border-siem-border">Triage rules</div>
+      <div className="px-4 py-2 text-2xs uppercase tracking-wider text-siem-muted font-semibold border-b border-siem-border">Triage rules</div>
       {rules.length === 0 ? <div className="p-4 text-xs text-siem-muted">No triage rules. Create one from a finding's "likely false positive" hint in the SAST tab.</div> : (
         <table className="w-full text-xs">
           <tbody>
@@ -119,7 +119,7 @@ export default function AutomationPanel({ conn }) {
     <div className="p-5 space-y-5">
       <div className="grid md:grid-cols-2 gap-4">
         <div className="bg-siem-surface border border-siem-border rounded-xl p-4 space-y-3">
-          <div className="text-[10px] uppercase tracking-wider text-siem-muted font-semibold">Pull / merge requests</div>
+          <div className="text-2xs uppercase tracking-wider text-siem-muted font-semibold">Pull / merge requests</div>
           <Toggle label="Scan every pull request" checked={policy.pr_checks} onChange={v => set('pr_checks', v)}
             help="Needs this connector's webhook with pull or merge request events." />
           <Toggle label="Post comments on the pull request" checked={policy.pr_comments} onChange={v => set('pr_comments', v)}
@@ -140,14 +140,14 @@ export default function AutomationPanel({ conn }) {
             <input type="number" min={1} max={100} value={policy.max_comments} onChange={e => set('max_comments', Number(e.target.value))}
               className="w-16 bg-siem-bg border border-siem-border rounded-lg px-2 py-1 text-xs text-siem-text" />
           </div>
-          <p className="text-[11px] text-siem-muted border-t border-siem-border pt-2">
+          <p className="text-xs text-siem-muted border-t border-siem-border pt-2">
             Only issues on changed lines are reported. To block merging, make the status <span className="font-mono text-siem-text">{STATUS_NAME[conn.provider]}</span> required: {BLOCK_HELP[conn.provider]}
             {' '}The token needs write access to commit statuses and pull request comments.
           </p>
         </div>
 
         <div className="bg-siem-surface border border-siem-border rounded-xl p-4 space-y-3">
-          <div className="text-[10px] uppercase tracking-wider text-siem-muted font-semibold">Pushes and schedule</div>
+          <div className="text-2xs uppercase tracking-wider text-siem-muted font-semibold">Pushes and schedule</div>
           <Toggle label="Scan on every push to the default branch" checked={policy.scan_on_push} onChange={v => set('scan_on_push', v)}
             help="Needs the push webhook. The result replaces the repository's stored SAST result." />
           <div className="flex items-center gap-2 flex-wrap">
@@ -172,7 +172,7 @@ export default function AutomationPanel({ conn }) {
             <textarea rows={3} value={(policy.repos || []).join('\n')} onChange={e => set('repos', e.target.value.split('\n').map(s => s.trim()))}
               placeholder="One per line. Empty: every repository seen for this connector."
               className="mt-1 w-full bg-siem-bg border border-siem-border rounded-lg px-2 py-1.5 text-xs text-siem-text font-mono" />
-            <p className="text-[11px] text-siem-muted mt-1">Each rescan replaces the branch's previous result, so fixed findings drop out. All branches: up to 2,000 per repository.</p>
+            <p className="text-xs text-siem-muted mt-1">Each rescan replaces the branch's previous result, so fixed findings drop out. All branches: up to 2,000 per repository.</p>
           </div>
         </div>
       </div>
@@ -189,10 +189,10 @@ export default function AutomationPanel({ conn }) {
       <TriageRules conn={conn} />
 
       <div className="bg-siem-surface border border-siem-border rounded-xl overflow-hidden">
-        <div className="px-4 py-2 text-[10px] uppercase tracking-wider text-siem-muted font-semibold border-b border-siem-border">Automated scans</div>
+        <div className="px-4 py-2 text-2xs uppercase tracking-wider text-siem-muted font-semibold border-b border-siem-border">Automated scans</div>
         {jobs.length === 0 ? <div className="p-4 text-xs text-siem-muted">No automated scans yet.</div> : (
           <table className="w-full text-xs">
-            <thead><tr className="text-siem-muted text-[10px] uppercase">
+            <thead><tr className="text-siem-muted text-2xs uppercase">
               <th className="text-left px-4 py-2">When</th><th className="text-left">Trigger</th><th className="text-left">Repository</th>
               <th className="text-left">Target</th><th className="text-left">Result</th><th className="text-right px-4">Findings</th>
             </tr></thead>
@@ -214,7 +214,7 @@ export default function AutomationPanel({ conn }) {
                       {open.result?.notes?.length > 0 && <div className="text-siem-muted">Notes: {open.result.notes.join('; ')}</div>}
                       {(open.result?.findings || []).slice(0, 50).map((f, i) => (
                         <div key={i} className="flex gap-2">
-                          <span className="uppercase text-[10px] w-14 text-siem-muted">{f.severity}</span>
+                          <span className="uppercase text-2xs w-14 text-siem-muted">{f.severity}</span>
                           <span className="text-siem-text">{f.title}</span>
                           <span className="font-mono text-siem-muted ml-auto">{f.file}{f.line ? `:${f.line}` : ''}</span>
                         </div>

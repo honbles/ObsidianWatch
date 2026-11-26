@@ -14,7 +14,7 @@ const SOURCE_META = {
 function SourceBadge({ source }) {
   const m = SOURCE_META[source] || SOURCE_META.ip
   return (
-    <span className={`inline-flex items-center gap-1 text-[10px] font-mono px-1.5 py-0.5 rounded border ${m.bg} ${m.border} ${m.color}`}>
+    <span className={`inline-flex items-center gap-1 text-mini font-mono px-1.5 py-0.5 rounded border ${m.bg} ${m.border} ${m.color}`}>
       <Signal size={9} />
       {m.label}
     </span>
@@ -44,7 +44,7 @@ function AgentRow({ agent, selected, onSelect }) {
         <span className="text-xs font-medium text-siem-text truncate flex-1">{agent.hostname}</span>
         <SourceBadge source={agent.location_source} />
       </div>
-      <div className="flex items-center gap-2 pl-5 text-[10px] text-siem-muted">
+      <div className="flex items-center gap-2 pl-5 text-mini text-siem-muted">
         <MapPin size={9} />
         <span className="truncate">{[agent.location_city, agent.location_country].filter(Boolean).join(', ') || 'Unknown location'}</span>
         {agent.location_updated && (
@@ -226,7 +226,7 @@ export default function Locations() {
             <Navigation size={18} className="text-emerald-400" />
             <h1 className="text-sm font-semibold tracking-wide">Endpoint Locations</h1>
           </div>
-          <div className="flex items-center gap-3 text-[11px] text-siem-muted">
+          <div className="flex items-center gap-3 text-xs text-siem-muted">
             <span className="flex items-center gap-1">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block" />
               {online} online
@@ -240,7 +240,7 @@ export default function Locations() {
         </div>
         <button
           onClick={fetchLocations}
-          className="flex items-center gap-1.5 text-[11px] text-siem-muted hover:text-siem-text px-2.5 py-1 rounded border border-siem-border hover:border-siem-text transition-colors"
+          className="flex items-center gap-1.5 text-xs text-siem-muted hover:text-siem-text px-2.5 py-1 rounded border border-siem-border hover:border-siem-text transition-colors"
         >
           <RefreshCw size={11} className={loading ? 'animate-spin' : ''} />
           Refresh
@@ -248,7 +248,7 @@ export default function Locations() {
       </div>
 
       {/* Legend */}
-      <div className="flex-shrink-0 flex items-center gap-4 px-5 py-2 border-b border-siem-border bg-siem-bg text-[10px] text-siem-muted">
+      <div className="flex-shrink-0 flex items-center gap-4 px-5 py-2 border-b border-siem-border bg-siem-bg text-mini text-siem-muted">
         <span className="font-mono uppercase tracking-wider">Accuracy:</span>
         <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full border border-emerald-500 bg-emerald-950/40 inline-block" /> GPS (&lt;50m)</span>
         <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full border border-blue-500 bg-blue-950/40 inline-block" /> Wi-Fi (~100–300m)</span>
@@ -261,7 +261,7 @@ export default function Locations() {
 
         {/* Sidebar */}
         <div className="w-72 flex-shrink-0 flex flex-col border-r border-siem-border bg-siem-surface overflow-hidden">
-          <div className="px-3 py-2 border-b border-siem-border text-[10px] font-mono uppercase tracking-wider text-siem-muted">
+          <div className="px-3 py-2 border-b border-siem-border text-2xs font-mono uppercase tracking-wider text-siem-muted">
             Endpoints ({agents.length})
           </div>
 
@@ -283,7 +283,7 @@ export default function Locations() {
               <div className="flex flex-col items-center justify-center h-40 text-siem-muted text-xs gap-3 px-4 text-center">
                 <MapPin size={24} className="opacity-30" />
                 <div>No agent locations yet.</div>
-                <div className="text-[10px] opacity-60">Agents report their location every 30 minutes. Check back shortly after agents connect.</div>
+                <div className="text-mini opacity-60">Agents report their location every 30 minutes. Check back shortly after agents connect.</div>
               </div>
             )}
 
@@ -298,7 +298,7 @@ export default function Locations() {
           </div>
 
           {selected && (
-            <div className="flex-shrink-0 border-t border-siem-border bg-siem-bg p-3 text-[11px]">
+            <div className="flex-shrink-0 border-t border-siem-border bg-siem-bg p-3 text-xs">
               <div className="flex items-center justify-between mb-2">
                 <span className="font-medium text-siem-text">{selected.hostname}</span>
                 <button onClick={() => setSelected(null)} className="text-siem-muted hover:text-siem-text">✕</button>

@@ -11,7 +11,7 @@ function Field({ label, hint, children }) {
     <label className="block">
       <span className="block text-xs font-medium text-siem-text mb-1">{label}</span>
       {children}
-      {hint && <span className="block text-[10px] text-siem-muted mt-1">{hint}</span>}
+      {hint && <span className="block text-mini text-siem-muted mt-1">{hint}</span>}
     </label>
   )
 }
@@ -64,7 +64,7 @@ export default function AppServiceSettingsForm({ service, requests, onSaved, com
   const tier = service.tier || 0 // fields that only matter with OpenTelemetry (T1) or the security helper (T2) are hidden below them
   return (
     <div className="space-y-4">
-      {!admin && <div className="text-[11px] text-amber-300">Read-only: changing settings needs the admin role.</div>}
+      {!admin && <div className="text-xs text-amber-300">Read-only: changing settings needs the admin role.</div>}
       <div className={`grid gap-3 ${compact ? 'grid-cols-1' : 'grid-cols-1 md:grid-cols-3'}`}>
         <Field label="Exposure" hint={f.exposure === 'unknown' && s0.exposure_inferred && s0.exposure_inferred !== 'unknown' ? `Inferred ${s0.exposure_inferred}: ${s0.exposure_reason}. Choose a value to override.` : 'Internet-facing services raise alert severity one level.'}>
           <select className={inputCls} value={f.exposure} onChange={set('exposure')} disabled={dis}>
@@ -156,7 +156,7 @@ export default function AppServiceSettingsForm({ service, requests, onSaved, com
         <label className="flex items-center gap-2 text-siem-muted"><input type="checkbox" checked={f.reset_learning} onChange={set('reset_learning')} disabled={dis} /> Restart learning on save</label>
       </div>
 
-      {tier === 0 && <div className="text-[11px] text-siem-muted">Route, latency, SLO, sampling and privacy settings appear once this service sends OpenTelemetry (Tier 1); they have no effect on a host-only service.</div>}
+      {tier === 0 && <div className="text-xs text-siem-muted">Route, latency, SLO, sampling and privacy settings appear once this service sends OpenTelemetry (Tier 1); they have no effect on a host-only service.</div>}
       <div className="flex items-center gap-3">
         <button className="btn btn-primary" onClick={save} disabled={dis}>{state.saving ? 'Saving…' : 'Save settings'}</button>
         {state.ok && <span className="text-xs text-emerald-300">Saved</span>}

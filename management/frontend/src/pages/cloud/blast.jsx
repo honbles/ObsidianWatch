@@ -126,7 +126,7 @@ export function BlastFocusGraph({ principal, allNodes, allEdges }) {
         // Relationship label
         const mx = (e.source.x + e.target.x) / 2
         const my = (e.source.y + e.target.y) / 2
-        ctx.font = '9px "IBM Plex Mono",monospace'
+        ctx.font = '9px "JetBrains Mono",monospace'
         ctx.fillStyle = R(isRisk ? 'rgb(var(--crit-c) / 0.8)' : 'rgb(var(--t2-c) / 0.65)')
         ctx.textAlign = 'center'
         ctx.fillText((e.relationship || '').replace(/_/g, ' '), mx, my - 4)
@@ -158,7 +158,7 @@ export function BlastFocusGraph({ principal, allNodes, allEdges }) {
         ctx.strokeStyle = 'rgba(0,0,0,0.5)'; ctx.lineWidth = 1; ctx.stroke()
 
         // Label below node
-        ctx.font = `${n.isCenter ? 11 : 9}px "IBM Plex Sans",sans-serif`
+        ctx.font = `${n.isCenter ? 11 : 9}px "Inter",sans-serif`
         ctx.fillStyle = R(n.isCenter ? 'var(--t1)' : 'var(--t2)')
         ctx.textAlign = 'center'
         const label = (n.name || '').length > 20 ? (n.name||'').slice(0,19)+'…' : (n.name||'')
@@ -190,7 +190,7 @@ export function BlastFocusGraph({ principal, allNodes, allEdges }) {
       {tooltip && (
         <div style={{ position:'fixed', left:tooltip.x+14, top:tooltip.y-10,
           background:'var(--surface)', border:'1px solid var(--border)',
-          borderRadius:10, padding:'10px 14px', fontSize:11.5, zIndex:999,
+          borderRadius:10, padding:'10px 14px', fontSize: 13, zIndex:999,
           boxShadow:'0 10px 30px rgba(0,0,0,0.6)', pointerEvents:'none', maxWidth:260 }}>
           <div style={{ fontWeight:700, color:'var(--text)', marginBottom:5 }}>{tooltip.node.name}</div>
           <div style={{ color:'var(--text3)', marginBottom:3 }}>
@@ -205,7 +205,7 @@ export function BlastFocusGraph({ principal, allNodes, allEdges }) {
             <div style={{ color:'var(--high)', marginTop:3 }}>{tooltip.node.finding_count} CSPM finding(s)</div>
           )}
           {Object.entries(tooltip.node.properties || {}).slice(0,4).map(([k,v]) => v && (
-            <div key={k} style={{ color:'var(--text3)', fontSize:10.5, marginTop:2 }}>
+            <div key={k} style={{ color:'var(--text3)', fontSize: 12, marginTop:2 }}>
               {k.replace(/_/g,' ')}: <span style={{ color:'var(--text2)' }}>{String(v).slice(0,40)}</span>
             </div>
           ))}
@@ -222,7 +222,7 @@ export function RiskBadge({ risk }) {
   const c = colors[risk] || colors.none
   const bg = bgs[risk]   || bgs.none
   return (
-    <span style={{ fontSize:9.5, fontWeight:700, color:c, background:bg,
+    <span style={{ fontSize: 11, fontWeight:700, color:c, background:bg,
       border:`1px solid ${tint(c, 33)}`, borderRadius:5, padding:'1px 7px',
       fontFamily:'var(--font-data)', textTransform:'uppercase' }}>
       {risk || 'none'}
@@ -263,8 +263,8 @@ export function PanelBlastRadius({ blast, loading, scanning, onRunScan, conn }) 
       <div style={{ padding:'14px 22px', borderBottom:'1px solid var(--border)', flexShrink:0,
         display:'flex', alignItems:'center', justifyContent:'space-between' }}>
         <div>
-          <div style={{ fontSize:13, fontWeight:700, color:'var(--text)', marginBottom:2 }}>Blast Radius Analysis</div>
-          <div style={{ fontSize:11, color:'var(--text3)' }}>
+          <div style={{ fontSize: 14, fontWeight:700, color:'var(--text)', marginBottom:2 }}>Blast Radius Analysis</div>
+          <div style={{ fontSize: 13, color:'var(--text3)' }}>
             Click any principal to explore their access graph - what can they reach if compromised?
           </div>
         </div>
@@ -272,7 +272,7 @@ export function PanelBlastRadius({ blast, loading, scanning, onRunScan, conn }) 
           style={{ display:'flex', alignItems:'center', gap:7, padding:'7px 14px',
             background: scanning ? 'var(--surface2)' : 'var(--accent)',
             color: scanning ? 'var(--text2)' : 'var(--onacc)',
-            border:'none', borderRadius:8, fontSize:12, fontWeight:600,
+            border:'none', borderRadius:8, fontSize: 13.5, fontWeight:600,
             cursor: scanning ? 'wait' : 'pointer', fontFamily:'inherit', flexShrink:0 }}>
           {scanning ? '⟳ Scanning…' : '⟳ Run Analysis'}
         </button>
@@ -280,15 +280,15 @@ export function PanelBlastRadius({ blast, loading, scanning, onRunScan, conn }) 
 
       {loading && (
         <div style={{ flex:1, display:'flex', alignItems:'center', justifyContent:'center', color:'var(--text3)', gap:8 }}>
-          <span style={{ fontSize:13 }}>Loading blast radius data…</span>
+          <span style={{ fontSize: 14 }}>Loading blast radius data…</span>
         </div>
       )}
 
       {!loading && !blast && (
         <div style={{ flex:1, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', color:'var(--text3)', gap:10 }}>
           <Zap size={30} strokeWidth={1.5} style={{ color:'var(--t3)' }}/>
-          <div style={{ fontSize:13, fontWeight:600, color:'var(--text2)' }}>No blast radius data yet</div>
-          <div style={{ fontSize:11 }}>Run Analysis to map how far each principal can reach</div>
+          <div style={{ fontSize: 14, fontWeight:600, color:'var(--text2)' }}>No blast radius data yet</div>
+          <div style={{ fontSize: 13 }}>Run Analysis to map how far each principal can reach</div>
         </div>
       )}
 
@@ -309,16 +309,16 @@ export function PanelBlastRadius({ blast, loading, scanning, onRunScan, conn }) 
                 { label:'Public Exp.', value: blast.summary?.public_exposures, color:'var(--warn)' },
               ].map(k => (
                 <div key={k.label} style={{ flex:1, textAlign:'center' }}>
-                  <div style={{ fontSize:16, fontWeight:800, color:k.color, fontFamily:'var(--font-data)', lineHeight:1 }}>
+                  <div style={{ fontSize: 16, fontWeight:800, color:k.color, fontFamily:'var(--font-data)', lineHeight:1 }}>
                     {k.value || 0}
                   </div>
-                  <div style={{ fontSize:9, color:'var(--text3)', marginTop:2 }}>{k.label}</div>
+                  <div style={{ fontSize: 11, color:'var(--text3)', marginTop:2 }}>{k.label}</div>
                 </div>
               ))}
             </div>
 
             <div style={{ padding:'8px 10px', borderBottom:'1px solid var(--border)', flexShrink:0 }}>
-              <div style={{ fontSize:10, fontWeight:700, color:'var(--text3)', textTransform:'uppercase', letterSpacing:'0.07em' }}>
+              <div style={{ fontSize: 11.5, fontWeight:700, color:'var(--text3)', textTransform:'uppercase', letterSpacing:'0.07em' }}>
                 {principals.length} Principals - click to explore
               </div>
             </div>
@@ -326,7 +326,7 @@ export function PanelBlastRadius({ blast, loading, scanning, onRunScan, conn }) 
             {/* Principal rows */}
             <div style={{ flex:1, overflowY:'auto' }}>
               {principals.length === 0 && (
-                <div style={{ padding:20, textAlign:'center', color:'var(--text3)', fontSize:12 }}>
+                <div style={{ padding:20, textAlign:'center', color:'var(--text3)', fontSize: 13.5 }}>
                   No principals found in blast radius data
                 </div>
               )}
@@ -353,11 +353,11 @@ export function PanelBlastRadius({ blast, loading, scanning, onRunScan, conn }) 
                         ? `0 0 6px ${RISK_COLORS_BLAST[p.risk]}` : 'none' }}/>
 
                     <div style={{ flex:1, minWidth:0 }}>
-                      <div style={{ fontSize:11.5, fontWeight:600, color:'var(--text)',
+                      <div style={{ fontSize: 13, fontWeight:600, color:'var(--text)',
                         whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>
                         {p.name}
                       </div>
-                      <div style={{ fontSize:10, color:'var(--text3)', marginTop:1 }}>
+                      <div style={{ fontSize: 12, color:'var(--text3)', marginTop:1 }}>
                         {(p.type||'').replace(/_/g,' ')}
                         {reachCount > 0 && <span style={{ marginLeft:6, color:'var(--text2)' }}>· {reachCount} resource{reachCount!==1?'s':''}</span>}
                         {riskEdges.length > 0 && <span style={{ marginLeft:5, color:'var(--crit)' }}>· {riskEdges.length} risk path{riskEdges.length!==1?'s':''}</span>}
@@ -372,16 +372,16 @@ export function PanelBlastRadius({ blast, loading, scanning, onRunScan, conn }) 
 
             {/* Legend */}
             <div style={{ padding:'10px 14px', borderTop:'1px solid var(--border)', background:'var(--surface)', flexShrink:0 }}>
-              <div style={{ fontSize:9, color:'var(--text3)', textTransform:'uppercase', letterSpacing:'0.07em', marginBottom:6 }}>Risk Level</div>
+              <div style={{ fontSize: 11, color:'var(--text3)', textTransform:'uppercase', letterSpacing:'0.07em', marginBottom:6 }}>Risk Level</div>
               <div style={{ display:'flex', gap:10, flexWrap:'wrap' }}>
                 {['critical','high','medium','low'].map(r => (
                   <div key={r} style={{ display:'flex', alignItems:'center', gap:4 }}>
                     <span style={{ width:7, height:7, borderRadius:'50%', background:RISK_COLORS_BLAST[r], display:'inline-block' }}/>
-                    <span style={{ fontSize:10, color:'var(--text2)', textTransform:'capitalize' }}>{r}</span>
+                    <span style={{ fontSize: 12, color:'var(--text2)', textTransform:'capitalize' }}>{r}</span>
                   </div>
                 ))}
               </div>
-              <div style={{ marginTop:6, fontSize:9.5, color:'var(--text3)' }}>
+              <div style={{ marginTop:6, fontSize: 11, color:'var(--text3)' }}>
                 <span style={{ color:'var(--crit)' }}>Red border + glow arrows</span> = risk escalation path
               </div>
             </div>
@@ -393,8 +393,8 @@ export function PanelBlastRadius({ blast, loading, scanning, onRunScan, conn }) 
             {!selected && (
               <div style={{ flex:1, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', color:'var(--text3)', gap:10 }}>
                 <User size={34} strokeWidth={1.4} style={{ color:'var(--t3)' }}/>
-                <div style={{ fontSize:13, fontWeight:600, color:'var(--text2)' }}>Select a principal</div>
-                <div style={{ fontSize:11, maxWidth:300, textAlign:'center', lineHeight:1.6 }}>
+                <div style={{ fontSize: 14, fontWeight:600, color:'var(--text2)' }}>Select a principal</div>
+                <div style={{ fontSize: 13, maxWidth:300, textAlign:'center', lineHeight:1.6 }}>
                   Pick a user or service account to see what it can reach.
                 </div>
               </div>
@@ -411,19 +411,19 @@ export function PanelBlastRadius({ blast, loading, scanning, onRunScan, conn }) 
                     boxShadow: (selected.risk === 'critical' || selected.risk === 'high')
                       ? `0 0 8px ${RISK_COLORS_BLAST[selected.risk]}` : 'none' }}/>
                   <div style={{ flex:1, minWidth:0 }}>
-                    <div style={{ fontSize:12.5, fontWeight:700, color:'var(--text)', marginBottom:2 }}>
+                    <div style={{ fontSize: 13.5, fontWeight:700, color:'var(--text)', marginBottom:2 }}>
                       {selected.name}
                     </div>
                     <div style={{ display:'flex', gap:8, alignItems:'center', flexWrap:'wrap' }}>
-                      <span style={{ fontSize:10, color:'var(--text3)' }}>{(selected.type||'').replace(/_/g,' ')}</span>
+                      <span style={{ fontSize: 12, color:'var(--text3)' }}>{(selected.type||'').replace(/_/g,' ')}</span>
                       <RiskBadge risk={selected.risk}/>
                       {selectedEdges.length > 0 && (
-                        <span style={{ fontSize:10, color:'var(--text3)' }}>
+                        <span style={{ fontSize: 12, color:'var(--text3)' }}>
                           {reachableNodes.length} reachable resource{reachableNodes.length!==1?'s':''}
                         </span>
                       )}
                       {hasOwnerRole && (
-                        <span style={{ fontSize:10, fontWeight:700, color:'var(--crit)',
+                        <span style={{ fontSize: 12, fontWeight:700, color:'var(--crit)',
                           background:'rgb(var(--crit-c) / 0.12)', border:'1px solid rgb(var(--crit-c) / 0.3)',
                           borderRadius:4, padding:'1px 7px' }}>
                           ⚠ FULL SUBSCRIPTION ACCESS
@@ -432,7 +432,7 @@ export function PanelBlastRadius({ blast, loading, scanning, onRunScan, conn }) 
                     </div>
                   </div>
                   <button onClick={() => setSelected(null)}
-                    style={{ background:'none', border:'none', color:'var(--text3)', cursor:'pointer', fontSize:18, padding:'0 4px' }}>×</button>
+                    style={{ background:'none', border:'none', color:'var(--text3)', cursor:'pointer', fontSize: 18, padding:'0 4px' }}>×</button>
                 </div>
 
                 {/* Reach summary chips */}
@@ -440,7 +440,7 @@ export function PanelBlastRadius({ blast, loading, scanning, onRunScan, conn }) 
                   <div style={{ padding:'8px 18px', borderBottom:'1px solid var(--border)',
                     display:'flex', gap:6, flexWrap:'wrap', flexShrink:0 }}>
                     {reachableNodes.slice(0, 8).map(n => (
-                      <span key={n.id} style={{ fontSize:10.5, padding:'2px 8px', borderRadius:5,
+                      <span key={n.id} style={{ fontSize: 12, padding:'2px 8px', borderRadius:5,
                         background: (n.risk && n.risk !== 'none') ? tint(RISK_COLORS_BLAST[n.risk], 9) : 'var(--surface2)',
                         border: `1px solid ${(n.risk && n.risk !== 'none') ? tint(RISK_COLORS_BLAST[n.risk], 27) : 'var(--border)'}`,
                         color: (n.risk && n.risk !== 'none') ? RISK_COLORS_BLAST[n.risk] : 'var(--text3)' }}>
@@ -448,7 +448,7 @@ export function PanelBlastRadius({ blast, loading, scanning, onRunScan, conn }) 
                       </span>
                     ))}
                     {reachableNodes.length > 8 && (
-                      <span style={{ fontSize:10.5, color:'var(--text3)', padding:'2px 8px' }}>
+                      <span style={{ fontSize: 12, color:'var(--text3)', padding:'2px 8px' }}>
                         +{reachableNodes.length - 8} more
                       </span>
                     )}
@@ -470,7 +470,7 @@ export function PanelBlastRadius({ blast, loading, scanning, onRunScan, conn }) 
           {/* ── Attack paths panel if any ── */}
           {blast.high_risk_paths?.length > 0 && !selected && (
             <div style={{ width:300, flexShrink:0, borderLeft:'1px solid var(--border)', overflow:'auto', padding:'14px 16px', background:'var(--surface)' }}>
-              <div style={{ fontSize:10, fontWeight:700, color:'var(--text3)', textTransform:'uppercase', letterSpacing:'0.07em', marginBottom:10 }}>
+              <div style={{ fontSize: 11.5, fontWeight:700, color:'var(--text3)', textTransform:'uppercase', letterSpacing:'0.07em', marginBottom:10 }}>
                 Attack Paths ({blast.high_risk_paths.length})
               </div>
               {blast.high_risk_paths.map((p, i) => (
@@ -478,18 +478,18 @@ export function PanelBlastRadius({ blast, loading, scanning, onRunScan, conn }) 
                   border:`1px solid ${p.severity==='critical'?'rgb(var(--crit-c) / 0.3)':'rgb(var(--high-c) / 0.3)'}`,
                   borderLeft:`3px solid ${RISK_COLORS_BLAST[p.severity]||'var(--border)'}`,
                   borderRadius:8, padding:'10px 12px', marginBottom:8 }}>
-                  <div style={{ fontSize:11, fontWeight:600, color:RISK_COLORS_BLAST[p.severity], marginBottom:4 }}>
+                  <div style={{ fontSize: 13, fontWeight:600, color:RISK_COLORS_BLAST[p.severity], marginBottom:4 }}>
                     {p.end_privilege?.replace(/_/g,' ').toUpperCase()}
                   </div>
-                  <div style={{ fontSize:10.5, color:'var(--text2)', lineHeight:1.5, marginBottom:6 }}>{p.description}</div>
+                  <div style={{ fontSize: 12, color:'var(--text2)', lineHeight:1.5, marginBottom:6 }}>{p.description}</div>
                   <div style={{ display:'flex', alignItems:'center', gap:4, flexWrap:'wrap' }}>
                     {p.path?.map((node, ni) => (
                       <span key={ni} style={{ display:'flex', alignItems:'center', gap:4 }}>
-                        <span style={{ fontSize:9.5, fontFamily:'var(--font-data)', color:'var(--text3)',
+                        <span style={{ fontSize: 11, fontFamily:'var(--font-data)', color:'var(--text3)',
                           background:'var(--surface)', padding:'2px 6px', borderRadius:4, border:'1px solid var(--border)' }}>
                           {node.split(':').pop()?.slice(0,20)}
                         </span>
-                        {ni < p.path.length-1 && <span style={{ color:'var(--crit)', fontSize:11 }}>→</span>}
+                        {ni < p.path.length-1 && <span style={{ color:'var(--crit)', fontSize: 13 }}>→</span>}
                       </span>
                     ))}
                   </div>

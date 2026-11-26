@@ -67,7 +67,7 @@ export default function AppRouteReview() {
                       <option value="">Any status</option><option value="2xx">2xx</option><option value="3xx">3xx</option>
                       <option value="4xx">4xx</option><option value="5xx">5xx</option><option value="401">401</option><option value="403">403</option><option value="500">500</option>
                     </select>
-                    <span className="text-[11px] text-siem-muted">Admin only. Values appear only for fields left unmasked on a reviewed route.</span>
+                    <span className="text-xs text-siem-muted">Admin only. Values appear only for fields left unmasked on a reviewed route.</span>
                   </div>
                   {!admin ? <div className="text-xs text-amber-300">Viewing captured requests needs the admin role.</div>
                     : !reviewed ? <div className="text-xs text-siem-muted">Nothing is captured until this route is reviewed.</div>

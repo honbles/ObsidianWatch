@@ -20,7 +20,7 @@ export default function AppSetupHint({ tier, name, environment, instrumentation 
       {tier === 0 ? (
         <>
           <div><b>Instrument with OpenTelemetry</b> for routes, dependencies and request detections.</div>
-          <pre className="bg-black/30 rounded p-2 text-[11px] overflow-x-auto">{lines.join('\n')}</pre>
+          <pre className="bg-black/30 rounded p-2 text-xs overflow-x-auto">{lines.join('\n')}</pre>
           <div className="text-sky-300/70">Needs an agent with the <b>app-server</b> profile. OTLP/HTTP on loopback only.</div>
         </>
       ) : (

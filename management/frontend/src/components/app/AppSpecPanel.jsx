@@ -63,7 +63,7 @@ export default function AppSpecPanel({ service, onChanged }) {
               className="bg-siem-surface2 border border-siem-border rounded-lg px-2.5 py-1.5 text-xs text-siem-text w-40" />
             <span className="text-siem-muted">only if the document's server path differs from what the application serves.</span>
           </div>
-          <div className="text-[11px] text-siem-muted">
+          <div className="text-xs text-siem-muted">
             The server fetches the URL itself; otherwise upload the file. Only parameter and field names are read. Loading replaces the previous document.
           </div>
           {info?.loaded && <button className="text-red-300 hover:underline" disabled={busy} onClick={remove}>Remove the loaded spec</button>}

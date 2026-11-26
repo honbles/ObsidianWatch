@@ -9,6 +9,7 @@ import { SeverityBadge } from '../../components/SeverityBadge'
 import { GraphCanvas, NodeDetail } from './graph.jsx'
 import { EVENT_TYPE_META, SEV_LABEL, TAG_COLORS, VTHashBadge } from './shared.jsx'
 import { AgentSavedSearchPanel } from './tamper.jsx'
+import { tagsToQuery, searchError } from '../events/library'
 import { HealthBoard } from './health_board.jsx'
 import AppHostApplications from '../../components/app/AppHostApplications.jsx'
 
@@ -20,20 +21,20 @@ export function TabOverview({ agent }) {
     <div className="p-5 space-y-4">
       <div className="grid grid-cols-4 gap-3">
         {[{label:'Status',value:agent.online?'Online':'Offline',color:agent.online?'text-emerald-400':'text-siem-muted'},{label:'OS',value:agent.os||'-',color:'text-siem-text'},{label:'Version',value:agent.version||'-',color:'text-siem-text'},{label:'Events',value:agent.event_count?.toLocaleString()||'0',color:'text-siem-text'}].map(({label,value,color})=>(
-          <div key={label} className="bg-siem-bg border border-siem-border rounded-xl p-4"><div className="text-[10px] text-siem-muted uppercase tracking-wider mb-1">{label}</div><div className={`text-base font-bold font-mono ${color}`}>{value}</div></div>
+          <div key={label} className="bg-siem-bg border border-siem-border rounded-xl p-4"><div className="text-2xs text-siem-muted uppercase tracking-wider mb-1">{label}</div><div className={`text-base font-bold font-mono ${color}`}>{value}</div></div>
         ))}
       </div>
       <HealthBoard agent={agent}/>
       <AppHostApplications agentId={agent.id}/>
       <div className="grid grid-cols-2 gap-4">
         <div className="bg-siem-surface border border-siem-border rounded-xl p-4">
-          <div className="text-[10px] uppercase tracking-wider text-siem-muted font-semibold mb-3">System info</div>
+          <div className="text-2xs uppercase tracking-wider text-siem-muted font-semibold mb-3">System info</div>
           {[['Hostname',agent.hostname],['Agent ID',agent.id],['Last IP',agent.last_ip||'-'],['Last Seen',agent.last_seen?formatDistanceToNow(new Date(agent.last_seen),{addSuffix:true}):'-'],['Tamper',agent.tamper_locked?'Protected':'Unlocked']].map(([k,v])=>(
-            <div key={k} className="flex justify-between text-xs py-1.5 border-b border-siem-border/40 last:border-0"><span className="text-siem-muted">{k}</span><span className="font-mono text-siem-text text-[11px]">{v}</span></div>
+            <div key={k} className="flex justify-between text-xs py-1.5 border-b border-siem-border/40 last:border-0"><span className="text-siem-muted">{k}</span><span className="font-mono text-siem-text text-xs">{v}</span></div>
           ))}
         </div>
         <div className="bg-siem-surface border border-siem-border rounded-xl p-4">
-          <div className="text-[10px] uppercase tracking-wider text-siem-muted font-semibold mb-3">Quick actions</div>
+          <div className="text-2xs uppercase tracking-wider text-siem-muted font-semibold mb-3">Quick actions</div>
           <div className="space-y-2">
             <button onClick={goEvents} className="w-full flex items-center gap-2 text-xs text-siem-muted hover:text-siem-accent transition-colors px-3 py-2.5 rounded-lg hover:bg-siem-accent/5 border border-transparent hover:border-siem-accent/20">
               <Activity size={13}/><span>View all events for <strong className="text-siem-text">{agent.hostname}</strong></span><ChevronRight size={11} className="ml-auto"/>
@@ -70,12 +71,12 @@ export function EventPanel({ event, onClose }) {
               <div key={k}><div className="text-siem-muted mb-0.5">{k}</div><div className="font-mono text-siem-text break-all">{v||'-'}</div></div>
             ))}
           </div>
-          {ev.command_line&&<div><div className="text-siem-muted mb-1">Command line</div><div className="bg-siem-bg border border-siem-border rounded p-2 font-mono text-[10px] text-emerald-300 break-all">{ev.command_line}</div></div>}
+          {ev.command_line&&<div><div className="text-siem-muted mb-1">Command line</div><div className="bg-siem-bg border border-siem-border rounded p-2 font-mono text-mini text-emerald-300 break-all">{ev.command_line}</div></div>}
           {ev.dst_ip&&<div><div className="text-siem-muted mb-0.5">Destination</div><div className="font-mono text-blue-400"><IPLink ip={ev.dst_ip}/>{ev.dst_port?`:${ev.dst_port}`:''}</div></div>}
           {ev.file_path&&<div><div className="text-siem-muted mb-0.5">File path</div><div className="font-mono text-yellow-400 break-all">{ev.file_path}</div></div>}
           {ev.reg_key&&<div><div className="text-siem-muted mb-0.5">Registry key</div><div className="font-mono text-purple-400 break-all">{ev.reg_key}</div></div>}
-          {raw&&Object.keys(raw).length>0&&<div><div className="text-siem-muted mb-1">Raw data</div><pre className="bg-siem-bg border border-siem-border rounded p-2 text-[9px] text-siem-muted overflow-x-auto whitespace-pre-wrap">{JSON.stringify(raw,null,2)}</pre></div>}
-          {detail?.related?.length>0&&<div><div className="text-siem-muted mb-2 font-semibold uppercase tracking-wider text-[9px]">Related events (±5 min)</div><div className="space-y-1">{detail.related.map((r,i)=><div key={i} className="flex items-center gap-2 text-[10px] bg-siem-bg rounded px-2 py-1.5"><span className="text-siem-muted font-mono">{format(new Date(r.time),'HH:mm:ss')}</span><span className={EVENT_TYPE_META[r.event_type]?.color||'text-siem-muted'}>{r.event_type}</span><span className="text-siem-muted truncate flex-1">{r.process_name||r.dst_ip||r.user_name||'-'}</span></div>)}</div></div>}
+          {raw&&Object.keys(raw).length>0&&<div><div className="text-siem-muted mb-1">Raw data</div><pre className="bg-siem-bg border border-siem-border rounded p-2 text-2xs text-siem-muted overflow-x-auto whitespace-pre-wrap">{JSON.stringify(raw,null,2)}</pre></div>}
+          {detail?.related?.length>0&&<div><div className="text-siem-muted mb-2 font-semibold uppercase tracking-wider text-2xs">Related events (±5 min)</div><div className="space-y-1">{detail.related.map((r,i)=><div key={i} className="flex items-center gap-2 text-mini bg-siem-bg rounded px-2 py-1.5"><span className="text-siem-muted font-mono">{format(new Date(r.time),'HH:mm:ss')}</span><span className={EVENT_TYPE_META[r.event_type]?.color||'text-siem-muted'}>{r.event_type}</span><span className="text-siem-muted truncate flex-1">{r.process_name||r.dst_ip||r.user_name||'-'}</span></div>)}</div></div>}
         </div>
       </div>
     </div>
@@ -89,6 +90,7 @@ export function TabEvents({ agent }) {
   const [page,setPage]=useState(0)
   const [selected,setSelected]=useState(null)
   const [tags,setTags]=useState([])
+  const [err,setErr]=useState('')
   const [inputVal,setInputVal]=useState('')
   const [since,setSince]=useState('')
   const [until,setUntil]=useState('')
@@ -115,11 +117,11 @@ export function TabEvents({ agent }) {
     if(e.key==='Backspace'&&!inputVal&&tags.length>0) setTags(ts=>ts.slice(0,-1))
   }
 
+  // Same query language as the Events page: every chip becomes part of one query, filtered to this host.
   const buildParams = useCallback((p=0) => {
     const params={limit,offset:p*limit,host:agent.hostname}
-    const searchTerms=[]
-    tags.forEach(tag=>{ if(tag.field==='src_or_dst_ip'||tag.field==='search') searchTerms.push(tag.value); else params[tag.field]=tag.value })
-    if(searchTerms.length>0) params.search=searchTerms.join(' ')
+    const q=tagsToQuery(tags)
+    if(q) params.q=q
     if(since) params.since=new Date(since).toISOString()
     if(until) params.until=new Date(until+':59').toISOString()
     return params
@@ -127,7 +129,8 @@ export function TabEvents({ agent }) {
 
   const fetch = useCallback(async(p=0)=>{
     setLoading(true)
-    try { const{data}=await api.get('/api/v1/events',{params:buildParams(p)}); setEvents(data.events||[]); setTotal(data.total||0) }
+    try { const params=buildParams(p); const{data}=await api.get(params.q?'/api/v1/events/search':'/api/v1/events',{params}); setEvents(data.events||[]); setTotal(data.total||0); setErr('') }
+    catch(e) { setErr(searchError(e)) }
     finally { setLoading(false) }
   }, [buildParams])
 
@@ -146,23 +149,23 @@ export function TabEvents({ agent }) {
         <div className="min-h-[38px] flex flex-wrap gap-1.5 items-center bg-siem-bg border border-siem-border rounded-xl px-3 py-2 cursor-text focus-within:border-siem-accent transition-colors" onClick={()=>inputRef.current?.focus()}>
           <Search size={13} className="text-siem-muted shrink-0"/>
           {tags.map(tag=>(
-            <span key={tag.id} className={`inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full border font-medium ${TAG_COLORS[tag.field]||TAG_COLORS.search}`}>
+            <span key={tag.id} className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full border font-medium ${TAG_COLORS[tag.field]||TAG_COLORS.search}`}>
               {tag.label}<button onClick={e=>{e.stopPropagation();removeTag(tag.id)}} className="hover:opacity-70 ml-0.5">×</button>
             </span>
           ))}
           <input ref={inputRef} className="flex-1 min-w-[100px] bg-transparent text-sm text-siem-text outline-none placeholder:text-siem-muted/50" placeholder="Type to filter events…" value={inputVal} onChange={e=>setInputVal(e.target.value)} onKeyDown={handleKeyDown}/>
-          {(tags.length>0||since||until)&&<button onClick={()=>{setTags([]);setSince('');setUntil('');setInputVal('')}} className="text-[10px] text-siem-muted hover:text-red-400 ml-1 shrink-0">Clear</button>}
+          {(tags.length>0||since||until)&&<button onClick={()=>{setTags([]);setSince('');setUntil('');setInputVal('')}} className="text-mini text-siem-muted hover:text-red-400 ml-1 shrink-0">Clear</button>}
         </div>
         {/* Hints + Saved Search */}
         <div className="flex items-center gap-2 flex-wrap">
           {HINTS.map(h=>(
-            <button key={h} onClick={()=>addTag(h)} className="text-[10px] px-2 py-0.5 rounded-full border border-siem-border text-siem-muted hover:border-siem-accent hover:text-siem-accent transition-colors">{h}</button>
+            <button key={h} onClick={()=>addTag(h)} className="text-mini px-2 py-0.5 rounded-full border border-siem-border text-siem-muted hover:border-siem-accent hover:text-siem-accent transition-colors">{h}</button>
           ))}
           <span className="text-siem-border text-xs ml-2">|</span>
           {PRESETS.map(p=>(
-            <button key={p.label} onClick={()=>{const now=new Date();setSince(new Date(now-p.ms).toISOString().slice(0,16));setUntil(now.toISOString().slice(0,16))}} className="text-[10px] px-2 py-0.5 rounded-full border border-siem-border text-siem-muted hover:border-siem-accent hover:text-siem-accent transition-colors">{p.label}</button>
+            <button key={p.label} onClick={()=>{const now=new Date();setSince(new Date(now-p.ms).toISOString().slice(0,16));setUntil(now.toISOString().slice(0,16))}} className="text-mini px-2 py-0.5 rounded-full border border-siem-border text-siem-muted hover:border-siem-accent hover:text-siem-accent transition-colors">{p.label}</button>
           ))}
-          <button onClick={()=>setShowSaved(s=>!s)} className={`ml-2 flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full border transition-colors ${showSaved?'border-siem-accent text-siem-accent bg-siem-accent/10':'border-siem-border text-siem-muted hover:border-siem-accent hover:text-siem-accent'}`}>
+          <button onClick={()=>setShowSaved(s=>!s)} className={`ml-2 flex items-center gap-1 text-mini px-2 py-0.5 rounded-full border transition-colors ${showSaved?'border-siem-accent text-siem-accent bg-siem-accent/10':'border-siem-border text-siem-muted hover:border-siem-accent hover:text-siem-accent'}`}>
             <Bookmark size={9}/> Saved
           </button>
           <span className="text-xs text-siem-muted ml-auto">{loading?'Searching…':`${total.toLocaleString()} events`}</span>
@@ -183,6 +186,7 @@ export function TabEvents({ agent }) {
 
       {/* Event rows - same format as main Events page */}
       <div className="flex-1 overflow-y-auto divide-y divide-siem-border/40">
+        {err && <div className="c-crit px-4 py-2 text-xs">{err}</div>}
         {loading ? (
           <div className="text-center py-12 text-siem-muted text-sm">Searching…</div>
         ) : events.length === 0 ? (
@@ -206,14 +210,14 @@ export function TabEvents({ agent }) {
             <div key={ev.id || i}
               className="flex items-center gap-3 px-4 py-2.5 hover:bg-white/[0.03] cursor-pointer transition-colors group"
               onClick={() => setSelected(ev)}>
-              <span className="text-[11px] text-siem-muted/70 font-mono whitespace-nowrap w-[120px] shrink-0">
+              <span className="text-xs text-siem-muted/70 font-mono whitespace-nowrap w-[120px] shrink-0">
                 {format(new Date(ev.time), 'MM/dd HH:mm:ss')}
               </span>
               <SeverityBadge severity={ev.severity}/>
-              <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium shrink-0 ${ET_CLS[ev.event_type] || 'bg-siem-bg text-siem-muted'}`}>
+              <span className={`px-2 py-0.5 rounded-full text-mini font-medium shrink-0 ${ET_CLS[ev.event_type] || 'bg-siem-bg text-siem-muted'}`}>
                 {ev.event_type}
               </span>
-              <span className="text-[11px] text-siem-muted/80 truncate flex-1 font-mono">
+              <span className="text-xs text-siem-muted/80 truncate flex-1 font-mono">
                 {summary || ev.source || ev.event_type}
               </span>
               <ChevronRight size={13} className="text-siem-muted/30 group-hover:text-siem-muted shrink-0"/>
@@ -331,7 +335,7 @@ export function TabThreats({ agent }) {
         <div className="flex items-center gap-1 ml-2">
           {[6,24,48,168].map(h => (
             <button key={h} onClick={() => setHours(h)}
-              className={`text-[9px] px-1.5 py-0.5 rounded ${hours===h?'bg-siem-accent text-white':'text-siem-muted hover:text-siem-text'}`}>
+              className={`text-2xs px-1.5 py-0.5 rounded ${hours===h?'bg-siem-accent text-white':'text-siem-muted hover:text-siem-text'}`}>
               {h<24?`${h}h`:h===168?'7d':`${h/24}d`}
             </button>
           ))}
@@ -339,14 +343,14 @@ export function TabThreats({ agent }) {
         {selectedProcess && (
           <div className="flex items-center gap-1.5 ml-2 bg-siem-accent/10 border border-siem-accent/30 rounded-lg px-2 py-0.5">
             <Cpu size={9} className="text-siem-accent"/>
-            <span className="text-[10px] text-siem-accent font-mono">{selectedProcess.name}</span>
+            <span className="text-mini text-siem-accent font-mono">{selectedProcess.name}</span>
             <button onClick={() => { setSelectedProcess(null); setGraphData(null) }}
               className="text-siem-muted hover:text-red-400 ml-1"><X size={9}/></button>
           </div>
         )}
         <div className="ml-auto flex items-center gap-2">
           <button onClick={() => setShowSuspicious(s => !s)}
-            className={`flex items-center gap-1 text-[9px] border rounded-lg px-2 py-1 ${showSuspicious?'bg-red-900/30 border-red-800 text-red-400':'text-siem-muted border-siem-border'}`}>
+            className={`flex items-center gap-1 text-2xs border rounded-lg px-2 py-1 ${showSuspicious?'bg-red-900/30 border-red-800 text-red-400':'text-siem-muted border-siem-border'}`}>
             <AlertTriangle size={9}/>{showSuspicious?'Suspicious On':'Off'}
           </button>
         </div>
@@ -356,15 +360,15 @@ export function TabThreats({ agent }) {
         {/* Left: Process list */}
         <div className="w-52 shrink-0 border-r border-siem-border bg-siem-surface flex flex-col overflow-hidden">
           <div className="px-3 py-2 border-b border-siem-border">
-            <span className="text-[10px] uppercase tracking-wider text-siem-muted font-semibold">Applications</span>
+            <span className="text-2xs uppercase tracking-wider text-siem-muted font-semibold">Applications</span>
           </div>
           <div className="flex-1 overflow-y-auto">
             {loadingProcs ? (
-              <div className="flex items-center justify-center h-16 text-siem-muted text-[10px]">
+              <div className="flex items-center justify-center h-16 text-siem-muted text-mini">
                 <RefreshCw size={10} className="animate-spin mr-1"/>Loading…
               </div>
             ) : processes.length === 0 ? (
-              <div className="flex items-center justify-center h-16 text-siem-muted/40 text-[10px]">No processes found</div>
+              <div className="flex items-center justify-center h-16 text-siem-muted/40 text-mini">No processes found</div>
             ) : processes.map(proc => (
               <button key={proc.name}
                 onClick={() => setSelectedProcess(proc)}
@@ -377,10 +381,10 @@ export function TabThreats({ agent }) {
                   ? <AlertTriangle size={9} className="text-red-400 shrink-0"/>
                   : <Cpu size={9} className="text-siem-muted/40 shrink-0"/>}
                 <div className="flex-1 min-w-0">
-                  <div className={`text-[11px] font-mono truncate ${proc.suspicious ? 'text-red-300' : 'text-siem-text'}`}>
+                  <div className={`text-xs font-mono truncate ${proc.suspicious ? 'text-red-300' : 'text-siem-text'}`}>
                     {proc.name}
                   </div>
-                  <div className="text-[9px] text-siem-muted/60">
+                  <div className="text-2xs text-siem-muted/60">
                     {proc.event_count} events
                     {proc.max_severity >= 4 && <span className={`ml-1 ${getSevColor(proc.max_severity)}`}>sev{proc.max_severity}</span>}
                   </div>
@@ -443,21 +447,21 @@ export function TabThreats({ agent }) {
       <div className="shrink-0 border-t border-siem-border bg-siem-surface px-4 py-2.5 flex items-center gap-6 overflow-x-auto">
         <div className="flex items-center gap-1.5 shrink-0">
           <Shield size={11} className="text-siem-accent"/>
-          <span className="text-[10px] uppercase tracking-wider text-siem-muted font-semibold">Threat Intel</span>
+          <span className="text-2xs uppercase tracking-wider text-siem-muted font-semibold">Threat Intel</span>
         </div>
 
         {/* Top processes by event count */}
         <div className="flex items-center gap-2 shrink-0">
-          <span className="text-[9px] text-siem-muted uppercase tracking-wider">Top Processes</span>
+          <span className="text-2xs text-siem-muted uppercase tracking-wider">Top Processes</span>
           {processes.slice(0, 3).map(p => (
             <button key={p.name} onClick={() => setSelectedProcess(p)}
-              className={`text-[10px] font-mono px-1.5 py-0.5 rounded border transition-colors ${
+              className={`text-mini font-mono px-1.5 py-0.5 rounded border transition-colors ${
                 p.suspicious
                   ? 'border-red-800/50 text-red-400 bg-red-950/20'
                   : 'border-siem-border text-siem-muted hover:text-siem-accent hover:border-siem-accent/40'
               }`}>
               {p.name.split('.')[0]}
-              <span className="text-[8px] ml-1 opacity-60">{p.event_count}</span>
+              <span className="text-2xs ml-1 opacity-60">{p.event_count}</span>
             </button>
           ))}
         </div>
@@ -467,15 +471,15 @@ export function TabThreats({ agent }) {
         {/* DNS domains from selected process */}
         {selectedProcess && threatIntel && (
           <div className="flex items-center gap-2 shrink-0">
-            <span className="text-[9px] text-siem-muted uppercase tracking-wider">DNS</span>
+            <span className="text-2xs text-siem-muted uppercase tracking-wider">DNS</span>
             {threatIntel.domains.length === 0
-              ? <span className="text-[10px] text-siem-muted/40">none</span>
+              ? <span className="text-mini text-siem-muted/40">none</span>
               : threatIntel.domains.slice(0, 4).map(d => (
-                <span key={d} className="text-[10px] font-mono text-cyan-400/70">{d}</span>
+                <span key={d} className="text-mini font-mono text-cyan-400/70">{d}</span>
               ))
             }
             {threatIntel.domains.length > 4 && (
-              <span className="text-[9px] text-siem-muted">+{threatIntel.domains.length - 4}</span>
+              <span className="text-2xs text-siem-muted">+{threatIntel.domains.length - 4}</span>
             )}
           </div>
         )}
@@ -487,11 +491,11 @@ export function TabThreats({ agent }) {
         {/* IPs */}
         {selectedProcess && threatIntel && (
           <div className="flex items-center gap-2 shrink-0">
-            <span className="text-[9px] text-siem-muted uppercase tracking-wider">IPs</span>
+            <span className="text-2xs text-siem-muted uppercase tracking-wider">IPs</span>
             {threatIntel.ips.length === 0
-              ? <span className="text-[10px] text-siem-muted/40">none</span>
+              ? <span className="text-mini text-siem-muted/40">none</span>
               : threatIntel.ips.slice(0, 4).map(ip => (
-                <span key={ip} className="text-[10px] font-mono text-blue-400/70">{ip}</span>
+                <span key={ip} className="text-mini font-mono text-blue-400/70">{ip}</span>
               ))
             }
           </div>
@@ -501,12 +505,12 @@ export function TabThreats({ agent }) {
         {selectedProcess && threatIntel && (
           <div className="ml-auto shrink-0">
             {(threatIntel.suspicious || 0) > 0 ? (
-              <span className="flex items-center gap-1 text-red-400 text-[10px]">
+              <span className="flex items-center gap-1 text-red-400 text-mini">
                 <AlertTriangle size={10}/>
                 {threatIntel.suspicious} suspicious node{threatIntel.suspicious > 1 ? 's' : ''}
               </span>
             ) : (
-              <span className="flex items-center gap-1 text-emerald-400/60 text-[10px]">
+              <span className="flex items-center gap-1 text-emerald-400/60 text-mini">
                 <Shield size={10}/>No threats detected
               </span>
             )}
@@ -606,21 +610,21 @@ export function TabLogons({ agent }) {
       {/* Summary bar */}
       <div className="px-5 py-3 border-b border-siem-border shrink-0 flex items-center gap-6">
         <div>
-          <div className="text-[10px] text-siem-muted">Total logon events</div>
+          <div className="text-mini text-siem-muted">Total logon events</div>
           <div className="text-lg font-bold text-siem-text">{events.length}</div>
         </div>
         <div>
-          <div className="text-[10px] text-siem-muted">Failed logons</div>
+          <div className="text-mini text-siem-muted">Failed logons</div>
           <div className={`text-lg font-bold ${failures > 0 ? 'text-red-400' : 'text-siem-green'}`}>{failures}</div>
         </div>
         <div>
-          <div className="text-[10px] text-siem-muted">Unique users</div>
+          <div className="text-mini text-siem-muted">Unique users</div>
           <div className="text-lg font-bold text-siem-text">{unique_users.length}</div>
         </div>
         <div className="ml-auto flex gap-1">
           {[['all','All'],['success','Success'],['failure','Failures']].map(([v,l]) => (
             <button key={v} onClick={() => setFilter(v)}
-              className={`text-[10px] px-3 py-1 rounded-full border transition-colors ${filter===v?'border-siem-accent text-siem-accent bg-siem-accent/10':'border-siem-border text-siem-muted hover:text-siem-text'}`}>
+              className={`text-mini px-3 py-1 rounded-full border transition-colors ${filter===v?'border-siem-accent text-siem-accent bg-siem-accent/10':'border-siem-border text-siem-muted hover:text-siem-text'}`}>
               {l}
             </button>
           ))}
@@ -657,14 +661,14 @@ export function TabLogons({ agent }) {
 
                     return (
                       <tr key={ev.id||i} className={`border-b border-siem-border/40 hover:bg-white/[0.02] transition-colors ${fail ? 'bg-red-900/5' : ''}`}>
-                        <td className="px-4 py-2.5 font-mono text-[10px] text-siem-muted whitespace-nowrap">
+                        <td className="px-4 py-2.5 font-mono text-mini text-siem-muted whitespace-nowrap">
                           {format(new Date(ev.time), 'MM/dd HH:mm:ss')}
                         </td>
                         <td className="px-4 py-2.5"><SeverityBadge severity={ev.severity}/></td>
                         <td className="px-4 py-2.5 text-siem-text max-w-[160px] truncate">{ev.user_name || '-'}</td>
-                        <td className="px-4 py-2.5 font-mono text-[10px] text-siem-muted">{ev.src_ip || '-'}</td>
+                        <td className="px-4 py-2.5 font-mono text-mini text-siem-muted">{ev.src_ip || '-'}</td>
                         <td className="px-4 py-2.5">
-                          <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${
+                          <span className={`text-mini px-2 py-0.5 rounded-full font-medium ${
                             fail
                               ? 'bg-red-900/30 text-red-400 border border-red-800/40'
                               : label.includes('success') || label.includes('opened') || label.includes('exec')
@@ -673,9 +677,9 @@ export function TabLogons({ agent }) {
                           }`}>{label}</span>
                         </td>
                         {isWindows && (
-                          <td className="px-4 py-2.5 font-mono text-[10px] text-siem-muted">{eid || '-'}</td>
+                          <td className="px-4 py-2.5 font-mono text-mini text-siem-muted">{eid || '-'}</td>
                         )}
-                        <td className="px-4 py-2.5 text-[10px] text-siem-muted">
+                        <td className="px-4 py-2.5 text-mini text-siem-muted">
                           {isWindows
                             ? (logonTypeLabel || '-')
                             : (ev.process_name || raw.syslog_identifier || '-')
@@ -745,7 +749,7 @@ export function TabNetwork({ agent }) {
       {/* Toolbar */}
       <div className="px-5 py-3 border-b border-siem-border shrink-0 flex items-center gap-3 flex-wrap">
         {flaggedIPs.length > 0 && (
-          <span className="text-[10px] px-2 py-1 bg-red-900/20 border border-red-800/40 text-red-400 rounded-lg shrink-0">
+          <span className="text-mini px-2 py-1 bg-red-900/20 border border-red-800/40 text-red-400 rounded-lg shrink-0">
             ⚠ {flaggedIPs.length} malicious IP{flaggedIPs.length > 1 ? 's' : ''}
           </span>
         )}
@@ -755,7 +759,7 @@ export function TabNetwork({ agent }) {
         <div className="flex gap-1 shrink-0">
           {[['1h',1],['24h',24],['7d',168],['30d',720],['All',8760]].map(([l,h]) => (
             <button key={h} onClick={() => setHours(h)}
-              className={`text-[10px] px-3 py-1 rounded-full border transition-colors ${hours===h?'border-siem-accent text-siem-accent bg-siem-accent/10':'border-siem-border text-siem-muted hover:text-siem-text'}`}>
+              className={`text-mini px-3 py-1 rounded-full border transition-colors ${hours===h?'border-siem-accent text-siem-accent bg-siem-accent/10':'border-siem-border text-siem-muted hover:text-siem-text'}`}>
               {l}
             </button>
           ))}
@@ -768,7 +772,7 @@ export function TabNetwork({ agent }) {
           {/* Flagged / malicious IPs - always shown first if any */}
           {flaggedIPs.length > 0 && (
             <div>
-              <div className="text-[10px] uppercase tracking-wider text-red-400 font-semibold mb-2">
+              <div className="text-2xs uppercase tracking-wider text-red-400 font-semibold mb-2">
                 Malicious IP Connections (IOC matches)
               </div>
               <div className="bg-red-900/10 border border-red-800/30 rounded-xl overflow-hidden">
@@ -786,12 +790,12 @@ export function TabNetwork({ agent }) {
                   <tbody>
                     {flaggedIPs.map((f, i) => (
                       <tr key={i} className="border-b border-red-800/10 hover:bg-red-900/10">
-                        <td className="px-4 py-2 font-mono text-[10px] text-red-300">{f.dst_ip}</td>
-                        <td className="px-4 py-2 font-mono text-[10px] text-red-400/70">{f.dst_port||'-'}</td>
-                        <td className="px-4 py-2 text-[10px] text-red-300">{f.malware||'-'}</td>
-                        <td className="px-4 py-2 text-[10px] text-red-400/80">{f.threat_type||'-'}</td>
-                        <td className="px-4 py-2 text-[10px] font-bold text-red-400">{Number(f.connection_count||0).toLocaleString()}</td>
-                        <td className="px-4 py-2 text-[10px] text-siem-muted">{f.ioc_source||'-'}</td>
+                        <td className="px-4 py-2 font-mono text-mini text-red-300">{f.dst_ip}</td>
+                        <td className="px-4 py-2 font-mono text-mini text-red-400/70">{f.dst_port||'-'}</td>
+                        <td className="px-4 py-2 text-mini text-red-300">{f.malware||'-'}</td>
+                        <td className="px-4 py-2 text-mini text-red-400/80">{f.threat_type||'-'}</td>
+                        <td className="px-4 py-2 text-mini font-bold text-red-400">{Number(f.connection_count||0).toLocaleString()}</td>
+                        <td className="px-4 py-2 text-mini text-siem-muted">{f.ioc_source||'-'}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -803,7 +807,7 @@ export function TabNetwork({ agent }) {
           {/* All connections */}
           <div>
             {flaggedIPs.length > 0 && (
-              <div className="text-[10px] uppercase tracking-wider text-siem-muted font-semibold mb-2">
+              <div className="text-2xs uppercase tracking-wider text-siem-muted font-semibold mb-2">
                 All Connections
               </div>
             )}
@@ -831,22 +835,22 @@ export function TabNetwork({ agent }) {
                       const isMalicious = flaggedSet.has(r.dst_ip)
                       return (
                         <tr key={i} className={`border-b border-siem-border/40 hover:bg-white/[0.02] transition-colors ${isMalicious ? 'bg-red-900/5' : ''}`}>
-                          <td className="px-4 py-2.5 font-mono text-[10px]">
+                          <td className="px-4 py-2.5 font-mono text-mini">
                             {isMalicious && <span className="inline-block w-1.5 h-1.5 rounded-full bg-red-400 mr-1.5 mb-0.5"/>}
                             <span className={isMalicious ? 'text-red-300' : priv ? 'text-siem-muted' : 'text-siem-text'}>{r.dst_ip||'-'}</span>
-                            {!priv && !isMalicious && <span className="ml-2 text-[9px] text-orange-400/60">ext</span>}
+                            {!priv && !isMalicious && <span className="ml-2 text-2xs text-orange-400/60">ext</span>}
                           </td>
-                          <td className="px-4 py-2.5 text-[10px]">
+                          <td className="px-4 py-2.5 text-mini">
                             {ispData[r.dst_ip] ? (
                               <div>
                                 <div className="text-siem-text font-medium">{ispData[r.dst_ip].isp || ispData[r.dst_ip].org || '-'}</div>
-                                <div className="text-siem-muted/60 text-[9px] font-mono">{ispData[r.dst_ip].country} {ispData[r.dst_ip].asn?.split(' ')[0]}</div>
+                                <div className="text-siem-muted/60 text-2xs font-mono">{ispData[r.dst_ip].country} {ispData[r.dst_ip].asn?.split(' ')[0]}</div>
                               </div>
                             ) : priv ? <span className="text-siem-muted/40">private</span>
-                              : <span className="text-siem-muted/30 text-[9px]">looking up…</span>}
+                              : <span className="text-siem-muted/30 text-2xs">looking up…</span>}
                           </td>
-                          <td className="px-4 py-2.5 font-mono text-[10px] text-siem-text">{r.dst_port||'-'}</td>
-                          <td className="px-4 py-2.5 text-[10px] text-siem-muted">{r.proto||'-'}</td>
+                          <td className="px-4 py-2.5 font-mono text-mini text-siem-text">{r.dst_port||'-'}</td>
+                          <td className="px-4 py-2.5 text-mini text-siem-muted">{r.proto||'-'}</td>
                           <td className="px-4 py-2.5 font-bold text-siem-text">{Number(r.count).toLocaleString()}</td>
                           <td className="px-4 py-2.5">
                             <div className="h-1.5 bg-siem-border/20 rounded-full overflow-hidden w-24">
@@ -858,7 +862,7 @@ export function TabNetwork({ agent }) {
                     })}
                   </tbody>
                 </table>
-                <div className="px-4 py-2 border-t border-siem-border/30 text-[9px] text-siem-muted/50">
+                <div className="px-4 py-2 border-t border-siem-border/30 text-2xs text-siem-muted/50">
                   Process attribution not available in aggregated view - use Events tab with <span className="font-mono">network</span> filter to see per-connection process names
                 </div>
               </div>
@@ -916,7 +920,7 @@ export function TabDNS({ agent }) {
     <div className="flex flex-col h-full overflow-hidden">
       <div className="px-5 py-3 border-b border-siem-border shrink-0 flex items-center gap-3">
         {flagged.length > 0 && (
-          <span className="text-[10px] px-2 py-1 bg-red-900/20 border border-red-800/40 text-red-400 rounded-lg">
+          <span className="text-mini px-2 py-1 bg-red-900/20 border border-red-800/40 text-red-400 rounded-lg">
             ⚠ {flagged.length} flagged domain{flagged.length>1?'s':''}
           </span>
         )}
@@ -926,7 +930,7 @@ export function TabDNS({ agent }) {
         <div className="flex gap-1">
           {[['1h',1],['24h',24],['7d',168],['30d',720],['All',8760]].map(([l,h]) => (
             <button key={h} onClick={() => setHours(h)}
-              className={`text-[10px] px-3 py-1 rounded-full border transition-colors ${hours===h?'border-siem-accent text-siem-accent bg-siem-accent/10':'border-siem-border text-siem-muted hover:text-siem-text'}`}>
+              className={`text-mini px-3 py-1 rounded-full border transition-colors ${hours===h?'border-siem-accent text-siem-accent bg-siem-accent/10':'border-siem-border text-siem-muted hover:text-siem-text'}`}>
               {l}
             </button>
           ))}
@@ -936,12 +940,12 @@ export function TabDNS({ agent }) {
       {/* Flagged domains alert section */}
       {!loading && flagged.length > 0 && (
         <div className="px-4 pt-4 shrink-0 space-y-2">
-          <div className="text-[10px] uppercase tracking-wider text-red-400 font-semibold px-1">Flagged / Malicious Domains</div>
+          <div className="text-2xs uppercase tracking-wider text-red-400 font-semibold px-1">Flagged / Malicious Domains</div>
           {flagged.map((f,i) => (
             <div key={i} className="bg-red-900/10 border border-red-800/30 rounded-xl px-4 py-2.5 flex items-center gap-3">
-              <div className="flex-1 font-mono text-[11px] text-red-300">{f.domain}</div>
-              <div className="text-[10px] text-red-400/70">{f.categories}</div>
-              <div className="text-[10px] text-siem-muted">{Number(f.query_count).toLocaleString()} queries</div>
+              <div className="flex-1 font-mono text-xs text-red-300">{f.domain}</div>
+              <div className="text-mini text-red-400/70">{f.categories}</div>
+              <div className="text-mini text-siem-muted">{Number(f.query_count).toLocaleString()} queries</div>
             </div>
           ))}
         </div>
@@ -952,7 +956,7 @@ export function TabDNS({ agent }) {
           {/* New domains - first seen in this window */}
           {newDomains.length > 0 && (
             <div>
-              <div className="text-[10px] uppercase tracking-wider text-yellow-400 font-semibold mb-2 px-1 flex items-center gap-2">
+              <div className="text-2xs uppercase tracking-wider text-yellow-400 font-semibold mb-2 px-1 flex items-center gap-2">
                 <Zap size={12}/> New Domains - First seen in selected window ({newDomains.length})
               </div>
               <div className="bg-yellow-900/10 border border-yellow-800/30 rounded-xl overflow-hidden">
@@ -967,11 +971,11 @@ export function TabDNS({ agent }) {
                   <tbody>
                     {newDomains.map((d,i) => (
                       <tr key={i} className="border-b border-yellow-800/10">
-                        <td className="px-4 py-2 font-mono text-[10px] text-yellow-200">{d.domain}</td>
-                        <td className="px-4 py-2 text-[10px] text-yellow-400/70 font-mono">
+                        <td className="px-4 py-2 font-mono text-mini text-yellow-200">{d.domain}</td>
+                        <td className="px-4 py-2 text-mini text-yellow-400/70 font-mono">
                           {d.first_seen ? new Date(d.first_seen).toLocaleString() : '-'}
                         </td>
-                        <td className="px-4 py-2 text-[10px] text-yellow-400 font-mono font-bold">{Number(d.count).toLocaleString()}</td>
+                        <td className="px-4 py-2 text-mini text-yellow-400 font-mono font-bold">{Number(d.count).toLocaleString()}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -998,16 +1002,16 @@ export function TabDNS({ agent }) {
                     const pct = Number(r.count) / maxCount * 100
                     return (
                       <tr key={i} className={`border-b border-siem-border/40 ${isFlagged?'bg-red-900/5':''} hover:bg-white/[0.02] transition-colors`}>
-                        <td className="px-4 py-2.5 font-mono text-[10px]">
+                        <td className="px-4 py-2.5 font-mono text-mini">
                           {isFlagged && <span className="inline-block w-1.5 h-1.5 rounded-full bg-red-400 mr-2 mb-0.5"/>}
                           <span className={isFlagged?'text-red-300':'text-siem-text'}>{r.domain||'-'}</span>
-                          {r.persistent && <span className="ml-2 text-[9px] px-1.5 py-0.5 rounded bg-orange-900/30 text-orange-400 border border-orange-800/30">persistent</span>}
+                          {r.persistent && <span className="ml-2 text-2xs px-1.5 py-0.5 rounded bg-orange-900/30 text-orange-400 border border-orange-800/30">persistent</span>}
                         </td>
-                        <td className="px-4 py-2.5 font-bold text-siem-text font-mono text-[10px]">{Number(r.count).toLocaleString()}</td>
-                        <td className="px-4 py-2.5 text-[10px] text-siem-muted font-mono">
+                        <td className="px-4 py-2.5 font-bold text-siem-text font-mono text-mini">{Number(r.count).toLocaleString()}</td>
+                        <td className="px-4 py-2.5 text-mini text-siem-muted font-mono">
                           {r.first_seen ? new Date(r.first_seen).toLocaleDateString() : '-'}
                         </td>
-                        <td className="px-4 py-2.5 text-[10px]">
+                        <td className="px-4 py-2.5 text-mini">
                           {r.days_seen != null ? (
                             <span className={Number(r.days_seen) > 7 ? 'text-orange-400' : 'text-siem-muted'}>
                               {r.days_seen}d
@@ -1126,7 +1130,7 @@ export function TabFiles({ agent }) {
     <div className="flex flex-col h-full overflow-hidden">
       <div className="px-5 py-3 border-b border-siem-border shrink-0 flex items-center gap-3 flex-wrap">
         {suspCount > 0 && (
-          <span className="text-[10px] px-2 py-1 bg-orange-900/20 border border-orange-800/40 text-orange-400 rounded-lg">
+          <span className="text-mini px-2 py-1 bg-orange-900/20 border border-orange-800/40 text-orange-400 rounded-lg">
             ⚠ {suspCount} suspicious
           </span>
         )}
@@ -1136,7 +1140,7 @@ export function TabFiles({ agent }) {
         <div className="flex gap-1 flex-wrap">
           {[['all','All'],['writes','Writes'],['suspicious','Suspicious'],['executables','Executables']].map(([v,l]) => (
             <button key={v} onClick={() => setFilter(v)}
-              className={`text-[10px] px-3 py-1 rounded-full border transition-colors ${filter===v?'border-siem-accent text-siem-accent bg-siem-accent/10':'border-siem-border text-siem-muted hover:text-siem-text'}`}>
+              className={`text-mini px-3 py-1 rounded-full border transition-colors ${filter===v?'border-siem-accent text-siem-accent bg-siem-accent/10':'border-siem-border text-siem-muted hover:text-siem-text'}`}>
               {l}
             </button>
           ))}
@@ -1144,7 +1148,7 @@ export function TabFiles({ agent }) {
         <div className="flex gap-1 shrink-0">
           {[['1h',1],['24h',24],['7d',168],['30d',720],['All',8760]].map(([l,h]) => (
             <button key={h} onClick={() => setHours(h)}
-              className={`text-[10px] px-3 py-1 rounded-full border transition-colors ${hours===h?'border-siem-accent text-siem-accent bg-siem-accent/10':'border-siem-border text-siem-muted hover:text-siem-text'}`}>
+              className={`text-mini px-3 py-1 rounded-full border transition-colors ${hours===h?'border-siem-accent text-siem-accent bg-siem-accent/10':'border-siem-border text-siem-muted hover:text-siem-text'}`}>
               {l}
             </button>
           ))}
@@ -1153,17 +1157,17 @@ export function TabFiles({ agent }) {
       {/* Flagged hashes from OTX/ThreatFox IOCs */}
       {!loading && flaggedHashes.length > 0 && (
         <div className="px-4 pt-3 shrink-0 space-y-1.5">
-          <div className="text-[10px] uppercase tracking-wider text-red-400 font-semibold px-1 flex items-center gap-1.5">
+          <div className="text-2xs uppercase tracking-wider text-red-400 font-semibold px-1 flex items-center gap-1.5">
             <AlertTriangle size={10}/> Malicious File Hashes (IOC Matches)
           </div>
           {flaggedHashes.map((f, i) => (
             <div key={i} className="bg-red-900/10 border border-red-800/30 rounded-xl px-4 py-2.5 flex items-center gap-3">
               <div className="flex-1 min-w-0">
-                <div className="font-mono text-[10px] text-red-300 truncate" title={f.hash}>{f.hash?.slice(0,32)}…</div>
-                {f.file_path && <div className="text-[9px] text-siem-muted truncate mt-0.5">{f.file_path}</div>}
+                <div className="font-mono text-mini text-red-300 truncate" title={f.hash}>{f.hash?.slice(0,32)}…</div>
+                {f.file_path && <div className="text-2xs text-siem-muted truncate mt-0.5">{f.file_path}</div>}
               </div>
-              <div className="text-[10px] text-red-400/80 shrink-0">{f.malware}</div>
-              <div className="text-[9px] text-siem-muted shrink-0">{f.hit_count} hit{f.hit_count>1?'s':''} · {f.ioc_source?.toUpperCase()}</div>
+              <div className="text-mini text-red-400/80 shrink-0">{f.malware}</div>
+              <div className="text-2xs text-siem-muted shrink-0">{f.hit_count} hit{f.hit_count>1?'s':''} · {f.ioc_source?.toUpperCase()}</div>
             </div>
           ))}
         </div>
@@ -1174,7 +1178,7 @@ export function TabFiles({ agent }) {
           <div className="text-center py-12 space-y-2">
             <FolderOpen size={28} className="mx-auto text-siem-muted opacity-30"/>
             <div className="text-sm text-siem-muted">No file events for this host</div>
-            <div className="text-[10px] text-siem-muted/50 max-w-xs mx-auto">
+            <div className="text-mini text-siem-muted/50 max-w-xs mx-auto">
               {agent.os?.includes('win')
                 ? 'Windows: FIM watches System32, SysWOW64, C:\\Users and C:\\ProgramData. Sysmon (event 11) also emits file events if installed.'
                 : agent.os?.includes('darwin')
@@ -1208,30 +1212,30 @@ export function TabFiles({ agent }) {
                     const isWrite = action.includes('creat') || action.includes('modif') || action.includes('writ')
                     return (
                       <tr key={ev.id||i} className={`border-b border-siem-border/40 hover:bg-white/[0.02] transition-colors ${susp?'bg-orange-900/5':''}`}>
-                        <td className="px-4 py-2.5 font-mono text-[10px] text-siem-muted whitespace-nowrap">
+                        <td className="px-4 py-2.5 font-mono text-mini text-siem-muted whitespace-nowrap">
                           {format(new Date(ev.time),'MM/dd HH:mm:ss')}
                         </td>
                         <td className="px-4 py-2.5"><SeverityBadge severity={ev.severity}/></td>
                         <td className="px-4 py-2.5">
-                          <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${
+                          <span className={`text-mini px-2 py-0.5 rounded-full font-medium ${
                             action.includes('delet') ? 'bg-red-900/30 text-red-400' :
                             isWrite ? 'bg-orange-900/30 text-orange-400' :
                             'bg-siem-bg text-siem-muted'
                           }`}>{action}</span>
                         </td>
-                        <td className="px-4 py-2.5 font-mono text-[10px] max-w-[260px] truncate">
+                        <td className="px-4 py-2.5 font-mono text-mini max-w-[260px] truncate">
                           {susp && <span className="inline-block w-1.5 h-1.5 rounded-full bg-orange-400 mr-1.5 mb-0.5 shrink-0"/>}
                           <span className={susp?'text-orange-300':'text-siem-text'} title={path}>{path}</span>
                         </td>
-                        <td className="px-4 py-2.5 text-[10px] text-siem-muted">
+                        <td className="px-4 py-2.5 text-mini text-siem-muted">
                           {proc || <span className="opacity-30 italic">n/a</span>}
                         </td>
-                        <td className="px-4 py-2.5 font-mono text-[10px] text-siem-muted" title={hash||''}>
+                        <td className="px-4 py-2.5 font-mono text-mini text-siem-muted" title={hash||''}>
                           {hash ? (
                             <VTHashBadge hash={hash}/>
                           ) : '-'}
                         </td>
-                        <td className="px-4 py-2.5 text-[10px] text-siem-muted/60">
+                        <td className="px-4 py-2.5 text-mini text-siem-muted/60">
                           {sourceLabel(ev.source)}
                         </td>
                       </tr>
@@ -1296,7 +1300,7 @@ export function TabAlerts({ agent }) {
               <div className="flex-1 min-w-0">
                 <div className="text-sm font-semibold text-siem-text group-hover:text-siem-accent transition-colors">{a.title}</div>
                 <div className="text-xs text-siem-muted mt-0.5 line-clamp-2">{a.description}</div>
-                <div className="flex items-center gap-2 mt-2 text-[10px]">
+                <div className="flex items-center gap-2 mt-2 text-mini">
                   <span className="text-siem-muted">{a.event_type || '-'}</span>
                   <span className="text-siem-muted">·</span>
                   <span className={`font-medium ${STATUS_CLS[a.status] || 'text-siem-muted'}`}>{a.status}</span>
@@ -1304,8 +1308,8 @@ export function TabAlerts({ agent }) {
                 </div>
               </div>
               <div className="flex flex-col items-end gap-1 shrink-0">
-                <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${SEV_CLS[a.severity] || SEV_CLS[1]}`}>{SEV_LABEL[a.severity] || 'Info'}</span>
-                <span className="text-[10px] text-siem-muted">{a.created_at ? formatDistanceToNow(new Date(a.created_at), { addSuffix: true }) : '-'}</span>
+                <span className={`text-mini px-2 py-0.5 rounded-full font-medium ${SEV_CLS[a.severity] || SEV_CLS[1]}`}>{SEV_LABEL[a.severity] || 'Info'}</span>
+                <span className="text-mini text-siem-muted">{a.created_at ? formatDistanceToNow(new Date(a.created_at), { addSuffix: true }) : '-'}</span>
                 <ChevronRight size={11} className="text-siem-muted/40 group-hover:text-siem-muted transition-colors"/>
               </div>
             </div>

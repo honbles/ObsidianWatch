@@ -11,7 +11,7 @@ function Panel({ title, unit, children }) {
   return (
     <div className="ow-card" style={{ padding: '14px 16px', minWidth: 0 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
-        <span style={{ fontWeight: 500 }}>{title}</span><span className="mono t2" style={{ fontSize: 12 }}>{unit}</span>
+        <span style={{ fontWeight: 500 }}>{title}</span><span className="mono t2" style={{ fontSize: 13.5 }}>{unit}</span>
       </div>
       <div style={{ height: 140 }}>{children}</div>
     </div>
@@ -27,11 +27,11 @@ export default function AppREDCharts({ series, deploys = [], step = 60 }) {
   }))
   const lo = data[0]?.t, hi = data[data.length - 1]?.t
   const marks = deploys.filter(d => { const t = new Date(d.first_seen).getTime(); return t >= lo && t <= hi })
-  const axis = { stroke: 'var(--t3)', fontSize: 11, tickLine: false, axisLine: false }
+  const axis = { stroke: 'var(--t3)', fontSize: 13, tickLine: false, axisLine: false }
   const x = <XAxis dataKey="t" type="number" scale="time" domain={['dataMin', 'dataMax']} tickFormatter={v => fmtT(v, step)} {...axis} />
   const grid = <CartesianGrid stroke="var(--line)" strokeDasharray="2 4" vertical={false} />
   const tip = (fmt) => (
-    <Tooltip contentStyle={{ background: 'var(--s2)', border: '1px solid var(--line2)', borderRadius: 6, fontSize: 12, color: 'var(--t1)' }}
+    <Tooltip contentStyle={{ background: 'var(--s2)', border: '1px solid var(--line2)', borderRadius: 6, fontSize: 13.5, color: 'var(--t1)' }}
       labelFormatter={v => new Date(v).toLocaleString()} formatter={fmt} />
   )
   // label on the side with room: right of the line in the first 60% of the chart, left of it after
@@ -40,11 +40,11 @@ export default function AppREDCharts({ series, deploys = [], step = 60 }) {
     const right = hi > lo && (at - lo) / (hi - lo) > 0.6
     return (
       <ReferenceLine key={d.version + d.first_seen} x={at} stroke="var(--line2)" strokeDasharray="3 3"
-        label={{ value: `${d.version} deployed`, fill: 'var(--t2)', fontSize: 10, position: right ? 'insideTopRight' : 'insideTopLeft' }} />
+        label={{ value: `${d.version} deployed`, fill: 'var(--t2)', fontSize: 12, position: right ? 'insideTopRight' : 'insideTopLeft' }} />
     )
   })
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 12 }}>
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(358px, 1fr))', gap: 12 }}>
       <Panel title="Throughput" unit="req/min">
         <ResponsiveContainer><AreaChart data={data}>{grid}{x}<YAxis {...axis} width={34} />{tip(v => [Number(v).toFixed(1), 'req/min'])}
           <Area dataKey="rpm" stroke="var(--acc)" fill="var(--acc)" fillOpacity={0.08} strokeWidth={2} isAnimationActive={false} />{markers}</AreaChart></ResponsiveContainer>

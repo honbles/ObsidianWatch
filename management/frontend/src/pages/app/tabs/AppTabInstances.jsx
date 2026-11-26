@@ -24,7 +24,7 @@ export default function AppTabInstances({ detail, loading, error, highlight }) {
       <div className="card"><DataTable columns={cols} rows={inst} loading={loading} error={error} rowKey={i => i.id}
         emptyText="No instances seen yet." initialSort={{ key: 'stopped_at', dir: 'desc' }}
         onRowClick={null} /></div>
-      {highlight && <div className="text-[11px] text-siem-muted">Opened from instance {highlight}.</div>}
+      {highlight && <div className="text-xs text-siem-muted">Opened from instance {highlight}.</div>}
       <div className="card">
         <div className="card-head"><span className="text-sm font-medium text-siem-text">Versions</span></div>
         {versions.length === 0 ? <div className="p-4 text-xs text-siem-muted">No version reported. Set service.version in OpenTelemetry resource attributes to see deploys.</div> : (

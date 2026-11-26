@@ -58,10 +58,10 @@ export default function AppMap() {
 
   const cols = [
     { key: 'source', label: 'From', render: e => nodesById[e.source]?.name, sort: e => nodesById[e.source]?.name },
-    { key: 'target', label: 'To', render: e => <span>{nodesById[e.target]?.name} <span className="text-[10px] text-siem-muted">{e.kind}</span></span>, sort: e => nodesById[e.target]?.name },
+    { key: 'target', label: 'To', render: e => <span>{nodesById[e.target]?.name} <span className="text-mini text-siem-muted">{e.kind}</span></span>, sort: e => nodesById[e.target]?.name },
     { key: 'calls', label: 'Calls (range)', align: 'right', render: e => appInt(e.calls), sort: e => e.calls },
     { key: 'errors', label: 'Errors', align: 'right', render: e => <span className={e.errors ? 'text-red-300' : ''}>{appInt(e.errors)}</span>, sort: e => e.errors },
-    { key: 'first', label: 'First seen', render: e => <>{appRel(e.first_seen)} {e.new && <span className="ml-1 text-[10px] text-orange-300">new</span>}</>, sort: e => e.first_seen },
+    { key: 'first', label: 'First seen', render: e => <>{appRel(e.first_seen)} {e.new && <span className="ml-1 text-mini text-orange-300">new</span>}</>, sort: e => e.first_seen },
   ]
   const empty = data && data.nodes.length === 0
   return (
@@ -81,7 +81,7 @@ export default function AppMap() {
             <div className="card p-2">
               {nodes.length === 0 ? <div className="p-8 text-center text-xs text-siem-muted">Nothing matches these filters.</div>
                 : <ForceGraph nodes={nodes} links={links} width={820} height={460} colorFor={nodeColor} onNodeClick={onNodeClick} />}
-              <div className="flex gap-3 text-[10px] text-siem-muted px-2 pb-1 flex-wrap">
+              <div className="flex gap-3 text-mini text-siem-muted px-2 pb-1 flex-wrap">
                 <span><span style={{ color: 'var(--high)' }}>●</span> internet-facing</span>
                 <span><span style={{ color: 'var(--warn)' }}>●</span> reachable from the internet</span>
                 <span><span style={{ color: 'var(--crit)' }}>●</span> critical, reachable</span>
@@ -92,13 +92,13 @@ export default function AppMap() {
             </div>
             <div className="space-y-3">
               <div className="card p-3 text-xs">
-                <div className="text-[10px] uppercase tracking-wide text-siem-muted mb-1">Exposure paths</div>
+                <div className="text-2xs uppercase tracking-wide text-siem-muted mb-1">Exposure paths</div>
                 <div className="text-siem-muted mb-2"><b className="text-siem-text">{exposed.length}</b> internet-facing service{exposed.length === 1 ? '' : 's'}</div>
                 {paths.length === 0 ? <div className="text-siem-muted">No high or critical service is reachable from an internet-facing one.</div>
                   : paths.map(n => <div key={n.id}><button className="text-red-300 hover:underline" onClick={() => onNodeClick(n)}>{n.name}</button> <span className="text-siem-muted">{n.environment} · {n.criticality}</span></div>)}
               </div>
               <div className="card p-3 text-xs">
-                <div className="text-[10px] uppercase tracking-wide text-siem-muted mb-1">New dependencies</div>
+                <div className="text-2xs uppercase tracking-wide text-siem-muted mb-1">New dependencies</div>
                 {(data.edges.filter(e => e.new)).length === 0 ? <div className="text-siem-muted">None in this range.</div>
                   : data.edges.filter(e => e.new).slice(0, 8).map((e, i) => <div key={i}>{nodesById[e.source]?.name} → <span className="font-mono">{nodesById[e.target]?.name}</span></div>)}
               </div>

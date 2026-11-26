@@ -55,9 +55,21 @@ export default {
       borderColor: { DEFAULT: tok('--line-c') },
       divideColor: { DEFAULT: tok('--line-c') },
       ringColor: { DEFAULT: tok('--acc-c') },
+      // Type scale (docs/development/design-language.md). Body text is 14px; nothing in the console is
+      // smaller than 11px, and that size is only for uppercase labels and badges.
+      fontSize: {
+        '2xs': ['11px', { lineHeight: '15px' }],
+        mini:  ['12px', { lineHeight: '17px' }],
+        xs:    ['13px', { lineHeight: '18px' }],
+        sm:    ['14px', { lineHeight: '20px' }],
+        base:  ['15px', { lineHeight: '22px' }],
+        lg:    ['17px', { lineHeight: '24px' }],
+        xl:    ['20px', { lineHeight: '28px' }],
+        '2xl': ['24px', { lineHeight: '30px' }],
+      },
       fontFamily: {
-        sans: ['IBM Plex Sans', 'system-ui', '-apple-system', 'Segoe UI', 'sans-serif'],
-        mono: ['IBM Plex Mono', 'ui-monospace', 'SFMono-Regular', 'Menlo', 'monospace'],
+        sans: ['Inter', 'system-ui', '-apple-system', 'Segoe UI', 'sans-serif'],
+        mono: ['JetBrains Mono', 'ui-monospace', 'SFMono-Regular', 'Menlo', 'monospace'],
       },
     },
   },

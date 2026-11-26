@@ -51,31 +51,31 @@ Return ONLY this JSON (no markdown):
       {/* Header row - always visible, clickable */}
       <div onClick={() => setOpen(o => !o)}
         style={{ display:'flex', alignItems:'flex-start', gap:12, padding:'12px 14px', cursor:'pointer' }}>
-        <div style={{ flexShrink:0, marginTop:1, fontSize:14, color:col }}>
+        <div style={{ flexShrink:0, marginTop:1, fontSize: 15, color:col }}>
           {control.status === 'PASS' ? '✓' : control.status === 'FAIL' ? '✗' : '?'}
         </div>
         <div style={{ flex:1, minWidth:0 }}>
           <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:3, flexWrap:'wrap' }}>
-            <span style={{ fontFamily:'var(--font-data)', fontSize:11, fontWeight:700, color:'var(--accent)', flexShrink:0 }}>
+            <span style={{ fontFamily:'var(--font-data)', fontSize: 13, fontWeight:700, color:'var(--accent)', flexShrink:0 }}>
               CIS {control.id}
             </span>
-            <span style={{ fontSize:12.5, fontWeight:600, color:'var(--text)' }}>{control.title}</span>
-            <span style={{ fontSize:9.5, background:'var(--surface2)', border:'1px solid var(--border)', borderRadius:4, padding:'1px 5px', color:'var(--text3)', flexShrink:0 }}>
+            <span style={{ fontSize: 13.5, fontWeight:600, color:'var(--text)' }}>{control.title}</span>
+            <span style={{ fontSize: 11, background:'var(--surface2)', border:'1px solid var(--border)', borderRadius:4, padding:'1px 5px', color:'var(--text3)', flexShrink:0 }}>
               L{control.level}
             </span>
-            <span style={{ fontSize:9.5, background:'var(--surface2)', border:'1px solid var(--border)', borderRadius:4, padding:'1px 5px', color:'var(--text3)', flexShrink:0 }}>
+            <span style={{ fontSize: 11, background:'var(--surface2)', border:'1px solid var(--border)', borderRadius:4, padding:'1px 5px', color:'var(--text3)', flexShrink:0 }}>
               {control.section}
             </span>
             {control.mitre && (
-              <span style={{ fontSize:9.5, background:'rgb(var(--acc-c) / 0.08)', border:'1px solid rgb(var(--acc-c) / 0.2)', borderRadius:4, padding:'1px 5px', color:'var(--accent)', flexShrink:0 }}>
+              <span style={{ fontSize: 11, background:'rgb(var(--acc-c) / 0.08)', border:'1px solid rgb(var(--acc-c) / 0.2)', borderRadius:4, padding:'1px 5px', color:'var(--accent)', flexShrink:0 }}>
                 {control.mitre}
               </span>
             )}
           </div>
-          <div style={{ fontSize:11, color:'var(--text3)' }}>{control.evidence}</div>
+          <div style={{ fontSize: 13, color:'var(--text3)' }}>{control.evidence}</div>
         </div>
         <div style={{ display:'flex', alignItems:'center', gap:8, flexShrink:0 }}>
-          <span style={{ fontSize:11, fontWeight:700, color:col, fontFamily:'var(--font-data)' }}>{control.status}</span>
+          <span style={{ fontSize: 13, fontWeight:700, color:col, fontFamily:'var(--font-data)' }}>{control.status}</span>
           <ChevronDown size={13} color="var(--text3)" style={{ transform: open ? 'rotate(180deg)' : 'none', transition:'transform 0.15s' }}/>
         </div>
       </div>
@@ -83,19 +83,19 @@ Return ONLY this JSON (no markdown):
       {/* Expanded body */}
       {open && (
         <div style={{ padding:'0 14px 14px', borderTop:'1px solid var(--border)' }}>
-          <p style={{ fontSize:12, color:'var(--text2)', lineHeight:1.6, margin:'10px 0' }}>{control.description}</p>
+          <p style={{ fontSize: 13.5, color:'var(--text2)', lineHeight:1.6, margin:'10px 0' }}>{control.description}</p>
 
           {control.status === 'FAIL' && (
             <div style={{ background:'rgb(var(--ok-c) / 0.06)', border:'1px solid rgb(var(--ok-c) / 0.2)', borderRadius:7, padding:'8px 12px', marginBottom:10 }}>
-              <div style={{ fontSize:10, fontWeight:700, color:'var(--ok)', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:4 }}>✓ Remediation</div>
-              <p style={{ fontSize:11.5, color:'var(--text2)', lineHeight:1.6, margin:0 }}>{control.remediation}</p>
+              <div style={{ fontSize: 11.5, fontWeight:700, color:'var(--ok)', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:4 }}>✓ Remediation</div>
+              <p style={{ fontSize: 13, color:'var(--text2)', lineHeight:1.6, margin:0 }}>{control.remediation}</p>
             </div>
           )}
 
           {/* Action bar */}
           <div style={{ display:'flex', gap:8, alignItems:'center', flexWrap:'wrap' }}>
             <button onClick={explainAI} disabled={aiLoading}
-              style={{ display:'flex', alignItems:'center', gap:5, fontSize:11, padding:'5px 10px',
+              style={{ display:'flex', alignItems:'center', gap:5, fontSize: 13, padding:'5px 10px',
                 background: aiText ? 'rgb(var(--violet-c) / 0.15)' : 'rgb(var(--acc-c) / 0.08)',
                 border: `1px solid ${aiText ? 'rgb(var(--violet-c) / 0.3)' : 'rgb(var(--acc-c) / 0.2)'}`,
                 color: aiText ? 'var(--violet)' : 'var(--accent)', borderRadius:6, cursor:'pointer', fontFamily:'inherit' }}>
@@ -106,27 +106,27 @@ Return ONLY this JSON (no markdown):
           {/* AI panel */}
           {aiText && (
             <div style={{ marginTop:10, background:'rgb(var(--violet-c) / 0.06)', border:'1px solid rgb(var(--violet-c) / 0.2)', borderRadius:8, padding:'12px 14px' }}>
-              <div style={{ fontSize:10, fontWeight:700, color:'var(--violet)', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:8 }}>✦ AI Analysis</div>
-              {aiText.plain_english && <p style={{ fontSize:12, color:'var(--text)', lineHeight:1.6, marginBottom:8 }}>{aiText.plain_english}</p>}
+              <div style={{ fontSize: 11.5, fontWeight:700, color:'var(--violet)', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:8 }}>✦ AI Analysis</div>
+              {aiText.plain_english && <p style={{ fontSize: 13.5, color:'var(--text)', lineHeight:1.6, marginBottom:8 }}>{aiText.plain_english}</p>}
               {aiText.risk_if_failed && (
                 <div style={{ marginBottom:8 }}>
-                  <span style={{ fontSize:10, color:'var(--crit)', fontWeight:600 }}>Risk: </span>
-                  <span style={{ fontSize:11, color:'var(--text2)' }}>{aiText.risk_if_failed}</span>
+                  <span style={{ fontSize: 12, color:'var(--crit)', fontWeight:600 }}>Risk: </span>
+                  <span style={{ fontSize: 13, color:'var(--text2)' }}>{aiText.risk_if_failed}</span>
                 </div>
               )}
               {aiText.time_to_fix && (
                 <div style={{ marginBottom:8 }}>
-                  <span style={{ fontSize:10, color:'var(--warn)', fontWeight:600 }}>Time to fix: </span>
-                  <span style={{ fontSize:11, color:'var(--text2)' }}>{aiText.time_to_fix}</span>
+                  <span style={{ fontSize: 12, color:'var(--warn)', fontWeight:600 }}>Time to fix: </span>
+                  <span style={{ fontSize: 13, color:'var(--text2)' }}>{aiText.time_to_fix}</span>
                 </div>
               )}
               {aiText.steps?.length > 0 && (
                 <div>
-                  <div style={{ fontSize:10, color:'var(--ok)', fontWeight:600, marginBottom:4 }}>Steps:</div>
+                  <div style={{ fontSize: 12, color:'var(--ok)', fontWeight:600, marginBottom:4 }}>Steps:</div>
                   {aiText.steps.map((s, i) => (
                     <div key={i} style={{ display:'flex', gap:6, marginBottom:4 }}>
-                      <span style={{ fontSize:10, color:'var(--accent)', fontFamily:'var(--font-data)', flexShrink:0 }}>{i+1}.</span>
-                      <code style={{ fontSize:11, color:'var(--text2)', lineHeight:1.5, background:'var(--surface2)', padding:'1px 6px', borderRadius:4, display:'inline-block' }}>{s}</code>
+                      <span style={{ fontSize: 12, color:'var(--accent)', fontFamily:'var(--font-data)', flexShrink:0 }}>{i+1}.</span>
+                      <code style={{ fontSize: 13, color:'var(--text2)', lineHeight:1.5, background:'var(--surface2)', padding:'1px 6px', borderRadius:4, display:'inline-block' }}>{s}</code>
                     </div>
                   ))}
                 </div>
@@ -193,27 +193,27 @@ Return ONLY this JSON (no markdown):
       {/* Header */}
       <div onClick={() => setOpen(o => !o)}
         style={{ display:'flex', alignItems:'flex-start', gap:12, padding:'12px 14px', cursor:'pointer' }}>
-        <div style={{ fontSize:14, flexShrink:0, marginTop:1, color:statusColor }}>
+        <div style={{ fontSize: 15, flexShrink:0, marginTop:1, color:statusColor }}>
           {ctrl.status === 'PASS' ? '✓' : ctrl.status === 'FAIL' ? '✗' : '?'}
         </div>
         <div style={{ flex:1, minWidth:0 }}>
           <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:3, flexWrap:'wrap' }}>
-            <span style={{ fontSize:11, fontWeight:700, color:fc.color, background:fc.bg,
+            <span style={{ fontSize: 13, fontWeight:700, color:fc.color, background:fc.bg,
               border:`1px solid ${fc.border}`, borderRadius:4, padding:'1px 7px',
               fontFamily:'var(--font-data)', flexShrink:0 }}>
               {ctrl.control_id}
             </span>
-            <span style={{ fontSize:12.5, fontWeight:600, color:'var(--text)' }}>{ctrl.title}</span>
+            <span style={{ fontSize: 13.5, fontWeight:600, color:'var(--text)' }}>{ctrl.title}</span>
           </div>
-          <p style={{ fontSize:11, color:'var(--text3)', margin:0, lineHeight:1.4 }}>{ctrl.description}</p>
+          <p style={{ fontSize: 13, color:'var(--text3)', margin:0, lineHeight:1.4 }}>{ctrl.description}</p>
           {ctrl.finding_ids?.length > 0 && (
-            <span style={{ fontSize:10, color:'var(--crit)', marginTop:3, display:'block' }}>
+            <span style={{ fontSize: 12, color:'var(--crit)', marginTop:3, display:'block' }}>
               {ctrl.finding_ids.length} CSPM finding{ctrl.finding_ids.length !== 1 ? 's' : ''} contributing
             </span>
           )}
         </div>
         <div style={{ display:'flex', alignItems:'center', gap:8, flexShrink:0 }}>
-          <span style={{ fontSize:11, fontWeight:700, color:statusColor, fontFamily:'var(--font-data)' }}>{ctrl.status}</span>
+          <span style={{ fontSize: 13, fontWeight:700, color:statusColor, fontFamily:'var(--font-data)' }}>{ctrl.status}</span>
           <ChevronDown size={13} color="var(--text3)" style={{ transform: open ? 'rotate(180deg)' : 'none', transition:'transform 0.15s' }}/>
         </div>
       </div>
@@ -223,14 +223,14 @@ Return ONLY this JSON (no markdown):
         <div style={{ padding:'0 14px 14px', borderTop:'1px solid var(--border)' }}>
           <div style={{ display:'flex', gap:8, alignItems:'center', marginTop:10, flexWrap:'wrap' }}>
             <button onClick={explainAI} disabled={aiLoading}
-              style={{ display:'flex', alignItems:'center', gap:5, fontSize:11, padding:'5px 10px',
+              style={{ display:'flex', alignItems:'center', gap:5, fontSize: 13, padding:'5px 10px',
                 background: aiText ? 'rgb(var(--violet-c) / 0.15)' : 'rgb(var(--acc-c) / 0.08)',
                 border:`1px solid ${aiText ? 'rgb(var(--violet-c) / 0.3)' : 'rgb(var(--acc-c) / 0.2)'}`,
                 color: aiText ? 'var(--violet)' : 'var(--accent)', borderRadius:6, cursor:'pointer', fontFamily:'inherit' }}>
               <Sparkles size={11}/>{aiLoading ? 'Analysing…' : aiText ? 'Hide AI' : 'Explain with AI'}
             </button>
             {ctrl.finding_ids?.length > 0 && (
-              <span style={{ fontSize:10.5, color:'var(--text3)' }}>
+              <span style={{ fontSize: 12, color:'var(--text3)' }}>
                 → Review the Deep Dive tab to see the {ctrl.finding_ids.length} related CSPM finding{ctrl.finding_ids.length !== 1 ? 's' : ''}
               </span>
             )}
@@ -238,33 +238,33 @@ Return ONLY this JSON (no markdown):
 
           {aiText && (
             <div style={{ marginTop:10, background:'rgb(var(--violet-c) / 0.06)', border:'1px solid rgb(var(--violet-c) / 0.2)', borderRadius:8, padding:'12px 14px' }}>
-              <div style={{ fontSize:10, fontWeight:700, color:'var(--violet)', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:8 }}>✦ AI Compliance Analysis</div>
-              {aiText.plain_english && <p style={{ fontSize:12, color:'var(--text)', lineHeight:1.6, marginBottom:8 }}>{aiText.plain_english}</p>}
+              <div style={{ fontSize: 11.5, fontWeight:700, color:'var(--violet)', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:8 }}>✦ AI Compliance Analysis</div>
+              {aiText.plain_english && <p style={{ fontSize: 13.5, color:'var(--text)', lineHeight:1.6, marginBottom:8 }}>{aiText.plain_english}</p>}
               {aiText.business_risk && (
                 <div style={{ marginBottom:6 }}>
-                  <span style={{ fontSize:10, color:'var(--crit)', fontWeight:600 }}>Business risk: </span>
-                  <span style={{ fontSize:11, color:'var(--text2)' }}>{aiText.business_risk}</span>
+                  <span style={{ fontSize: 12, color:'var(--crit)', fontWeight:600 }}>Business risk: </span>
+                  <span style={{ fontSize: 13, color:'var(--text2)' }}>{aiText.business_risk}</span>
                 </div>
               )}
               {aiText.evidence_needed && (
                 <div style={{ marginBottom:6 }}>
-                  <span style={{ fontSize:10, color:'var(--info)', fontWeight:600 }}>Auditor evidence needed: </span>
-                  <span style={{ fontSize:11, color:'var(--text2)' }}>{aiText.evidence_needed}</span>
+                  <span style={{ fontSize: 12, color:'var(--info)', fontWeight:600 }}>Auditor evidence needed: </span>
+                  <span style={{ fontSize: 13, color:'var(--text2)' }}>{aiText.evidence_needed}</span>
                 </div>
               )}
               {aiText.remediation_priority && (
                 <div style={{ marginBottom: aiText.steps?.length ? 8 : 0 }}>
-                  <span style={{ fontSize:10, color:'var(--warn)', fontWeight:600 }}>Priority: </span>
-                  <span style={{ fontSize:11, color:'var(--text2)', textTransform:'capitalize' }}>{aiText.remediation_priority}</span>
+                  <span style={{ fontSize: 12, color:'var(--warn)', fontWeight:600 }}>Priority: </span>
+                  <span style={{ fontSize: 13, color:'var(--text2)', textTransform:'capitalize' }}>{aiText.remediation_priority}</span>
                 </div>
               )}
               {aiText.steps?.length > 0 && (
                 <div>
-                  <div style={{ fontSize:10, color:'var(--ok)', fontWeight:600, marginBottom:4 }}>Actions:</div>
+                  <div style={{ fontSize: 12, color:'var(--ok)', fontWeight:600, marginBottom:4 }}>Actions:</div>
                   {aiText.steps.map((s, i) => (
                     <div key={i} style={{ display:'flex', gap:6, marginBottom:3 }}>
-                      <span style={{ fontSize:10, color:'var(--accent)', fontFamily:'var(--font-data)', flexShrink:0 }}>{i+1}.</span>
-                      <span style={{ fontSize:11, color:'var(--text2)', lineHeight:1.5 }}>{s}</span>
+                      <span style={{ fontSize: 12, color:'var(--accent)', fontFamily:'var(--font-data)', flexShrink:0 }}>{i+1}.</span>
+                      <span style={{ fontSize: 13, color:'var(--text2)', lineHeight:1.5 }}>{s}</span>
                     </div>
                   ))}
                 </div>
@@ -326,8 +326,8 @@ export function PanelCompliance({ connId, provider }) {
       <div style={{ padding:'20px 24px 0', flexShrink:0 }}>
         <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', marginBottom:16 }}>
           <div>
-            <h3 style={{ fontSize:15, fontWeight:700, color:'var(--text)', marginBottom:4 }}>Compliance Framework Mapping</h3>
-            <p style={{ fontSize:11.5, color:'var(--text3)' }}>
+            <h3 style={{ fontSize: 16, fontWeight:700, color:'var(--text)', marginBottom:4 }}>Compliance Framework Mapping</h3>
+            <p style={{ fontSize: 13, color:'var(--text3)' }}>
               CSPM findings mapped to SOC 2, PCI-DSS v4.0, ISO 27001:2022, and NIST 800-53 Rev5.
               {report?.scanned_at && <span style={{ marginLeft:8 }}>Last updated: {new Date(report.scanned_at).toLocaleString()}</span>}
             </p>
@@ -336,7 +336,7 @@ export function PanelCompliance({ connId, provider }) {
             style={{ display:'flex', alignItems:'center', gap:7, padding:'8px 16px',
               background: running ? 'var(--surface2)' : 'var(--accent)',
               color: running ? 'var(--text2)' : 'var(--onacc)',
-              border:'none', borderRadius:8, fontSize:12, fontWeight:600,
+              border:'none', borderRadius:8, fontSize: 13.5, fontWeight:600,
               cursor: running ? 'wait' : 'pointer', fontFamily:'inherit', flexShrink:0 }}>
             <RefreshCw size={12} style={running ? { animation:'spin 0.8s linear infinite' } : {}}/>
             {running ? 'Mapping…' : 'Remap Compliance'}
@@ -354,15 +354,15 @@ export function PanelCompliance({ connId, provider }) {
                   style={{ padding:'14px 16px', background: framework === s.framework ? fc.bg : 'var(--surface)',
                     border:`1px solid ${framework === s.framework ? fc.border : 'var(--border)'}`,
                     borderTop:`3px solid ${fc.color}`, borderRadius:10, cursor:'pointer', fontFamily:'inherit', textAlign:'left', transition:'all 0.15s' }}>
-                  <div style={{ fontSize:10, fontWeight:700, color:'var(--text3)', textTransform:'uppercase', letterSpacing:'0.07em', marginBottom:6 }}>{s.framework}</div>
+                  <div style={{ fontSize: 11.5, fontWeight:700, color:'var(--text3)', textTransform:'uppercase', letterSpacing:'0.07em', marginBottom:6 }}>{s.framework}</div>
                   <div style={{ display:'flex', alignItems:'baseline', gap:4, marginBottom:6 }}>
-                    <span style={{ fontSize:26, fontWeight:800, color: pct>=80?'var(--ok)':pct>=60?'var(--warn)':'var(--crit)', fontFamily:'var(--font-data)' }}>{pct}%</span>
-                    <span style={{ fontSize:10.5, color:'var(--text3)' }}>compliant</span>
+                    <span style={{ fontSize: 26, fontWeight:800, color: pct>=80?'var(--ok)':pct>=60?'var(--warn)':'var(--crit)', fontFamily:'var(--font-data)' }}>{pct}%</span>
+                    <span style={{ fontSize: 12, color:'var(--text3)' }}>compliant</span>
                   </div>
                   <div style={{ height:4, background:'var(--surface2)', borderRadius:3, overflow:'hidden', marginBottom:6 }}>
                     <div style={{ height:'100%', borderRadius:3, background:pct>=80?'var(--ok)':pct>=60?'var(--warn)':'var(--crit)', width:`${pct}%`, transition:'width 0.6s ease' }}/>
                   </div>
-                  <div style={{ display:'flex', gap:8, fontSize:10.5 }}>
+                  <div style={{ display:'flex', gap:8, fontSize: 12 }}>
                     <span style={{ color:'var(--ok)' }}>✓ {s.passed} passed</span>
                     <span style={{ color:'var(--crit)' }}>✗ {s.failed} failed</span>
                   </div>
@@ -376,12 +376,12 @@ export function PanelCompliance({ connId, provider }) {
           <div style={{ display:'flex', gap:4, borderBottom:'1px solid var(--border)', marginBottom:0, paddingBottom:0 }}>
             {frameworks.map(fw => (
               <button key={fw} onClick={() => setFramework(fw)}
-                style={{ padding:'6px 14px', fontSize:11.5, background:'transparent',
+                style={{ padding:'6px 14px', fontSize: 13, background:'transparent',
                   color: framework===fw ? 'var(--accent)' : 'var(--text3)',
                   border:'none', borderBottom: framework===fw ? '2px solid var(--accent)' : '2px solid transparent',
                   cursor:'pointer', fontFamily:'inherit', fontWeight: framework===fw ? 600 : 400, marginBottom:-1 }}>
                 {fw === 'all' ? 'All Frameworks' : fw}
-                <span style={{ marginLeft:5, fontSize:10, background:framework===fw?'rgb(var(--acc-c) / 0.15)':'var(--surface2)',
+                <span style={{ marginLeft:5, fontSize: 12, background:framework===fw?'rgb(var(--acc-c) / 0.15)':'var(--surface2)',
                   color:framework===fw?'var(--accent)':'var(--text3)', borderRadius:10, padding:'0 5px' }}>
                   {fw==='all' ? controls.length : controls.filter(c => c.framework===fw).length}
                 </span>
@@ -400,13 +400,13 @@ export function PanelCompliance({ connId, provider }) {
         {!loading && !report && (
           <div style={{ display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', height:280, color:'var(--text3)', gap:10 }}>
             <ClipboardList size={34} strokeWidth={1.4} style={{ color:'var(--t3)' }}/>
-            <div style={{ fontSize:14, fontWeight:600, color:'var(--text2)' }}>No compliance report yet</div>
-            <div style={{ fontSize:12, maxWidth:360, textAlign:'center', lineHeight:1.6 }}>
+            <div style={{ fontSize: 15, fontWeight:600, color:'var(--text2)' }}>No compliance report yet</div>
+            <div style={{ fontSize: 13.5, maxWidth:360, textAlign:'center', lineHeight:1.6 }}>
               {provider === 'aws' ? 'Run the CIS benchmark first (CIS tab), then click "Remap Compliance" to generate framework mappings.' : 'Run a CSPM scan first, then click "Remap Compliance" to generate framework mappings.'}
             </div>
             <button onClick={run} disabled={running}
               style={{ marginTop:8, padding:'8px 20px', background:'var(--accent)', color: 'var(--onacc)',
-                border:'none', borderRadius:8, fontSize:12, fontWeight:600, cursor:'pointer', fontFamily:'inherit' }}>
+                border:'none', borderRadius:8, fontSize: 13.5, fontWeight:600, cursor:'pointer', fontFamily:'inherit' }}>
               {running ? 'Mapping…' : 'Generate Compliance Report'}
             </button>
           </div>
@@ -414,7 +414,7 @@ export function PanelCompliance({ connId, provider }) {
         {report && !loading && (
           <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
             {failedFirst.length === 0 && (
-              <div style={{ textAlign:'center', padding:40, color:'var(--ok)', fontSize:13 }}>
+              <div style={{ textAlign:'center', padding:40, color:'var(--ok)', fontSize: 14 }}>
                 ✓ All controls passing for the selected framework
               </div>
             )}
@@ -465,13 +465,13 @@ export function PanelCISBenchmark({ cis, loading, scanning, onRunScan, conn }) {
       <div style={{ padding:'20px 24px 0', flexShrink:0 }}>
         <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', marginBottom:20 }}>
           <div>
-            <h3 style={{ fontSize:15, fontWeight:700, color:'var(--text)', marginBottom:4 }}>
+            <h3 style={{ fontSize: 16, fontWeight:700, color:'var(--text)', marginBottom:4 }}>
               CIS {conn?.provider === 'azure' ? 'Microsoft Azure Foundations' : conn?.provider === 'aws' ? 'AWS-style Foundations' : 'Google Cloud Platform Foundation'} Benchmark{conn?.provider === 'aws' ? '' : ' v2.0'}
-              <span style={{ fontSize:11, fontWeight:500, color:'var(--text3)', marginLeft:8 }}>
+              <span style={{ fontSize: 13, fontWeight:500, color:'var(--text3)', marginLeft:8 }}>
                 (subset{cis?.controls?.length ? ` - ${cis.controls.length} controls assessed` : ''}, not the full benchmark)
               </span>
             </h3>
-            <p style={{ fontSize:11.5, color:'var(--text3)' }}>
+            <p style={{ fontSize: 13, color:'var(--text3)' }}>
               {conn?.provider === 'aws'
                 ? 'Posture checks across IAM, Storage (S3), Logging and Networking. Own control IDs mapped to CIS topics, not CIS numbering.'
                 : conn?.provider === 'azure'
@@ -484,10 +484,10 @@ export function PanelCISBenchmark({ cis, loading, scanning, onRunScan, conn }) {
             {cis && (
               <div style={{ textAlign:'center', padding:'8px 16px', background:'var(--surface2)',
                 border:`2px solid ${scoreColor}`, borderRadius:10 }}>
-                <div style={{ fontSize:24, fontWeight:700, color:scoreColor, fontFamily:'var(--font-data)' }}>
+                <div style={{ fontSize: 24, fontWeight:700, color:scoreColor, fontFamily:'var(--font-data)' }}>
                   {score}%
                 </div>
-                <div style={{ fontSize:9.5, color:'var(--text3)', textTransform:'uppercase', letterSpacing:'0.08em' }}>
+                <div style={{ fontSize: 11, color:'var(--text3)', textTransform:'uppercase', letterSpacing:'0.08em' }}>
                   CIS Score
                 </div>
               </div>
@@ -496,7 +496,7 @@ export function PanelCISBenchmark({ cis, loading, scanning, onRunScan, conn }) {
               style={{ display:'flex', alignItems:'center', gap:7, padding:'8px 16px',
                 background: scanning ? 'var(--surface2)' : 'var(--accent)',
                 color: scanning ? 'var(--text2)' : 'var(--onacc)',
-                border:'none', borderRadius:8, fontSize:12.5, fontWeight:600,
+                border:'none', borderRadius:8, fontSize: 13.5, fontWeight:600,
                 cursor: scanning ? 'wait' : 'pointer', fontFamily:'inherit' }}>
               {scanning ? '⟳ Scanning…' : '⟳ Run Assessment'}
             </button>
@@ -516,9 +516,9 @@ export function PanelCISBenchmark({ cis, loading, scanning, onRunScan, conn }) {
                     style={{ background: sectionFilter === sec ? 'var(--surface3)' : 'var(--surface2)',
                       border:`1px solid ${sectionFilter === sec ? col : 'var(--border)'}`,
                       borderRadius:8, padding:'10px 12px', cursor:'pointer', transition:'all 0.15s' }}>
-                    <div style={{ fontSize:10, color:'var(--text3)', marginBottom:4 }}>{sec}</div>
-                    <div style={{ fontSize:16, fontWeight:700, color:col, fontFamily:'var(--font-data)' }}>{pct}%</div>
-                    <div style={{ fontSize:9.5, color:'var(--text3)', marginTop:2 }}>
+                    <div style={{ fontSize: 12, color:'var(--text3)', marginBottom:4 }}>{sec}</div>
+                    <div style={{ fontSize: 16, fontWeight:700, color:col, fontFamily:'var(--font-data)' }}>{pct}%</div>
+                    <div style={{ fontSize: 11, color:'var(--text3)', marginTop:2 }}>
                       {stats.pass}/{stats.total} passed
                     </div>
                     <div style={{ height:3, background:'var(--surface)', borderRadius:2, marginTop:6 }}>
@@ -541,13 +541,13 @@ export function PanelCISBenchmark({ cis, loading, scanning, onRunScan, conn }) {
                       borderRadius:20, border:`1px solid ${filter === f.id ? f.color : 'var(--border)'}`,
                       background: filter === f.id ? `color-mix(in srgb, ${f.color} 10%, transparent)` : 'transparent',
                       color: filter === f.id ? f.color : 'var(--text3)',
-                      cursor:'pointer', fontSize:11.5, fontFamily:'inherit' }}>
+                      cursor:'pointer', fontSize: 13, fontFamily:'inherit' }}>
                     <span style={{ fontFamily:'var(--font-data)', fontWeight:700 }}>{count}</span>
                     {f.label}
                   </button>
                 )
               })}
-              <span style={{ marginLeft:'auto', fontSize:11, color:'var(--text3)', alignSelf:'center' }}>
+              <span style={{ marginLeft:'auto', fontSize: 13, color:'var(--text3)', alignSelf:'center' }}>
                 Scanned: {cis.scanned_at ? new Date(cis.scanned_at).toLocaleString() : '-'}
                 {' · '}L1: {Math.round(cis.level1_score||0)}% · L2: {Math.round(cis.level2_score||0)}%
               </span>
@@ -563,17 +563,17 @@ export function PanelCISBenchmark({ cis, loading, scanning, onRunScan, conn }) {
         {!loading && !cis && !scanning && (
           <div style={{ textAlign:'center', padding:60, color:'var(--text3)' }}>
             <ClipboardList size={30} strokeWidth={1.4} style={{ color:'var(--t3)', marginBottom:12 }}/>
-            <div style={{ fontSize:14, fontWeight:500, color:'var(--text2)', marginBottom:6 }}>
+            <div style={{ fontSize: 15, fontWeight:500, color:'var(--text2)', marginBottom:6 }}>
               No CIS assessment yet
             </div>
-            <div style={{ fontSize:12 }}>Click "Run Assessment" to check against CIS {conn?.provider === 'azure' ? 'Azure Foundations' : conn?.provider === 'aws' ? 'AWS' : 'GCP'} Benchmark</div>
+            <div style={{ fontSize: 13.5 }}>Click "Run Assessment" to check against CIS {conn?.provider === 'azure' ? 'Azure Foundations' : conn?.provider === 'aws' ? 'AWS' : 'GCP'} Benchmark</div>
           </div>
         )}
 
         {cis && !loading && (
           <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
             {filtered.length === 0 && (
-              <div style={{ textAlign:'center', padding:30, color:'var(--text3)', fontSize:12 }}>
+              <div style={{ textAlign:'center', padding:30, color:'var(--text3)', fontSize: 13.5 }}>
                 No controls match your filter
               </div>
             )}

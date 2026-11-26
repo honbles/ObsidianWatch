@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { useNavigate, useLocation, Link } from 'react-router-dom'
 import {
   LayoutDashboard, Bell, Activity, GitBranch, Cloud, Monitor, Network, Shield, Boxes, Crosshair, Search,
-  Settings, Users, Key, ClipboardList, Terminal, LogOut, Sun, Moon, ChevronDown, Menu, X,
+  Settings, Users, Key, ClipboardList, Terminal, LogOut, Sun, Moon, ChevronDown, ChevronRight, Menu as MenuIcon, X,
   Eye, Share2, Gauge, ShieldCheck, SlidersHorizontal, BellOff, ListChecks, CornerDownLeft, Server, FileSearch,
   Check, Type, Fingerprint, UserX, Radar,
 } from 'lucide-react'
@@ -102,7 +102,6 @@ function MenuItem({ it, loc, onGo }) {
   )
 }
 
-const groupActive = (loc, g) => g.items.some(it => !it.soon && isActive(loc, it))
 
 function useClickAway(ref, onAway) {
   useEffect(() => {
@@ -169,7 +168,7 @@ function CommandPalette({ open, onClose, pages, agents }) {
           <span className="ow-kbd">esc</span>
         </div>
         <div className="ow-palette-list" role="listbox">
-          {results.length === 0 && <div style={{ padding: '18px 12px', color: 'var(--t3)', fontSize: 12.5 }}>Nothing matches.</div>}
+          {results.length === 0 && <div style={{ padding: '18px 12px', color: 'var(--t3)', fontSize: 13.5 }}>Nothing matches.</div>}
           {results.map((r, i) => {
             const head = r.kind !== lastKind ? <div className="dropdown-section">{r.kind}</div> : null
             lastKind = r.kind
@@ -181,7 +180,7 @@ function CommandPalette({ open, onClose, pages, agents }) {
                   onMouseEnter={() => setSel(i)} onClick={() => go(r)}>
                   <Icon size={14} strokeWidth={1.6}/>
                   <span className={r.mono ? 'mono' : ''} style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', color: 'var(--t1)' }}>{r.label}</span>
-                  {r.hint && <span style={{ fontSize: 11.5, color: 'var(--t3)' }}>{r.hint}</span>}
+                  {r.hint && <span style={{ fontSize: 13, color: 'var(--t3)' }}>{r.hint}</span>}
                   {i === sel && <CornerDownLeft size={12} style={{ color: 'var(--t3)' }}/>}
                 </div>
               </div>
@@ -271,13 +270,13 @@ export function Shell({ user, children }) {
     ['token', 'user', 'require_password_change'].forEach(k => localStorage.removeItem(k))
     navigate('/login')
   }
-  // Click opens a menu; while one is open, hovering another product switches to it, like a menu bar.
-  const menuProps = (id) => ({
-    onClick: () => setOpen(o => o === id ? null : id),
-    onMouseEnter: () => setOpen(o => (o && o !== id && o !== 'user' && o !== 'mobile') ? id : o),
-    'aria-haspopup': 'menu', 'aria-expanded': open === id,
-  })
   const go = () => setOpen(null)
+  const crumb = useMemo(() => {
+    if (loc.pathname === '/') return { page: 'Overview' }
+    for (const g of products) for (const it of g.items) if (!it.soon && isActive(loc, it)) return { group: g.label, page: it.label }
+    for (const it of settings) if (isActive(loc, it)) return { group: 'Settings', page: it.label }
+    return null
+  }, [loc, products, settings])
   const overviewActive = loc.pathname === '/'
 
   return (
@@ -286,48 +285,43 @@ export function Shell({ user, children }) {
         <header className="topbar" ref={navRef}>
           <Link to="/" className="tn-brand" title="ObsidianWatch" aria-label="ObsidianWatch, Overview"><OWMark size={24}/><OWWordmark/></Link>
 
-          <nav className="tn-products" aria-label="Products">
-            <Link to="/" className={`tn-link ${overviewActive ? 'on' : ''}`} aria-current={overviewActive ? 'page' : undefined}>Overview</Link>
-            {products.map(g => (
-              <div key={g.id} className="tn-menu">
-                <button className={`tn-link ${groupActive(loc, g) ? 'on' : ''} ${open === g.id ? 'open' : ''}`} {...menuProps(g.id)}>
-                  {g.label}{g.soon && <span className="tn-soon-dot" title="Coming soon"/>}
-                  {g.id === 'detect' && alertCount > 0 && <span className="tn-count">{alertCount > 99 ? '99+' : alertCount}</span>}
-                  <ChevronDown size={12} className="caret"/>
-                </button>
-                {open === g.id && (
-                  <div className="dropdown tn-drop" role="menu">
-                    {g.soon && <div className="tn-drop-note">Coming soon</div>}
-                    {g.items.map(it => <MenuItem key={it.id} it={it} loc={loc} onGo={go}/>)}
-                    {g.id === 'endpoint' && <>
-                      <div className="dropdown-divider"/>
-                      <div className="tn-drop-foot"><span className={`ow-dot ${hostState}`} style={{ color: `var(--${hostState === 'none' ? 't3' : hostState})` }}/>
-                        {hosts.length ? `${online} of ${hosts.length} hosts online` : 'No hosts enrolled yet'}</div>
-                    </>}
-                  </div>
-                )}
-              </div>
-            ))}
-          </nav>
-
-          <div className="tn-menu tn-mobile">
-            <button className={`tb-ctl tn-menu-btn ${open === 'mobile' ? 'open' : ''}`} onClick={() => setOpen(o => o === 'mobile' ? null : 'mobile')} aria-haspopup="menu" aria-expanded={open === 'mobile'} aria-label="Menu">
-              {open === 'mobile' ? <X size={15}/> : <Menu size={15}/>}<span>Menu</span>
+          <div className="tn-menu">
+            <button className={`tb-ctl tn-menu-btn ${open === 'menu' ? 'open' : ''}`} onClick={() => setOpen(o => o === 'menu' ? null : 'menu')} aria-haspopup="menu" aria-expanded={open === 'menu'} aria-label="Menu">
+              {open === 'menu' ? <X size={16}/> : <MenuIcon size={16}/>}<span>Menu</span>
+              {alertCount > 0 && open !== 'menu' && <span className="tn-count">{alertCount > 99 ? '99+' : alertCount}</span>}
             </button>
-            {open === 'mobile' && (
+            {open === 'menu' && (
               <div className="dropdown tn-mega" role="menu">
-                <Link to="/" className={`dropdown-item ${overviewActive ? 'active' : ''}`} onClick={go}><LayoutDashboard size={14} strokeWidth={1.6}/> Overview</Link>
+                <Link to="/" className={`dropdown-item ${overviewActive ? 'active' : ''}`} onClick={go}><LayoutDashboard size={15} strokeWidth={1.6}/> Overview</Link>
                 <div className="tn-mega-grid">
                   {products.map(g => (
-                    <div key={g.id}>
+                    <div key={g.id} className="tn-mega-col">
                       <div className="dropdown-section">{g.label}{g.soon && ' · soon'}</div>
                       {g.items.map(it => <MenuItem key={it.id} it={it} loc={loc} onGo={go}/>)}
+                      {g.id === 'endpoint' && (
+                        <div className="tn-drop-foot"><span className={`ow-dot ${hostState}`} style={{ color: `var(--${hostState === 'none' ? 't3' : hostState})` }}/>
+                          {hosts.length ? `${online} of ${hosts.length} hosts online` : 'No hosts enrolled yet'}</div>
+                      )}
                     </div>
                   ))}
+                  {settings.length > 0 && (
+                    <div className="tn-mega-col">
+                      <div className="dropdown-section">Settings</div>
+                      {settings.map(it => <MenuItem key={it.id} it={it} loc={loc} onGo={go}/>)}
+                    </div>
+                  )}
                 </div>
               </div>
             )}
           </div>
+
+          {crumb && (
+            <nav className="tn-crumb" aria-label="You are here">
+              {crumb.group && <span className="tn-crumb-group">{crumb.group}</span>}
+              {crumb.group && <ChevronRight size={14} className="tn-crumb-sep"/>}
+              <span className="tn-crumb-page">{crumb.page}</span>
+            </nav>
+          )}
 
           <div className="tn-right">
             <button className="tb-ctl tn-search" onClick={() => setPalette(true)} aria-label="Search" title="Search hosts, services, pages and events">
@@ -342,19 +336,6 @@ export function Shell({ user, children }) {
               <Bell size={14}/>
               {alertCount > 0 && <span className="tb-count">{alertCount > 99 ? '99+' : alertCount}</span>}
             </button>
-            {settings.length > 0 && (
-              <div className="tn-menu">
-                <button className={`tb-ctl tb-icon ${settings.some(it => isActive(loc, it)) ? 'on' : ''}`} {...menuProps('settings')} title="Settings" aria-label="Settings">
-                  <Settings size={14}/>
-                </button>
-                {open === 'settings' && (
-                  <div className="dropdown tn-drop" role="menu" style={{ right: 0, left: 'auto' }}>
-                    <div className="dropdown-section">Settings</div>
-                    {settings.map(it => <MenuItem key={it.id} it={it} loc={loc} onGo={go}/>)}
-                  </div>
-                )}
-              </div>
-            )}
             <div className="tn-menu">
               <button className="tb-ctl" onClick={() => setOpen(o => o === 'user' ? null : 'user')} style={{ paddingLeft: 5 }} aria-haspopup="menu" aria-expanded={open === 'user'}>
                 <span className="tb-avatar">{user?.username?.[0]?.toUpperCase() || 'U'}</span>
@@ -365,7 +346,7 @@ export function Shell({ user, children }) {
                 <div className="dropdown" role="menu" style={{ right: 0, left: 'auto', minWidth: 190 }}>
                   <div style={{ padding: '8px 10px', borderBottom: '1px solid var(--line)', marginBottom: 4 }}>
                     <div style={{ fontWeight: 600 }}>{user?.username}</div>
-                    <div style={{ fontSize: 12, color: 'var(--t3)', textTransform: 'capitalize' }}>{user?.role}</div>
+                    <div style={{ fontSize: 13.5, color: 'var(--t3)', textTransform: 'capitalize' }}>{user?.role}</div>
                   </div>
                   <div className="dropdown-section" style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Type size={11}/> Display size</div>
                   {DISPLAY_SIZES.map(d => (

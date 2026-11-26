@@ -85,17 +85,17 @@ export default function Tactical() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(520px, 1.1fr) minmax(420px, 1fr)', gap: 16, alignItems: 'stretch' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(582px, 1.1fr) minmax(470px, 1fr)', gap: 16, alignItems: 'stretch' }}>
         <section className="ow-card" style={{ overflow: 'hidden' }}>
-          <div className="ow-card-bar"><span style={{ fontWeight: 600 }}>Tactical overview</span><span className="t3" style={{ fontSize: 12 }}>Every number opens the matching list</span></div>
+          <div className="ow-card-bar"><span style={{ fontWeight: 600 }}>Tactical overview</span><span className="t3" style={{ fontSize: 13.5 }}>Every number opens the matching list</span></div>
           <div role="table">
-            <div className="ow-grid h" style={{ gridTemplateColumns: 'minmax(140px, 1.5fr) 100px 70px 86px 76px 70px' }}><div>Domain</div><div>State</div><div style={{ textAlign: 'right' }}>Total</div><div style={{ textAlign: 'right' }}>Problems</div><div style={{ textAlign: 'right' }}>Critical</div><div style={{ textAlign: 'right' }}>Stale</div></div>
+            <div className="ow-grid h" style={{ gridTemplateColumns: 'minmax(120px, 1.5fr) 112px 70px 88px 76px 64px' }}><div>Domain</div><div>State</div><div style={{ textAlign: 'right' }}>Total</div><div style={{ textAlign: 'right' }}>Problems</div><div style={{ textAlign: 'right' }}>Critical</div><div style={{ textAlign: 'right' }}>Stale</div></div>
             {rows.map(r => {
               const st = rowState(r)
               return (
-                <div key={r.k} className={`ow-grid click ${st !== 'ok' && st !== 'none' ? 's-' + st : ''}`} style={{ gridTemplateColumns: 'minmax(140px, 1.5fr) 100px 70px 86px 76px 70px', minHeight: 44 }} onClick={() => navigate(r.to)} role="row">
+                <div key={r.k} className={`ow-grid click ${st !== 'ok' && st !== 'none' ? 's-' + st : ''}`} style={{ gridTemplateColumns: 'minmax(120px, 1.5fr) 112px 70px 88px 76px 64px', minHeight: 44 }} onClick={() => navigate(r.to)} role="row">
                   <span className="t1" style={{ fontWeight: 500 }}>{r.k}</span>
-                  <span>{r.total == null ? <span className="t3" style={{ fontSize: 12 }}>Loading…</span> : <StatePill state={st}>{{ ok: 'OK', warn: 'Attention', crit: 'Critical', none: r.total === 0 ? 'None set up' : 'Unknown' }[st]}</StatePill>}</span>
+                  <span>{r.total == null ? <span className="t3" style={{ fontSize: 13.5 }}>Loading…</span> : <StatePill state={st}>{{ ok: 'OK', warn: 'Attention', crit: 'Critical', none: r.total === 0 ? 'None set up' : 'Unknown' }[st]}</StatePill>}</span>
                   <span style={{ textAlign: 'right' }} onClick={e => e.stopPropagation()}><Cell n={r.total} to={r.to}/></span>
                   <span style={{ textAlign: 'right' }} onClick={e => e.stopPropagation()}><Cell n={r.problems} to={r.links.problems} tone="warn" title={r.problemsLabel || 'not OK'}/></span>
                   <span style={{ textAlign: 'right' }} onClick={e => e.stopPropagation()}><Cell n={r.crit} to={r.links.crit} tone="crit" title="critical"/></span>
@@ -110,11 +110,11 @@ export default function Tactical() {
         <section className="ow-card" style={{ padding: '14px 16px' }}>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 10 }}>
             <span style={{ fontWeight: 600 }}>Alerts, last 7 days</span>
-            <span className="t3" style={{ fontSize: 12 }}>{recent.length.toLocaleString()} created · {open.length.toLocaleString()} still unhandled</span>
-            <Link to="/alerts" className="c-acc" style={{ marginLeft: 'auto', fontSize: 12 }}>Open alerts</Link>
+            <span className="t3" style={{ fontSize: 13.5 }}>{recent.length.toLocaleString()} created · {open.length.toLocaleString()} still unhandled</span>
+            <Link to="/alerts" className="c-acc" style={{ marginLeft: 'auto', fontSize: 13.5 }}>Open alerts</Link>
           </div>
           <Histogram items={recent.map(a => ({ t: a.created_at, k: a.severity }))} stacks={SEV_STACKS} from={weekAgo} buckets={42} height={190} label="alerts"/>
-          <div style={{ display: 'flex', gap: 12, fontSize: 11.5, color: 'var(--t3)', marginTop: 10 }}>
+          <div style={{ display: 'flex', gap: 12, fontSize: 13, color: 'var(--t3)', marginTop: 10 }}>
             {SEV_STACKS.slice().reverse().map(x => <span key={x.k} style={{ display: 'flex', alignItems: 'center', gap: 5 }}><span style={{ width: 8, height: 8, borderRadius: 2, background: x.color }}/>{x.label}</span>)}
           </div>
         </section>
@@ -123,8 +123,8 @@ export default function Tactical() {
       <section className="ow-card" style={{ overflow: 'hidden' }}>
         <div className="ow-card-bar">
           <span style={{ fontWeight: 600 }}>Unhandled problems</span>
-          <span className="t3" style={{ fontSize: 12 }}>Alerts, offline hosts, failing services and high or critical findings, worst and oldest first</span>
-          <span className="t2" style={{ marginLeft: 'auto', fontSize: 12 }}>{problems.length.toLocaleString()}</span>
+          <span className="t3" style={{ fontSize: 13.5 }}>Alerts, offline hosts, failing services and high or critical findings, worst and oldest first</span>
+          <span className="t2" style={{ marginLeft: 'auto', fontSize: 13.5 }}>{problems.length.toLocaleString()}</span>
         </div>
         <DenseTable rows={problems.slice(0, 25)} rowKey={p => p.key} onRow={p => navigate(p.to)}
           rowState={p => p.sev >= 5 ? 'crit' : p.sev >= 4 ? 'warn' : null}

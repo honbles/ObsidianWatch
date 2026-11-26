@@ -33,11 +33,11 @@ function VulnCell({ c, onOpen }) {
       {shown.map(v => (
         <button key={v.id} className="mono" title={`${v.id} (${v.severity})${v.title ? ' · ' + v.title : ''}`}
           onClick={e => { e.stopPropagation(); onOpen(c, v.id) }}
-          style={{ fontSize: 11, padding: '1px 6px', borderRadius: 5, border: `1px solid ${SEV_COLOR[v.severity] || 'var(--line2)'}`, color: SEV_COLOR[v.severity] || 'var(--t2)', background: 'transparent', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+          style={{ fontSize: 13, padding: '1px 6px', borderRadius: 5, border: `1px solid ${SEV_COLOR[v.severity] || 'var(--line2)'}`, color: SEV_COLOR[v.severity] || 'var(--t2)', background: 'transparent', cursor: 'pointer', whiteSpace: 'nowrap' }}>
           {v.id}
         </button>
       ))}
-      {c.vulns.length > 2 && <button className="t2" onClick={e => { e.stopPropagation(); onOpen(c) }} style={{ fontSize: 11, background: 'transparent', border: 0, cursor: 'pointer', whiteSpace: 'nowrap' }}>+{c.vulns.length - 2}</button>}
+      {c.vulns.length > 2 && <button className="t2" onClick={e => { e.stopPropagation(); onOpen(c) }} style={{ fontSize: 13, background: 'transparent', border: 0, cursor: 'pointer', whiteSpace: 'nowrap' }}>+{c.vulns.length - 2}</button>}
     </span>
   )
 }
@@ -67,20 +67,20 @@ function ComponentDrawer({ c, focus, onClose }) {
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div className="mono" style={{ fontSize: 16, fontWeight: 600, wordBreak: 'break-all' }}>{c.name} <span className="t2">{c.version}</span></div>
-          <div className="t3 mono" style={{ fontSize: 11.5, wordBreak: 'break-all' }}>{c.purl}</div>
+          <div className="t3 mono" style={{ fontSize: 13, wordBreak: 'break-all' }}>{c.purl}</div>
         </div>
         <button className="ow-btn quiet" onClick={onClose} aria-label="Close">Esc</button>
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr', gap: '6px 12px', fontSize: 13 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '134px 1fr', gap: '6px 12px', fontSize: 14 }}>
         <span className="t3">Ecosystem</span><span>{c.ecosystem || '—'}</span>
         <span className="t3">Dependency</span><span>{c.transitive ? 'Transitive (pulled in by another package)' : 'Direct'}</span>
-        <span className="t3">Declared in</span><span className="mono" style={{ fontSize: 12 }}>{files.length ? files.map(f => <div key={f}>{f}</div>) : '—'}</span>
+        <span className="t3">Declared in</span><span className="mono" style={{ fontSize: 13.5 }}>{files.length ? files.map(f => <div key={f}>{f}</div>) : '—'}</span>
         <span className="t3">Licences</span><span>{(c.licenses || []).join(', ') || 'None declared'}</span>
         <span className="t3">Runtime</span><span>{RUNTIME_LABEL[c.runtime]}{c.services?.length ? ` · ${c.services.join(', ')}` : ''}{c.hosts?.length ? ` · hosts ${c.hosts.join(', ')}` : ''}</span>
         {c.vulns?.length > 0 && <><span className="t3">Vulnerabilities</span><span><VulnCounts vulns={c.vulns}/></span></>}
       </div>
       {fixes.length > 0 && (
-        <div className="ow-card" style={{ padding: '10px 12px', background: 'var(--s2)', fontSize: 13 }}>
+        <div className="ow-card" style={{ padding: '10px 12px', background: 'var(--s2)', fontSize: 14 }}>
           <div className="ow-lbl" style={{ marginBottom: 4 }}>Fix</div>
           {fixes.map(f => <div key={f}>{f}</div>)}
         </div>
@@ -95,20 +95,20 @@ function ComponentDrawer({ c, focus, onClose }) {
             <div key={v.id} id={`vuln-${v.id}`} style={{ padding: '10px 10px', borderTop: '1px solid var(--line)', background: v.id === focus ? 'var(--s2)' : undefined, borderRadius: v.id === focus ? 6 : 0 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                 <span className="mono t1" style={{ fontWeight: 600 }}>{v.id}</span>
-                <span style={{ color: SEV_COLOR[v.severity], fontSize: 12 }}>{v.severity}</span>
-                {v.triage && <span className="t3" style={{ fontSize: 12 }}>· {TRIAGE_LABEL[v.triage] || v.triage}</span>}
-                <span style={{ marginLeft: 'auto', display: 'inline-flex', gap: 10, fontSize: 12 }}>
+                <span style={{ color: SEV_COLOR[v.severity], fontSize: 13.5 }}>{v.severity}</span>
+                {v.triage && <span className="t3" style={{ fontSize: 13.5 }}>· {TRIAGE_LABEL[v.triage] || v.triage}</span>}
+                <span style={{ marginLeft: 'auto', display: 'inline-flex', gap: 10, fontSize: 13.5 }}>
                   {v.db_url && <a href={v.db_url} target="_blank" rel="noreferrer">{v.id.startsWith('CVE-') ? 'NVD' : v.id.startsWith('GHSA-') ? 'GitHub advisory' : 'OSV'}</a>}
                   {v.url && v.url !== v.db_url && <a href={v.url} target="_blank" rel="noreferrer">Advisory</a>}
                   {v.issue_url && <a href={v.issue_url} target="_blank" rel="noreferrer">Issue</a>}
                 </span>
               </div>
-              {(v.title || v.detail) && <div className="t2" style={{ marginTop: 4, fontSize: 13 }}>{v.title || v.detail}</div>}
-              {v.fix && fixes.length > 1 && <div className="t3" style={{ marginTop: 3, fontSize: 12 }}>Fix: {v.fix}</div>}
-              {v.files?.length > 1 && <div className="t3" style={{ marginTop: 3, fontSize: 12 }}>In {v.files.length} manifests</div>}
+              {(v.title || v.detail) && <div className="t2" style={{ marginTop: 4, fontSize: 14 }}>{v.title || v.detail}</div>}
+              {v.fix && fixes.length > 1 && <div className="t3" style={{ marginTop: 3, fontSize: 13.5 }}>Fix: {v.fix}</div>}
+              {v.files?.length > 1 && <div className="t3" style={{ marginTop: 3, fontSize: 13.5 }}>In {v.files.length} manifests</div>}
             </div>
           ))}
-          {vulns.length === 0 && <div className="t3" style={{ fontSize: 12.5 }}>No vulnerability matches the filter.</div>}
+          {vulns.length === 0 && <div className="t3" style={{ fontSize: 13.5 }}>No vulnerability matches the filter.</div>}
         </div>
       )}
     </div>

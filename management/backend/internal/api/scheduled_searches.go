@@ -64,12 +64,16 @@ func (e *ScheduledSearchEngine) runDue(ctx context.Context) {
 	rows.Close()
 	for _, j := range jobs {
 		qctx, cancel := context.WithTimeout(ctx, eventSearchTimeout)
-		tokens, notTokens, special := parseSearchQuery(j.query)
-		f := store.EventFilter{Tokens: tokens, NotTokens: notTokens,
-			Since: time.Now().Add(-time.Duration(j.window) * time.Minute), Limit: 1}
-		for _, apply := range special {
-			apply(&f)
+		// The same query language as the Events search box, so a saved search finds the same events when it runs
+		// on a schedule as when it was saved.
+		expr, perr := store.ParseEventQuery(store.NormalizeSavedQuery(j.query))
+		if perr != nil {
+			cancel()
+			e.logger.Warn("scheduled searches: query does not parse", "id", j.id, "err", perr)
+			_, _ = e.db.ExecContext(ctx, `UPDATE saved_event_queries SET sched_last_run = NOW() WHERE id = $1`, j.id)
+			continue
 		}
+		f := store.EventFilter{Expr: expr, Since: time.Now().Add(-time.Duration(j.window) * time.Minute), Limit: 1}
 		events, total, err := e.db.QueryEvents(qctx, f)
 		cancel()
 		if err != nil {

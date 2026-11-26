@@ -1830,6 +1830,8 @@ func (e *DetectionEngine) evaluateEvents(ctx context.Context, events []store.Eve
 				EventType:     ev.EventType,
 				EventID:       dedupKey,
 				SourceEventID: ev.ID,
+				RuleID:        sig.ID,
+				Evidence:      endpointEvidence("signature", ev),
 			}
 			if id, inserted, err := e.db.CreateAlertDeduped(ctx, alert); err == nil && !inserted && id > 0 {
 				// Duplicate within the hour: record this process as an extra
@@ -1851,7 +1853,7 @@ func (e *DetectionEngine) evaluateEvents(ctx context.Context, events []store.Eve
 
 		// IOC matching
 		if ioc := e.matchIOC(ev, ipIOCs, domainIOCs, hashIOCs); ioc != nil && ioc.Confidence >= 0 && !(ioc.Confidence > 0 && ioc.Confidence < 25) &&
-			otxConfidentEnough(*ioc, otxMin) && !endpointSuppressed(iocSuppressID(*ioc), ev) {
+			otxConfidentEnough(*ioc, otxMin) && !endpointSuppressedIndicator(iocSuppressID(*ioc), ioc.Value, ev) {
 			// D-14: confidence weighting. IOCs under 25% confidence are
 			// ignored (noise); 25-49% are alerted one level lower.
 			if ioc.Confidence > 0 && ioc.Confidence < 50 && ioc.Severity > 2 {
@@ -1885,6 +1887,8 @@ func (e *DetectionEngine) evaluateEvents(ctx context.Context, events []store.Eve
 				EventType:     ev.EventType,
 				EventID:       dedupKey,
 				SourceEventID: ev.ID,
+				RuleID:        iocSuppressID(*ioc),
+				Evidence:      endpointEvidence("ioc", ev, ioc.IOCType, ioc.Value),
 			}
 			if id, inserted, err := e.db.CreateAlertDeduped(ctx, alert); err == nil && inserted {
 				created++
@@ -1936,6 +1940,8 @@ func (e *DetectionEngine) evaluateEvents(ctx context.Context, events []store.Eve
 				EventType:     ev.EventType,
 				EventID:       dedupKey,
 				SourceEventID: ev.ID,
+				RuleID:        sigmaSuppressID(rule.ID),
+				Evidence:      endpointEvidence("sigma", ev),
 			}
 			if id, inserted, err := e.db.CreateAlertDeduped(ctx, alert); err == nil && inserted {
 				created++

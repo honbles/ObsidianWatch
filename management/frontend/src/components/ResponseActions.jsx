@@ -37,7 +37,7 @@ export function IsolatedBadge({ state }) {
   if (!s || !(s.isolated || s.desired_isolated)) return null
   const pending = s.desired_isolated && !s.isolated
   return (
-    <span className={`text-[9px] px-2 py-0.5 rounded-full border font-semibold ${pending ? 'bg-amber-900/30 text-amber-300 border-amber-700' : 'bg-red-900/40 text-red-300 border-red-700'}`}
+    <span className={`text-2xs px-2 py-0.5 rounded-full border font-semibold ${pending ? 'bg-amber-900/30 text-amber-300 border-amber-700' : 'bg-red-900/40 text-red-300 border-red-700'}`}
       title="Network isolated: only the ObsidianWatch server is reachable">
       {pending ? 'ISOLATION PENDING' : 'ISOLATED'}
     </span>
@@ -62,7 +62,7 @@ export function TabResponse({ agent }) {
         {isolated ? <ShieldAlert size={22} style={{ color: 'var(--crit)' }}/> : <ShieldCheck size={22} style={{ color: pending ? 'var(--warn)' : 'var(--ok)' }}/>}
         <div style={{ flex: 1 }}>
           <div style={{ fontWeight: 600 }}>{isolated ? 'Network-isolated' : pending ? 'Isolation pending: applied when the host reconnects' : 'Connected normally'}</div>
-          <div className="t2" style={{ fontSize: 12.5 }}>
+          <div className="t2" style={{ fontSize: 13.5 }}>
             {isolated && state.isolated_since ? `Since ${formatDistanceToNow(new Date(state.isolated_since), { addSuffix: true })}. ` : ''}
             {isolated && state.expires_at ? `Releases ${formatDistanceToNow(new Date(state.expires_at), { addSuffix: true })}. ` : ''}
             {st ? (st.tunnel_online ? 'Response tunnel connected.' : 'Response tunnel not connected: only isolate and release can be queued.') : 'Loading…'}
@@ -73,9 +73,9 @@ export function TabResponse({ agent }) {
         <Link to={`/response?tab=live&host=${encodeURIComponent(agent.hostname)}`} className="ow-btn" style={{ textDecoration: 'none' }}>Live response</Link>
       </div>
       <div className="ow-card" style={{ overflow: 'hidden' }}>
-        <div className="ow-card-bar"><span style={{ fontWeight: 600 }}>Actions on this host</span><Link to="/response?tab=history" className="c-acc" style={{ marginLeft: 'auto', fontSize: 12 }}>Fleet history</Link></div>
+        <div className="ow-card-bar"><span style={{ fontWeight: 600 }}>Actions on this host</span><Link to="/response?tab=history" className="c-acc" style={{ marginLeft: 'auto', fontSize: 13.5 }}>Fleet history</Link></div>
         {acts.length === 0 ? <div className="t3" style={{ padding: 16 }}>No response actions yet.</div> : acts.map(a => (
-          <div key={a.id} className="ow-grid" style={{ gridTemplateColumns: '110px 150px minmax(160px, 1.4fr) minmax(140px, 1fr) 100px' }}>
+          <div key={a.id} className="ow-grid" style={{ gridTemplateColumns: '123px 168px minmax(179px, 1.4fr) minmax(157px, 1fr) 112px' }}>
             <span className="t2">{formatDistanceToNow(new Date(a.requested_at), { addSuffix: true })}</span>
             <span className="t1">{a.action.replace(/_/g, ' ')}</span>
             <span className="mono t2" title={JSON.stringify(a.params)}>{a.params?.pid ? `PID ${a.params.pid} ${a.params.image || ''}` : a.params?.path || a.params?.id || ''}</span>
@@ -101,16 +101,16 @@ export function QuickActions({ agentId, host, pid, image, path, alertId }) {
     setMsg({ ok: r.ok, text: r.data?.message || r.error || (r.ok ? 'Done' : 'Failed') })
     setBusy('')
   }
-  const btn = 'px-2 py-1 rounded border text-[10px] font-semibold disabled:opacity-50'
+  const btn = 'px-2 py-1 rounded border text-mini font-semibold disabled:opacity-50'
   return (
     <div className="space-y-1.5">
-      <div className="text-[9px] uppercase tracking-wider text-siem-muted">Respond</div>
+      <div className="text-2xs uppercase tracking-wider text-siem-muted">Respond</div>
       <div className="flex flex-wrap gap-1.5">
         {pid > 1 && <button disabled={!!busy} className={`${btn} border-red-800 text-red-300 hover:bg-red-950/40`} onClick={() => go('k', 'kill_process', { pid, image: image || '', tree: true }, `Kill ${image || 'process'} (PID ${pid}) and its children on ${host}?`)}>{busy === 'k' ? '…' : 'Kill process'}</button>}
         {path && <button disabled={!!busy} className={`${btn} border-orange-800 text-orange-300 hover:bg-orange-950/40`} onClick={() => go('q', 'quarantine_file', { path }, `Quarantine ${path} on ${host}?`)}>{busy === 'q' ? '…' : 'Quarantine file'}</button>}
         <button disabled={!!busy} className={`${btn} border-red-800 text-red-300 hover:bg-red-950/40`} onClick={() => go('i', 'isolate', { ttl_minutes: 0 }, `Isolate ${host}? It loses access to every other host and the internet; ObsidianWatch stays reachable.`)}>{busy === 'i' ? '…' : 'Isolate host'}</button>
       </div>
-      {msg && <div className={`text-[10px] ${msg.ok ? 'text-emerald-300' : 'text-red-300'}`}>{msg.text}</div>}
+      {msg && <div className={`text-mini ${msg.ok ? 'text-emerald-300' : 'text-red-300'}`}>{msg.text}</div>}
     </div>
   )
 }

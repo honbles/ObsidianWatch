@@ -20,11 +20,11 @@ export default function AppTabErrors({ service, range, focus }) {
     { key: 'type', label: 'Error', render: g => (
       <button className="text-left hover:underline" onClick={() => navigate(errPath(g.id))}>
         <span className="font-mono text-xs text-siem-text">{g.type || 'error'}</span>
-        {g.regressed && <span className="ml-1 text-[10px] rounded border border-orange-500/40 text-orange-300 px-1" title="Resolved earlier and back in a newer version">regressed</span>}
-        <span className="block text-[11px] text-siem-muted font-mono">{g.method} {g.route || '(no route)'} {g.frame ? `· ${g.frame}` : ''}</span>
-        {g.message && <span className="block text-[11px] text-siem-muted">{g.message}</span>}
+        {g.regressed && <span className="ml-1 text-mini rounded border border-orange-500/40 text-orange-300 px-1" title="Resolved earlier and back in a newer version">regressed</span>}
+        <span className="block text-xs text-siem-muted font-mono">{g.method} {g.route || '(no route)'} {g.frame ? `· ${g.frame}` : ''}</span>
+        {g.message && <span className="block text-xs text-siem-muted">{g.message}</span>}
       </button>), sort: g => g.type },
-    { key: 'status', label: 'Status', width: 90, render: g => <span className={`text-[10px] rounded border px-1 ${STATUS_TONE[g.status] || ''}`}>{g.status}</span> },
+    { key: 'status', label: 'Status', width: 90, render: g => <span className={`text-mini rounded border px-1 ${STATUS_TONE[g.status] || ''}`}>{g.status}</span> },
     { key: 'range', label: 'In range', align: 'right', render: g => appInt(g.range_count), sort: g => g.range_count },
     { key: 'count', label: 'All time', align: 'right', render: g => appInt(g.count), sort: g => g.count },
     { key: 'versions', label: 'Versions', render: g => <span className="text-xs">{g.first_version || '-'}{g.last_version && g.last_version !== g.first_version ? ` to ${g.last_version}` : ''}</span> },
@@ -44,7 +44,7 @@ export default function AppTabErrors({ service, range, focus }) {
         onRowClick={g => navigate(errPath(g.id))}
         emptyText="No error groups in this range." /></div>
       {openId && <AppErrorDetail id={openId} service={service} onClose={() => setOpenId(null)} onChanged={() => setRev(x => x + 1)} />}
-      <div className="text-[11px] text-siem-muted">
+      <div className="text-xs text-siem-muted">
         Grouped by exception type, top frames and route. A resolved group reopens as regressed if it fails again.
       </div>
     </div>
@@ -80,8 +80,8 @@ export function AppErrorDetail({ id, service, svcKey, onClose, onChanged, page }
         <span>Status <b className="text-siem-text">{g.status}</b>{g.resolved_version ? ` (resolved in ${g.resolved_version})` : ''}</span>
       </div>
       <div>
-        <div className="text-[10px] uppercase tracking-wide text-siem-muted mb-1">Stack (your code and libraries, values removed)</div>
-        {(g.frames || []).length ? <pre className="bg-black/20 rounded p-2 overflow-x-auto text-[11px] leading-relaxed">{g.frames.join('\n')}</pre>
+        <div className="text-2xs uppercase tracking-wide text-siem-muted mb-1">Stack (your code and libraries, values removed)</div>
+        {(g.frames || []).length ? <pre className="bg-black/20 rounded p-2 overflow-x-auto text-xs leading-relaxed">{g.frames.join('\n')}</pre>
           : <div className="text-siem-muted">No stack was reported for this error.</div>}
       </div>
       {(g.sample_traces || []).length > 0 && (

@@ -47,7 +47,7 @@ func handleEventSummary(db *store.DB) http.HandlerFunc {
 				writeJSON(w, 400, map[string]string{"error": qe.Error()})
 				return
 			}
-			writeJSON(w, 500, map[string]string{"error": "summary failed"})
+			writeJSON(w, 500, map[string]string{"error": "The timeline could not be computed."})
 			return
 		}
 		writeJSON(w, 200, map[string]interface{}{"since": f.Since, "until": f.Until, "summary": sum})

@@ -5,7 +5,7 @@ import { PageHeader, SevPill, Section, relTime } from '../../components/ui'
 import { useCodeData, findingId, findingPath, repoPath, SOURCE_LABEL, TYPE_LABEL } from './CodeOverview'
 
 function Row({ k, children }) {
-  return <div style={{ display: 'grid', gridTemplateColumns: '160px 1fr', gap: 12, padding: '6px 0', borderBottom: '1px solid var(--line)' }}><span className="t3">{k}</span><span>{children}</span></div>
+  return <div style={{ display: 'grid', gridTemplateColumns: '179px 1fr', gap: 12, padding: '6px 0', borderBottom: '1px solid var(--line)' }}><span className="t3">{k}</span><span>{children}</span></div>
 }
 
 export default function FindingPage() {
@@ -25,7 +25,7 @@ export default function FindingPage() {
         {f && <div style={{ marginTop: 10 }}><SevPill sev={f.sev}/></div>}
       </PageHeader>
       {f && (
-        <div className="ow-body" style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 2fr) minmax(280px, 1fr)', gap: 16, alignItems: 'start' }}>
+        <div className="ow-body" style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 2fr) minmax(314px, 1fr)', gap: 16, alignItems: 'start' }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
             <Section title="Details">
               <Row k="Type">{TYPE_LABEL[f.type] || f.type}</Row>
@@ -42,7 +42,7 @@ export default function FindingPage() {
           </div>
           <Section title="Other findings in this repository" pad={false}>
             {siblings.length === 0 ? <div className="t3" style={{ padding: 14 }}>None.</div> : siblings.map(x => (
-              <Link key={findingId(x)} to={findingPath(x)} className="ow-grid click" style={{ gridTemplateColumns: '84px 1fr', textDecoration: 'none', color: 'inherit' }}>
+              <Link key={findingId(x)} to={findingPath(x)} className="ow-grid click" style={{ gridTemplateColumns: '94px 1fr', textDecoration: 'none', color: 'inherit' }}>
                 <SevPill sev={x.sev}/><span className="t1" title={x.title}>{x.title}</span>
               </Link>))}
           </Section>

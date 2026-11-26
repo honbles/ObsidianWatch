@@ -21,7 +21,25 @@ Brand, colours and type are described in [brand.md](brand.md). This section is h
   information, cyan, violet, indigo and purple are the brand accent, gray, slate and zinc are the neutrals.
   Shades keep their intent: 50–600 the colour, 700–800 a border tone, 900–950 the base for tinted backgrounds
   (`bg-red-950/30`). There is no other palette to reach for.
-- **Type.** IBM Plex Sans for the interface, IBM Plex Mono for data. Both ship in `src/assets/fonts`.
+- **Type.** Inter for the interface, JetBrains Mono for data. Both ship in `src/assets/fonts`. The scale (Tailwind
+  `fontSize` in `tailwind.config.js`, same steps in `src/index.css`):
+
+  | Step | Size | Use |
+  |---|---|---|
+  | `text-2xs` | 11 px | Uppercase labels (table headers, menu sections, facet groups) and badges only |
+  | `text-mini` | 12 px | Captions, counts beside labels, small metadata |
+  | `text-xs` | 13 px | Secondary text, table cells in dense panels |
+  | body / `text-sm` | 14 px | Body text, table rows, menu items |
+  | `text-base` | 15 px | Card titles, emphasised values |
+  | h2 / h1 | 18 / 24 px | Section and page titles |
+  | numbers | 26–28 px | Stat tiles and KPIs |
+
+  Nothing is smaller than 11 px. Weights: 400 body; 500 active navigation, labels of form fields and the current
+  breadcrumb group; 600 card titles, table headers, badges; 650 page titles and big numbers. Uppercase is only for
+  short labels, never above 11.5 px.
+- **Tables.** Column widths in `DenseTable` are written in px; fixed widths grow with the text (`COL_SCALE` in
+  `src/components/ui.jsx`), flexible ones (`minmax`) take the free space. A table never cuts off a column: on a narrow
+  window it scrolls sideways.
 - **Depth.** Cards, tiles and stat panels use `--shadow-card` (a soft shadow in light, none in dark);
   menus and dialogs use `--shadow-pop`.
 
@@ -36,8 +54,8 @@ Brand, colours and type are described in [brand.md](brand.md). This section is h
 
 ## Display size
 
-- The whole console is drawn at a scale, `--ui-zoom` on the root element: **Compact** 1 (the size before November 2026),
-  **Default** 1.08, **Large** 1.16. People choose it under **Display size** in the user menu; the browser remembers it
+- The whole console is drawn at a scale, `--ui-zoom` on the root element: **Compact** 1, **Default** 1.08 on windows
+  1400 px and wider and 1 below that, **Large** 1.16. People choose it under **Display size** in the user menu; the browser remembers it
   (`ow-display`) and `public/theme-init.js` applies it before the first paint. Helpers: `src/utils/display.js`.
 - Use `--vh` / `--vw` (`calc(100 * var(--vh))`) instead of `vh` / `vw`: they stay one percent of the window at any scale.
 - Pointer positions are in window pixels. Code that subtracts positions by hand (`clientX - rect.left`, drag
@@ -85,17 +103,19 @@ The pill's tooltip states which rule applied.
 
 Navigation is a header in the chrome colours (both themes), so pages always use the full width.
 
-- **Products.** The mark (and wordmark from 1600 px), Overview, then one menu per product: **Endpoint** (Fleet, Hunt,
-  Prevention, Response, with fleet reachability at the foot), **Application** (Hosts, Overview, Services, Dependencies,
-  Coverage, Settings), **Code** (Repositories), **Cloud** (Posture), **Network** (Probes, beta), **ITDR** (announced:
-  its items are marked "soon" and link nowhere), and **Detect** across all of them (Alerts with the open count, Events,
-  Insights, Rules, Alert rules, Suppressions). The product of the current page is underlined.
-- **Menus.** Click opens a menu; while one is open, hovering another product switches to it. Choosing a page, clicking
-  elsewhere or Escape closes it. The menu list lives in `buildNav()`.
+- **Menu.** The mark and wordmark, then one **Menu** button (with the open-alert count) and, beside it, where you are
+  (product › page, for example *Detect › Alerts*). Menu opens one panel with every page: Overview, then a column per
+  product: **Endpoint** (Fleet, Hunt, Prevention, Response, with fleet reachability at the foot), **Application**
+  (Hosts, Overview, Services, Dependencies, Coverage, Settings), **Code** (Repositories), **Cloud** (Posture),
+  **Network** (Probes, beta), **ITDR** (announced: its items are marked "soon" and link nowhere), **Detect** across all
+  of them (Alerts with the open count, Events, Insights, Rules, Alert rules, Suppressions) and, for admins,
+  **Settings** (Agent builder, Users and access, Audit log, Platform settings). Choosing a page, clicking elsewhere or
+  Escape closes it. The list lives in `buildNav()`.
 - **Tools** on the right: search (Ctrl/⌘ K or `/`: pages, hosts, services, then event search or hunt), the time range
-  (only on pages that read `?from=&to=`, currently Applications), theme, open alerts, **Settings** (admins: Agent builder,
-  Users and access, Audit log, Platform settings) and the user menu (Display size, Change password, Sign out).
-- Under 1280 px the product menus fold into one **Menu** button that lists every product.
+  (only on pages that read `?from=&to=`, currently Applications), theme, open alerts and the user menu (Display size,
+  Change password, Sign out).
+- The panel has four columns, three under 1100 px and two under 760 px. Under 640 px it spans the screen, and the
+  location and search hint are hidden.
 
 ## Signed-out pages
 

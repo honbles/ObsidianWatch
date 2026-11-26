@@ -25,7 +25,7 @@ function StatusBadge({ status }) {
     failed:  'bg-red-950/40 text-red-400 border-red-700',
   }
   return (
-    <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded border ${map[status] || map.closed}`}>
+    <span className={`text-mini font-mono px-1.5 py-0.5 rounded border ${map[status] || map.closed}`}>
       {status}
     </span>
   )
@@ -109,7 +109,7 @@ function SSHTerminal({ session, onClose }) {
 
       term = new XTerm({
         cursorBlink: true,
-        fontSize: 13,
+        fontSize: 14,
         fontFamily: TERMINAL_FONT,
         theme: TERMINAL_THEME,
         rows: 30,
@@ -194,7 +194,7 @@ function SSHTerminal({ session, onClose }) {
           <span className="text-xs font-mono text-siem-muted">
             {session.username}@{session.hostname}
           </span>
-          <span className={`text-[10px] flex items-center gap-1 ${statusColor}`}>
+          <span className={`text-mini flex items-center gap-1 ${statusColor}`}>
             {status === 'connected' && <><Activity size={10} className="animate-pulse" /> Live</>}
             {status === 'connecting' && <><RefreshCw size={10} className="animate-spin" /> Connecting…</>}
             {status === 'error'      && <><AlertTriangle size={10} /> Error</>}
@@ -202,7 +202,7 @@ function SSHTerminal({ session, onClose }) {
           </span>
         </div>
         <button onClick={onClose}
-          className="flex items-center gap-1.5 text-[11px] text-red-400 hover:text-red-300 px-2 py-1 rounded border border-red-800 hover:border-red-600 transition-colors">
+          className="flex items-center gap-1.5 text-xs text-red-400 hover:text-red-300 px-2 py-1 rounded border border-red-800 hover:border-red-600 transition-colors">
           <Square size={10} /> End Session
         </button>
       </div>
@@ -291,7 +291,7 @@ export default function LiveResponse() {
               <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
             </button>
           </div>
-          <div className="flex gap-3 text-[10px] text-siem-muted">
+          <div className="flex gap-3 text-mini text-siem-muted">
             <span className="flex items-center gap-1">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />{lrReady} ready
             </span>
@@ -305,12 +305,12 @@ export default function LiveResponse() {
         </div>
 
         {error && (
-          <div className="flex-shrink-0 mx-3 mt-2 p-2 rounded bg-red-950/30 border border-red-800 text-[11px] text-red-300 flex items-center gap-1.5">
+          <div className="flex-shrink-0 mx-3 mt-2 p-2 rounded bg-red-950/30 border border-red-800 text-xs text-red-300 flex items-center gap-1.5">
             <AlertTriangle size={11} />{error}
           </div>
         )}
 
-        <div className="flex-shrink-0 px-3 pt-3 pb-1 text-[10px] font-mono uppercase tracking-wider text-siem-muted">
+        <div className="flex-shrink-0 px-3 pt-3 pb-1 text-2xs font-mono uppercase tracking-wider text-siem-muted">
           Endpoints ({agents.length})
         </div>
 
@@ -333,7 +333,7 @@ export default function LiveResponse() {
                       <span className="text-xs font-medium truncate">{agent.hostname}</span>
                       <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${agent.online ? 'bg-emerald-400' : 'bg-siem-muted'}`} />
                     </div>
-                    <div className="flex items-center gap-1.5 text-[10px] text-siem-muted mt-0.5">
+                    <div className="flex items-center gap-1.5 text-mini text-siem-muted mt-0.5">
                       <span className="font-mono uppercase">ssh</span>
                       {agent.lr_username && <span>· {agent.lr_username}</span>}
                       {agent.tunnel_online
@@ -346,19 +346,19 @@ export default function LiveResponse() {
 
                 <div className="px-3 pb-2.5">
                   {!agent.lr_ready ? (
-                    <div className="flex items-center gap-1.5 text-[10px] text-yellow-400 bg-yellow-950/20 px-2 py-1 rounded border border-yellow-800">
+                    <div className="flex items-center gap-1.5 text-mini text-yellow-400 bg-yellow-950/20 px-2 py-1 rounded border border-yellow-800">
                       <AlertTriangle size={9} />
                       {!agent.lr_username ? 'No credentials - rebuild agent' : 'Tunnel offline'}
                     </div>
                   ) : isActive ? (
-                    <div className="flex items-center gap-1.5 text-[10px] text-emerald-400">
+                    <div className="flex items-center gap-1.5 text-mini text-emerald-400">
                       <Activity size={10} className="animate-pulse" /> Session active
                     </div>
                   ) : (
                     <button
                       onClick={() => initiateSession(agent)}
                       disabled={isConnecting}
-                      className="w-full flex items-center justify-center gap-1.5 text-[11px] py-1.5 rounded
+                      className="w-full flex items-center justify-center gap-1.5 text-xs py-1.5 rounded
                         bg-emerald-950/30 text-emerald-400 border border-emerald-800
                         hover:bg-emerald-900/40 hover:border-emerald-600 transition-colors
                         disabled:opacity-50 disabled:cursor-wait">
@@ -383,7 +383,7 @@ export default function LiveResponse() {
 
         {/* Session history */}
         <div className="flex-shrink-0 border-t border-siem-border">
-          <div className="px-3 py-2 text-[10px] font-mono uppercase tracking-wider text-siem-muted">
+          <div className="px-3 py-2 text-2xs font-mono uppercase tracking-wider text-siem-muted">
             Recent Sessions
           </div>
           <div className="max-h-48 overflow-y-auto">
@@ -391,18 +391,18 @@ export default function LiveResponse() {
               <div key={s.id} className="flex items-center gap-2 px-3 py-1.5 hover:bg-siem-surface border-b border-siem-border/50">
                 <StatusBadge status={s.status} />
                 <div className="flex-1 min-w-0">
-                  <div className="text-[11px] truncate">{s.agent_id}</div>
-                  <div className="text-[9px] text-siem-muted flex items-center gap-1">
+                  <div className="text-xs truncate">{s.agent_id}</div>
+                  <div className="text-2xs text-siem-muted flex items-center gap-1">
                     <User size={8} />{s.initiated_by}
                     <Clock size={8} className="ml-1" />
                     {formatDistanceToNow(new Date(s.created_at), { addSuffix: true })}
                   </div>
                 </div>
-                <span className="text-[9px] font-mono text-siem-muted uppercase">{s.protocol}</span>
+                <span className="text-2xs font-mono text-siem-muted uppercase">{s.protocol}</span>
               </div>
             ))}
             {sessions.length === 0 && (
-              <div className="px-3 py-3 text-[10px] text-siem-muted text-center">No sessions yet</div>
+              <div className="px-3 py-3 text-mini text-siem-muted text-center">No sessions yet</div>
             )}
           </div>
         </div>
@@ -423,12 +423,12 @@ export default function LiveResponse() {
                 Select an endpoint and click <strong>Start SSH Session</strong> to open an interactive terminal.
               </div>
             </div>
-            <div className="flex items-center gap-4 text-[10px] mt-2">
+            <div className="flex items-center gap-4 text-mini mt-2">
               <span className="flex items-center gap-1.5 text-blue-400"><Monitor size={11} /> Windows (OpenSSH)</span>
               <span className="flex items-center gap-1.5 text-orange-400"><Server size={11} /> Linux</span>
               <span className="flex items-center gap-1.5 text-gray-400"><Globe size={11} /> macOS</span>
             </div>
-            <div className="text-[10px] text-siem-muted/60 max-w-xs text-center mt-2 p-3 rounded border border-siem-border bg-siem-surface">
+            <div className="text-mini text-siem-muted/60 max-w-xs text-center mt-2 p-3 rounded border border-siem-border bg-siem-surface">
               <Shield size={10} className="inline mr-1" />
               Sessions are encrypted end-to-end through the agent tunnel. No ports opened externally.
             </div>

@@ -27,7 +27,7 @@ export default function AppTabSecurity({ service, range }) {
       </select>
       <div className="card"><DataTable columns={cols} rows={data?.events} loading={loading} error={error} rowKey={e => e.id}
         emptyText="No security events in this range." /></div>
-      <div className="text-[11px] text-siem-muted">User identifiers are shown as hashes unless cleartext is enabled for this service.</div>
+      <div className="text-xs text-siem-muted">User identifiers are shown as hashes unless cleartext is enabled for this service.</div>
     </div>
   )
 }

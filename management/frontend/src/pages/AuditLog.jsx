@@ -63,10 +63,10 @@ export default function AuditLog() {
         <div className="ow-card" style={{ flex: 1, minWidth: 0, overflow: 'hidden' }}>
           <div className="ow-card-bar">
             <label className="ow-field" style={{ flex: 1, maxWidth: 380, height: 28 }}><input value={q} onChange={e => setQ(e.target.value)} placeholder="Filter by user, action, target or IP" aria-label="Filter audit log"/></label>
-            <span className="t2" style={{ fontSize: 12 }}>{rows.length} of {entries.length} on this page</span>
+            <span className="t2" style={{ fontSize: 13.5 }}>{rows.length} of {entries.length} on this page</span>
           </div>
           <DenseTable rows={loading ? [] : rows} rowKey={e => e.id} empty={loading ? 'Loading…' : 'No audit entries.'} cols={[
-            { key: 't', label: 'Time', width: '150px', render: e => <span className="mono t2" style={{ fontSize: 12 }} title={new Date(e.created_at).toISOString()}>{format(new Date(e.created_at), 'MMM dd HH:mm:ss')}</span> },
+            { key: 't', label: 'Time', width: '150px', render: e => <span className="mono t2" style={{ fontSize: 13.5 }} title={new Date(e.created_at).toISOString()}>{format(new Date(e.created_at), 'MMM dd HH:mm:ss')}</span> },
             { key: 'u', label: 'User', width: '120px', render: e => <span className="t1">{e.username}</span> },
             { key: 'a', label: 'Action', width: 'minmax(160px, 1fr)', render: e => <span className="mono" style={{ color: tone(e.action) }}>{e.action}</span> },
             { key: 'g', label: 'Target', width: 'minmax(140px, 1fr)', render: e => <span className="mono t2">{e.target || '—'}</span>, title: e => e.target },

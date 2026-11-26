@@ -54,7 +54,7 @@ function NewAlertDialog({ onClose, onCreated }) {
           {[5, 4, 3, 2, 1].map(s => <option key={s} value={s}>{SEV_WORD[s]}</option>)}</select></Field>
         <Field label="Host (optional)"><input className="input mono" value={f.host} onChange={e => setF({ ...f, host: e.target.value })}/></Field>
       </div>
-      {err && <div className="c-crit" style={{ fontSize: 12.5 }}>{err}</div>}
+      {err && <div className="c-crit" style={{ fontSize: 13.5 }}>{err}</div>}
     </Dialog>
   )
 }
@@ -92,7 +92,7 @@ function CommandDialog({ action, ids, users, onClose, onDone }) {
       <Field label={action === 'close' ? 'Review comment' : 'Comment (optional)'} hint={action === 'close' ? 'Kept on every closed alert and in the audit log.' : undefined}>
         <textarea className="input" rows={4} autoFocus={action === 'close'} value={comment} onChange={e => setComment(e.target.value)} placeholder={action === 'close' ? 'What was found, what was done, and why it is resolved' : ''}/>
       </Field>
-      {err && <div className="c-crit" style={{ fontSize: 12.5 }}>{err}</div>}
+      {err && <div className="c-crit" style={{ fontSize: 13.5 }}>{err}</div>}
     </Dialog>
   )
 }
@@ -102,7 +102,7 @@ function TopList({ title, rows, onPick }) {
   return (
     <div style={{ flex: '1 1 220px', minWidth: 0 }}>
       <div className="ow-lbl" style={{ marginBottom: 8 }}>{title}</div>
-      {rows.length === 0 && <div className="t3" style={{ fontSize: 12 }}>None</div>}
+      {rows.length === 0 && <div className="t3" style={{ fontSize: 13.5 }}>None</div>}
       {rows.slice(0, 5).map(r => (
         <button key={r.v} className="ow-fc" style={{ height: 24 }} onClick={() => onPick(r.v)} title={`Filter to ${r.label ?? r.v}`}>
           <span style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 0 }}>
@@ -208,15 +208,15 @@ export default function Alerts() {
 
   const cols = [
     { key: 'sev', label: 'Severity', width: '92px', sortKey: 'urgency', render: a => <SevPill sev={a.severity}/> },
-    { key: 'title', label: 'Alert', width: 'minmax(220px, 2fr)', render: a => (
+    { key: 'title', label: 'Alert', width: 'minmax(220px, 4fr)', render: a => (
       <span style={{ display: 'flex', gap: 8, alignItems: 'center', minWidth: 0 }}>
         <span className="t1" style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{a.title}</span>
         {a.occurrence_count > 1 && <span className="tag mono" title={`Seen ${a.occurrence_count} times. Repeats within 30 minutes fold into one alert.`}>×{a.occurrence_count}</span>}
       </span>), title: a => a.description || a.title },
-    { key: 'host', label: 'Host', width: 'minmax(130px, 1fr)', sortKey: 'host', render: a => a.host ? <span className="mono t1">{a.host}</span> : <span className="t3">—</span> },
+    { key: 'host', label: 'Host', width: 'minmax(100px, 1fr)', sortKey: 'host', render: a => a.host ? <span className="mono t1">{a.host}</span> : <span className="t3">—</span> },
     { key: 'owner', label: 'Owner', width: '96px', sortKey: 'owner', render: a => a.assigned_to ? <span className="t1">{a.assigned_to}</span> : <span className="t3">Unassigned</span> },
     { key: 'status', label: 'Status', width: '100px', render: a => { const [s, l] = STATUS[a.status] || STATUS.open; return <StatePill state={s} dot={a.status !== 'open'}>{l}</StatePill> } },
-    { key: 'sla', label: 'Age', width: '108px', render: a => {
+    { key: 'sla', label: 'Age', width: '124px', render: a => {
       const s = slaOf(a)
       return <span style={{ color: s.state === 'breached' ? 'var(--crit)' : 'var(--t2)' }} title={SLA_TEXT}>
         {relTime(a.created_at).replace(' ago', '')}{s.state === 'breached' && <> · {dur(s.over)} over</>}</span>
@@ -264,7 +264,7 @@ export default function Alerts() {
             <div style={{ flex: '3 1 420px', minWidth: 0 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
                 <span style={{ fontWeight: 500 }}>Created over time</span>
-                <span style={{ display: 'flex', gap: 12, fontSize: 11.5, color: 'var(--t3)' }}>{SEV_STACKS.slice().reverse().map(s => <span key={s.k} style={{ display: 'flex', alignItems: 'center', gap: 5 }}><span style={{ width: 8, height: 8, borderRadius: 2, background: s.color }}/>{s.label}</span>)}</span>
+                <span style={{ display: 'flex', gap: 12, fontSize: 13, color: 'var(--t3)' }}>{SEV_STACKS.slice().reverse().map(s => <span key={s.k} style={{ display: 'flex', alignItems: 'center', gap: 5 }}><span style={{ width: 8, height: 8, borderRadius: 2, background: s.color }}/>{s.label}</span>)}</span>
               </div>
               <Histogram items={alerts.map(a => ({ t: a.created_at, k: a.severity }))} stacks={SEV_STACKS} from={histFrom} label="alerts"/>
             </div>
@@ -289,8 +289,8 @@ export default function Alerts() {
                   <input value={q} onChange={e => setQ(e.target.value)} placeholder="Filter · text, host:web owner:unassigned sev:critical" aria-label="Filter alerts"/>
                   {q && <button onClick={() => setQ('')} aria-label="Clear filter" style={{ background: 'none', border: 0, color: 'var(--t3)', cursor: 'pointer' }}><X size={12}/></button>}
                 </label>
-                <span className="t2" style={{ fontSize: 12 }}>{rows.length.toLocaleString()} of {alerts.length.toLocaleString()}</span>
-                <span className="t3" style={{ marginLeft: 'auto', fontSize: 12 }}>Sorted by {{ urgency: 'urgency', time: 'last seen', host: 'host', owner: 'owner' }[sort.key]}</span>
+                <span className="t2" style={{ fontSize: 13.5 }}>{rows.length.toLocaleString()} of {alerts.length.toLocaleString()}</span>
+                <span className="t3" style={{ marginLeft: 'auto', fontSize: 13.5 }}>Sorted by {{ urgency: 'urgency', time: 'last seen', host: 'host', owner: 'owner' }[sort.key]}</span>
               </div>
             )}
             {err && <div className="c-crit" style={{ padding: '10px 14px' }}>Could not load alerts: {err}</div>}

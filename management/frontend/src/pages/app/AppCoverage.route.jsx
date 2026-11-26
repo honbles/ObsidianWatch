@@ -39,7 +39,7 @@ export default function AppCoverage() {
     { key: 'otel', label: 'OpenTelemetry', render: s => (s.tier >= 1 ? yes : no), sort: s => s.tier },
     { key: 'helper', label: 'Security helper', render: s => (s.tier >= 2 ? yes : no), sort: s => s.tier },
     { key: 'instances', label: 'Instances', align: 'right', sort: s => s.instances },
-    { key: 'issues', label: 'Issues', render: s => (issues[s.key] || []).map(r => <span key={r} className="mr-1 text-[10px] rounded border border-amber-500/40 text-amber-300 px-1">{ISSUE[r] || r}</span>), sort: s => (issues[s.key] || []).length },
+    { key: 'issues', label: 'Issues', render: s => (issues[s.key] || []).map(r => <span key={r} className="mr-1 text-mini rounded border border-amber-500/40 text-amber-300 px-1">{ISSUE[r] || r}</span>), sort: s => (issues[s.key] || []).length },
     { key: 'last_seen', label: 'Last seen', render: s => appRel(s.last_seen), sort: s => s.last_seen },
   ]
   const ruleCols = [
@@ -48,7 +48,7 @@ export default function AppCoverage() {
     { key: 'fired', label: 'Fired', align: 'right', render: r => appInt(r.fired), sort: r => r.fired },
     { key: 'observed', label: 'In observe', align: 'right', render: r => appInt(r.observed), sort: r => r.observed },
     { key: 'degraded', label: 'Degraded', align: 'right', render: r => (r.degraded ? <span className="text-amber-300">{appInt(r.degraded)}</span> : 0), sort: r => r.degraded },
-    { key: 'skipped', label: 'Skipped (reason)', render: r => Object.entries(r.skipped || {}).map(([k, v]) => <span key={k} className="mr-2 text-[10px] rounded border border-slate-500/40 px-1 text-siem-muted">{k} ×{v}</span>) },
+    { key: 'skipped', label: 'Skipped (reason)', render: r => Object.entries(r.skipped || {}).map(([k, v]) => <span key={k} className="mr-2 text-mini rounded border border-slate-500/40 px-1 text-siem-muted">{k} ×{v}</span>) },
   ]
   return (
     <div className="p-6 space-y-5">

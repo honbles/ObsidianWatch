@@ -36,7 +36,7 @@ export default function CreateIssuesDialog({ conn, repo, branch, onClose, onDone
         <div className="flex items-center justify-between px-5 py-4 border-b border-siem-border">
           <div>
             <div className="text-sm font-semibold text-siem-text">Create issues · <span className="font-mono">{repo}</span></div>
-            <div className="text-[11px] text-siem-muted">{TRACKER[conn.provider]} · one issue per problem, listing every location</div>
+            <div className="text-xs text-siem-muted">{TRACKER[conn.provider]} · one issue per problem, listing every location</div>
           </div>
           <button onClick={onClose} className="text-siem-muted hover:text-siem-text"><X size={16}/></button>
         </div>
@@ -62,7 +62,7 @@ export default function CreateIssuesDialog({ conn, repo, branch, onClose, onDone
               </div>
               <div className="border border-siem-border rounded-lg divide-y divide-siem-border/50">
                 {(plan.groups || []).map(g => (
-                  <div key={g.key} className="flex items-center gap-2 px-3 py-2 text-[11px]">
+                  <div key={g.key} className="flex items-center gap-2 px-3 py-2 text-xs">
                     <span className="uppercase w-16 text-siem-muted">{g.severity}</span>
                     <span className="flex-1 text-siem-text truncate" title={g.title}>{g.title}</span>
                     <span className="text-siem-muted">{g.findings} finding(s)</span>
@@ -71,9 +71,9 @@ export default function CreateIssuesDialog({ conn, repo, branch, onClose, onDone
                       : <span className="text-emerald-400">new issue</span>}
                   </div>
                 ))}
-                {(plan.groups || []).length === 0 && <div className="px-3 py-3 text-[11px] text-siem-muted">No findings at this level.</div>}
+                {(plan.groups || []).length === 0 && <div className="px-3 py-3 text-xs text-siem-muted">No findings at this level.</div>}
               </div>
-              <p className="text-[11px] text-siem-muted">Running it again only adds new findings. Secret values are never written.</p>
+              <p className="text-xs text-siem-muted">Running it again only adds new findings. Secret values are never written.</p>
             </>
           )}
           {result && (

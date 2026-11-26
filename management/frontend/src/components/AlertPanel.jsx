@@ -21,7 +21,7 @@ function StatusBadge({ status }) {
     closed:       'bg-siem-bg text-siem-muted border-siem-border',
   }
   return (
-    <span className={`text-[9px] px-2 py-0.5 rounded-full border font-semibold uppercase ${s[status] || s.closed}`}>
+    <span className={`text-2xs px-2 py-0.5 rounded-full border font-semibold uppercase ${s[status] || s.closed}`}>
       {status === 'open' && <span className="inline-block w-1 h-1 rounded-full bg-red-400 animate-pulse mr-1"/>}
       {status}
     </span>
@@ -48,7 +48,7 @@ function RiskRing({ score, fp }) {
             <span className="text-lg font-bold font-mono" style={{ color: riskColor }}>{score}</span>
           </div>
         </div>
-        <span className="text-[9px] text-siem-muted uppercase tracking-wide">Risk Score</span>
+        <span className="text-2xs text-siem-muted uppercase tracking-wide">Risk Score</span>
       </div>
 
       {/* FP probability */}
@@ -65,7 +65,7 @@ function RiskRing({ score, fp }) {
             <span className="text-lg font-bold font-mono" style={{ color: fpColor }}>{fp}%</span>
           </div>
         </div>
-        <span className="text-[9px] text-siem-muted uppercase tracking-wide">False Positive</span>
+        <span className="text-2xs text-siem-muted uppercase tracking-wide">False Positive</span>
       </div>
     </div>
   )
@@ -121,7 +121,7 @@ function AssignModal({ alert, users, onClose, onDone }) {
         <div className="bg-siem-bg border border-siem-border rounded-lg px-3 py-2 mb-4 text-xs text-siem-text truncate">{alert.title}</div>
         <div className="space-y-3">
           <div>
-            <label className="block text-[10px] uppercase tracking-wider text-siem-muted mb-1.5">Analyst *</label>
+            <label className="block text-2xs uppercase tracking-wider text-siem-muted mb-1.5">Analyst *</label>
             {users.length > 0 ? (
               <select value={assignTo} onChange={e => setAssignTo(e.target.value)}
                 className="w-full bg-siem-bg border border-siem-border rounded-lg px-3 py-2 text-sm text-siem-text focus:outline-none focus:border-siem-accent">
@@ -134,7 +134,7 @@ function AssignModal({ alert, users, onClose, onDone }) {
             )}
           </div>
           <div>
-            <label className="block text-[10px] uppercase tracking-wider text-siem-muted mb-1.5">Notes</label>
+            <label className="block text-2xs uppercase tracking-wider text-siem-muted mb-1.5">Notes</label>
             <textarea rows={3} value={notes} onChange={e => setNotes(e.target.value)}
               className="w-full bg-siem-bg border border-siem-border rounded-lg px-3 py-2 text-sm text-siem-text focus:outline-none focus:border-siem-accent resize-none"/>
           </div>
@@ -196,6 +196,127 @@ function CloseModal({ alert, onClose, onDone }) {
   )
 }
 
+// ── False-positive modal ──────────────────────────────────────────────────────
+// Endpoint alerts: closing as false positive creates a suppression from the alert's evidence
+// (all hosts, permanent by default) and closes the other open alerts it covers.
+function describeSuppression(s) {
+  if (!s) return []
+  const rows = []
+  if (s.indicator)       rows.push(['Indicator', s.indicator])
+  if (s.file_hash)       rows.push(['Hash', s.file_hash])
+  if (s.image_path_glob) rows.push(['Program', s.image_path_glob])
+  if (s.dns_domain)      rows.push(['Domain', s.dns_domain + ' and subdomains'])
+  if (s.ip)              rows.push(['IP', s.ip])
+  if (s.process_name)    rows.push(['Process', s.process_name])
+  if (s.file_path_glob)  rows.push(['File', s.file_path_glob])
+  rows.push(['Rule', s.match_mode === 'prefix' ? (s.rule_id === 'IOC:' ? 'Any threat-intel source' : s.rule_id + '*') : s.rule_id])
+  return rows
+}
+
+function FalsePositiveModal({ alert, onClose, onDone }) {
+  const [preview, setPreview]   = useState(null)
+  const [comment, setComment]   = useState('')
+  const [suppress, setSuppress] = useState(true)
+  const [hostOnly, setHostOnly] = useState(false)
+  const [days, setDays]         = useState(0)
+  const [saving, setSaving]     = useState(false)
+  const [error, setError]       = useState('')
+
+  useEffect(() => {
+    const q = new URLSearchParams()
+    if (hostOnly) q.set('this_host_only', 'true')
+    if (days) q.set('expires_in_days', String(days))
+    api.get(`/api/v1/alerts/${alert.id}/false-positive?` + q.toString())
+      .then(r => setPreview(r.data))
+      .catch(e => setError(e.response?.data?.error || 'Could not load the suppression preview'))
+  }, [alert.id, hostOnly, days])
+
+  const eligible = preview?.eligible
+  const save = async () => {
+    setSaving(true); setError('')
+    try {
+      await api.post(`/api/v1/alerts/${alert.id}/false-positive`, {
+        comment, no_suppression: !eligible || !suppress, this_host_only: hostOnly, expires_in_days: days,
+      })
+      onDone(); onClose()
+    } catch (e) { setError(e.response?.data?.error || 'Failed') }
+    finally { setSaving(false) }
+  }
+
+  return createPortal(
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm"
+         onClick={e => { e.stopPropagation(); onClose() }}>
+      <div className="bg-siem-surface border border-siem-border rounded-2xl p-6 w-full max-w-lg shadow-2xl"
+           onClick={e => e.stopPropagation()}>
+        <div className="flex items-center gap-2 mb-4">
+          <Shield size={15} className="text-siem-accent"/>
+          <h2 className="text-sm font-bold text-siem-text">Close as false positive</h2>
+          <button onClick={onClose} className="ml-auto text-siem-muted hover:text-siem-text"><X size={14}/></button>
+        </div>
+        <div className="space-y-3">
+          {!preview && !error && <div className="text-xs text-siem-muted">Loading…</div>}
+          {preview && !eligible && (
+            <div className="text-xs text-siem-muted bg-siem-bg border border-siem-border rounded-lg px-3 py-2">
+              No suppression will be created. {preview.reason}
+            </div>
+          )}
+          {eligible && (
+            <>
+              <label className="flex items-center gap-2 text-xs text-siem-text">
+                <input type="checkbox" checked={suppress} onChange={e => setSuppress(e.target.checked)}/>
+                Suppress this from now on
+              </label>
+              {suppress && (
+                <div className="bg-siem-bg border border-siem-border rounded-lg overflow-hidden" data-testid="fp-preview">
+                  {describeSuppression(preview.suppression).map(([k, v]) => (
+                    <div key={k} className="flex gap-3 px-3 py-1.5 text-xs">
+                      <span className="text-siem-muted w-20 shrink-0">{k}</span>
+                      <span className="text-siem-text font-mono text-xs break-all">{v}</span>
+                    </div>
+                  ))}
+                  <div className="flex gap-3 px-3 py-1.5 text-xs border-t border-siem-border/40">
+                    <span className="text-siem-muted w-20 shrink-0">Hosts</span>
+                    <span className="flex gap-3">
+                      <label className="flex items-center gap-1"><input type="radio" checked={!hostOnly} onChange={() => setHostOnly(false)}/> All hosts</label>
+                      <label className="flex items-center gap-1"><input type="radio" checked={hostOnly} onChange={() => setHostOnly(true)}/> {alert.host || 'This host'} only</label>
+                    </span>
+                  </div>
+                  <div className="flex gap-3 px-3 py-1.5 text-xs items-center">
+                    <span className="text-siem-muted w-20 shrink-0">Duration</span>
+                    <select value={days} onChange={e => setDays(Number(e.target.value))}
+                      className="bg-siem-surface border border-siem-border rounded px-2 py-1 text-xs text-siem-text">
+                      <option value={0}>Permanent</option>
+                      <option value={7}>7 days</option>
+                      <option value={30}>30 days</option>
+                      <option value={90}>90 days</option>
+                    </select>
+                  </div>
+                  {preview.covers_open > 0 && (
+                    <div className="px-3 py-1.5 text-xs text-siem-muted border-t border-siem-border/40">
+                      Also closes {preview.covers_open} other open alert{preview.covers_open === 1 ? '' : 's'} it covers.
+                    </div>
+                  )}
+                </div>
+              )}
+            </>
+          )}
+          <textarea rows={3} value={comment} onChange={e => setComment(e.target.value)}
+            placeholder="Why it is a false positive (optional)"
+            className="w-full bg-siem-bg border border-siem-border rounded-lg px-3 py-2 text-sm text-siem-text focus:outline-none focus:border-siem-accent resize-none"/>
+          {error && <div className="text-red-400 text-xs">{error}</div>}
+          <div className="flex gap-2">
+            <button onClick={save} disabled={saving || !preview}
+              className="flex-1 text-xs bg-siem-accent hover:bg-siem-accent/90 disabled:opacity-40 text-white px-4 py-2 rounded-lg font-medium">
+              {saving ? 'Closing…' : (eligible && suppress ? 'Close and suppress' : 'Close as false positive')}
+            </button>
+            <button onClick={onClose} className="text-xs text-siem-muted border border-siem-border rounded-lg px-4 py-2">Cancel</button>
+          </div>
+        </div>
+      </div>
+    </div>, document.body
+  )
+}
+
 // ── AI Analysis report ────────────────────────────────────────────────────────
 function AIReport({ analysis, onRerun, loading }) {
   if (loading) return (
@@ -209,7 +330,7 @@ function AIReport({ analysis, onRerun, loading }) {
       {['Checking threat indicators', 'Assessing false positive probability', 'Looking up MITRE techniques', 'Generating recommendations'].map((msg, i) => (
         <div key={i} className="flex items-center gap-2">
           <div className="w-1.5 h-1.5 rounded-full bg-siem-accent/60 animate-pulse" style={{ animationDelay: `${i * 300}ms` }}/>
-          <span className="text-[11px] text-siem-muted">{msg}…</span>
+          <span className="text-xs text-siem-muted">{msg}…</span>
         </div>
       ))}
     </div>
@@ -232,7 +353,7 @@ function AIReport({ analysis, onRerun, loading }) {
             )}
           </div>
           <button onClick={onRerun}
-            className="text-[10px] text-siem-muted hover:text-siem-text border border-siem-border rounded-lg px-2.5 py-1.5 transition-colors shrink-0">
+            className="text-mini text-siem-muted hover:text-siem-text border border-siem-border rounded-lg px-2.5 py-1.5 transition-colors shrink-0">
             <RefreshCw size={10} className="inline mr-1"/>Re-run
           </button>
         </div>
@@ -243,7 +364,7 @@ function AIReport({ analysis, onRerun, loading }) {
         <div className="bg-siem-bg border border-siem-border rounded-xl p-4">
           <div className="flex items-center gap-2 mb-2">
             <Eye size={12} className="text-siem-accent"/>
-            <span className="text-[10px] uppercase tracking-wider text-siem-muted font-semibold">What Happened</span>
+            <span className="text-2xs uppercase tracking-wider text-siem-muted font-semibold">What Happened</span>
           </div>
           <p className="text-xs text-siem-text leading-relaxed">{a.what_happened}</p>
         </div>
@@ -263,7 +384,7 @@ function AIReport({ analysis, onRerun, loading }) {
               a.verdict === 'SUSPICIOUS' ? 'text-orange-400' :
               a.verdict === 'FALSE_POSITIVE' ? 'text-emerald-400' : 'text-yellow-400'
             }/>
-            <span className="text-[10px] uppercase tracking-wider text-siem-muted font-semibold">Threat Assessment</span>
+            <span className="text-2xs uppercase tracking-wider text-siem-muted font-semibold">Threat Assessment</span>
           </div>
           <p className="text-xs text-siem-text leading-relaxed">{a.threat_assessment}</p>
         </div>
@@ -274,7 +395,7 @@ function AIReport({ analysis, onRerun, loading }) {
         <div className="bg-siem-bg border border-siem-border rounded-xl p-4">
           <div className="flex items-center gap-2 mb-2">
             <Search size={12} className="text-emerald-400"/>
-            <span className="text-[10px] uppercase tracking-wider text-siem-muted font-semibold">False Positive Indicators</span>
+            <span className="text-2xs uppercase tracking-wider text-siem-muted font-semibold">False Positive Indicators</span>
           </div>
           <p className="text-xs text-siem-text leading-relaxed">{a.false_positive_indicators}</p>
         </div>
@@ -285,7 +406,7 @@ function AIReport({ analysis, onRerun, loading }) {
         <div className="bg-purple-950/20 border border-purple-800/30 rounded-xl p-4">
           <div className="flex items-center gap-2 mb-2">
             <Hash size={12} className="text-purple-400"/>
-            <span className="text-[10px] uppercase tracking-wider text-siem-muted font-semibold">Hash Intelligence</span>
+            <span className="text-2xs uppercase tracking-wider text-siem-muted font-semibold">Hash Intelligence</span>
           </div>
           <p className="text-xs text-siem-text leading-relaxed">{a.hash_analysis}</p>
         </div>
@@ -296,7 +417,7 @@ function AIReport({ analysis, onRerun, loading }) {
         <div className="bg-siem-bg border border-siem-border rounded-xl p-4">
           <div className="flex items-center gap-2 mb-2">
             <Shield size={12} className="text-blue-400"/>
-            <span className="text-[10px] uppercase tracking-wider text-siem-muted font-semibold">MITRE ATT&CK Context</span>
+            <span className="text-2xs uppercase tracking-wider text-siem-muted font-semibold">MITRE ATT&CK Context</span>
           </div>
           <p className="text-xs text-siem-text leading-relaxed">{a.mitre_context}</p>
         </div>
@@ -307,7 +428,7 @@ function AIReport({ analysis, onRerun, loading }) {
         <div className="bg-siem-bg border border-siem-border rounded-xl p-4">
           <div className="flex items-center gap-2 mb-2">
             <Activity size={12} className="text-orange-400"/>
-            <span className="text-[10px] uppercase tracking-wider text-siem-muted font-semibold">Blast Radius</span>
+            <span className="text-2xs uppercase tracking-wider text-siem-muted font-semibold">Blast Radius</span>
           </div>
           <p className="text-xs text-siem-text leading-relaxed">{a.affected_system}</p>
         </div>
@@ -318,13 +439,13 @@ function AIReport({ analysis, onRerun, loading }) {
         <div className="bg-siem-bg border border-siem-border rounded-xl p-4">
           <div className="flex items-center gap-2 mb-3">
             <Clock size={12} className="text-siem-accent"/>
-            <span className="text-[10px] uppercase tracking-wider text-siem-muted font-semibold">Attack Timeline</span>
+            <span className="text-2xs uppercase tracking-wider text-siem-muted font-semibold">Attack Timeline</span>
           </div>
           <div className="space-y-2">
             {a.timeline.map((t, i) => (
               <div key={i} className="flex items-start gap-3">
                 <div className="flex flex-col items-center shrink-0">
-                  <span className="text-[9px] font-mono text-siem-accent bg-siem-accent/10 border border-siem-accent/20 rounded px-1.5 py-0.5 whitespace-nowrap">{t.time}</span>
+                  <span className="text-2xs font-mono text-siem-accent bg-siem-accent/10 border border-siem-accent/20 rounded px-1.5 py-0.5 whitespace-nowrap">{t.time}</span>
                   {i < a.timeline.length - 1 && <div className="w-px h-4 bg-siem-border/50 mt-1"/>}
                 </div>
                 <p className="text-xs text-siem-text leading-snug pt-0.5">{t.event}</p>
@@ -339,12 +460,12 @@ function AIReport({ analysis, onRerun, loading }) {
         <div className="bg-emerald-950/15 border border-emerald-800/30 rounded-xl p-4">
           <div className="flex items-center gap-2 mb-3">
             <CheckCircle size={12} className="text-emerald-400"/>
-            <span className="text-[10px] uppercase tracking-wider text-emerald-400/80 font-semibold">Recommended Actions</span>
+            <span className="text-2xs uppercase tracking-wider text-emerald-400/80 font-semibold">Recommended Actions</span>
           </div>
           <ol className="space-y-2">
             {a.recommended_actions.map((action, i) => (
               <li key={i} className="flex items-start gap-3">
-                <span className="w-5 h-5 rounded-full bg-emerald-900/40 border border-emerald-700 text-emerald-400 text-[9px] font-bold flex items-center justify-center shrink-0 mt-0.5">{i+1}</span>
+                <span className="w-5 h-5 rounded-full bg-emerald-900/40 border border-emerald-700 text-emerald-400 text-2xs font-bold flex items-center justify-center shrink-0 mt-0.5">{i+1}</span>
                 <span className="text-xs text-siem-text leading-relaxed">{action}</span>
               </li>
             ))}
@@ -357,7 +478,7 @@ function AIReport({ analysis, onRerun, loading }) {
         <div className="bg-yellow-950/15 border border-yellow-800/25 rounded-xl p-4">
           <div className="flex items-center gap-2 mb-3">
             <Search size={12} className="text-yellow-400"/>
-            <span className="text-[10px] uppercase tracking-wider text-yellow-400/80 font-semibold">Investigation Questions</span>
+            <span className="text-2xs uppercase tracking-wider text-yellow-400/80 font-semibold">Investigation Questions</span>
           </div>
           <ul className="space-y-2">
             {a.investigation_questions.map((q, i) => (
@@ -370,7 +491,7 @@ function AIReport({ analysis, onRerun, loading }) {
         </div>
       )}
 
-      <p className="text-[9px] text-siem-muted/40 text-center">AI analysis - verify independently before taking action</p>
+      <p className="text-2xs text-siem-muted/40 text-center">AI analysis - verify independently before taking action</p>
     </div>
   )
 }
@@ -381,6 +502,8 @@ function AlertPanel({ alertId, users, onClose, onStatusChange, inline = false })
   const [loading, setLoading]       = useState(true)
   const [showAssign, setShowAssign] = useState(false)
   const [showClose, setShowClose]   = useState(false)
+  const [showFP, setShowFP]         = useState(false)
+  const [reopening, setReopening]   = useState(false)
   const [editNotes, setEditNotes]   = useState(false)
   const [notes, setNotes]           = useState('')
   const [savingNotes, setSavingNotes] = useState(false)
@@ -480,6 +603,14 @@ function AlertPanel({ alertId, users, onClose, onStatusChange, inline = false })
     } finally { setAiLoading(false) }
   }
 
+  const reopen = async () => {
+    let remove = false
+    if (alert.suppression_id) remove = window.confirm(`Also delete suppression #${alert.suppression_id} that this close created?`)
+    setReopening(true)
+    try { await api.patch(`/api/v1/alerts/${alert.id}/reopen`, { remove_suppression: remove }); onStatusChange(); load() }
+    finally { setReopening(false) }
+  }
+
   const saveNotes = async () => {
     setSavingNotes(true)
     try { await api.patch(`/api/v1/alerts/${alertId}/notes`, { notes }); setEditNotes(false); load() }
@@ -524,6 +655,11 @@ function AlertPanel({ alertId, users, onClose, onStatusChange, inline = false })
           onClose={() => setShowClose(false)} onDone={() => { onStatusChange(); load() }}/>
       )}
 
+      {showFP && alert && (
+        <FalsePositiveModal alert={alert}
+          onClose={() => setShowFP(false)} onDone={() => { onStatusChange(); load() }}/>
+      )}
+
       {/* Header */}
       <div className="shrink-0 px-5 py-3.5 border-b border-siem-border bg-siem-surface">
         <div className="flex items-center gap-2">
@@ -548,18 +684,21 @@ function AlertPanel({ alertId, users, onClose, onStatusChange, inline = false })
             <div className="flex items-center gap-2 mb-1.5 flex-wrap">
               <SeverityBadge severity={alert.severity}/>
               <StatusBadge status={alert.status}/>
+              {alert.disposition === 'false_positive' && (
+                <span className="text-2xs px-2 py-0.5 rounded-full border font-semibold uppercase border-siem-border text-siem-muted">False positive</span>
+              )}
               {alert.assigned_to && (
-                <span className="flex items-center gap-1 text-[9px] text-yellow-400 bg-yellow-950/20 border border-yellow-800/30 rounded-full px-2 py-0.5">
+                <span className="flex items-center gap-1 text-2xs text-yellow-400 bg-yellow-950/20 border border-yellow-800/30 rounded-full px-2 py-0.5">
                   <User size={8}/>{alert.assigned_to}
                 </span>
               )}
-              <span className="text-[9px] text-siem-muted ml-auto flex items-center gap-1">
+              <span className="text-2xs text-siem-muted ml-auto flex items-center gap-1">
                 <Clock size={9}/> {formatDistanceToNow(new Date(alert.created_at), { addSuffix: true })}
               </span>
             </div>
             <div className="text-sm font-semibold text-siem-text leading-snug">{alert.title}</div>
             {alert.host && (
-              <div className="text-[10px] font-mono text-siem-muted mt-0.5">{alert.host}</div>
+              <div className="text-mini font-mono text-siem-muted mt-0.5">{alert.host}</div>
             )}
           </div>
 
@@ -593,7 +732,7 @@ function AlertPanel({ alertId, users, onClose, onStatusChange, inline = false })
                 {aiError && (
                   <div className="bg-red-950/20 border border-red-800/30 rounded-xl p-3 flex items-center justify-between gap-3">
                     <span className="text-xs text-red-400">{aiError}</span>
-                    <button onClick={runAiAnalysis} className="text-[10px] text-siem-muted border border-siem-border rounded px-2 py-1 hover:text-siem-text shrink-0">
+                    <button onClick={runAiAnalysis} className="text-mini text-siem-muted border border-siem-border rounded px-2 py-1 hover:text-siem-text shrink-0">
                       Retry
                     </button>
                   </div>
@@ -619,7 +758,7 @@ function AlertPanel({ alertId, users, onClose, onStatusChange, inline = false })
                 {/* Alert info */}
                 <div className="bg-siem-bg border border-siem-border rounded-xl overflow-hidden">
                   <div className="px-4 py-2.5 border-b border-siem-border/40 bg-siem-surface/50">
-                    <span className="text-[10px] uppercase tracking-wider text-siem-muted font-semibold">Alert Info</span>
+                    <span className="text-2xs uppercase tracking-wider text-siem-muted font-semibold">Alert Info</span>
                   </div>
                   {[
                     ['Alert ID',    `#${alert.id}`],
@@ -631,7 +770,7 @@ function AlertPanel({ alertId, users, onClose, onStatusChange, inline = false })
                   ].map(([k, v], i) => (
                     <div key={k} className={`flex gap-3 px-4 py-2 text-xs ${i % 2 ? 'bg-white/[0.01]' : ''}`}>
                       <span className="text-siem-muted w-28 shrink-0">{k}</span>
-                      <span className="text-siem-text font-mono text-[10px] break-all">{v}</span>
+                      <span className="text-siem-text font-mono text-mini break-all">{v}</span>
                     </div>
                   ))}
                 </div>
@@ -639,7 +778,7 @@ function AlertPanel({ alertId, users, onClose, onStatusChange, inline = false })
                 {/* Description */}
                 {alert.description && (
                   <div className="bg-siem-bg border border-siem-border rounded-xl p-4">
-                    <div className="text-[10px] uppercase tracking-wider text-siem-muted font-semibold mb-2">Description</div>
+                    <div className="text-2xs uppercase tracking-wider text-siem-muted font-semibold mb-2">Description</div>
                     <p className="text-xs text-siem-text leading-relaxed">{alert.description}</p>
                   </div>
                 )}
@@ -648,9 +787,9 @@ function AlertPanel({ alertId, users, onClose, onStatusChange, inline = false })
                 {ev && (
                   <div className="bg-siem-bg border border-siem-accent/20 rounded-xl overflow-hidden">
                     <div className="flex items-center justify-between px-4 py-2.5 border-b border-siem-border/40">
-                      <span className="text-[10px] uppercase tracking-wider text-siem-muted font-semibold">Triggering Event</span>
+                      <span className="text-2xs uppercase tracking-wider text-siem-muted font-semibold">Triggering Event</span>
                       <a href={`/events?id=${ev.id}`} onClick={onClose}
-                        className="flex items-center gap-1 text-[10px] text-siem-accent border border-siem-accent/30 hover:bg-siem-accent/10 rounded px-2 py-0.5">
+                        className="flex items-center gap-1 text-mini text-siem-accent border border-siem-accent/30 hover:bg-siem-accent/10 rounded px-2 py-0.5">
                         <ExternalLink size={9}/> View in Events
                       </a>
                     </div>
@@ -674,13 +813,13 @@ function AlertPanel({ alertId, users, onClose, onStatusChange, inline = false })
                     ].filter(([, v]) => v).map(([k, v], i) => (
                       <div key={k} className={`flex gap-3 px-4 py-2 text-xs ${i % 2 ? 'bg-white/[0.01]' : ''}`}>
                         <span className="text-siem-muted w-24 shrink-0">{k}</span>
-                        <span className="text-siem-text font-mono text-[10px] break-all">{(k === 'Src IP' || k === 'Dst IP') ? <IPLink ip={String(v)} /> : String(v)}</span>
+                        <span className="text-siem-text font-mono text-mini break-all">{(k === 'Src IP' || k === 'Dst IP') ? <IPLink ip={String(v)} /> : String(v)}</span>
                       </div>
                     ))}
                     {ev.raw && (
                       <details className="px-4 py-2 border-t border-siem-border/30">
-                        <summary className="text-[10px] text-siem-muted cursor-pointer hover:text-siem-text">Raw event data</summary>
-                        <pre className="text-[9px] text-siem-muted mt-2 overflow-x-auto whitespace-pre-wrap break-all">
+                        <summary className="text-mini text-siem-muted cursor-pointer hover:text-siem-text">Raw event data</summary>
+                        <pre className="text-2xs text-siem-muted mt-2 overflow-x-auto whitespace-pre-wrap break-all">
                           {JSON.stringify(ev.raw, null, 2)}
                         </pre>
                       </details>
@@ -692,10 +831,10 @@ function AlertPanel({ alertId, users, onClose, onStatusChange, inline = false })
                 <div>
                   <div className="flex items-center gap-2 mb-2">
                     <FileText size={11} className="text-siem-muted"/>
-                    <span className="text-[10px] uppercase tracking-wider text-siem-muted font-semibold">Case Notes</span>
+                    <span className="text-2xs uppercase tracking-wider text-siem-muted font-semibold">Case Notes</span>
                     {!editNotes && alert.status !== 'closed' && (
                       <button onClick={() => setEditNotes(true)}
-                        className="ml-auto text-[9px] text-siem-muted hover:text-siem-accent border border-siem-border rounded px-2 py-0.5">
+                        className="ml-auto text-2xs text-siem-muted hover:text-siem-accent border border-siem-border rounded px-2 py-0.5">
                         Edit
                       </button>
                     )}
@@ -717,7 +856,7 @@ function AlertPanel({ alertId, users, onClose, onStatusChange, inline = false })
                     <div className="bg-siem-bg border border-siem-border rounded-xl p-3 min-h-[60px]">
                       {alert.case_notes
                         ? <p className="text-xs text-siem-text leading-relaxed whitespace-pre-wrap">{alert.case_notes}</p>
-                        : <p className="text-[10px] text-siem-muted/50 italic">No case notes.</p>}
+                        : <p className="text-mini text-siem-muted/50 italic">No case notes.</p>}
                     </div>
                   )}
                 </div>
@@ -725,15 +864,29 @@ function AlertPanel({ alertId, users, onClose, onStatusChange, inline = false })
                 {/* Review comment */}
                 {alert.review_comment && (
                   <div className="bg-emerald-950/20 border border-emerald-800/30 rounded-xl p-3">
-                    <div className="text-[10px] text-emerald-400 font-semibold mb-1 flex items-center gap-1">
+                    <div className="text-mini text-emerald-400 font-semibold mb-1 flex items-center gap-1">
                       <CheckCircle size={9}/> Review Comment
                     </div>
                     <p className="text-xs text-siem-text leading-relaxed">{alert.review_comment}</p>
                     {alert.closed_by && (
-                      <p className="text-[9px] text-siem-muted mt-1">
+                      <p className="text-2xs text-siem-muted mt-1">
                         Closed by {alert.closed_by}
                         {alert.closed_at && <> · {format(new Date(alert.closed_at), 'yyyy-MM-dd HH:mm')}</>}
                       </p>
+                    )}
+                  </div>
+                )}
+
+                {alert.status === 'closed' && (
+                  <div className="flex gap-2 flex-wrap items-center pt-1">
+                    <button onClick={reopen} disabled={reopening}
+                      className="flex items-center gap-1.5 text-xs text-siem-muted border border-siem-border hover:text-siem-text rounded-lg px-3 py-2">
+                      <RefreshCw size={12}/> {reopening ? 'Reopening…' : 'Reopen'}
+                    </button>
+                    {alert.suppression_id && (
+                      <button onClick={() => navigate('/suppressions')} className="text-xs text-siem-accent hover:underline">
+                        Suppression #{alert.suppression_id}
+                      </button>
                     )}
                   </div>
                 )}
@@ -750,6 +903,10 @@ function AlertPanel({ alertId, users, onClose, onStatusChange, inline = false })
                     <button onClick={() => setShowClose(true)}
                       className="flex items-center gap-1.5 text-xs text-siem-muted border border-siem-border hover:border-siem-accent/40 hover:text-siem-text rounded-lg px-3 py-2 transition-colors">
                       <XCircle size={12}/> Close with Review
+                    </button>
+                    <button onClick={() => setShowFP(true)}
+                      className="flex items-center gap-1.5 text-xs text-siem-accent border border-siem-accent/40 hover:bg-siem-accent/10 rounded-lg px-3 py-2 transition-colors">
+                      <Shield size={12}/> Close as false positive
                     </button>
                     {/* Pre-fill a suppression from this alert's rule and source event. Only built-in
                         signature alerts carry a rule ID in their dedup key (sig:<ID>:host:...). */}
@@ -788,7 +945,7 @@ function AlertPanel({ alertId, users, onClose, onStatusChange, inline = false })
                       <div className="flex flex-wrap gap-2 justify-center mt-4">
                         {['Is this a false positive?', 'What should I check next?', 'Explain the MITRE technique', 'What processes should I kill?'].map(q => (
                           <button key={q} onClick={() => { setChatInput(q); setActiveTab('chat') }}
-                            className="text-[10px] text-siem-muted border border-siem-border rounded-full px-2.5 py-1 hover:text-siem-text hover:border-siem-accent/30 transition-colors">
+                            className="text-mini text-siem-muted border border-siem-border rounded-full px-2.5 py-1 hover:text-siem-text hover:border-siem-accent/30 transition-colors">
                             {q}
                           </button>
                         ))}

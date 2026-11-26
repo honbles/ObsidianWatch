@@ -86,7 +86,7 @@ const isIP = (s) => /^\s*(\d{1,3}(\.\d{1,3}){3}|[0-9A-Fa-f:]*:[0-9A-Fa-f:.]*)\s*
 
 function FileFactsView({ f }) {
   return (
-    <div className="mono t2" style={{ fontSize: 11.5, marginTop: 4, display: 'grid', gridTemplateColumns: '70px 1fr', gap: '2px 8px' }}>
+    <div className="mono t2" style={{ fontSize: 13, marginTop: 4, display: 'grid', gridTemplateColumns: '78px 1fr', gap: '2px 8px' }}>
       <span className="t3">sha256</span><span style={{ wordBreak: 'break-all' }}>{f.sha256}</span>
       <span className="t3">size</span><span>{f.size?.toLocaleString()} bytes</span>
       {f.mode && <><span className="t3">mode</span><span>{f.mode}</span></>}
@@ -108,7 +108,7 @@ export function CollectedDownload({ id, name }) {
       setTimeout(() => URL.revokeObjectURL(a.href), 5000)
     } catch { setErr('Download failed') }
   }
-  return <div style={{ marginTop: 6 }}><button className="ow-btn" style={{ height: 26 }} onClick={get}><Download size={12}/>Download copy</button>{err && <span className="c-crit" style={{ marginLeft: 8, fontSize: 12 }}>{err}</span>}</div>
+  return <div style={{ marginTop: 6 }}><button className="ow-btn" style={{ height: 26 }} onClick={get}><Download size={12}/>Download copy</button>{err && <span className="c-crit" style={{ marginLeft: 8, fontSize: 13.5 }}>{err}</span>}</div>
 }
 
 // ── Run action ────────────────────────────────────────────────────────────────
@@ -194,7 +194,7 @@ function RunAction({ hosts, preselect, onDone }) {
   if (!admin) return <div className="ow-card" style={{ padding: 24 }}>Response actions are for administrators. You can still see every action in History.</div>
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'minmax(520px, 1.25fr) minmax(380px, 1fr)', gap: 16, alignItems: 'start' }}>
+    <div style={{ display: 'grid', gridTemplateColumns: 'minmax(582px, 1.25fr) minmax(426px, 1fr)', gap: 16, alignItems: 'start' }}>
       {/* 1. Targets */}
       <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start', minWidth: 0 }}>
         <Facets selected={facets} onToggle={toggle} onClear={() => setFacets({})} groups={[
@@ -207,17 +207,17 @@ function RunAction({ hosts, preselect, onDone }) {
           <div className="ow-card-bar">
             <span style={{ fontWeight: 600 }}>1 · Hosts</span>
             <label className="ow-field" style={{ flex: 1, maxWidth: 260, height: 28 }}><input value={q} onChange={e => setQ(e.target.value)} placeholder="Filter hosts" aria-label="Filter hosts"/></label>
-            <span className="t2" style={{ fontSize: 12, marginLeft: 'auto' }}>{chosen.length} selected</span>
+            <span className="t2" style={{ fontSize: 13.5, marginLeft: 'auto' }}>{chosen.length} selected</span>
           </div>
           <DenseTable rows={shown} rowKey={h => h.id} selected={sel.selected} onSelect={sel.onSelect}
             onSelectAll={v => v ? sel.setAll([...new Set([...sel.selected, ...shown.map(h => h.id)])]) : sel.clear()}
             onRow={h => sel.onSelect(h.id, !sel.selected.has(h.id))}
             empty="No hosts match."
             cols={[
-              { key: 'h', label: 'Host', width: 'minmax(140px, 1.4fr)', render: h => <span className="mono t1">{h.hostname}</span> },
-              { key: 'c', label: 'Reachable', width: '120px', render: h => h.tunnel_online ? <StatePill state="ok">Live</StatePill> : h.online ? <StatePill state="none" title="Agent online but live_response is not enabled or the tunnel is down">No tunnel</StatePill> : <StatePill state="none">Offline</StatePill> },
-              { key: 'i', label: 'Isolation', width: '100px', render: h => h.isolated ? <StatePill state="crit">Isolated</StatePill> : h.isolationPending ? <StatePill state="warn">Pending</StatePill> : <span className="t3">—</span> },
-              { key: 't', label: 'Tags', width: '1fr', render: h => <span className="t2">{h.tags.join(', ') || '—'}</span> },
+              { key: 'h', label: 'Host', width: 'minmax(100px, 1.4fr)', render: h => <span className="mono t1">{h.hostname}</span> },
+              { key: 'c', label: 'Reachable', width: '96px', render: h => h.tunnel_online ? <StatePill state="ok">Live</StatePill> : h.online ? <StatePill state="none" title="Agent online but live_response is not enabled or the tunnel is down">No tunnel</StatePill> : <StatePill state="none">Offline</StatePill> },
+              { key: 'i', label: 'Isolation', width: '88px', render: h => h.isolated ? <StatePill state="crit">Isolated</StatePill> : h.isolationPending ? <StatePill state="warn">Pending</StatePill> : <span className="t3">—</span> },
+              { key: 't', label: 'Tags', width: 'minmax(40px, 1fr)', render: h => <span className="t2">{h.tags.join(', ') || '—'}</span> },
             ]}/>
         </section>
       </div>
@@ -229,8 +229,8 @@ function RunAction({ hosts, preselect, onDone }) {
           <div style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 12 }}>
             {GROUPS.map(g => (
               <div key={g}>
-                <div className="t3" style={{ fontSize: 11, fontWeight: 600, letterSpacing: '.06em', textTransform: 'uppercase', marginBottom: 6 }}>{g}</div>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: 6 }}>
+                <div className="t3" style={{ fontSize: 11.5, fontWeight: 600, letterSpacing: '.06em', textTransform: 'uppercase', marginBottom: 6 }}>{g}</div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(168px, 1fr))', gap: 6 }}>
                   {ACTIONS.filter(a => a.group === g).map(a => {
                     const Icon = a.icon
                     const disabled = !a.multi && chosen.length > 1
@@ -245,13 +245,13 @@ function RunAction({ hosts, preselect, onDone }) {
                 </div>
               </div>
             ))}
-            <div className="t2" style={{ fontSize: 12.5, lineHeight: 1.5 }}>{def.help}{def.queues ? ' Offline hosts get it when they reconnect.' : def.readOnly ? '' : ' Needs a live response tunnel on each host.'}</div>
+            <div className="t2" style={{ fontSize: 13.5, lineHeight: 1.5 }}>{def.help}{def.queues ? ' Offline hosts get it when they reconnect.' : def.readOnly ? '' : ' Needs a live response tunnel on each host.'}</div>
 
             {action === 'isolate' && (
               <>
                 <Field label="Duration"><select className="input" value={params.ttl_minutes} onChange={e => setParams(p => ({ ...p, ttl_minutes: e.target.value }))}>
                   {TTLS.map(([l, v]) => <option key={v} value={v}>{l}</option>)}</select></Field>
-                <label className="t2" style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 12.5 }}>
+                <label className="t2" style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 13.5 }}>
                   <input type="checkbox" className="ow-check" checked={params.block_page} onChange={e => setParams(p => ({ ...p, block_page: e.target.checked }))}/>
                   <span>Show the user a pop-up that the computer is isolated. Off: isolate silently.</span>
                 </label>
@@ -266,12 +266,12 @@ function RunAction({ hosts, preselect, onDone }) {
             {action === 'kill_process' && (
               <>
                 {single ? <ProcessPicker agentId={single.id} enabled={!!single.tunnel_online} onPick={p => setParams(x => ({ ...x, pid: String(p.pid), image: p.path || '' }))}/>
-                  : <div className="t3" style={{ fontSize: 12 }}>Select one host to pick from its live process list.</div>}
-                <div style={{ display: 'grid', gridTemplateColumns: '110px 1fr', gap: 8 }}>
+                  : <div className="t3" style={{ fontSize: 13.5 }}>Select one host to pick from its live process list.</div>}
+                <div style={{ display: 'grid', gridTemplateColumns: '123px 1fr', gap: 8 }}>
                   <Field label="PID"><input className="input mono" value={params.pid} onChange={e => setParams(p => ({ ...p, pid: e.target.value.replace(/\D/g, '') }))}/></Field>
                   <Field label="Expected image"><input className="input mono" value={params.image} onChange={e => setParams(p => ({ ...p, image: e.target.value }))} placeholder="/usr/bin/x or C:\…\x.exe"/></Field>
                 </div>
-                <label className="t2" style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 12.5 }}><input type="checkbox" className="ow-check" checked={params.tree} onChange={e => setParams(p => ({ ...p, tree: e.target.checked }))}/>Also kill its child processes</label>
+                <label className="t2" style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 13.5 }}><input type="checkbox" className="ow-check" checked={params.tree} onChange={e => setParams(p => ({ ...p, tree: e.target.checked }))}/>Also kill its child processes</label>
               </>
             )}
             {PATH_ACTIONS.includes(action) && (
@@ -288,13 +288,13 @@ function RunAction({ hosts, preselect, onDone }) {
               single ? (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                   <button className="ow-btn" style={{ alignSelf: 'flex-start' }} disabled={!single.tunnel_online} onClick={loadVault}>Read {single.hostname}'s vault</button>
-                  {vault?.error && <div className="c-crit" style={{ fontSize: 12.5 }}>{vault.error}</div>}
+                  {vault?.error && <div className="c-crit" style={{ fontSize: 13.5 }}>{vault.error}</div>}
                   {Array.isArray(vault) && (vault.length === 0 ? <div className="t3">The vault is empty.</div> : vault.map(v => (
                     <button key={v.id} className={`ow-fc ${params.id === v.id ? 'on' : ''}`} style={{ height: 'auto', padding: '6px 8px' }} onClick={() => setParams(p => ({ ...p, id: v.id }))}>
                       <span className="mono" style={{ whiteSpace: 'normal', wordBreak: 'break-all' }}>{v.orig_path}</span><b>{v.sha256?.slice(0, 10)}</b>
                     </button>)))}
                 </div>
-              ) : <div className="t3" style={{ fontSize: 12 }}>Select one host to read its vault.</div>
+              ) : <div className="t3" style={{ fontSize: 13.5 }}>Select one host to read its vault.</div>
             )}
             <Field label={def.danger ? 'Reason (required)' : 'Reason'}><input className="input" value={reason} maxLength={500} onChange={e => setReason(e.target.value)} placeholder="e.g. Alert #1042: reverse shell from nginx"/></Field>
           </div>
@@ -310,12 +310,12 @@ function RunAction({ hosts, preselect, onDone }) {
           <section className="ow-card" style={{ overflow: 'hidden' }}>
             <div className="ow-card-bar"><span style={{ fontWeight: 600 }}>Results · {def.label}</span><button className="ow-btn quiet" style={{ marginLeft: 'auto', height: 24 }} onClick={() => setResults(null)}>Clear</button></div>
             {results.map(r => (
-              <div key={r.host.id} className="ow-grid" style={{ gridTemplateColumns: '1fr 100px', minHeight: 'auto', padding: '8px 14px', alignItems: 'start' }}>
+              <div key={r.host.id} className="ow-grid" style={{ gridTemplateColumns: '1fr 112px', minHeight: 'auto', padding: '8px 14px', alignItems: 'start' }}>
                 <div style={{ whiteSpace: 'normal' }}>
                   <Link to={`/agents?host=${encodeURIComponent(r.host.hostname)}`} className="mono t1">{r.host.hostname}</Link>
-                  {r.text && <div className="t2" style={{ fontSize: 12 }}>{r.text}</div>}
-                  {Array.isArray(r.result) && <div className="mono t2" style={{ fontSize: 11.5, marginTop: 4 }}>{r.result.length ? r.result.map(x => x.orig_path || x.ip || String(x)).join('\n') : 'Empty'}</div>}
-                  {r.result?.rows && <div className="mono t2" style={{ fontSize: 11.5, marginTop: 4, whiteSpace: 'pre-wrap' }}>{r.result.rows.length ? r.result.rows.map(x => x[0]).join('\n') : 'Nothing blocked'}</div>}
+                  {r.text && <div className="t2" style={{ fontSize: 13.5 }}>{r.text}</div>}
+                  {Array.isArray(r.result) && <div className="mono t2" style={{ fontSize: 13, marginTop: 4 }}>{r.result.length ? r.result.map(x => x.orig_path || x.ip || String(x)).join('\n') : 'Empty'}</div>}
+                  {r.result?.rows && <div className="mono t2" style={{ fontSize: 13, marginTop: 4, whiteSpace: 'pre-wrap' }}>{r.result.rows.length ? r.result.rows.map(x => x[0]).join('\n') : 'Nothing blocked'}</div>}
                   {r.result?.sha256 && <FileFactsView f={r.result}/>}
                   {action === 'collect_file' && r.status === 'ok' && r.actionId && <CollectedDownload id={r.actionId} name={r.result?.path}/>}
                 </div>
@@ -337,7 +337,7 @@ function RunAction({ hosts, preselect, onDone }) {
             {chosen.map(h => (
               <div key={h.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 10px', borderBottom: '1px solid var(--line)' }}>
                 <span className="mono">{h.hostname}</span>
-                <span className="t2" style={{ fontSize: 12 }}>{{ run: 'runs now', queue: 'queued until it reconnects', skip: 'skipped: not reachable' }[reach(h)]}</span>
+                <span className="t2" style={{ fontSize: 13.5 }}>{{ run: 'runs now', queue: 'queued until it reconnects', skip: 'skipped: not reachable' }[reach(h)]}</span>
               </div>
             ))}
           </div>
@@ -362,15 +362,15 @@ function History({ actions, loading }) {
         { key: 'host', label: 'Host', values: countBy(actions, G.host).slice(0, 12) },
       ]}/>
       <section className="ow-card" style={{ flex: 1, minWidth: 0, overflow: 'hidden' }}>
-        <div className="ow-card-bar"><span style={{ fontWeight: 600 }}>Every response action</span><span className="t3" style={{ fontSize: 12 }}>Newest 100, fleet-wide. Also in the audit log.</span></div>
+        <div className="ow-card-bar"><span style={{ fontWeight: 600 }}>Every response action</span><span className="t3" style={{ fontSize: 13.5 }}>Newest 100, fleet-wide. Also in the audit log.</span></div>
         <DenseTable rows={rows} rowKey={a => a.id} empty={loading ? 'Loading…' : 'No response actions yet.'}
           rowState={a => ['failed', 'timeout'].includes(a.status) ? 'crit' : null}
           cols={[
             { key: 'w', label: 'When', width: '110px', render: a => <span className="t2" title={new Date(a.requested_at).toLocaleString()}>{relTime(a.requested_at)}</span> },
-            { key: 'h', label: 'Host', width: 'minmax(130px, 1fr)', render: a => <Link to={`/agents?host=${encodeURIComponent(a.hostname)}`} className="mono t1" onClick={e => e.stopPropagation()}>{a.hostname}</Link> },
+            { key: 'h', label: 'Host', width: 'minmax(110px, 1fr)', render: a => <Link to={`/agents?host=${encodeURIComponent(a.hostname)}`} className="mono t1" onClick={e => e.stopPropagation()}>{a.hostname}</Link> },
             { key: 'a', label: 'Action', width: '150px', render: a => <span className="t1">{BY_ID[a.action]?.label || a.action}</span> },
-            { key: 't', label: 'Target', width: 'minmax(160px, 1.4fr)', render: a => <span className="mono t2">{describeParams(a) || '—'}</span>, title: a => describeParams(a) },
-            { key: 'b', label: 'By / reason', width: 'minmax(160px, 1.4fr)', render: a => <span><span className="t1">{a.requested_by}</span>{a.reason && <span className="t3"> · {a.reason}</span>}</span>, title: a => a.reason },
+            { key: 't', label: 'Target', width: 'minmax(120px, 1.4fr)', render: a => <span className="mono t2">{describeParams(a) || '—'}</span>, title: a => describeParams(a) },
+            { key: 'b', label: 'By / reason', width: 'minmax(120px, 1.4fr)', render: a => <span><span className="t1">{a.requested_by}</span>{a.reason && <span className="t3"> · {a.reason}</span>}</span>, title: a => a.reason },
             { key: 's', label: 'Outcome', width: '104px', render: a => <ActionStatus status={a.status}/>, title: a => a.message },
           ]}/>
       </section>

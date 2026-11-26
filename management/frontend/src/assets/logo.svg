@@ -3,5 +3,5 @@
   <g transform="translate(8 8)">
     <path d="M1 12C6 4.2 18 4.2 23 12C17 8.4 7 8.4 1 12Z" fill="#8f76ff"/><path d="M1 12C6 4.2 12 4.6 12 4.6C12 6.6 7 8.4 1 12Z" fill="#5b3df5"/><path d="M1 12C6 19.8 18 19.8 23 12C17 15.6 7 15.6 1 12Z" fill="#5b3df5"/><path d="M23 12C18 19.8 12 19.4 12 19.4C12 17.4 17 15.6 23 12Z" fill="#3b22c4"/><path d="M12 8.7 15.2 12 12 15.3 8.8 12Z" fill="#d9d0ff"/><path d="M12 8.7 15.2 12 12 15.3Z" fill="#a896ff"/>
   </g>
-  <text x="42" y="26" font-family="IBM Plex Sans, system-ui, sans-serif" font-size="17" letter-spacing="-.25" fill="#f3f0fd"><tspan font-weight="600">Obsidian</tspan><tspan font-weight="400" fill-opacity=".72">Watch</tspan></text>
+  <text x="42" y="26" font-family="Inter, system-ui, sans-serif" font-size="17" letter-spacing="-.25" fill="#f3f0fd"><tspan font-weight="600">Obsidian</tspan><tspan font-weight="400" fill-opacity=".72">Watch</tspan></text>
 </svg>

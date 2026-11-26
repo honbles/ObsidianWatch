@@ -318,7 +318,7 @@ export default function AgentBuilder() {
                         <label className="block text-xs font-medium text-siem-text mb-1">Unix socket path (optional)</label>
                         <input value={form.app_otlp_socket || ''} onChange={e => setForm(f => ({ ...f, app_otlp_socket: e.target.value }))}
                           placeholder="/run/obsidianwatch/otlp.sock" className="w-full bg-siem-surface2 border border-siem-border rounded-lg px-2.5 py-1.5 text-xs text-siem-text font-mono" />
-                        <span className="block text-[10px] text-siem-muted mt-1">For containers: mount this socket into the container instead of using the network.</span>
+                        <span className="block text-mini text-siem-muted mt-1">For containers: mount this socket into the container instead of using the network.</span>
                       </div>
                       <div>
                         <label className="block text-xs font-medium text-siem-text mb-1">Host sensor tier (Linux)</label>
@@ -326,7 +326,7 @@ export default function AgentBuilder() {
                           className="w-full bg-siem-surface2 border border-siem-border rounded-lg px-2.5 py-1.5 text-xs text-siem-text">
                           <option value="auto">Automatic (best available)</option><option value="procevent">Proc connector + polling</option><option value="poll">Polling only (works without root)</option>
                         </select>
-                        <span className="block text-[10px] text-siem-muted mt-1">Discovers services by their listening ports and watches what they run, connect to and write.</span>
+                        <span className="block text-mini text-siem-muted mt-1">Discovers services by their listening ports and watches what they run, connect to and write.</span>
                       </div>
                       <div>
                         <label className="block text-xs font-medium text-siem-text mb-1">Environment for discovered services</label>

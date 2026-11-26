@@ -35,8 +35,8 @@ export default function AppTabSLO({ service }) {
       {error ? <div className="card p-4 text-xs text-red-300">{String(error)}</div>
         : loading ? <div className="card p-4 text-xs text-siem-muted">Loading...</div>
         : slos.map(s => <Slo key={s.name} s={s} days={data.window_days} />)}
-      {!loading && !error && !service.settings?.latency_target_ms && <div className="text-[11px] text-siem-muted">Set a latency target in Settings to add a latency objective.</div>}
-      <div className="text-[11px] text-siem-muted">Objective, window and latency share are set in the service settings.</div>
+      {!loading && !error && !service.settings?.latency_target_ms && <div className="text-xs text-siem-muted">Set a latency target in Settings to add a latency objective.</div>}
+      <div className="text-xs text-siem-muted">Objective, window and latency share are set in the service settings.</div>
     </div>
   )
 }

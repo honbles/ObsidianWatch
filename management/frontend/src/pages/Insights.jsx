@@ -177,12 +177,12 @@ function Inventory() {
                   <td className="px-4 py-1.5 font-mono text-xs">
                     {h.host}
                     {res.host_meta?.[h.host] && (
-                      <span className="ml-2 text-[10px] text-siem-muted">
+                      <span className="ml-2 text-mini text-siem-muted">
                         {res.host_meta[h.host].criticality !== 'normal' && <span className="text-yellow-400 mr-1">{res.host_meta[h.host].criticality}</span>}
                         {(res.host_meta[h.host].tags || []).join(' ')}
                       </span>
                     )}
-                    <button className="ml-2 text-[10px] text-siem-accent hover:underline" onClick={() => editMeta(h.host)}>tag</button>
+                    <button className="ml-2 text-mini text-siem-accent hover:underline" onClick={() => editMeta(h.host)}>tag</button>
                   </td><td className="px-4 py-1.5">{h.os}</td>
                   <td className="px-4 py-1.5">{h.kind}</td><td className="px-4 py-1.5">{h.name}</td>
                   <td className="px-4 py-1.5 font-mono text-xs">{h.version || h.state}</td>
@@ -232,7 +232,7 @@ function LogSources() {
                 <td className="px-4 py-2">{r.events_24h.toLocaleString()}</td>
                 <td className="px-4 py-2">{r.eps_1h.toFixed(2)}</td>
                 <td className="px-4 py-2 text-siem-muted">{fmt(r.last_event)}</td>
-                <td className="px-4 py-2">{r.silent && <span className="text-[10px] px-2 py-0.5 rounded-full bg-yellow-900/40 text-yellow-300">silent</span>}</td>
+                <td className="px-4 py-2">{r.silent && <span className="text-mini px-2 py-0.5 rounded-full bg-yellow-900/40 text-yellow-300">silent</span>}</td>
               </tr>
             ))}
             {rows.length === 0 && <tr><td colSpan={8} className="px-4 py-6 text-center text-siem-muted">No streams</td></tr>}
@@ -261,7 +261,7 @@ function Coverage() {
           {open === p.platform && (
             <div className="mt-3 flex flex-wrap gap-2">
               {(p.techniques || []).map(t => (
-                <span key={t.technique} title={t.rules.join(', ')} className="text-[11px] font-mono px-2 py-1 rounded border border-siem-border">
+                <span key={t.technique} title={t.rules.join(', ')} className="text-xs font-mono px-2 py-1 rounded border border-siem-border">
                   {t.technique} <span className="text-siem-muted">×{t.rules.length}</span>
                 </span>
               ))}
@@ -363,7 +363,7 @@ function Identity() {
             {(res.timeline || []).map((e, i) => (
               <div key={i} className="text-xs flex gap-3 py-1 border-t border-siem-border/50">
                 <span className="w-32 text-siem-muted">{fmt(e.time)}</span>
-                <span className={`w-16 text-[10px] uppercase ${e.surface === 'cloud' ? 'text-sky-400' : e.surface === 'devops' ? 'text-violet-400' : 'text-siem-muted'}`}>{e.surface || 'endpoint'}</span>
+                <span className={`w-16 text-2xs uppercase ${e.surface === 'cloud' ? 'text-sky-400' : e.surface === 'devops' ? 'text-violet-400' : 'text-siem-muted'}`}>{e.surface || 'endpoint'}</span>
                 <span className="w-40 font-mono truncate">{e.host}</span>
                 <span className="w-24">{e.event_type}</span><span className="w-10">sev {e.severity}</span>
                 <span className="flex-1 truncate" title={e.summary}>{e.summary}</span>{e.src_ip && <span className="font-mono text-siem-muted">{e.src_ip}</span>}

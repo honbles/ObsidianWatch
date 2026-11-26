@@ -22,7 +22,7 @@ something needs attention. Colour is spent on state, never on decoration.
   24-unit grid so it stays sharp at 16 px. The shapes and colours live in `MARK_SHAPES` / `MARK` in
   `src/utils/brand.js` (and the same paths in `public/favicon.svg` and `src/assets/logo.svg`); the mark looks the
   same in both themes.
-- **Wordmark.** "Obsidian" semibold, "Watch" regular at 72% opacity, set in IBM Plex Sans with slightly
+- **Wordmark.** "Obsidian" semibold, "Watch" regular at 72% opacity, set in Inter with slightly
   tight tracking. One word, capital O and capital W: *ObsidianWatch*.
 - Do not recolour, outline, rotate or add effects to the mark, and do not put it on a busy background.
   On light backgrounds use the lockup file, which carries its own chrome-coloured plate.
@@ -92,11 +92,13 @@ severity colours instead.
 
 ## Type
 
-- **IBM Plex Sans** for the interface: engineered, slightly condensed, very legible at 12–13 px.
-- **IBM Plex Mono** for data: hosts, routes, hashes, IDs, ARNs, commands, counts in badges.
+- **Inter** for the interface: neutral and very legible on screens, with optical sizes so small labels stay open
+  and titles stay tight.
+- **JetBrains Mono** for data: hosts, routes, hashes, IDs, ARNs, commands, counts in badges. Clear 0/O and 1/l.
 - Both are bundled (Latin and Latin Extended, SIL Open Font License, `src/assets/fonts/OFL.txt`), so an
   air-gapped console renders exactly like a connected one. Tabular figures are on everywhere.
-- Weights: 400 body, 500 emphasis and active navigation, 600 titles and numbers. No 700 in the interface.
+- Weights: 400 body, 500 emphasis, 600 titles and headers, 650 page titles and big numbers. 700 only in count badges.
+- Sizes: see the type scale in `design-language.md`. Body text is 14 px.
 
 ## Voice
 

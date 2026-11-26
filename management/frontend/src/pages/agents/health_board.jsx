@@ -45,15 +45,15 @@ export function HealthBoard({ agent }) {
   return (
     <div className="bg-siem-surface border border-siem-border rounded-xl p-4">
       <div className="flex items-center justify-between mb-3">
-        <div className="text-[10px] uppercase tracking-wider text-siem-muted font-semibold">Agent health</div>
-        <span className={`text-[10px] font-semibold ${TXT[worst]}`}>{worst === 'ok' ? 'All components healthy' : worst === 'warn' ? 'Needs attention' : 'Component failing'}</span>
+        <div className="text-2xs uppercase tracking-wider text-siem-muted font-semibold">Agent health</div>
+        <span className={`text-mini font-semibold ${TXT[worst]}`}>{worst === 'ok' ? 'All components healthy' : worst === 'warn' ? 'Needs attention' : 'Component failing'}</span>
       </div>
       <div className="grid md:grid-cols-2 gap-x-6">
         {rows.map((r, i) => (
           <div key={i} className="flex items-center gap-2 text-xs py-1.5 border-b border-siem-border/40">
             <span className={`w-2 h-2 rounded-full shrink-0 ${DOT[r.state] || DOT.unknown}`} />
             <span className="text-siem-text">{r.name}</span>
-            <span className={`ml-auto font-mono text-[11px] truncate ${TXT[r.state] || TXT.unknown}`} title={r.detail}>{r.detail}</span>
+            <span className={`ml-auto font-mono text-xs truncate ${TXT[r.state] || TXT.unknown}`} title={r.detail}>{r.detail}</span>
           </div>
         ))}
       </div>

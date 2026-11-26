@@ -26,7 +26,7 @@ const TYPE_COLOR = {
 }
 const SUSPICIOUS = ['rustdesk','ngrok','anydesk','cobalt','mimikatz','meterpreter']
 const isSusp = v => v && SUSPICIOUS.some(k => v.toLowerCase().includes(k))
-const TooltipStyle = { background:'var(--s2)', border:'1px solid var(--line2)', borderRadius:6, fontSize:10, padding:'4px 8px' }
+const TooltipStyle = { background:'var(--s2)', border:'1px solid var(--line2)', borderRadius:6, fontSize: 12, padding:'4px 8px' }
 
 // ── Stat card ─────────────────────────────────────────────────────────────────
 function StatCard({ icon: Icon, label, value, sub, color='text-siem-accent', warn, onClick, trend }) {
@@ -38,18 +38,18 @@ function StatCard({ icon: Icon, label, value, sub, color='text-siem-accent', war
       {warn && <div className="absolute inset-0 bg-red-950/10 pointer-events-none"/>}
       <div className="relative flex items-start justify-between gap-2">
         <div className="flex-1 min-w-0">
-          <div className="text-[10px] uppercase tracking-wider text-siem-muted/70 font-medium mb-2">{label}</div>
+          <div className="text-2xs uppercase tracking-wider text-siem-muted/70 font-medium mb-2">{label}</div>
           <div className={`text-3xl font-bold font-mono tabular-nums leading-none ${color}`}>
             {value?.toLocaleString() ?? '-'}
           </div>
-          {sub && <div className="text-[10px] text-siem-muted mt-1.5">{sub}</div>}
+          {sub && <div className="text-mini text-siem-muted mt-1.5">{sub}</div>}
         </div>
         <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${warn ? 'bg-red-500/15' : 'bg-siem-bg'}`}>
           <Icon size={16} className={warn ? 'text-red-400' : color}/>
         </div>
       </div>
       {onClick && (
-        <div className="relative mt-3 flex items-center gap-1 text-[9px] text-siem-muted/40 group-hover:text-siem-accent/60 transition-colors">
+        <div className="relative mt-3 flex items-center gap-1 text-2xs text-siem-muted/40 group-hover:text-siem-accent/60 transition-colors">
           View details <ChevronRight size={9}/>
         </div>
       )}
@@ -74,7 +74,7 @@ function Section({ title, icon: Icon, iconColor='text-siem-accent', action, chil
 function NavAction({ label, to, navigate }) {
   return (
     <button onClick={() => navigate(to)}
-      className="flex items-center gap-1 text-[10px] text-siem-muted hover:text-siem-accent transition-colors">
+      className="flex items-center gap-1 text-mini text-siem-muted hover:text-siem-accent transition-colors">
       {label} <ChevronRight size={9}/>
     </button>
   )
@@ -97,15 +97,15 @@ function HostRow({ host, onClick }) {
       className="flex items-center gap-3 px-4 py-2.5 hover:bg-white/[0.02] cursor-pointer border-b border-siem-border/20 last:border-0 group transition-colors">
       <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${host.online ? 'bg-emerald-400' : 'bg-red-500/50'}`}/>
       <Monitor size={11} className="text-siem-muted shrink-0"/>
-      <span className="text-[11px] font-mono text-siem-text truncate flex-1">{host.hostname || host.host}</span>
+      <span className="text-xs font-mono text-siem-text truncate flex-1">{host.hostname || host.host}</span>
       <div className="flex items-center gap-2">
         {host.max_severity >= 4 && (
-          <span className="text-[8px] font-bold px-1.5 py-0.5 rounded border"
+          <span className="text-2xs font-bold px-1.5 py-0.5 rounded border"
             style={{ color: SEV_COLOR[host.max_severity], borderColor: tint(SEV_COLOR[host.max_severity], 25) }}>
             {SEV_LABEL[host.max_severity]}
           </span>
         )}
-        <span className="text-[10px] font-mono text-siem-muted">{Number(host.event_count).toLocaleString()}</span>
+        <span className="text-mini font-mono text-siem-muted">{Number(host.event_count).toLocaleString()}</span>
       </div>
       <ChevronRight size={9} className="text-siem-muted/20 group-hover:text-siem-muted shrink-0 transition-colors"/>
     </div>
@@ -120,10 +120,10 @@ function AlertRow({ alert, onClick }) {
       <span className="w-1.5 h-1.5 rounded-full mt-1.5 shrink-0 animate-pulse"
         style={{ background: SEV_COLOR[alert.severity] || 'var(--t3)' }}/>
       <div className="flex-1 min-w-0">
-        <div className="text-[11px] text-siem-text font-medium truncate leading-snug">{alert.title}</div>
+        <div className="text-xs text-siem-text font-medium truncate leading-snug">{alert.title}</div>
         <div className="flex items-center gap-2 mt-0.5">
-          {alert.host && <span className="text-[9px] font-mono text-siem-muted/60">{alert.host}</span>}
-          <span className="text-[9px] text-siem-muted/40">
+          {alert.host && <span className="text-2xs font-mono text-siem-muted/60">{alert.host}</span>}
+          <span className="text-2xs text-siem-muted/40">
             {formatDistanceToNow(new Date(alert.created_at), { addSuffix: true })}
           </span>
         </div>
@@ -167,9 +167,9 @@ function PostureScore({ stats }) {
         </div>
       </div>
       <div>
-        <div className="text-[10px] uppercase tracking-wider text-siem-muted/70 font-medium mb-1">Security Posture</div>
+        <div className="text-2xs uppercase tracking-wider text-siem-muted/70 font-medium mb-1">Security Posture</div>
         <div className="text-lg font-bold" style={{ color }}>{label}</div>
-        <div className="text-[10px] text-siem-muted mt-0.5">
+        <div className="text-mini text-siem-muted mt-0.5">
           {openAlerts > 0 ? `${openAlerts} open alert${openAlerts !== 1 ? 's' : ''}` : 'No open alerts'}
           {highSev > 0 ? ` · ${highSev} high-sev events` : ''}
         </div>
@@ -211,9 +211,9 @@ function IntegrationBar({ navigate }) {
             <Icon size={13} className={color}/>
           </div>
           <div className="text-left">
-            <div className="text-[10px] text-siem-muted">{label}</div>
+            <div className="text-mini text-siem-muted">{label}</div>
             <div className={`text-sm font-bold font-mono ${count > 0 ? 'text-siem-text' : 'text-siem-muted/50'}`}>
-              {count} <span className="text-[9px] font-normal text-siem-muted/50">connected</span>
+              {count} <span className="text-2xs font-normal text-siem-muted/50">connected</span>
             </div>
           </div>
           <ChevronRight size={10} className="ml-auto text-siem-muted/20 group-hover:text-siem-muted transition-colors"/>
@@ -329,17 +329,17 @@ export default function Dashboard() {
                 <div className="card-head">Cloud Activity by Provider</div>
                 <div style={{ padding:16 }}>
                   {(raw?.by_cloud_provider || []).length === 0
-                    ? <div style={{ textAlign:'center', padding:'24px 0', color:'var(--text3)', fontSize:12 }}>
+                    ? <div style={{ textAlign:'center', padding:'24px 0', color:'var(--text3)', fontSize: 13.5 }}>
                         No cloud connectors configured - connect AWS, Azure or GCP under Cloud menu.
                       </div>
                     : (raw?.by_cloud_provider || []).map(p => (
                         <div key={p.provider} style={{ display:'flex', alignItems:'center', gap:10, marginBottom:8 }}>
-                          <span style={{ fontSize:11, width:60, color:'var(--text2)' }}>{p.provider.toUpperCase()}</span>
+                          <span style={{ fontSize: 13, width:60, color:'var(--text2)' }}>{p.provider.toUpperCase()}</span>
                           <div style={{ flex:1, height:6, background:'var(--surface2)', borderRadius:3 }}>
                             <div style={{ height:'100%', borderRadius:3, background:'var(--accent)',
                               width:`${Math.min(100,(p.count/Math.max(...(raw?.by_cloud_provider||[{count:1}]).map(x=>x.count)))*100)}%` }}/>
                           </div>
-                          <span style={{ fontSize:11, color:'var(--text3)', fontFamily:'var(--font-data)', width:40, textAlign:'right' }}>{p.count}</span>
+                          <span style={{ fontSize: 13, color:'var(--text3)', fontFamily:'var(--font-data)', width:40, textAlign:'right' }}>{p.count}</span>
                         </div>
                       ))
                   }
@@ -347,7 +347,7 @@ export default function Dashboard() {
               </div>
               <div className="card">
                 <div className="card-head">Recent Cloud Alerts</div>
-                <div style={{ padding:16, fontSize:12, color:'var(--text3)', fontStyle:'italic' }}>
+                <div style={{ padding:16, fontSize: 13.5, color:'var(--text3)', fontStyle:'italic' }}>
                   Cloud-specific alerts will appear here. Configure cloud connectors to begin monitoring.
                 </div>
               </div>
@@ -377,7 +377,7 @@ export default function Dashboard() {
                 <div className="card-head">Recent SAST Scans</div>
                 <div style={{ overflowX:'auto' }}>
                   {(raw?.sast_results || []).length === 0
-                    ? <div style={{ padding:20, fontSize:12, color:'var(--text3)', textAlign:'center', fontStyle:'italic' }}>
+                    ? <div style={{ padding:20, fontSize: 13.5, color:'var(--text3)', textAlign:'center', fontStyle:'italic' }}>
                         No scans yet - connect a repo under DevOps → Code Scan to begin.
                       </div>
                     : <table className="tbl">
@@ -394,7 +394,7 @@ export default function Dashboard() {
                                            fontFamily:'var(--font-data)', fontWeight: r.critical_count > 0 ? 600 : 400 }}>
                                 {r.critical_count}
                               </td>
-                              <td style={{ color:'var(--text3)', fontSize:11 }}>{r.scanned_at ? new Date(r.scanned_at).toLocaleDateString() : '-'}</td>
+                              <td style={{ color:'var(--text3)', fontSize: 13 }}>{r.scanned_at ? new Date(r.scanned_at).toLocaleDateString() : '-'}</td>
                             </tr>
                           ))}
                         </tbody>
@@ -413,7 +413,7 @@ export default function Dashboard() {
                     const total = (raw?.sast_total_findings || 1)
                     return (
                       <div key={s.label} style={{ marginBottom:10 }}>
-                        <div style={{ display:'flex', justifyContent:'space-between', fontSize:11, marginBottom:4 }}>
+                        <div style={{ display:'flex', justifyContent:'space-between', fontSize: 13, marginBottom:4 }}>
                           <span style={{ color:'var(--text2)' }}>{s.label}</span>
                           <span style={{ color:s.color, fontFamily:'var(--font-data)' }}>{s.value}</span>
                         </div>
@@ -459,16 +459,16 @@ export default function Dashboard() {
                       <td style={{ fontFamily:'var(--font-data)', fontWeight:500, color:'var(--text)' }}>{a.hostname}</td>
                       <td><span className="tag">{a.os || '-'}</span></td>
                       <td>
-                        <span style={{ display:'flex', alignItems:'center', gap:5, fontSize:11,
+                        <span style={{ display:'flex', alignItems:'center', gap:5, fontSize: 13,
                           color: a.online ? 'var(--green)' : 'var(--text3)' }}>
                           <span style={{ width:5, height:5, borderRadius:'50%', background:'currentColor',
                             display:'inline-block' }} className={a.online ? 'pulse' : ''}/>
                           {a.online ? 'Online' : 'Offline'}
                         </span>
                       </td>
-                      <td style={{ fontFamily:'var(--font-data)', fontSize:11, color:'var(--text2)' }}>{a.ip_address || '-'}</td>
-                      <td style={{ fontSize:11, color:'var(--text3)' }}>{a.last_seen ? new Date(a.last_seen).toLocaleString() : '-'}</td>
-                      <td style={{ fontFamily:'var(--font-data)', fontSize:11 }}>{a.events_today?.toLocaleString() || '-'}</td>
+                      <td style={{ fontFamily:'var(--font-data)', fontSize: 13, color:'var(--text2)' }}>{a.ip_address || '-'}</td>
+                      <td style={{ fontSize: 13, color:'var(--text3)' }}>{a.last_seen ? new Date(a.last_seen).toLocaleString() : '-'}</td>
+                      <td style={{ fontFamily:'var(--font-data)', fontSize: 13 }}>{a.events_today?.toLocaleString() || '-'}</td>
                     </tr>
                   ))}
                   {(raw?.endpoint_agents || []).length === 0 && (
@@ -498,7 +498,7 @@ export default function Dashboard() {
               style={{ cursor: k.click ? 'pointer' : 'default' }}>
               <div className="kpi-accent-line" style={{ background:`linear-gradient(90deg, ${k.color}, transparent)` }}/>
               <div className="kpi-label">{k.label}</div>
-              <div className="kpi-value" style={{ color:k.color, fontSize:22 }}>{(k.value ?? 0).toLocaleString()}</div>
+              <div className="kpi-value" style={{ color:k.color, fontSize: 22 }}>{(k.value ?? 0).toLocaleString()}</div>
               <div className="kpi-sub">{k.sub}</div>
             </div>
           ))}
@@ -510,7 +510,7 @@ export default function Dashboard() {
             <div className="card-head">
               Event Timeline - 48h
               <button onClick={() => navigate('/events')}
-                style={{ fontSize:10, color:'var(--accent)', background:'none', border:'none', cursor:'pointer' }}>
+                style={{ fontSize: 12, color:'var(--accent)', background:'none', border:'none', cursor:'pointer' }}>
                 View all →
               </button>
             </div>
@@ -525,9 +525,9 @@ export default function Dashboard() {
                       </linearGradient>
                     ))}
                   </defs>
-                  <XAxis dataKey="time" tick={{ fontSize:9, fill:'var(--text3)' }} tickLine={false} axisLine={false} interval={7}/>
-                  <YAxis tick={{ fontSize:9, fill:'var(--text3)' }} tickLine={false} axisLine={false}/>
-                  <Tooltip contentStyle={{ background:'var(--surface2)', border:'1px solid var(--border)', borderRadius:6, fontSize:10 }}/>
+                  <XAxis dataKey="time" tick={{ fontSize: 11, fill:'var(--text3)' }} tickLine={false} axisLine={false} interval={7}/>
+                  <YAxis tick={{ fontSize: 11, fill:'var(--text3)' }} tickLine={false} axisLine={false}/>
+                  <Tooltip contentStyle={{ background:'var(--surface2)', border:'1px solid var(--border)', borderRadius:6, fontSize: 12 }}/>
                   <Area type="monotone" dataKey="high"   stroke="var(--crit)" strokeWidth={1.5} fill="url(#ov_high)"   stackId="1"/>
                   <Area type="monotone" dataKey="medium" stroke="var(--warn)" strokeWidth={1.5} fill="url(#ov_medium)" stackId="1"/>
                   <Area type="monotone" dataKey="low"    stroke="var(--info)" strokeWidth={1.5} fill="url(#ov_low)"    stackId="1"/>
@@ -549,7 +549,7 @@ export default function Dashboard() {
                 const maxCount = Math.max(1, ...(sevDist || []).map(x => Number(x.count||0)))
                 return (
                   <div key={row.label} style={{ marginBottom:10 }}>
-                    <div style={{ display:'flex', justifyContent:'space-between', fontSize:11, marginBottom:3 }}>
+                    <div style={{ display:'flex', justifyContent:'space-between', fontSize: 13, marginBottom:3 }}>
                       <span style={{ color:'var(--text2)' }}>{row.label}</span>
                       <span style={{ color:row.color, fontFamily:'var(--font-data)' }}>{Number(count).toLocaleString()}</span>
                     </div>
@@ -577,11 +577,11 @@ export default function Dashboard() {
                   onClick={() => navigate(`/events?search=${encodeURIComponent(p.process_name||'')}`)}
                   onMouseEnter={e=>e.currentTarget.style.background='rgb(var(--info-c) / 0.03)'}
                   onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
-                  <span style={{ fontFamily:'var(--font-data)', fontSize:11, color:'var(--text)',
+                  <span style={{ fontFamily:'var(--font-data)', fontSize: 13, color:'var(--text)',
                     flex:1, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
                     {p.process_name}
                   </span>
-                  <span style={{ fontSize:10, color:'var(--text3)', fontFamily:'var(--font-data)', flexShrink:0 }}>
+                  <span style={{ fontSize: 12, color:'var(--text3)', fontFamily:'var(--font-data)', flexShrink:0 }}>
                     {Number(p.count||0).toLocaleString()}
                   </span>
                   {Number(p.max_severity) >= 4 && (
@@ -590,7 +590,7 @@ export default function Dashboard() {
                 </div>
               ))}
               {(!d?.top_processes || d.top_processes.length === 0) && (
-                <div style={{ padding:'20px 16px', color:'var(--text3)', fontSize:12, fontStyle:'italic' }}>No process data</div>
+                <div style={{ padding:'20px 16px', color:'var(--text3)', fontSize: 13.5, fontStyle:'italic' }}>No process data</div>
               )}
             </div>
           </div>
@@ -604,17 +604,17 @@ export default function Dashboard() {
                   cursor:'pointer', transition:'background 0.1s' }}
                   onMouseEnter={e=>e.currentTarget.style.background='rgb(var(--info-c) / 0.03)'}
                   onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
-                  <span style={{ fontFamily:'var(--font-data)', fontSize:11, color:'var(--text)',
+                  <span style={{ fontFamily:'var(--font-data)', fontSize: 13, color:'var(--text)',
                     flex:1, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
                     {p.domain || p.dst_ip || '-'}
                   </span>
-                  <span style={{ fontSize:10, color:'var(--text3)', fontFamily:'var(--font-data)', flexShrink:0 }}>
+                  <span style={{ fontSize: 12, color:'var(--text3)', fontFamily:'var(--font-data)', flexShrink:0 }}>
                     {Number(p.count||0).toLocaleString()}
                   </span>
                 </div>
               ))}
               {(!d?.top_domains || d.top_domains.length === 0) && (
-                <div style={{ padding:'20px 16px', color:'var(--text3)', fontSize:12, fontStyle:'italic' }}>No DNS data</div>
+                <div style={{ padding:'20px 16px', color:'var(--text3)', fontSize: 13.5, fontStyle:'italic' }}>No DNS data</div>
               )}
             </div>
           </div>
@@ -627,8 +627,8 @@ export default function Dashboard() {
                 const maxC = Math.max(1, ...(d?.top_countries||[]).map(x=>Number(x.count||0)))
                 return (
                   <div key={i} style={{ marginBottom:8 }}>
-                    <div style={{ display:'flex', justifyContent:'space-between', fontSize:11, marginBottom:3 }}>
-                      <span style={{ color:'var(--text2)', fontFamily:'var(--font-data)', fontSize:11 }}>{c.country || c.dst_ip || '-'}</span>
+                    <div style={{ display:'flex', justifyContent:'space-between', fontSize: 13, marginBottom:3 }}>
+                      <span style={{ color:'var(--text2)', fontFamily:'var(--font-data)', fontSize: 13 }}>{c.country || c.dst_ip || '-'}</span>
                       <span style={{ color:'var(--text3)', fontFamily:'var(--font-data)' }}>{Number(c.count||0).toLocaleString()}</span>
                     </div>
                     <div style={{ height:3, background:'var(--surface2)', borderRadius:2 }}>
@@ -639,7 +639,7 @@ export default function Dashboard() {
                 )
               })}
               {(!d?.top_countries || d.top_countries.length === 0) && (
-                <div style={{ padding:'12px 0', color:'var(--text3)', fontSize:12, fontStyle:'italic' }}>No outbound connections yet</div>
+                <div style={{ padding:'12px 0', color:'var(--text3)', fontSize: 13.5, fontStyle:'italic' }}>No outbound connections yet</div>
               )}
             </div>
           </div>
@@ -652,20 +652,20 @@ export default function Dashboard() {
           <div className="card">
             <div className="card-head" style={{ color:'var(--red)' }}>
               ⚠ Malicious IPs
-              <span style={{ fontFamily:'var(--font-data)', color:'var(--text3)', fontSize:10, fontWeight:400, textTransform:'none', letterSpacing:0 }}>
+              <span style={{ fontFamily:'var(--font-data)', color:'var(--text3)', fontSize: 12, fontWeight:400, textTransform:'none', letterSpacing:0 }}>
                 {(d?.malicious_ips||[]).length} detected
               </span>
             </div>
             <div style={{ padding:'4px 0 8px' }}>
               {(d?.malicious_ips || []).slice(0,6).map((item,i) => (
                 <div key={i} style={{ padding:'6px 16px', borderBottom:'1px solid color-mix(in srgb, var(--border) 30%, transparent)' }}>
-                  <div style={{ fontSize:11, color:'var(--red)', fontFamily:'var(--font-data)',
+                  <div style={{ fontSize: 13, color:'var(--red)', fontFamily:'var(--font-data)',
                     overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{item.title}</div>
-                  <div style={{ fontSize:10, color:'var(--text3)', marginTop:2 }}>{item.host} · {item.created_at ? new Date(item.created_at).toLocaleTimeString() : ''}</div>
+                  <div style={{ fontSize: 12, color:'var(--text3)', marginTop:2 }}>{item.host} · {item.created_at ? new Date(item.created_at).toLocaleTimeString() : ''}</div>
                 </div>
               ))}
               {(!d?.malicious_ips || d.malicious_ips.length === 0) && (
-                <div style={{ padding:'20px 16px', color:'var(--green)', fontSize:12, display:'flex', alignItems:'center', gap:6 }}>
+                <div style={{ padding:'20px 16px', color:'var(--green)', fontSize: 13.5, display:'flex', alignItems:'center', gap:6 }}>
                   <span>✓</span> No malicious IPs detected
                 </div>
               )}
@@ -676,20 +676,20 @@ export default function Dashboard() {
           <div className="card">
             <div className="card-head" style={{ color:'var(--orange)' }}>
               ⚠ Malicious Domains
-              <span style={{ fontFamily:'var(--font-data)', color:'var(--text3)', fontSize:10, fontWeight:400, textTransform:'none', letterSpacing:0 }}>
+              <span style={{ fontFamily:'var(--font-data)', color:'var(--text3)', fontSize: 12, fontWeight:400, textTransform:'none', letterSpacing:0 }}>
                 {(d?.malicious_domains||[]).length} detected
               </span>
             </div>
             <div style={{ padding:'4px 0 8px' }}>
               {(d?.malicious_domains || []).slice(0,6).map((item,i) => (
                 <div key={i} style={{ padding:'6px 16px', borderBottom:'1px solid color-mix(in srgb, var(--border) 30%, transparent)' }}>
-                  <div style={{ fontSize:11, color:'var(--orange)', fontFamily:'var(--font-data)',
+                  <div style={{ fontSize: 13, color:'var(--orange)', fontFamily:'var(--font-data)',
                     overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{item.title}</div>
-                  <div style={{ fontSize:10, color:'var(--text3)', marginTop:2 }}>{item.host} · {item.created_at ? new Date(item.created_at).toLocaleTimeString() : ''}</div>
+                  <div style={{ fontSize: 12, color:'var(--text3)', marginTop:2 }}>{item.host} · {item.created_at ? new Date(item.created_at).toLocaleTimeString() : ''}</div>
                 </div>
               ))}
               {(!d?.malicious_domains || d.malicious_domains.length === 0) && (
-                <div style={{ padding:'20px 16px', color:'var(--green)', fontSize:12, display:'flex', alignItems:'center', gap:6 }}>
+                <div style={{ padding:'20px 16px', color:'var(--green)', fontSize: 13.5, display:'flex', alignItems:'center', gap:6 }}>
                   <span>✓</span> No malicious domains detected
                 </div>
               )}
@@ -700,20 +700,20 @@ export default function Dashboard() {
           <div className="card">
             <div className="card-head" style={{ color:'var(--yellow)' }}>
               ⚠ Malicious Files
-              <span style={{ fontFamily:'var(--font-data)', color:'var(--text3)', fontSize:10, fontWeight:400, textTransform:'none', letterSpacing:0 }}>
+              <span style={{ fontFamily:'var(--font-data)', color:'var(--text3)', fontSize: 12, fontWeight:400, textTransform:'none', letterSpacing:0 }}>
                 {(d?.malicious_files||[]).length} detected
               </span>
             </div>
             <div style={{ padding:'4px 0 8px' }}>
               {(d?.malicious_files || []).slice(0,6).map((item,i) => (
                 <div key={i} style={{ padding:'6px 16px', borderBottom:'1px solid color-mix(in srgb, var(--border) 30%, transparent)' }}>
-                  <div style={{ fontSize:11, color:'var(--yellow)', fontFamily:'var(--font-data)',
+                  <div style={{ fontSize: 13, color:'var(--yellow)', fontFamily:'var(--font-data)',
                     overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{item.title}</div>
-                  <div style={{ fontSize:10, color:'var(--text3)', marginTop:2 }}>{item.host} · {item.created_at ? new Date(item.created_at).toLocaleTimeString() : ''}</div>
+                  <div style={{ fontSize: 12, color:'var(--text3)', marginTop:2 }}>{item.host} · {item.created_at ? new Date(item.created_at).toLocaleTimeString() : ''}</div>
                 </div>
               ))}
               {(!d?.malicious_files || d.malicious_files.length === 0) && (
-                <div style={{ padding:'20px 16px', color:'var(--green)', fontSize:12, display:'flex', alignItems:'center', gap:6 }}>
+                <div style={{ padding:'20px 16px', color:'var(--green)', fontSize: 13.5, display:'flex', alignItems:'center', gap:6 }}>
                   <span>✓</span> No malicious files detected
                 </div>
               )}
@@ -729,11 +729,11 @@ export default function Dashboard() {
             <div className="card-head">
               Recent Alerts
               <button onClick={() => navigate('/alerts')}
-                style={{ fontSize:10, color:'var(--accent)', background:'none', border:'none', cursor:'pointer' }}>All →</button>
+                style={{ fontSize: 12, color:'var(--accent)', background:'none', border:'none', cursor:'pointer' }}>All →</button>
             </div>
             <div style={{ overflowY:'auto', maxHeight:240 }}>
               {(d?.recent_alerts || []).length === 0
-                ? <div style={{ padding:20, color:'var(--green)', fontSize:12, display:'flex', alignItems:'center', gap:6 }}>
+                ? <div style={{ padding:20, color:'var(--green)', fontSize: 13.5, display:'flex', alignItems:'center', gap:6 }}>
                     <span>✓</span> No open alerts
                   </div>
                 : (d?.recent_alerts || []).map((a,i) => (
@@ -747,9 +747,9 @@ export default function Dashboard() {
                         {['','INFO','LOW','MED','HIGH','CRIT'][a.severity||1]}
                       </span>
                       <div style={{ flex:1, minWidth:0 }}>
-                        <div style={{ fontSize:11.5, fontWeight:500, color:'var(--text)',
+                        <div style={{ fontSize: 13, fontWeight:500, color:'var(--text)',
                           overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{a.title}</div>
-                        <div style={{ fontSize:10, color:'var(--text3)', marginTop:1 }}>
+                        <div style={{ fontSize: 12, color:'var(--text3)', marginTop:1 }}>
                           {a.host} · {a.created_at ? new Date(a.created_at).toLocaleTimeString() : ''}
                         </div>
                       </div>
@@ -764,7 +764,7 @@ export default function Dashboard() {
             <div className="card-head">
               Agent Health
               <button onClick={() => navigate('/agents')}
-                style={{ fontSize:10, color:'var(--accent)', background:'none', border:'none', cursor:'pointer' }}>Fleet →</button>
+                style={{ fontSize: 12, color:'var(--accent)', background:'none', border:'none', cursor:'pointer' }}>Fleet →</button>
             </div>
             <div style={{ overflowY:'auto', maxHeight:240 }}>
               {(raw?.endpoint_agents || []).slice(0,8).map((a,i) => (
@@ -778,19 +778,19 @@ export default function Dashboard() {
                     background: a.online ? 'var(--green)' : 'var(--text3)' }}
                     className={a.online ? 'pulse' : ''}/>
                   <div style={{ flex:1, minWidth:0 }}>
-                    <div style={{ fontSize:11.5, fontWeight:500, color:'var(--text)',
+                    <div style={{ fontSize: 13, fontWeight:500, color:'var(--text)',
                       fontFamily:'var(--font-data)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
                       {a.hostname}
                     </div>
-                    <div style={{ fontSize:10, color:'var(--text3)', marginTop:1 }}>{a.os}</div>
+                    <div style={{ fontSize: 12, color:'var(--text3)', marginTop:1 }}>{a.os}</div>
                   </div>
-                  <span style={{ fontSize:10, color: a.online ? 'var(--green)' : 'var(--text3)', flexShrink:0 }}>
+                  <span style={{ fontSize: 12, color: a.online ? 'var(--green)' : 'var(--text3)', flexShrink:0 }}>
                     {a.online ? 'Online' : 'Offline'}
                   </span>
                 </div>
               ))}
               {(!raw?.endpoint_agents || raw.endpoint_agents.length === 0) && (
-                <div style={{ padding:20, color:'var(--text3)', fontSize:12, fontStyle:'italic', textAlign:'center' }}>No agents</div>
+                <div style={{ padding:20, color:'var(--text3)', fontSize: 13.5, fontStyle:'italic', textAlign:'center' }}>No agents</div>
               )}
             </div>
           </div>
@@ -800,17 +800,17 @@ export default function Dashboard() {
             <div className="card-head">
               DevOps Overview
               <button onClick={() => navigate('/devops')}
-                style={{ fontSize:10, color:'var(--accent)', background:'none', border:'none', cursor:'pointer' }}>DevOps →</button>
+                style={{ fontSize: 12, color:'var(--accent)', background:'none', border:'none', cursor:'pointer' }}>DevOps →</button>
             </div>
             <div style={{ padding:'8px 0' }}>
               {(d?.devops_overview || []).length === 0
-                ? <div style={{ padding:'16px 16px', color:'var(--text3)', fontSize:12, fontStyle:'italic' }}>
+                ? <div style={{ padding:'16px 16px', color:'var(--text3)', fontSize: 13.5, fontStyle:'italic' }}>
                     No DevOps connectors configured
                   </div>
                 : (d?.devops_overview || []).map((dc,i) => (
                     <div key={i} style={{ padding:'8px 16px', borderBottom:'1px solid color-mix(in srgb, var(--border) 25%, transparent)' }}>
                       <div style={{ display:'flex', justifyContent:'space-between', marginBottom:6 }}>
-                        <span style={{ fontSize:12, fontWeight:600, color:'var(--text)' }}>
+                        <span style={{ fontSize: 13.5, fontWeight:600, color:'var(--text)' }}>
                           {dc.provider} · {dc.org}
                         </span>
                         <span className="tag">{Number(dc.repos_scanned||0)} repos</span>
@@ -821,8 +821,8 @@ export default function Dashboard() {
                           { label:'Critical',  value: dc.critical,  color:'var(--red)' },
                         ].map(m => (
                           <div key={m.label} style={{ background:'var(--surface2)', borderRadius:7, padding:'6px 10px' }}>
-                            <div style={{ fontSize:9, color:'var(--text3)', textTransform:'uppercase', letterSpacing:'0.08em' }}>{m.label}</div>
-                            <div style={{ fontSize:16, fontWeight:600, color: Number(m.value) > 0 ? m.color : 'var(--text3)',
+                            <div style={{ fontSize: 11, color:'var(--text3)', textTransform:'uppercase', letterSpacing:'0.08em' }}>{m.label}</div>
+                            <div style={{ fontSize: 16, fontWeight:600, color: Number(m.value) > 0 ? m.color : 'var(--text3)',
                               fontFamily:'var(--font-data)', marginTop:2 }}>{Number(m.value||0)}</div>
                           </div>
                         ))}

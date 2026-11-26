@@ -16,7 +16,7 @@ export default function AppTabDatabase({ service, range }) {
     { key: 'op', label: 'Operation', width: 90, render: q => q.operation || '-' },
     { key: 'table', label: 'Table', render: q => <span className="font-mono text-xs">{q.table || '-'}</span> },
     { key: 'text', label: 'Statement', render: q => q.text
-      ? <span className="font-mono text-[11px] break-all" title={`fingerprint ${q.fingerprint}`}>{q.text}</span>
+      ? <span className="font-mono text-xs break-all" title={`fingerprint ${q.fingerprint}`}>{q.text}</span>
       : <span className="text-siem-muted text-xs">{fp ? 'no statement reported' : 'names only'}</span> },
     { key: 'calls', label: 'Calls', align: 'right', render: q => appInt(q.calls) },
     { key: 'err', label: 'Errors', align: 'right', render: q => <span className={q.errors > 0 ? 'text-red-300' : ''}>{appInt(q.errors)}</span> },
@@ -35,7 +35,7 @@ export default function AppTabDatabase({ service, range }) {
       <div className="card"><DataTable columns={cols} rows={rows} loading={loading} error={error}
         rowKey={q => [q.system, q.operation, q.table, q.fingerprint].join('|')}
         emptyText="No database calls in this range." /></div>
-      <div className="text-[11px] text-siem-muted">
+      <div className="text-xs text-siem-muted">
         Operation and table names only, unless statement fingerprints are on in Settings.
       </div>
     </div>

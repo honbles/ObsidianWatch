@@ -120,13 +120,13 @@ function NodeDetail({ node, edges, nodesById, aiNote, onClose, alert }) {
       <div className="flex items-start justify-between gap-2">
         <div>
           <div className="text-sm font-semibold text-siem-text break-all">{node.label}</div>
-          <div className="text-[10px] uppercase tracking-wide text-siem-muted">{node.role} · {node.type}{node.confidence === 'low' ? ' · low confidence' : ''}</div>
+          <div className="text-2xs uppercase tracking-wide text-siem-muted">{node.role} · {node.type}{node.confidence === 'low' ? ' · low confidence' : ''}</div>
         </div>
         <button onClick={onClose} className="text-siem-muted hover:text-siem-text"><X size={13} /></button>
       </div>
       {node.explain && (
-        <div className="rounded-lg border border-siem-border bg-siem-surface/40 p-2.5 text-[12px] leading-relaxed text-siem-text">
-          <div className="text-[9px] uppercase tracking-wider text-siem-muted mb-1">What is going on here</div>
+        <div className="rounded-lg border border-siem-border bg-siem-surface/40 p-2.5 text-xs leading-relaxed text-siem-text">
+          <div className="text-2xs uppercase tracking-wider text-siem-muted mb-1">What is going on here</div>
           {node.explain}
         </div>
       )}
@@ -137,19 +137,19 @@ function NodeDetail({ node, edges, nodesById, aiNote, onClose, alert }) {
           path={node.detail || ''} />
       )}
       {node.meta?.beacon && (
-        <div className="rounded-lg border border-orange-800/50 bg-orange-950/20 p-2.5 text-[11px] text-orange-200">
-          <div className="text-[9px] uppercase tracking-wider text-orange-300/80 mb-0.5">Beacon candidate</div>
+        <div className="rounded-lg border border-orange-800/50 bg-orange-950/20 p-2.5 text-xs text-orange-200">
+          <div className="text-2xs uppercase tracking-wider text-orange-300/80 mb-0.5">Beacon candidate</div>
           {node.meta.beacon}
         </div>
       )}
       {node.items?.length > 0 && (
         <div className="rounded-lg border border-siem-border p-2.5">
-          <div className="text-[9px] uppercase tracking-wider text-siem-muted mb-1">
+          <div className="text-2xs uppercase tracking-wider text-siem-muted mb-1">
             Collapsed items ({node.items.length}{node.collapsed > node.items.length ? ` of ${node.collapsed}` : ''})
           </div>
           <div className="max-h-40 overflow-y-auto space-y-0.5">
             {node.items.map((it, i) => (
-              <div key={i} className="flex items-baseline gap-2 text-[11px]">
+              <div key={i} className="flex items-baseline gap-2 text-xs">
                 <span className="text-siem-muted font-mono shrink-0">{ts(it.t)}</span>
                 <span className="text-siem-text break-all">{it.detail || it.label}</span>
                 {it.count > 1 && <span className="text-siem-muted shrink-0">×{it.count}</span>}
@@ -161,58 +161,58 @@ function NodeDetail({ node, edges, nodesById, aiNote, onClose, alert }) {
       )}
       {node.alert_info?.length > 0 && (
         <div className="rounded-lg border border-red-900/50 bg-red-950/20 p-2.5 space-y-1">
-          <div className="text-[9px] uppercase tracking-wider text-red-300/80">Alerts on this node</div>
+          <div className="text-2xs uppercase tracking-wider text-red-300/80">Alerts on this node</div>
           {node.alert_info.map(a => (
-            <div key={a.id} className="text-[11px] text-siem-text">#{a.id} {a.title}{a.category ? <span className="text-siem-muted"> · {a.category}</span> : null}</div>
+            <div key={a.id} className="text-xs text-siem-text">#{a.id} {a.title}{a.category ? <span className="text-siem-muted"> · {a.category}</span> : null}</div>
           ))}
         </div>
       )}
       {node.meta?.download_url && (
-        <div className="rounded-lg border border-amber-800/50 bg-amber-950/20 p-2.5 text-[11px] break-all">
-          <div className="text-[9px] uppercase tracking-wider text-amber-300/80 mb-0.5">Downloaded from (Mark-of-the-Web)</div>
+        <div className="rounded-lg border border-amber-800/50 bg-amber-950/20 p-2.5 text-xs break-all">
+          <div className="text-2xs uppercase tracking-wider text-amber-300/80 mb-0.5">Downloaded from (Mark-of-the-Web)</div>
           <span className="font-mono text-siem-text">{node.meta.download_url}</span>
         </div>
       )}
       {aiNote && (
-        <div className="rounded-lg border border-violet-800/50 bg-violet-950/20 p-2.5 text-[12px] leading-relaxed text-violet-200">
-          <div className="text-[9px] uppercase tracking-wider text-violet-300/80 mb-1 flex items-center gap-1"><Sparkles size={10} /> AI reading</div>
+        <div className="rounded-lg border border-violet-800/50 bg-violet-950/20 p-2.5 text-xs leading-relaxed text-violet-200">
+          <div className="text-2xs uppercase tracking-wider text-violet-300/80 mb-1 flex items-center gap-1"><Sparkles size={10} /> AI reading</div>
           {aiNote}
         </div>
       )}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         <div className="space-y-2">
-          {node.detail && <div className="font-mono text-[10px] text-siem-muted break-all">{node.detail}</div>}
-          {node.cmd && <div className="font-mono text-[10px] bg-siem-bg border border-siem-border rounded p-2 break-all">{node.cmd}</div>}
-          <div className="text-[10px] text-siem-muted space-y-0.5">
+          {node.detail && <div className="font-mono text-mini text-siem-muted break-all">{node.detail}</div>}
+          {node.cmd && <div className="font-mono text-mini bg-siem-bg border border-siem-border rounded p-2 break-all">{node.cmd}</div>}
+          <div className="text-mini text-siem-muted space-y-0.5">
             {node.user && <div>User: <span className="text-siem-text">{node.user}</span></div>}
             <div>First: {ts(node.first)} · Last: {ts(node.last)}{node.ended ? ` · Ended: ${ts(node.ended)}` : ''}</div>
             {node.meta?.extensions && <div>Extensions: {node.meta.extensions}</div>}
           </div>
           {node.alerts?.length > 0 && (
             <div className="flex flex-wrap items-center gap-1">
-              <span className="text-[10px] uppercase tracking-wide text-siem-muted mr-1">Alerts</span>
-              {node.alerts.map(a => <span key={a} className="px-1.5 py-0.5 rounded bg-red-950/40 border border-red-900/50 text-red-300 font-mono text-[10px]">#{a}</span>)}
+              <span className="text-2xs uppercase tracking-wide text-siem-muted mr-1">Alerts</span>
+              {node.alerts.map(a => <span key={a} className="px-1.5 py-0.5 rounded bg-red-950/40 border border-red-900/50 text-red-300 font-mono text-mini">#{a}</span>)}
             </div>
           )}
         </div>
         <div className="space-y-2">
           {myEdges.length > 0 && (
             <div>
-              <div className="text-[10px] uppercase tracking-wide text-siem-muted mb-1">Links (evidence)</div>
+              <div className="text-2xs uppercase tracking-wide text-siem-muted mb-1">Links (evidence)</div>
               <div className="space-y-0.5 max-h-28 overflow-y-auto">
                 {myEdges.slice(0, 20).map((e, i) => {
                   const other = nodesById[e.source === node.id ? e.target : e.source]
-                  return <div key={i} className="text-[10px]"><span style={{ color: EDGE_COLOR[e.type] }}>{e.type}</span> {e.source === node.id ? '→' : '←'} <span className="text-siem-text">{other?.label}</span> <span className="text-siem-muted">[{e.evidence}{e.count > 1 ? ` ×${e.count}` : ''}]</span></div>
+                  return <div key={i} className="text-mini"><span style={{ color: EDGE_COLOR[e.type] }}>{e.type}</span> {e.source === node.id ? '→' : '←'} <span className="text-siem-text">{other?.label}</span> <span className="text-siem-muted">[{e.evidence}{e.count > 1 ? ` ×${e.count}` : ''}]</span></div>
                 })}
               </div>
             </div>
           )}
           {(node.event_ids?.length > 0 || myEdges.some(e => e.event_ids?.length)) && (
             events === null
-              ? <button onClick={loadEvents} className="text-[10px] border border-siem-border rounded px-2 py-1 text-siem-muted hover:text-siem-text">Show raw events</button>
-              : events.length === 0 ? <div className="text-[10px] text-siem-muted">Events no longer retained.</div>
+              ? <button onClick={loadEvents} className="text-mini border border-siem-border rounded px-2 py-1 text-siem-muted hover:text-siem-text">Show raw events</button>
+              : events.length === 0 ? <div className="text-mini text-siem-muted">Events no longer retained.</div>
               : <div className="space-y-1 max-h-56 overflow-y-auto">{events.map((e, i) => (
-                  <div key={i} className="border border-siem-border rounded p-1.5 font-mono text-[10px] break-all">
+                  <div key={i} className="border border-siem-border rounded p-1.5 font-mono text-mini break-all">
                     <div className="text-siem-muted">{ts(e.time)} · {e.event_type}</div>
                     <div>{e.command_line || e.file_path || e.reg_key || (e.dst_ip ? `${e.dst_ip}${e.dst_port ? ':' + e.dst_port : ''}` : (e.image_path || e.process_name)) || '(no detail)'}</div>
                   </div>))}</div>
@@ -228,28 +228,28 @@ function AIStory({ ai, loading, err, onRun, canRun }) {
   return (
     <div className="space-y-2 text-xs">
       <div className="flex items-center gap-2">
-        <div className="text-[10px] uppercase tracking-wider text-siem-muted flex items-center gap-1"><Sparkles size={11} /> AI story</div>
+        <div className="text-2xs uppercase tracking-wider text-siem-muted flex items-center gap-1"><Sparkles size={11} /> AI story</div>
         <div className="flex-1" />
         {canRun && (
           <button onClick={onRun} disabled={loading}
-            className="text-[10px] border border-violet-700/60 text-violet-200 rounded px-2 py-1 hover:bg-violet-950/40 disabled:opacity-50 flex items-center gap-1">
+            className="text-mini border border-violet-700/60 text-violet-200 rounded px-2 py-1 hover:bg-violet-950/40 disabled:opacity-50 flex items-center gap-1">
             {loading ? <Loader2 size={10} className="animate-spin" /> : <Sparkles size={10} />}
             {ai ? 'Re-run' : 'Explain this graph with AI'}
           </button>
         )}
       </div>
-      {err && <div className="text-[11px] text-red-400">{err}</div>}
-      {!ai && !loading && !err && <div className="text-[11px] text-siem-muted">Click a node for details.</div>}
+      {err && <div className="text-xs text-red-400">{err}</div>}
+      {!ai && !loading && !err && <div className="text-xs text-siem-muted">Click a node for details.</div>}
       {ai && (<>
         <div className="flex items-center gap-2">
-          <span className={`text-[10px] px-2 py-0.5 rounded-full border font-semibold ${v[1]}`}>{v[0]}</span>
-          <span className="text-[10px] text-siem-muted">confidence: {ai.confidence}</span>
+          <span className={`text-mini px-2 py-0.5 rounded-full border font-semibold ${v[1]}`}>{v[0]}</span>
+          <span className="text-mini text-siem-muted">confidence: {ai.confidence}</span>
         </div>
-        <div className="text-[12px] leading-relaxed text-siem-text">{ai.summary}</div>
+        <div className="text-xs leading-relaxed text-siem-text">{ai.summary}</div>
         {ai.next_steps?.length > 0 && (
-          <ul className="list-disc pl-4 space-y-0.5 text-[11px] text-siem-muted">{ai.next_steps.map((s, i) => <li key={i}>{s}</li>)}</ul>
+          <ul className="list-disc pl-4 space-y-0.5 text-xs text-siem-muted">{ai.next_steps.map((s, i) => <li key={i}>{s}</li>)}</ul>
         )}
-        <div className="text-[9px] text-siem-muted">Model output, checked only against node ids in this graph. Verify before acting.</div>
+        <div className="text-2xs text-siem-muted">Model output, checked only against node ids in this graph. Verify before acting.</div>
       </>)}
     </div>
   )
@@ -260,9 +260,9 @@ function CampaignStrip({ campaign }) {
   if (alerts.length < 2 && !related.length) return null
   const ts = t => { try { return format(new Date(t), 'HH:mm') } catch { return '' } }
   return (
-    <div className="shrink-0 border-b border-siem-border px-4 py-2 text-[11px] space-y-1">
+    <div className="shrink-0 border-b border-siem-border px-4 py-2 text-xs space-y-1">
       <div className="flex items-center gap-1.5 flex-wrap">
-        <span className="text-[9px] uppercase tracking-wider text-siem-muted mr-1">Campaign</span>
+        <span className="text-2xs uppercase tracking-wider text-siem-muted mr-1">Campaign</span>
         {alerts.map((a, i) => (
           <span key={a.id} className="flex items-center gap-1.5">
             {i > 0 && <span className="text-siem-muted">→</span>}
@@ -313,7 +313,7 @@ function GraphBody({ graph, selected, setSelected, ai, aiLoading, aiErr, runAI }
         <div className="lg:col-span-3">
           {sel
             ? <NodeDetail node={sel} edges={graph.edges} nodesById={nodesById} aiNote={ai?.nodes?.[sel.id]} onClose={() => setSelected(null)} alert={graph.alert} />
-            : <div className="text-[11px] text-siem-muted">Click any node to read what it is doing, the evidence behind its links, and its raw events.</div>}
+            : <div className="text-xs text-siem-muted">Click any node to read what it is doing, the evidence behind its links, and its raw events.</div>}
         </div>
         <div className="lg:col-span-2 lg:border-l lg:border-siem-border lg:pl-4">
           <AIStory ai={ai} loading={aiLoading} err={aiErr} onRun={runAI} canRun={graph.coverage.mode !== 'fallback'} />
@@ -358,7 +358,7 @@ function Panel({ alertId, full, onToggleFull }) {
 
   return (
     <div className={`flex flex-col ${full ? 'h-full' : 'h-[760px]'} bg-siem-bg`}>
-      <div className="shrink-0 flex items-center gap-3 px-4 py-2 border-b border-siem-border text-[11px]">
+      <div className="shrink-0 flex items-center gap-3 px-4 py-2 border-b border-siem-border text-xs">
         <span className="text-siem-muted">Window</span>
         <select value={days} onChange={e => setDays(+e.target.value)} className="bg-siem-bg border border-siem-border rounded px-1.5 py-0.5">
           {[1, 3, 7, 14].map(d => <option key={d} value={d}>{d}d back</option>)}
@@ -381,19 +381,19 @@ function Panel({ alertId, full, onToggleFull }) {
       {graph && !loading && (<>
         {(cov.gaps.length > 0 || cov.truncated || modeNote) && (
           <div className="shrink-0 px-4 py-2 space-y-1 border-b border-siem-border bg-amber-950/10">
-            {modeNote && <div className="text-[10px] text-siem-muted">{modeNote} Window {ts(cov.from)} → {ts(cov.to)}.</div>}
+            {modeNote && <div className="text-mini text-siem-muted">{modeNote} Window {ts(cov.from)} → {ts(cov.to)}.</div>}
             {cov.gaps.map(g => (
-              <div key={g.id} className="flex items-start gap-1.5 text-[10px] text-amber-300/90"><AlertTriangle size={10} className="mt-0.5 shrink-0" />{g.note}</div>
+              <div key={g.id} className="flex items-start gap-1.5 text-mini text-amber-300/90"><AlertTriangle size={10} className="mt-0.5 shrink-0" />{g.note}</div>
             ))}
           </div>
         )}
         <GraphBody graph={graph} selected={selected} setSelected={setSelected} ai={ai} aiLoading={aiLoading} aiErr={aiErr} runAI={runAI} />
         <div className="shrink-0 border-t border-siem-border">
-          <button onClick={() => setTlOpen(o => !o)} className="w-full text-left px-4 py-1.5 text-[10px] uppercase tracking-wide text-siem-muted hover:text-siem-text">
+          <button onClick={() => setTlOpen(o => !o)} className="w-full text-left px-4 py-1.5 text-2xs uppercase tracking-wide text-siem-muted hover:text-siem-text">
             Timeline ({graph.timeline.length}) {tlOpen ? '▾' : '▸'}
           </button>
           {tlOpen && (
-            <div className="max-h-44 overflow-y-auto px-4 pb-2 space-y-0.5 font-mono text-[10px]">
+            <div className="max-h-44 overflow-y-auto px-4 pb-2 space-y-0.5 font-mono text-mini">
               {graph.timeline.map((t, i) => (
                 <div key={i} onClick={() => setSelected(t.node)} className="cursor-pointer hover:bg-siem-surface rounded px-1 flex gap-2">
                   <span className="text-siem-muted shrink-0">{ts(t.t)}</span><span className="truncate">{t.what}</span>

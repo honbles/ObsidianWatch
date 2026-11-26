@@ -30,11 +30,11 @@ export default function AppTraceWaterfall({ trace }) {
           const onPath = rows.crit.has(s.span_id)
           const detail = [s.method, s.route, s.code || '', s.db && `db:${s.db}`, s.db_op && s.db_table && `${s.db_op} ${s.db_table}`, s.peer && `→${s.peer}`, s.exception && `! ${s.exception}`].filter(Boolean).join(' ')
           return (
-            <div key={s.span_id + i} className="grid grid-cols-[minmax(160px,34%)_1fr_70px] items-center gap-2 px-2 py-1 text-[11px]">
+            <div key={s.span_id + i} className="grid grid-cols-[minmax(160px,34%)_1fr_70px] items-center gap-2 px-2 py-1 text-xs">
               <div className="truncate" style={{ paddingLeft: s.depth * 12 }} title={`${s.name} ${detail}`}>
                 <span className={bad ? 'text-red-300' : 'text-siem-text'}>{s.name || s.span_id}</span>
                 {s.service && <span className="text-siem-muted"> · {s.service}</span>}
-                {s.n1 && <span className="ml-1 text-[10px] rounded border border-amber-500/40 text-amber-300 px-1" title="The same query ran many times under one parent: an N+1 pattern.">N+1</span>}
+                {s.n1 && <span className="ml-1 text-mini rounded border border-amber-500/40 text-amber-300 px-1" title="The same query ran many times under one parent: an N+1 pattern.">N+1</span>}
               </div>
               <div className="relative h-3 bg-white/5 rounded">
                 <div className={`absolute h-3 rounded ${bad ? 'bg-red-500/70' : onPath ? 'bg-amber-400/80' : 'bg-siem-accent/60'}`} style={{ left: `${left}%`, width: `${Math.min(width, 100 - left)}%` }} />
@@ -44,7 +44,7 @@ export default function AppTraceWaterfall({ trace }) {
           )
         })}
       </div>
-      {truncated && <div className="text-[11px] text-amber-300">Only {rows.list.length} of {trace.span_count} spans were kept (traces are capped at 64 KB).</div>}
+      {truncated && <div className="text-xs text-amber-300">Only {rows.list.length} of {trace.span_count} spans were kept (traces are capped at 64 KB).</div>}
     </div>
   )
 }

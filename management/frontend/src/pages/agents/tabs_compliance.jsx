@@ -66,7 +66,7 @@ export function TabCompliance({ agent }) {
         <div className="bg-siem-surface border border-siem-border rounded-xl">
           {checks.length === 0 && <div className="px-4 py-6 text-sm text-siem-muted text-center">Nothing to show.</div>}
           {checks.map(c => (
-            <div key={c.id} className="px-4 py-2 border-b border-siem-border/15 last:border-0 text-[11px]">
+            <div key={c.id} className="px-4 py-2 border-b border-siem-border/15 last:border-0 text-xs">
               <span className={STATUS_CLS[c.status] || 'text-siem-muted'}>{(c.status || '').toUpperCase()}</span>
               <span className="ml-2 text-siem-text">{c.id} {c.title}</span>
               {c.category && <span className="ml-2 text-siem-muted/60">{c.category}</span>}

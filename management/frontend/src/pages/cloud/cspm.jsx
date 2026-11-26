@@ -125,20 +125,20 @@ Respond with a JSON object:
         style={{ display:'flex', alignItems:'center', gap:10, padding:'12px 14px', cursor:'pointer' }}>
         <CatIcon size={14} color={catMeta.color} style={{ flexShrink:0 }}/>
         <div style={{ flex:1, minWidth:0 }}>
-          <div style={{ fontSize:12.5, fontWeight:600, color:'var(--text)', marginBottom:2, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>
+          <div style={{ fontSize: 13.5, fontWeight:600, color:'var(--text)', marginBottom:2, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>
             {f.title}
           </div>
           <div style={{ display:'flex', alignItems:'center', gap:6, flexWrap:'wrap' }}>
-            <span style={{ fontSize:9.5, background:'var(--surface2)', border:'1px solid var(--border)', borderRadius:4, padding:'1px 5px', color:'var(--text3)', fontFamily:'var(--font-data)' }}>
+            <span style={{ fontSize: 11, background:'var(--surface2)', border:'1px solid var(--border)', borderRadius:4, padding:'1px 5px', color:'var(--text3)', fontFamily:'var(--font-data)' }}>
               {f.resource_type}
             </span>
-            <span style={{ fontSize:10, color:'var(--text3)', fontFamily:'var(--font-data)' }}>{f.resource}</span>
-            {cis && <span style={{ fontSize:9, color:'var(--text3)', opacity:0.7 }}>{cis}</span>}
+            <span style={{ fontSize: 12, color:'var(--text3)', fontFamily:'var(--font-data)' }}>{f.resource}</span>
+            {cis && <span style={{ fontSize: 11, color:'var(--text3)', opacity:0.7 }}>{cis}</span>}
           </div>
         </div>
         <div style={{ display:'flex', alignItems:'center', gap:8, flexShrink:0 }}>
           {f.mitre && (
-            <span style={{ fontSize:9, background:'rgb(var(--acc-c) / 0.1)', border:'1px solid rgb(var(--acc-c) / 0.2)', color:'var(--accent)', borderRadius:4, padding:'1px 5px', fontFamily:'var(--font-data)' }}>
+            <span style={{ fontSize: 11, background:'rgb(var(--acc-c) / 0.1)', border:'1px solid rgb(var(--acc-c) / 0.2)', color:'var(--accent)', borderRadius:4, padding:'1px 5px', fontFamily:'var(--font-data)' }}>
               {f.mitre}
             </span>
           )}
@@ -150,18 +150,18 @@ Respond with a JSON object:
       {open && (
         <div style={{ padding:'0 14px 14px', borderTop:'1px solid var(--border)', paddingTop:12 }}>
           {/* Description */}
-          <p style={{ fontSize:12, color:'var(--text2)', lineHeight:1.6, marginBottom:10 }}>{f.description}</p>
+          <p style={{ fontSize: 13.5, color:'var(--text2)', lineHeight:1.6, marginBottom:10 }}>{f.description}</p>
 
           {/* Remediation */}
           <div style={{ background:'rgb(var(--ok-c) / 0.06)', border:'1px solid rgb(var(--ok-c) / 0.15)', borderRadius:7, padding:'8px 12px', marginBottom:10 }}>
-            <div style={{ fontSize:10, fontWeight:700, color:'var(--ok)', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:4 }}>✓ Remediation</div>
-            <p style={{ fontSize:11.5, color:'var(--text2)', lineHeight:1.6 }}>{f.remediation}</p>
+            <div style={{ fontSize: 11.5, fontWeight:700, color:'var(--ok)', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:4 }}>✓ Remediation</div>
+            <p style={{ fontSize: 13, color:'var(--text2)', lineHeight:1.6 }}>{f.remediation}</p>
           </div>
 
           {/* Action bar */}
           <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
             <button onClick={explainWithAI} disabled={aiLoading}
-              style={{ display:'flex', alignItems:'center', gap:5, fontSize:11, padding:'5px 10px',
+              style={{ display:'flex', alignItems:'center', gap:5, fontSize: 13, padding:'5px 10px',
                 background: aiText ? 'rgb(var(--violet-c) / 0.15)' : 'rgb(var(--acc-c) / 0.1)',
                 border: `1px solid ${aiText ? 'rgb(var(--violet-c) / 0.3)' : 'rgb(var(--acc-c) / 0.25)'}`,
                 color: aiText ? 'var(--violet)' : 'var(--accent)', borderRadius:6, cursor:'pointer', fontFamily:'inherit' }}>
@@ -169,13 +169,13 @@ Respond with a JSON object:
             </button>
             {link && (
               <a href={safeHref(link)} target="_blank" rel="noopener noreferrer"
-                style={{ display:'flex', alignItems:'center', gap:5, fontSize:11, padding:'5px 10px',
+                style={{ display:'flex', alignItems:'center', gap:5, fontSize: 13, padding:'5px 10px',
                   background:'var(--surface2)', border:'1px solid var(--border)',
                   color:'var(--text2)', borderRadius:6, textDecoration:'none' }}>
                 <ExternalLink size={11}/>{provider === 'azure' ? 'Open in Azure Portal' : 'Open in GCP Console'}
               </a>
             )}
-            <span style={{ fontSize:10, color:'var(--text3)', marginLeft:'auto' }}>
+            <span style={{ fontSize: 12, color:'var(--text3)', marginLeft:'auto' }}>
               Found: {f.scanned_at ? format(new Date(f.scanned_at), 'MMM d, yyyy HH:mm') : '-'}
             </span>
           </div>
@@ -183,31 +183,31 @@ Respond with a JSON object:
           {/* AI Explanation */}
           {aiText && (
             <div style={{ marginTop:10, background:'rgb(var(--violet-c) / 0.06)', border:'1px solid rgb(var(--violet-c) / 0.2)', borderRadius:8, padding:'12px 14px' }}>
-              <div style={{ fontSize:10, fontWeight:700, color:'var(--violet)', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:8 }}>
+              <div style={{ fontSize: 11.5, fontWeight:700, color:'var(--violet)', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:8 }}>
                 ✦ AI Security Analyst
               </div>
               {aiText.plain_english && (
-                <p style={{ fontSize:12, color:'var(--text)', lineHeight:1.6, marginBottom:8 }}>{aiText.plain_english}</p>
+                <p style={{ fontSize: 13.5, color:'var(--text)', lineHeight:1.6, marginBottom:8 }}>{aiText.plain_english}</p>
               )}
               {aiText.business_impact && (
                 <div style={{ marginBottom:6 }}>
-                  <span style={{ fontSize:10, color:'var(--crit)', fontWeight:600 }}>Business Impact: </span>
-                  <span style={{ fontSize:11, color:'var(--text2)' }}>{aiText.business_impact}</span>
+                  <span style={{ fontSize: 12, color:'var(--crit)', fontWeight:600 }}>Business Impact: </span>
+                  <span style={{ fontSize: 13, color:'var(--text2)' }}>{aiText.business_impact}</span>
                 </div>
               )}
               {aiText.urgency && (
                 <div style={{ marginBottom:8 }}>
-                  <span style={{ fontSize:10, color:'var(--warn)', fontWeight:600 }}>Urgency: </span>
-                  <span style={{ fontSize:11, color:'var(--text2)' }}>{aiText.urgency}</span>
+                  <span style={{ fontSize: 12, color:'var(--warn)', fontWeight:600 }}>Urgency: </span>
+                  <span style={{ fontSize: 13, color:'var(--text2)' }}>{aiText.urgency}</span>
                 </div>
               )}
               {aiText.steps?.length > 0 && (
                 <div>
-                  <div style={{ fontSize:10, color:'var(--ok)', fontWeight:600, marginBottom:4 }}>Steps:</div>
+                  <div style={{ fontSize: 12, color:'var(--ok)', fontWeight:600, marginBottom:4 }}>Steps:</div>
                   {aiText.steps.map((s,i) => (
                     <div key={i} style={{ display:'flex', gap:6, marginBottom:3 }}>
-                      <span style={{ fontSize:10, color:'var(--accent)', fontFamily:'var(--font-data)', flexShrink:0 }}>{i+1}.</span>
-                      <span style={{ fontSize:11, color:'var(--text2)', lineHeight:1.5 }}>{s}</span>
+                      <span style={{ fontSize: 12, color:'var(--accent)', fontFamily:'var(--font-data)', flexShrink:0 }}>{i+1}.</span>
+                      <span style={{ fontSize: 13, color:'var(--text2)', lineHeight:1.5 }}>{s}</span>
                     </div>
                   ))}
                 </div>
@@ -234,10 +234,10 @@ export function RiskScoreGauge({ score }) {
           strokeDasharray={`${dash} ${circumference}`}
           strokeLinecap="round"
           style={{ transformOrigin:'center', transform:'rotate(-90deg)', transition:'stroke-dasharray 0.6s ease' }}/>
-        <text x={cx} y={cy-2} textAnchor="middle" style={{ fill:'var(--text)', fontSize:18, fontWeight:700, fontFamily:'var(--font-data)' }}>{score}</text>
-        <text x={cx} y={cy+13} textAnchor="middle" style={{ fill:'var(--text3)', fontSize:9 }}>/100</text>
+        <text x={cx} y={cy-2} textAnchor="middle" style={{ fill:'var(--text)', fontSize: 18, fontWeight:700, fontFamily:'var(--font-data)' }}>{score}</text>
+        <text x={cx} y={cy+13} textAnchor="middle" style={{ fill:'var(--text3)', fontSize: 11 }}>/100</text>
       </svg>
-      <span style={{ fontSize:11, fontWeight:600, color:rl.color }}>{rl.label}</span>
+      <span style={{ fontSize: 13, fontWeight:600, color:rl.color }}>{rl.label}</span>
     </div>
   )
 }
@@ -264,7 +264,7 @@ export function ComplianceBadges({ findings }) {
         const colors = { pass: ['var(--ok)','rgb(var(--ok-c) / 0.1)','rgb(var(--ok-c) / 0.2)'], warn: ['var(--warn)','rgb(var(--warn-c) / 0.1)','rgb(var(--warn-c) / 0.2)'], fail: ['var(--crit)','rgb(var(--crit-c) / 0.1)','rgb(var(--crit-c) / 0.2)'] }
         const [c, bg, border] = colors[status]
         return (
-          <div key={fw.name} style={{ fontSize:10.5, padding:'4px 10px', borderRadius:6, background:bg, border:`1px solid ${border}`, color:c, fontWeight:600 }}>
+          <div key={fw.name} style={{ fontSize: 12, padding:'4px 10px', borderRadius:6, background:bg, border:`1px solid ${border}`, color:c, fontWeight:600 }}>
             {status === 'pass' ? '✓' : status === 'warn' ? '⚠' : '✕'} {fw.name}
             {issues > 0 && <span style={{ marginLeft:4, opacity:0.8 }}>({issues})</span>}
           </div>
@@ -324,7 +324,7 @@ export function AssetInventory({ findings }) {
     container_registry: { icon: HardDrive, label: 'Container Registries' },
   }
   return (
-    <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(150px,1fr))', gap:8 }}>
+    <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(168px,1fr))', gap:8 }}>
       {Object.entries(inventory).map(([type, data]) => {
         const meta = typeLabels[type] || { icon: Shield, label: type }
         const Icon = meta.icon
@@ -332,17 +332,17 @@ export function AssetInventory({ findings }) {
           <div key={type} style={{ background:'var(--surface2)', border:'1px solid var(--border)', borderRadius:8, padding:'10px 12px' }}>
             <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:4 }}>
               <Icon size={12} color="var(--text3)"/>
-              <span style={{ fontSize:10, color:'var(--text3)', fontWeight:600 }}>{meta.label}</span>
+              <span style={{ fontSize: 12, color:'var(--text3)', fontWeight:600 }}>{meta.label}</span>
             </div>
-            <div style={{ fontSize:18, fontWeight:700, color:'var(--text)', fontFamily:'var(--font-data)' }}>{data.resources.size}</div>
-            <div style={{ fontSize:10, color: data.issues > 0 ? 'var(--crit)' : 'var(--ok)' }}>
+            <div style={{ fontSize: 18, fontWeight:700, color:'var(--text)', fontFamily:'var(--font-data)' }}>{data.resources.size}</div>
+            <div style={{ fontSize: 12, color: data.issues > 0 ? 'var(--crit)' : 'var(--ok)' }}>
               {data.issues} issue{data.issues !== 1 ? 's' : ''}
             </div>
           </div>
         )
       })}
       {Object.keys(inventory).length === 0 && (
-        <div style={{ gridColumn:'1/-1', textAlign:'center', color:'var(--text3)', fontSize:12, padding:20 }}>
+        <div style={{ gridColumn:'1/-1', textAlign:'center', color:'var(--text3)', fontSize: 13.5, padding:20 }}>
           No assets found - run a scan first
         </div>
       )}
@@ -364,10 +364,10 @@ export function NetworkExposure({ findings }) {
         <div key={res} style={{ display:'flex', alignItems:'center', gap:8, padding:'8px 10px',
           background:'var(--surface2)', border:'1px solid var(--border)', borderRadius:7 }}>
           <Globe size={12} color={issues.some(i => i.severity === 'critical') ? 'var(--crit)' : 'var(--high)'}/>
-          <span style={{ flex:1, fontSize:11, color:'var(--text2)', fontFamily:'var(--font-data)' }}>{res}</span>
+          <span style={{ flex:1, fontSize: 13, color:'var(--text2)', fontFamily:'var(--font-data)' }}>{res}</span>
           <div style={{ display:'flex', gap:4 }}>
             {issues.map((issue,i) => (
-              <span key={i} style={{ fontSize:9, padding:'1px 5px', borderRadius:4,
+              <span key={i} style={{ fontSize: 11, padding:'1px 5px', borderRadius:4,
                 background: SEV_BG[issue.severity], border:`1px solid ${SEV_BORDER[issue.severity]}`,
                 color: SEV_COLOR[issue.severity] }}>
                 {issue.severity}
@@ -377,7 +377,7 @@ export function NetworkExposure({ findings }) {
         </div>
       ))}
       {Object.keys(publicResources).length === 0 && (
-        <div style={{ textAlign:'center', color:'var(--ok)', fontSize:12, padding:16 }}>
+        <div style={{ textAlign:'center', color:'var(--ok)', fontSize: 13.5, padding:16 }}>
           ✓ No publicly exposed resources detected
         </div>
       )}
@@ -427,16 +427,16 @@ export function IdentityRisk({ findings }) {
             borderRadius:7 }}>
             <div style={{ display:'flex', alignItems:'center', gap:7 }}>
               <Lock size={11} color={SEV_COLOR[worst.severity]}/>
-              <span style={{ fontSize:11.5, color:'var(--text)' }}>{label}</span>
+              <span style={{ fontSize: 13, color:'var(--text)' }}>{label}</span>
             </div>
-            <span style={{ fontSize:11, fontWeight:700, color: SEV_COLOR[worst.severity],
+            <span style={{ fontSize: 13, fontWeight:700, color: SEV_COLOR[worst.severity],
               background: SEV_BG[worst.severity], border:`1px solid ${SEV_BORDER[worst.severity]}`,
               borderRadius:4, padding:'1px 7px' }}>{items.length}</span>
           </div>
         )
       })}
       {!iamFindings.length && (
-        <div style={{ textAlign:'center', color:'var(--ok)', fontSize:12, padding:16 }}>
+        <div style={{ textAlign:'center', color:'var(--ok)', fontSize: 13.5, padding:16 }}>
           ✓ No IAM issues detected
         </div>
       )}
@@ -511,14 +511,14 @@ ${JSON.stringify(compact)}`
       <div style={{ flexShrink:0, padding:'14px 20px', borderBottom:'1px solid var(--border)',
         background:'var(--surface)', display:'flex', alignItems:'center', justifyContent:'space-between', gap:12 }}>
         <div>
-          <div style={{ fontSize:13, fontWeight:700, color:'var(--text)' }}>Cloud Security Posture - {cspm?.project_id || conn.account_id}</div>
-          {cspm && <div style={{ fontSize:10.5, color:'var(--text3)', marginTop:2 }}>
+          <div style={{ fontSize: 14, fontWeight:700, color:'var(--text)' }}>Cloud Security Posture - {cspm?.project_id || conn.account_id}</div>
+          {cspm && <div style={{ fontSize: 12, color:'var(--text3)', marginTop:2 }}>
             Last scan: {cspm.scanned_at ? format(new Date(cspm.scanned_at), 'MMM d, yyyy HH:mm') : '-'} · {cspm.scan_duration}
             {cspm.scc_enabled && <span style={{ color:'var(--ok)', marginLeft:8 }}>✓ SCC connected ({cspm.scc_findings||0} findings)</span>}
             {cspm.errors?.length > 0 && (
               <button onClick={() => setShowErrors(e => !e)}
                 style={{ marginLeft:8, background:'rgb(var(--high-c) / 0.1)', border:'1px solid rgb(var(--high-c) / 0.25)',
-                  color:'var(--high)', borderRadius:4, padding:'1px 7px', fontSize:10.5, cursor:'pointer', fontFamily:'inherit' }}>
+                  color:'var(--high)', borderRadius:4, padding:'1px 7px', fontSize: 12, cursor:'pointer', fontFamily:'inherit' }}>
                 ⚠ {cspm.errors.length} check failed - click to see
               </button>
             )}
@@ -527,14 +527,14 @@ ${JSON.stringify(compact)}`
         <div style={{ display:'flex', gap:8, alignItems:'center' }}>
           {cspm && (
             <button onClick={runAISummary} disabled={aiLoading}
-              style={{ display:'flex', alignItems:'center', gap:5, fontSize:11.5, padding:'7px 13px',
+              style={{ display:'flex', alignItems:'center', gap:5, fontSize: 13, padding:'7px 13px',
                 background:'rgb(var(--violet-c) / 0.1)', border:'1px solid rgb(var(--violet-c) / 0.25)',
                 color:'var(--violet)', borderRadius:7, cursor:aiLoading?'wait':'pointer', fontFamily:'inherit', fontWeight:600 }}>
               <Sparkles size={12}/>{aiLoading ? 'Analysing…' : 'AI Summary'}
             </button>
           )}
           <button onClick={onRunScan} disabled={scanning}
-            style={{ display:'flex', alignItems:'center', gap:6, fontSize:11.5, padding:'7px 14px',
+            style={{ display:'flex', alignItems:'center', gap:6, fontSize: 13, padding:'7px 14px',
               background: scanning ? 'var(--surface2)' : 'var(--accent)',
               color: scanning ? 'var(--text2)' : 'var(--onacc)',
               border:'none', borderRadius:7, cursor: scanning?'wait':'pointer', fontFamily:'inherit', fontWeight:700 }}>
@@ -551,11 +551,11 @@ ${JSON.stringify(compact)}`
           <div style={{ marginBottom:16, background:'rgb(var(--high-c) / 0.06)', border:'1px solid rgb(var(--high-c) / 0.25)', borderRadius:10, overflow:'hidden' }}>
             <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'10px 14px', borderBottom:'1px solid rgb(var(--high-c) / 0.2)' }}>
               <div style={{ display:'flex', alignItems:'center', gap:7 }}>
-                <span style={{ fontSize:12, fontWeight:700, color:'var(--high)' }}>⚠ Scan Check Failures</span>
-                <span style={{ fontSize:10.5, color:'var(--text3)' }}>These checks could not run - usually missing IAM role or API not enabled</span>
+                <span style={{ fontSize: 13.5, fontWeight:700, color:'var(--high)' }}>⚠ Scan Check Failures</span>
+                <span style={{ fontSize: 12, color:'var(--text3)' }}>These checks could not run - usually missing IAM role or API not enabled</span>
               </div>
               <button onClick={() => setShowErrors(false)}
-                style={{ background:'none', border:'none', color:'var(--text3)', cursor:'pointer', fontSize:16, padding:'0 4px', fontFamily:'inherit' }}>×</button>
+                style={{ background:'none', border:'none', color:'var(--text3)', cursor:'pointer', fontSize: 16, padding:'0 4px', fontFamily:'inherit' }}>×</button>
             </div>
             {cspm.errors.map((err, i) => {
               const checkName = err.split(':')[0]
@@ -587,14 +587,14 @@ ${JSON.stringify(compact)}`
               return (
                 <div key={i} style={{ padding:'10px 14px', borderBottom: i < cspm.errors.length-1 ? '1px solid rgb(var(--high-c) / 0.1)' : 'none' }}>
                   <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:4 }}>
-                    <code style={{ fontSize:11, background:'var(--surface2)', border:'1px solid var(--border)', borderRadius:4, padding:'1px 6px', color:'var(--high)', fontFamily:'var(--font-data)' }}>{checkName}</code>
-                    <span style={{ fontSize:10.5, color: is403 ? 'var(--crit)' : is404 ? 'var(--info)' : 'var(--high)' }}>
+                    <code style={{ fontSize: 13, background:'var(--surface2)', border:'1px solid var(--border)', borderRadius:4, padding:'1px 6px', color:'var(--high)', fontFamily:'var(--font-data)' }}>{checkName}</code>
+                    <span style={{ fontSize: 12, color: is403 ? 'var(--crit)' : is404 ? 'var(--info)' : 'var(--high)' }}>
                       {is403 ? '403 Permission Denied' : is404 ? '404 Not Found / API disabled' : 'Error'}
                     </span>
                   </div>
-                  <div style={{ fontSize:11, color:'var(--text3)', fontFamily:'var(--font-data)', marginBottom:6, wordBreak:'break-all' }}>{errMsg.slice(0, 200)}</div>
+                  <div style={{ fontSize: 13, color:'var(--text3)', fontFamily:'var(--font-data)', marginBottom:6, wordBreak:'break-all' }}>{errMsg.slice(0, 200)}</div>
                   {requiredRoles[checkName] && (
-                    <div style={{ display:'flex', alignItems:'center', gap:5, fontSize:10.5 }}>
+                    <div style={{ display:'flex', alignItems:'center', gap:5, fontSize: 12 }}>
                       <span style={{ color:'var(--ok)', fontWeight:600 }}>Fix:</span>
                       <code style={{ color:'var(--text2)', fontFamily:'var(--font-data)', background:'var(--surface2)', padding:'1px 6px', borderRadius:4 }}>
                         {requiredRoles[checkName]}
@@ -604,7 +604,7 @@ ${JSON.stringify(compact)}`
                 </div>
               )
             })}
-            <div style={{ padding:'10px 14px', background:'rgba(0,0,0,0.2)', fontSize:11, color:'var(--text3)' }}>
+            <div style={{ padding:'10px 14px', background:'rgba(0,0,0,0.2)', fontSize: 13, color:'var(--text3)' }}>
               The service account needs <strong style={{ color:'var(--text2)' }}>roles/viewer</strong> or <strong style={{ color:'var(--text2)' }}>roles/security-reviewer</strong> at minimum.
               Checks that fail are skipped - other findings are still shown.
             </div>
@@ -620,8 +620,8 @@ ${JSON.stringify(compact)}`
         {!loading && !cspm && !scanning && (
           <div style={{ display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', height:300, gap:12 }}>
             <Shield size={48} color="var(--border)" strokeWidth={1}/>
-            <div style={{ fontSize:15, fontWeight:600, color:'var(--text2)' }}>No scan results yet</div>
-            <div style={{ fontSize:12, color:'var(--text3)' }}>Click "Run Scan" to check your cloud security posture</div>
+            <div style={{ fontSize: 16, fontWeight:600, color:'var(--text2)' }}>No scan results yet</div>
+            <div style={{ fontSize: 13.5, color:'var(--text3)' }}>Click "Run Scan" to check your cloud security posture</div>
           </div>
         )}
 
@@ -633,7 +633,7 @@ ${JSON.stringify(compact)}`
             {/* Risk score */}
             <div style={{ background:'var(--surface)', border:'1px solid var(--border)', borderRadius:12, padding:'16px 20px', display:'flex', flexDirection:'column', alignItems:'center', gap:8 }}>
               <RiskScoreGauge score={score}/>
-              <div style={{ fontSize:10, color:'var(--text3)', textAlign:'center' }}>Risk Score</div>
+              <div style={{ fontSize: 12, color:'var(--text3)', textAlign:'center' }}>Risk Score</div>
             </div>
 
             {/* KPIs */}
@@ -648,35 +648,35 @@ ${JSON.stringify(compact)}`
               ].map(k => (
                 <div key={k.label} style={{ background:'var(--surface)', border:'1px solid var(--border)',
                   borderRadius:8, padding:'10px 12px', borderTop:`2px solid ${k.color}` }}>
-                  <div style={{ fontSize:10, color:'var(--text3)', marginBottom:4, fontWeight:600, textTransform:'uppercase', letterSpacing:'0.06em' }}>{k.label}</div>
-                  <div style={{ fontSize:22, fontWeight:700, color:k.color, fontFamily:'var(--font-data)' }}>{k.value||0}</div>
+                  <div style={{ fontSize: 11.5, color:'var(--text3)', marginBottom:4, fontWeight:600, textTransform:'uppercase', letterSpacing:'0.06em' }}>{k.label}</div>
+                  <div style={{ fontSize: 22, fontWeight:700, color:k.color, fontFamily:'var(--font-data)' }}>{k.value||0}</div>
                 </div>
               ))}
             </div>
 
             {/* Compliance + SCC status */}
             <div style={{ background:'var(--surface)', border:'1px solid var(--border)', borderRadius:12, padding:'16px', minWidth:220 }}>
-              <div style={{ fontSize:10, fontWeight:700, color:'var(--text3)', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:10 }}>Compliance Status</div>
+              <div style={{ fontSize: 11.5, fontWeight:700, color:'var(--text3)', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:10 }}>Compliance Status</div>
               <ComplianceBadges findings={allFindings}/>
               <div style={{ marginTop:12, paddingTop:10, borderTop:'1px solid var(--border)' }}>
-                <div style={{ fontSize:10, fontWeight:700, color:'var(--text3)', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:6 }}>Security Command Center</div>
+                <div style={{ fontSize: 11.5, fontWeight:700, color:'var(--text3)', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:6 }}>Security Command Center</div>
                 {cspm.scc_enabled ? (
                   <div style={{ display:'flex', alignItems:'center', gap:6 }}>
                     <span style={{ width:7, height:7, borderRadius:'50%', background:'var(--ok)', display:'inline-block' }}/>
-                    <span style={{ fontSize:11, color:'var(--ok)', fontWeight:600 }}>Connected</span>
-                    <span style={{ fontSize:10.5, color:'var(--text3)' }}>· {cspm.scc_findings||0} findings</span>
+                    <span style={{ fontSize: 13, color:'var(--ok)', fontWeight:600 }}>Connected</span>
+                    <span style={{ fontSize: 12, color:'var(--text3)' }}>· {cspm.scc_findings||0} findings</span>
                   </div>
                 ) : (
                   <div>
                     <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:4 }}>
                       <span style={{ width:7, height:7, borderRadius:'50%', background:'var(--text3)', display:'inline-block' }}/>
-                      <span style={{ fontSize:11, color:'var(--text3)' }}>Not connected</span>
+                      <span style={{ fontSize: 13, color:'var(--text3)' }}>Not connected</span>
                     </div>
-                    <div style={{ fontSize:10, color:'var(--text3)', lineHeight:1.5 }}>
+                    <div style={{ fontSize: 12, color:'var(--text3)', lineHeight:1.5 }}>
                       Enable for 500+ GCP built-in checks, threat detection, and compliance posture.
                     </div>
                     <a href="https://console.cloud.google.com/security/command-center" target="_blank" rel="noopener noreferrer"
-                      style={{ display:'inline-flex', alignItems:'center', gap:4, marginTop:6, fontSize:10.5,
+                      style={{ display:'inline-flex', alignItems:'center', gap:4, marginTop:6, fontSize: 12,
                         color:'var(--accent)', textDecoration:'none' }}>
                       Enable SCC →
                     </a>
@@ -690,36 +690,36 @@ ${JSON.stringify(compact)}`
           {aiSummary && (
             <div style={{ background:'rgb(var(--violet-c) / 0.06)', border:'1px solid rgb(var(--violet-c) / 0.2)', borderRadius:10, padding:'14px 16px', marginBottom:16 }}>
               <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:8 }}>
-                <div style={{ fontSize:10, fontWeight:700, color:'var(--violet)', textTransform:'uppercase', letterSpacing:'0.06em' }}>✦ AI Executive Summary</div>
+                <div style={{ fontSize: 11.5, fontWeight:700, color:'var(--violet)', textTransform:'uppercase', letterSpacing:'0.06em' }}>✦ AI Executive Summary</div>
                 <button onClick={() => setAiSummary(null)} style={{ background:'none', border:'none', color:'var(--text3)', cursor:'pointer', padding:0 }}>
                   <X size={13}/>
                 </button>
               </div>
               {aiSummary.executive_summary && (
-                <p style={{ fontSize:12.5, color:'var(--text)', lineHeight:1.7, marginBottom:10 }}>{aiSummary.executive_summary}</p>
+                <p style={{ fontSize: 13.5, color:'var(--text)', lineHeight:1.7, marginBottom:10 }}>{aiSummary.executive_summary}</p>
               )}
               <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:12 }}>
                 {aiSummary.top_risks?.length > 0 && (
                   <div>
-                    <div style={{ fontSize:10, color:'var(--crit)', fontWeight:600, marginBottom:5 }}>⚠ Top Risks</div>
-                    {aiSummary.top_risks.map((r,i) => <div key={i} style={{ fontSize:11, color:'var(--text2)', marginBottom:3, lineHeight:1.4 }}>• {r}</div>)}
+                    <div style={{ fontSize: 12, color:'var(--crit)', fontWeight:600, marginBottom:5 }}>⚠ Top Risks</div>
+                    {aiSummary.top_risks.map((r,i) => <div key={i} style={{ fontSize: 13, color:'var(--text2)', marginBottom:3, lineHeight:1.4 }}>• {r}</div>)}
                   </div>
                 )}
                 {aiSummary.immediate_actions?.length > 0 && (
                   <div>
-                    <div style={{ fontSize:10, color:'var(--ok)', fontWeight:600, marginBottom:5 }}>✓ Immediate Actions</div>
-                    {aiSummary.immediate_actions.map((a,i) => <div key={i} style={{ fontSize:11, color:'var(--text2)', marginBottom:3, lineHeight:1.4 }}>• {a}</div>)}
+                    <div style={{ fontSize: 12, color:'var(--ok)', fontWeight:600, marginBottom:5 }}>✓ Immediate Actions</div>
+                    {aiSummary.immediate_actions.map((a,i) => <div key={i} style={{ fontSize: 13, color:'var(--text2)', marginBottom:3, lineHeight:1.4 }}>• {a}</div>)}
                   </div>
                 )}
                 {aiSummary.positive_findings?.length > 0 && (
                   <div>
-                    <div style={{ fontSize:10, color:'var(--info)', fontWeight:600, marginBottom:5 }}>✦ Doing Well</div>
-                    {aiSummary.positive_findings.map((p,i) => <div key={i} style={{ fontSize:11, color:'var(--text2)', marginBottom:3, lineHeight:1.4 }}>• {p}</div>)}
+                    <div style={{ fontSize: 12, color:'var(--info)', fontWeight:600, marginBottom:5 }}>✦ Doing Well</div>
+                    {aiSummary.positive_findings.map((p,i) => <div key={i} style={{ fontSize: 13, color:'var(--text2)', marginBottom:3, lineHeight:1.4 }}>• {p}</div>)}
                   </div>
                 )}
               </div>
               {aiSummary.compliance_notes && (
-                <div style={{ marginTop:8, fontSize:11, color:'var(--text3)', fontStyle:'italic', borderTop:'1px solid rgb(var(--violet-c) / 0.15)', paddingTop:8 }}>
+                <div style={{ marginTop:8, fontSize: 13, color:'var(--text3)', fontStyle:'italic', borderTop:'1px solid rgb(var(--violet-c) / 0.15)', paddingTop:8 }}>
                   {aiSummary.compliance_notes}
                 </div>
               )}
@@ -735,7 +735,7 @@ ${JSON.stringify(compact)}`
               { id:'identity',   label:'Identity & Access',icon: Lock,      count: allFindings.filter(f=>f.category==='iam').length },
             ].map(({ id, label, icon: Icon, count }) => (
               <button key={id} onClick={() => setSection(id)}
-                style={{ display:'flex', alignItems:'center', gap:5, padding:'7px 13px', fontSize:11.5,
+                style={{ display:'flex', alignItems:'center', gap:5, padding:'7px 13px', fontSize: 13,
                   background: section===id ? 'rgb(var(--acc-c) / 0.1)' : 'transparent',
                   color: section===id ? 'var(--accent)' : 'var(--text3)',
                   border:'none', borderBottom: section===id ? '2px solid var(--accent)' : '2px solid transparent',
@@ -744,7 +744,7 @@ ${JSON.stringify(compact)}`
                 <Icon size={12}/>
                 {label}
                 {count !== null && count > 0 && (
-                  <span style={{ fontSize:9.5, background:'rgb(var(--acc-c) / 0.15)', color:'var(--accent)',
+                  <span style={{ fontSize: 11, background:'rgb(var(--acc-c) / 0.15)', color:'var(--accent)',
                     borderRadius:10, padding:'0 5px', minWidth:16, textAlign:'center' }}>{count}</span>
                 )}
               </button>
@@ -762,12 +762,12 @@ ${JSON.stringify(compact)}`
                     placeholder="Search findings…"
                     style={{ width:'100%', background:'var(--surface)', border:'1px solid var(--border)',
                       borderRadius:7, paddingLeft:28, paddingRight:10, paddingTop:6, paddingBottom:6,
-                      fontSize:11.5, color:'var(--text)', outline:'none', fontFamily:'inherit', boxSizing:'border-box' }}/>
+                      fontSize: 13, color:'var(--text)', outline:'none', fontFamily:'inherit', boxSizing:'border-box' }}/>
                 </div>
                 <div style={{ display:'flex', gap:4 }}>
                   {['all','critical','high','medium','low'].map(s => (
                     <button key={s} onClick={() => setSevFilter(s)}
-                      style={{ fontSize:10.5, padding:'4px 10px', borderRadius:6,
+                      style={{ fontSize: 12, padding:'4px 10px', borderRadius:6,
                         background: sevFilter===s ? (SEV_BG[s]||'rgb(var(--acc-c) / 0.1)') : 'var(--surface)',
                         border: `1px solid ${sevFilter===s ? (SEV_BORDER[s]||'rgb(var(--acc-c) / 0.3)') : 'var(--border)'}`,
                         color: sevFilter===s ? (SEV_COLOR[s]||'var(--accent)') : 'var(--text3)',
@@ -778,13 +778,13 @@ ${JSON.stringify(compact)}`
                 </div>
                 {categories.length > 0 && (
                   <select value={catFilter} onChange={e => setCatFilter(e.target.value)}
-                    style={{ fontSize:11, padding:'5px 8px', background:'var(--surface)', border:'1px solid var(--border)',
+                    style={{ fontSize: 13, padding:'5px 8px', background:'var(--surface)', border:'1px solid var(--border)',
                       borderRadius:6, color:'var(--text2)', outline:'none', fontFamily:'inherit' }}>
                     <option value="all">All categories</option>
                     {categories.map(c => <option key={c} value={c}>{CAT_META[c]?.label || c}</option>)}
                   </select>
                 )}
-                <span style={{ fontSize:10.5, color:'var(--text3)', marginLeft:'auto' }}>
+                <span style={{ fontSize: 12, color:'var(--text3)', marginLeft:'auto' }}>
                   {filteredFindings.length} of {allFindings.length} findings
                 </span>
               </div>
@@ -797,7 +797,7 @@ ${JSON.stringify(compact)}`
                   <div key={sev} style={{ marginBottom:16 }}>
                     <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:8 }}>
                       <span style={{ width:7, height:7, borderRadius:'50%', background:SEV_COLOR[sev], display:'inline-block', flexShrink:0 }}/>
-                      <span style={{ fontSize:11.5, fontWeight:700, color:SEV_COLOR[sev], textTransform:'uppercase', letterSpacing:'0.07em' }}>
+                      <span style={{ fontSize: 11.5, fontWeight:700, color:SEV_COLOR[sev], textTransform:'uppercase', letterSpacing:'0.07em' }}>
                         {sev} - {group.length} finding{group.length!==1?'s':''}
                       </span>
                     </div>
@@ -811,7 +811,7 @@ ${JSON.stringify(compact)}`
               })}
 
               {filteredFindings.length === 0 && (
-                <div style={{ textAlign:'center', padding:40, color:search||sevFilter!=='all' ? 'var(--text3)' : 'var(--ok)', fontSize:13 }}>
+                <div style={{ textAlign:'center', padding:40, color:search||sevFilter!=='all' ? 'var(--text3)' : 'var(--ok)', fontSize: 14 }}>
                   {search||sevFilter!=='all' ? 'No findings match your filter' : '✓ No findings - your cloud posture looks clean!'}
                 </div>
               )}
@@ -821,7 +821,7 @@ ${JSON.stringify(compact)}`
           {/* ── Asset Inventory section ── */}
           {section === 'assets' && (
             <div>
-              <div style={{ fontSize:12, color:'var(--text3)', marginBottom:12 }}>
+              <div style={{ fontSize: 13.5, color:'var(--text3)', marginBottom:12 }}>
                 Resources detected across your GCP project with outstanding security findings.
               </div>
               <AssetInventory findings={allFindings}/>
@@ -831,12 +831,12 @@ ${JSON.stringify(compact)}`
           {/* ── Network Exposure section ── */}
           {section === 'network' && (
             <div>
-              <div style={{ fontSize:12, color:'var(--text3)', marginBottom:12 }}>
+              <div style={{ fontSize: 13.5, color:'var(--text3)', marginBottom:12 }}>
                 Resources with network-level exposure - open firewall rules, public IPs, publicly accessible services.
               </div>
               <NetworkExposure findings={allFindings}/>
               <div style={{ marginTop:16 }}>
-                <div style={{ fontSize:11, fontWeight:600, color:'var(--text3)', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:8 }}>All Network Findings</div>
+                <div style={{ fontSize: 11.5, fontWeight:600, color:'var(--text3)', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:8 }}>All Network Findings</div>
                 <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
                   {allFindings.filter(f => f.category === 'network').map((f,i) => (
                     <FindingCard key={f.id||i} f={f} provider={conn.provider} projectId={cspm?.project_id} subscriptionId={cspm?.subscription_id}/>
@@ -849,12 +849,12 @@ ${JSON.stringify(compact)}`
           {/* ── Identity & Access section ── */}
           {section === 'identity' && (
             <div>
-              <div style={{ fontSize:12, color:'var(--text3)', marginBottom:12 }}>
+              <div style={{ fontSize: 13.5, color:'var(--text3)', marginBottom:12 }}>
                 IAM misconfigurations, excessive permissions, service account key risks.
               </div>
               <IdentityRisk findings={allFindings}/>
               <div style={{ marginTop:16 }}>
-                <div style={{ fontSize:11, fontWeight:600, color:'var(--text3)', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:8 }}>All IAM Findings</div>
+                <div style={{ fontSize: 11.5, fontWeight:600, color:'var(--text3)', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:8 }}>All IAM Findings</div>
                 <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
                   {allFindings.filter(f => f.category === 'iam').map((f,i) => (
                     <FindingCard key={f.id||i} f={f} provider={conn.provider} projectId={cspm?.project_id} subscriptionId={cspm?.subscription_id}/>

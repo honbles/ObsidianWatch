@@ -268,31 +268,31 @@ function APIKeyRow({ keyDef, onSaved }) {
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-0.5 flex-wrap">
             <span className="text-xs font-semibold text-siem-text">{label}</span>
-            <span className={`text-[9px] font-semibold px-2 py-0.5 rounded-full border ${badgeColor}`}>
+            <span className={`text-2xs font-semibold px-2 py-0.5 rounded-full border ${badgeColor}`}>
               {badge}
             </span>
             {isSet && status !== 'cleared' && (
-              <span className="flex items-center gap-1 text-[9px] text-emerald-400 bg-emerald-950/20 border border-emerald-800/30 rounded-full px-2 py-0.5">
+              <span className="flex items-center gap-1 text-2xs text-emerald-400 bg-emerald-950/20 border border-emerald-800/30 rounded-full px-2 py-0.5">
                 <CheckCircle size={8}/> Configured
               </span>
             )}
             {status === 'saved' && (
-              <span className="flex items-center gap-1 text-[9px] text-emerald-400 animate-pulse">
+              <span className="flex items-center gap-1 text-2xs text-emerald-400 animate-pulse">
                 <CheckCircle size={9}/> Saved
               </span>
             )}
             {status === 'cleared' && (
-              <span className="text-[9px] text-siem-muted">Cleared</span>
+              <span className="text-2xs text-siem-muted">Cleared</span>
             )}
             {status === 'error' && (
-              <span className="text-[9px] text-red-400">{errMsg || 'Save failed'}</span>
+              <span className="text-2xs text-red-400">{errMsg || 'Save failed'}</span>
             )}
           </div>
-          <p className="text-[10px] text-siem-muted">{desc}</p>
+          <p className="text-mini text-siem-muted">{desc}</p>
         </div>
         {link && (
           <a href={link} target="_blank" rel="noreferrer"
-            className="shrink-0 flex items-center gap-1 text-[10px] text-siem-accent hover:opacity-80 border border-siem-accent/30 rounded-lg px-2 py-1 transition-opacity">
+            className="shrink-0 flex items-center gap-1 text-mini text-siem-accent hover:opacity-80 border border-siem-accent/30 rounded-lg px-2 py-1 transition-opacity">
             {linkLabel} <ExternalLink size={9}/>
           </a>
         )}
@@ -315,13 +315,13 @@ function APIKeyRow({ keyDef, onSaved }) {
         </div>
         {value.trim() && value !== initial && (
           <button onClick={save} disabled={saving}
-            className="shrink-0 flex items-center gap-1.5 text-[11px] font-semibold bg-siem-accent hover:bg-siem-accent/90 text-white rounded-lg px-3 disabled:opacity-40 transition-colors">
+            className="shrink-0 flex items-center gap-1.5 text-xs font-semibold bg-siem-accent hover:bg-siem-accent/90 text-white rounded-lg px-3 disabled:opacity-40 transition-colors">
             <Save size={11}/>{saving ? '…' : 'Save'}
           </button>
         )}
         {isSet && (!value.trim() || value === initial) && (
           <button onClick={clear} disabled={saving}
-            className="shrink-0 text-[10px] text-red-400/70 border border-red-800/30 rounded-lg px-2.5 hover:bg-red-950/20 transition-colors disabled:opacity-40">
+            className="shrink-0 text-mini text-red-400/70 border border-red-800/30 rounded-lg px-2.5 hover:bg-red-950/20 transition-colors disabled:opacity-40">
             Clear
           </button>
         )}
@@ -362,7 +362,7 @@ function APIKeysSettings() {
                 <Icon size={15} className={group.color}/>
                 <span className={`text-sm font-semibold ${group.color}`}>{group.label}</span>
               </div>
-              <p className="text-[11px] text-siem-muted">{group.desc}</p>
+              <p className="text-xs text-siem-muted">{group.desc}</p>
             </div>
             <div className="divide-y divide-siem-border/20">
               {group.keys.map(keyDef => (
@@ -457,21 +457,21 @@ function SMTPSettings() {
         <hr className="border-siem-border"/>
         <div className="grid grid-cols-3 gap-3">
           <div className="col-span-2">
-            <label className="block text-[10px] uppercase tracking-wider text-siem-muted mb-1">SMTP Host</label>
+            <label className="block text-2xs uppercase tracking-wider text-siem-muted mb-1">SMTP Host</label>
             <input className={inputCls} placeholder="smtp.gmail.com" value={form.host} onChange={e => set('host', e.target.value)}/>
           </div>
           <div>
-            <label className="block text-[10px] uppercase tracking-wider text-siem-muted mb-1">Port</label>
+            <label className="block text-2xs uppercase tracking-wider text-siem-muted mb-1">Port</label>
             <input className={inputCls} type="number" placeholder="587" value={form.port} onChange={e => set('port', parseInt(e.target.value) || 587)}/>
           </div>
         </div>
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="block text-[10px] uppercase tracking-wider text-siem-muted mb-1">Username</label>
+            <label className="block text-2xs uppercase tracking-wider text-siem-muted mb-1">Username</label>
             <input className={inputCls} placeholder="you@gmail.com" value={form.username} onChange={e => set('username', e.target.value)}/>
           </div>
           <div>
-            <label className="block text-[10px] uppercase tracking-wider text-siem-muted mb-1">
+            <label className="block text-2xs uppercase tracking-wider text-siem-muted mb-1">
               Password {form.has_password && !form.password && <span className="text-emerald-400 normal-case ml-1">✓ saved</span>}
             </label>
             <div className="relative">
@@ -487,7 +487,7 @@ function SMTPSettings() {
         </div>
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="block text-[10px] uppercase tracking-wider text-siem-muted mb-1">From Address</label>
+            <label className="block text-2xs uppercase tracking-wider text-siem-muted mb-1">From Address</label>
             <input className={inputCls} placeholder="ObsidianWatch <alerts@yourdomain.com>" value={form.from} onChange={e => set('from', e.target.value)}/>
           </div>
           <div className="flex items-end gap-3 pb-0.5">
@@ -498,7 +498,7 @@ function SMTPSettings() {
           </div>
         </div>
         <div>
-          <label className="block text-[10px] uppercase tracking-wider text-siem-muted mb-1">Recipients</label>
+          <label className="block text-2xs uppercase tracking-wider text-siem-muted mb-1">Recipients</label>
           <div className="flex flex-wrap gap-1.5 mb-2">
             {form.to.map((email, i) => (
               <span key={i} className="inline-flex items-center gap-1 text-xs bg-siem-accent/10 border border-siem-accent/30 text-siem-accent rounded-full px-2.5 py-0.5">
@@ -517,7 +517,7 @@ function SMTPSettings() {
           </div>
         </div>
         <div>
-          <label className="block text-[10px] uppercase tracking-wider text-siem-muted mb-1">Minimum Severity to Email</label>
+          <label className="block text-2xs uppercase tracking-wider text-siem-muted mb-1">Minimum Severity to Email</label>
           <select className={inputCls} value={form.min_severity} onChange={e => set('min_severity', parseInt(e.target.value))}>
             <option value={1}>1 - Info (all alerts)</option>
             <option value={2}>2 - Low+</option>
@@ -538,7 +538,7 @@ function SMTPSettings() {
             <Send size={12}/>{testing ? 'Sending…' : 'Send Test Email'}
           </button>
         </div>
-        <div className="bg-siem-bg border border-siem-border/40 rounded-xl p-3 text-[11px] text-siem-muted space-y-1">
+        <div className="bg-siem-bg border border-siem-border/40 rounded-xl p-3 text-xs text-siem-muted space-y-1">
           <p className="font-medium text-siem-text">Common SMTP settings</p>
           <p><span className="text-siem-accent">Gmail:</span> smtp.gmail.com · Port 587 · Use an App Password</p>
           <p><span className="text-siem-accent">Office 365:</span> smtp.office365.com · Port 587</p>
@@ -567,9 +567,9 @@ function CloudSettings() {
           <div key={p.short} className={`border rounded-xl p-4 space-y-3 ${p.color}`}>
             <div className="flex items-center justify-between">
               <span className={`text-sm font-bold ${p.badge}`}>{p.short}</span>
-              <span className="text-[10px] text-siem-muted border border-siem-border rounded-full px-2 py-0.5">Not connected</span>
+              <span className="text-mini text-siem-muted border border-siem-border rounded-full px-2 py-0.5">Not connected</span>
             </div>
-            <p className="text-[11px] text-siem-muted">{p.desc}</p>
+            <p className="text-xs text-siem-muted">{p.desc}</p>
             <button onClick={() => navigate(`/cloud?provider=${p.short.toLowerCase()}`)}
               className="w-full text-xs border border-siem-border text-siem-muted hover:text-siem-accent hover:border-siem-accent/50 rounded-lg py-2 transition-colors flex items-center justify-center gap-1">
               Configure <ChevronRight size={11}/>

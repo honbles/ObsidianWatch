@@ -74,7 +74,7 @@ export default function Users() {
             <Field label="Password" hint="At least 10 characters. They will be asked to change it."><input className="input" type="password" required minLength={10} value={form.password} onChange={e => setForm(f => ({ ...f, password: e.target.value }))}/></Field>
             <Field label="Role"><select className="input" value={form.role} onChange={e => setForm(f => ({ ...f, role: e.target.value }))}>
               <option value="analyst">Analyst</option><option value="viewer">Viewer (read only)</option><option value="admin">Admin</option></select></Field>
-            {error && <div className="c-crit" style={{ fontSize: 12.5 }}>{error}</div>}
+            {error && <div className="c-crit" style={{ fontSize: 13.5 }}>{error}</div>}
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
               <button type="button" className="ow-btn quiet" onClick={() => setShowCreate(false)}>Cancel</button>
               <button type="submit" className="ow-btn primary">Create user</button>

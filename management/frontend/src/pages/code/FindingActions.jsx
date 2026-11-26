@@ -13,11 +13,11 @@ export function TriageBadge({ f }) {
   if (f.triage) {
     const [label, cls] = STATUS[f.triage.status] || [f.triage.status, '']
     return <span title={[f.triage.reason, f.triage.by && `by ${f.triage.by}`, f.triage.triage_rule_id && 'via triage rule'].filter(Boolean).join(' · ')}
-      className={`text-[9px] px-1.5 py-0.5 rounded border shrink-0 ${cls}`}>{label}</span>
+      className={`text-2xs px-1.5 py-0.5 rounded border shrink-0 ${cls}`}>{label}</span>
   }
   if (f.triage_hint) {
     const fp = f.triage_hint.suggestion === 'likely_false_positive'
-    return <span title={f.triage_hint.basis} className={`text-[9px] px-1.5 py-0.5 rounded border shrink-0 border-dashed ${fp ? 'text-siem-muted border-siem-border' : 'text-red-300 border-red-800/50'}`}>
+    return <span title={f.triage_hint.basis} className={`text-2xs px-1.5 py-0.5 rounded border shrink-0 border-dashed ${fp ? 'text-siem-muted border-siem-border' : 'text-red-300 border-red-800/50'}`}>
       {fp ? 'Likely false positive' : 'Likely real'}</span>
   }
   return null
@@ -60,11 +60,11 @@ export default function FindingActions({ conn, f, repo, branch, onChanged }) {
     finally { setBusy('') }
   }
 
-  const btn = 'flex items-center gap-1 text-[10px] px-2 py-1 rounded-lg border border-siem-border text-siem-muted hover:text-siem-text disabled:opacity-40'
+  const btn = 'flex items-center gap-1 text-mini px-2 py-1 rounded-lg border border-siem-border text-siem-muted hover:text-siem-text disabled:opacity-40'
   return (
     <div className="space-y-2 border-t border-siem-border/30 pt-3">
       {f.triage_hint && !f.triage && (
-        <div className="flex items-start gap-2 text-[11px] text-siem-muted">
+        <div className="flex items-start gap-2 text-xs text-siem-muted">
           <Lightbulb size={12} className="mt-0.5 text-amber-300/80 shrink-0"/>
           <span>{f.triage_hint.basis}.</span>
           {f.triage_hint.suggested_rule && (
@@ -80,20 +80,20 @@ export default function FindingActions({ conn, f, repo, branch, onChanged }) {
           <button onClick={() => triage('')} disabled={!!busy} className={btn}><Undo2 size={11}/>Clear decision</button>
         ) : (<>
           <input value={reason} onChange={e => setReason(e.target.value)} placeholder="Reason (required to dismiss)"
-            className="flex-1 min-w-[160px] bg-siem-bg border border-siem-border rounded-lg px-2 py-1 text-[11px] text-siem-text"/>
+            className="flex-1 min-w-[160px] bg-siem-bg border border-siem-border rounded-lg px-2 py-1 text-xs text-siem-text"/>
           <button onClick={() => triage('false_positive')} disabled={!!busy} className={btn}><Ban size={11}/>False positive</button>
           <button onClick={() => triage('accepted_risk')} disabled={!!busy} className={btn}><ShieldCheck size={11}/>Accept risk</button>
           <button onClick={() => triage('confirmed')} disabled={!!busy} className={btn}><Check size={11}/>Confirm</button>
         </>)}
       </div>
-      {err && <div className="text-[11px] text-red-400">{err}</div>}
+      {err && <div className="text-xs text-red-400">{err}</div>}
       {fix && (
-        <div className="bg-siem-bg border border-siem-border rounded-lg p-3 space-y-2 text-[11px]">
+        <div className="bg-siem-bg border border-siem-border rounded-lg p-3 space-y-2 text-xs">
           {fix.likely_false_positive && <div className="text-amber-300">AI review: this may be a false positive. {fix.false_positive_reason}</div>}
           {fix.explanation && <p className="text-siem-muted">{fix.explanation}</p>}
           {fix.command && <code className="block font-mono text-emerald-300 bg-black/30 rounded px-2 py-1">{fix.command}</code>}
           {fix.diff && (
-            <pre className="font-mono text-[11px] bg-black/30 rounded px-2 py-2 overflow-x-auto">{fix.diff.split('\n').map((l, i) => (
+            <pre className="font-mono text-xs bg-black/30 rounded px-2 py-2 overflow-x-auto">{fix.diff.split('\n').map((l, i) => (
               <div key={i} className={l.startsWith('+') && !l.startsWith('+++') ? 'text-emerald-300' : l.startsWith('-') && !l.startsWith('---') ? 'text-red-300' : 'text-siem-muted'}>{l || ' '}</div>
             ))}</pre>
           )}

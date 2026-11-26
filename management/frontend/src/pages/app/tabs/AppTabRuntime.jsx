@@ -14,7 +14,7 @@ const sel = 'bg-siem-surface2 border border-siem-border rounded-lg px-2.5 py-1.5
 
 function SensorBadge({ tier }) {
   const [label, cls, title] = SENSOR[tier] || ['not reported', 'border-slate-500/40 text-slate-400', 'No host sensor reports for this process']
-  return <span className={`inline-flex rounded border px-1.5 py-0.5 text-[10px] font-medium ${cls}`} title={title}>{label}</span>
+  return <span className={`inline-flex rounded border px-1.5 py-0.5 text-mini font-medium ${cls}`} title={title}>{label}</span>
 }
 
 const detail = (e) => {
@@ -55,7 +55,7 @@ export default function AppTabRuntime({ service, range }) {
   return (
     <div className="space-y-4">
       {tiers.has('poll') && (
-        <div className="text-[11px] text-amber-300">Some hosts only have polling: processes or connections that start and end between two polls can be missed. Run the agent as root on a Linux host for real-time process events.</div>
+        <div className="text-xs text-amber-300">Some hosts only have polling: processes or connections that start and end between two polls can be missed. Run the agent as root on a Linux host for real-time process events.</div>
       )}
       <div className="card"><DataTable columns={icols} rows={insts} loading={loading} error={error} rowKey={i => i.id}
         emptyText="No host instances. Build an agent with the app-server profile on the host that runs this service." /></div>
@@ -66,7 +66,7 @@ export default function AppTabRuntime({ service, range }) {
       </div>
       <div className="card"><DataTable columns={ecols} rows={data?.events} loading={loading} error={error} rowKey={e => e.id}
         emptyText="No host activity under this service in this range." /></div>
-      <div className="text-[11px] text-siem-muted">Command lines are redacted on the host.</div>
+      <div className="text-xs text-siem-muted">Command lines are redacted on the host.</div>
     </div>
   )
 }

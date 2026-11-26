@@ -50,7 +50,7 @@ function ChangeCard({ title, children, empty }) {
   return (
     <div className="ow-card" style={{ padding: '12px 14px', flex: '1 1 260px', minWidth: 0 }}>
       <div style={{ fontWeight: 500, marginBottom: 6 }}>{title}</div>
-      {empty ? <div className="t3" style={{ fontSize: 12.5 }}>{empty}</div> : <div style={{ display: 'flex', flexDirection: 'column', gap: 3, fontSize: 12.5 }}>{children}</div>}
+      {empty ? <div className="t3" style={{ fontSize: 13.5 }}>{empty}</div> : <div style={{ display: 'flex', flexDirection: 'column', gap: 3, fontSize: 13.5 }}>{children}</div>}
     </div>
   )
 }
@@ -244,7 +244,7 @@ export default function AppServiceDetail() {
             </div>
 
             {red.data?.percentile_method && red.data.percentile_method !== 'sketch' && (
-              <div className="t3" style={{ fontSize: 12 }}>Percentiles are estimated from a coarse histogram (capped at 10 s) because {red.data.percentile_method === 'mixed' ? 'some agents in this range are older and do not send latency sketches' : 'this range is longer than 7 days or no agent sends latency sketches yet'}. Update agents for exact percentiles with no ceiling.</div>)}
+              <div className="t3" style={{ fontSize: 13.5 }}>Percentiles are estimated from a coarse histogram (capped at 10 s) because {red.data.percentile_method === 'mixed' ? 'some agents in this range are older and do not send latency sketches' : 'this range is longer than 7 days or no agent sends latency sketches yet'}. Update agents for exact percentiles with no ceiling.</div>)}
             <StateBlock loading={red.loading && !red.data} error={red.error} empty={!red.loading && series.length === 0}
               emptyText="No request statistics in this range.">
               <AppREDCharts series={series} deploys={deploys} step={red.data?.step_seconds || 60} />
@@ -253,7 +253,7 @@ export default function AppServiceDetail() {
             <div className="ow-card" style={{ overflow: 'hidden' }}>
               <div className="ow-card-bar">
                 <span style={{ fontWeight: 600 }}>Endpoints</span>
-                <span className="t3" style={{ fontSize: 12 }}>Worst first: state, then errors and time spent</span>
+                <span className="t3" style={{ fontSize: 13.5 }}>Worst first: state, then errors and time spent</span>
                 <button className="ow-btn quiet" style={{ marginLeft: 'auto' }} onClick={() => go('routes')}>All {routes.data?.routes?.length ?? ''} endpoints</button>
               </div>
               <DenseTable rowKey={r => r.method + ' ' + r.route} rows={topRoutes} rowState={r => r._st}
@@ -285,7 +285,7 @@ export default function AppServiceDetail() {
             <div className="ow-card" style={{ padding: '12px 14px', display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
               <div style={{ flex: 1, minWidth: 240 }}><span className="t2">Baseline: </span>{appLearningText(learn, full.tier)}</div>
               {(samp.data?.sampling || []).length > 0 && (
-                <div className="t2" style={{ fontSize: 12, display: 'flex', gap: 12, flexWrap: 'wrap' }}>Traces kept / seen
+                <div className="t2" style={{ fontSize: 13.5, display: 'flex', gap: 12, flexWrap: 'wrap' }}>Traces kept / seen
                   {samp.data.sampling.map(x => <span key={x.reason}><span className="t3">{x.reason}</span> <span className="mono t1">{appInt(x.kept)} / {appInt(x.seen)}</span></span>)}
                 </div>)}
               <div style={{ width: 180 }}><Meter pct={Math.min(100, Math.round(Math.min(learn.requests / APP_LEARN_REQUESTS, 1) * 50 + Math.min(learn.days / 7, 1) * 50))} state="acc"/></div>

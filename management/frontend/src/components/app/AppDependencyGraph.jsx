@@ -28,7 +28,7 @@ export default function AppDependencyGraph({ service, edges, loading, error }) {
     { key: 'range_calls', label: 'Calls (range)', align: 'right', render: e => appInt(e.range_calls), sort: e => e.range_calls },
     { key: 'range_errors', label: 'Errors (range)', align: 'right', render: e => <span className={e.range_errors ? 'text-red-300' : ''}>{appInt(e.range_errors)}</span>, sort: e => e.range_errors },
     { key: 'calls', label: 'Total calls', align: 'right', render: e => <span className="text-siem-muted">{appInt(e.calls)}</span>, sort: e => e.calls },
-    { key: 'first_seen', label: 'First seen', render: e => <>{appRel(e.first_seen)} {e.new && <span className="ml-1 text-[10px] text-orange-300">new</span>}</>, sort: e => e.first_seen },
+    { key: 'first_seen', label: 'First seen', render: e => <>{appRel(e.first_seen)} {e.new && <span className="ml-1 text-mini text-orange-300">new</span>}</>, sort: e => e.first_seen },
     { key: 'source', label: 'Via', width: 60 },
   ]
   return (
@@ -36,7 +36,7 @@ export default function AppDependencyGraph({ service, edges, loading, error }) {
       {!loading && !error && edges?.length > 0 && (
         <div className="card p-2">
           <ForceGraph nodes={nodes} links={links} width={760} height={340} colorFor={colorFor} />
-          <div className="flex gap-3 text-[10px] text-siem-muted px-2 pb-1 flex-wrap">
+          <div className="flex gap-3 text-mini text-siem-muted px-2 pb-1 flex-wrap">
             {Object.entries(KIND_COLOR).map(([k, c]) => <span key={k}><span style={{ color: c }}>●</span> {k}</span>)}
             <span><span style={{ color: 'var(--high)' }}>●</span> new in range</span>
             <span><span style={{ color: 'var(--crit)' }}>-</span> error volume above 5%</span>

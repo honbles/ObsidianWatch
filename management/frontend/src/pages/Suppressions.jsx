@@ -7,7 +7,7 @@ import { PageHeader, Num, DenseTable, Drawer, Field } from '../components/ui'
 
 const EMPTY = {
   rule_id: '', match_mode: 'exact', host: '', process_name: '', image_path_glob: '', parent_process: '',
-  user_name: '', cmdline_contains: '', file_path_glob: '', reason: '', expires_in_days: 30, permanent: false,
+  user_name: '', cmdline_contains: '', file_path_glob: '', file_hash: '', ip: '', dns_domain: '', indicator: '', reason: '', expires_in_days: 30, permanent: false,
 }
 
 const FIELDS = [
@@ -18,10 +18,15 @@ const FIELDS = [
   ['user_name', 'User', 'exact or glob'],
   ['cmdline_contains', 'Command line contains', 'case-insensitive text'],
   ['file_path_glob', 'File / registry path', 'glob (file and registry events)'],
+  ['file_hash', 'File hash', 'MD5, SHA-1 or SHA-256'],
+  ['ip', 'IP address', 'source or destination'],
+  ['dns_domain', 'Domain', 'covers subdomains'],
+  ['indicator', 'Threat-intel indicator', 'value an intel match fired on'],
 ]
 
 function scopeSummary(r) {
   const parts = FIELDS.map(([k, label]) => r[k] ? `${label}: ${r[k]}` : null).filter(Boolean)
+  if (r.source_alert_id) parts.push(`from alert #${r.source_alert_id}`)
   return parts.length ? parts.join(' · ') : 'any event'
 }
 
@@ -150,7 +155,7 @@ export default function Suppressions() {
                 <option value="exact">Exact ID</option><option value="prefix">ID prefix (8+ characters)</option></select></Field>
             </div>
             {covers && (
-              <div className="ow-card" style={{ padding: '8px 12px', background: 'var(--s2)', fontSize: 12.5 }}>
+              <div className="ow-card" style={{ padding: '8px 12px', background: 'var(--s2)', fontSize: 13.5 }}>
                 {covers.dynamic ? 'Matches alerts raised under this IOC or Sigma namespace.'
                   : covers.covers.length === 0 ? <span className="c-crit">No registered rule has this ID.</span>
                     : <>Covers {covers.covers.length} rule{covers.covers.length === 1 ? '' : 's'}: <span className="mono t1">{covers.covers.join(', ')}</span></>}
@@ -166,7 +171,7 @@ export default function Suppressions() {
                 <input type="number" min="1" max="365" className="input" style={{ width: 80 }} disabled={form.permanent} value={form.expires_in_days} onChange={e => set('expires_in_days', e.target.value)}/> days (max 365)</label>
               <label style={{ display: 'flex', alignItems: 'center', gap: 8 }} className="t2"><input type="checkbox" className="ow-check" checked={form.permanent} onChange={e => set('permanent', e.target.checked)}/>Permanent</label>
             </div>
-            {error && <div className="c-crit" style={{ fontSize: 12.5 }}>{error}</div>}
+            {error && <div className="c-crit" style={{ fontSize: 13.5 }}>{error}</div>}
             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
               <button className="ow-btn quiet" onClick={() => { setForm(null); setEditId(null) }}>Cancel</button>
               <button className="ow-btn primary" onClick={save} disabled={saving}>{saving ? 'Saving…' : 'Save suppression'}</button>

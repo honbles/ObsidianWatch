@@ -379,13 +379,13 @@ function EdgeDetail({ edge, graph, onClose }) {
       <div className="px-4 py-3 border-b border-siem-border" style={{ borderLeftColor: color, borderLeftWidth: 3 }}>
         <div className="flex items-start justify-between gap-2">
           <div className="flex-1 min-w-0">
-            <div className="text-[9px] uppercase tracking-wider font-semibold mb-1" style={{ color }}>
+            <div className="text-2xs uppercase tracking-wider font-semibold mb-1" style={{ color }}>
               Edge - {edge.type}
             </div>
             <div className="text-xs text-siem-text font-mono truncate">{srcLabel}</div>
             <div className="flex items-center gap-1 my-0.5">
               <div className="flex-1 h-px" style={{ background: color }}/>
-              <span className="text-[9px] text-siem-muted px-1">→</span>
+              <span className="text-2xs text-siem-muted px-1">→</span>
               <div className="flex-1 h-px" style={{ background: color }}/>
             </div>
             <div className="text-xs text-siem-text font-mono truncate">{dstLabel}</div>
@@ -399,7 +399,7 @@ function EdgeDetail({ edge, graph, onClose }) {
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
         {/* Description */}
         <div className="bg-siem-bg border border-siem-border rounded-lg px-3 py-2">
-          <div className="text-[10px] text-siem-muted leading-relaxed">
+          <div className="text-mini text-siem-muted leading-relaxed">
             {EDGE_DESCRIPTIONS[edge.type] || `Relationship: ${edge.type}`}
           </div>
         </div>
@@ -408,33 +408,33 @@ function EdgeDetail({ edge, graph, onClose }) {
         <div className="grid grid-cols-2 gap-3">
           <div className="bg-siem-bg border border-siem-border rounded-lg px-3 py-2 text-center">
             <div className="text-lg font-bold font-mono text-siem-text">{edge.count || 1}</div>
-            <div className="text-[9px] text-siem-muted">occurrences</div>
+            <div className="text-2xs text-siem-muted">occurrences</div>
           </div>
           <div className="bg-siem-bg border border-siem-border rounded-lg px-3 py-2 text-center">
             <div className="text-lg font-bold font-mono" style={{ color: SEV_COLORS[edge.severity] || 'var(--t3)' }}>
               {['','Info','Low','Med','High','Crit'][edge.severity] || '-'}
             </div>
-            <div className="text-[9px] text-siem-muted">max severity</div>
+            <div className="text-2xs text-siem-muted">max severity</div>
           </div>
         </div>
 
         {/* Timeline */}
         {edge.first_seen && (
           <div>
-            <div className="text-[9px] uppercase tracking-wider text-siem-muted font-semibold mb-2 flex items-center gap-1">
+            <div className="text-2xs uppercase tracking-wider text-siem-muted font-semibold mb-2 flex items-center gap-1">
               <Clock size={8}/> Timeline
             </div>
             <div className="space-y-1.5">
-              <div className="flex justify-between text-[10px]">
+              <div className="flex justify-between text-mini">
                 <span className="text-siem-muted">First seen</span>
                 <span className="font-mono text-siem-text">{format(new Date(edge.first_seen), 'MM/dd HH:mm:ss')}</span>
               </div>
-              <div className="flex justify-between text-[10px]">
+              <div className="flex justify-between text-mini">
                 <span className="text-siem-muted">Last seen</span>
                 <span className="font-mono text-siem-text">{edge.last_seen ? format(new Date(edge.last_seen), 'MM/dd HH:mm:ss') : '-'}</span>
               </div>
               {edge.first_seen && edge.last_seen && (
-                <div className="flex justify-between text-[10px]">
+                <div className="flex justify-between text-mini">
                   <span className="text-siem-muted">Duration</span>
                   <span className="font-mono text-siem-text">
                     {formatDistanceToNow(new Date(edge.first_seen), { addSuffix: false })}
@@ -445,7 +445,7 @@ function EdgeDetail({ edge, graph, onClose }) {
                 const ms = new Date(edge.last_seen) - new Date(edge.first_seen)
                 const rate = ms > 0 ? (edge.count / (ms / 60000)).toFixed(1) : '-'
                 return (
-                  <div className="flex justify-between text-[10px]">
+                  <div className="flex justify-between text-mini">
                     <span className="text-siem-muted">Rate</span>
                     <span className="font-mono text-siem-text">{rate}/min</span>
                   </div>
@@ -457,14 +457,14 @@ function EdgeDetail({ edge, graph, onClose }) {
 
         {/* Involved nodes */}
         <div>
-          <div className="text-[9px] uppercase tracking-wider text-siem-muted font-semibold mb-2">Involved</div>
+          <div className="text-2xs uppercase tracking-wider text-siem-muted font-semibold mb-2">Involved</div>
           <div className="space-y-1.5">
             {[['Source', srcNode, srcLabel], ['Target', dstNode, dstLabel]].map(([role, node, label]) => (
               <div key={role} className="flex items-center gap-2 bg-siem-bg border border-siem-border rounded-lg px-3 py-1.5">
                 <div className="w-2 h-2 rounded-full shrink-0" style={{ background: node ? (NODE_COLORS[node.type] || 'var(--t3)') : 'var(--t3)' }}/>
                 <div className="flex-1 min-w-0">
-                  <div className="text-[9px] text-siem-muted">{role} · {node?.type || '?'}</div>
-                  <div className="text-[10px] font-mono text-siem-text truncate">{label}</div>
+                  <div className="text-2xs text-siem-muted">{role} · {node?.type || '?'}</div>
+                  <div className="text-mini font-mono text-siem-text truncate">{label}</div>
                 </div>
               </div>
             ))}
@@ -473,10 +473,10 @@ function EdgeDetail({ edge, graph, onClose }) {
 
         {/* Navigate to Events */}
         <div className="border-t border-siem-border pt-3">
-          <div className="text-[9px] uppercase tracking-wider text-siem-muted font-semibold mb-2">Investigate</div>
+          <div className="text-2xs uppercase tracking-wider text-siem-muted font-semibold mb-2">Investigate</div>
           {srcNode?.type === 'process' && (
             <button onClick={() => navigate(`/events?search=${encodeURIComponent(srcLabel)}&event_type=${edge.type === 'queried' ? 'dns' : edge.type === 'connected' ? 'network' : edge.type === 'spawned' ? 'process' : 'file'}`)}
-              className="w-full flex items-center gap-2 text-[10px] px-3 py-2 bg-siem-bg border border-siem-border rounded-lg text-siem-muted hover:text-siem-accent hover:border-siem-accent/40 transition-colors">
+              className="w-full flex items-center gap-2 text-mini px-3 py-2 bg-siem-bg border border-siem-border rounded-lg text-siem-muted hover:text-siem-accent hover:border-siem-accent/40 transition-colors">
               <ExternalLink size={10}/> View {edge.type} events for {srcLabel}
             </button>
           )}
@@ -515,14 +515,14 @@ function NodeDetail({ node, onClose, host }) {
               {node.label}
             </div>
             <div className="flex items-center gap-2 mt-1">
-              <span className="text-[9px] text-siem-muted uppercase tracking-wider"
+              <span className="text-2xs text-siem-muted uppercase tracking-wider"
                 style={{ color }}>{node.type}</span>
               {node.suspicious && (
-                <span className="text-[9px] px-1.5 py-px bg-red-900/40 text-red-400 border border-red-800 rounded-full font-bold">
+                <span className="text-2xs px-1.5 py-px bg-red-900/40 text-red-400 border border-red-800 rounded-full font-bold">
                   SUSPICIOUS
                 </span>
               )}
-              <span className="text-[9px] text-siem-muted ml-auto">{node.event_count} events</span>
+              <span className="text-2xs text-siem-muted ml-auto">{node.event_count} events</span>
             </div>
           </div>          <button onClick={onClose} className="text-siem-muted hover:text-siem-text shrink-0">
             <X size={12}/>
@@ -542,10 +542,10 @@ function NodeDetail({ node, onClose, host }) {
         {/* Time range */}
         {node.first_seen && (
           <div>
-            <div className="text-[9px] uppercase tracking-wider text-siem-muted font-semibold mb-1.5 flex items-center gap-1">
+            <div className="text-2xs uppercase tracking-wider text-siem-muted font-semibold mb-1.5 flex items-center gap-1">
               <Clock size={8}/> Timeline
             </div>
-            <div className="text-[10px] text-siem-muted space-y-0.5">
+            <div className="text-mini text-siem-muted space-y-0.5">
               <div>First: {format(new Date(node.first_seen), 'HH:mm:ss dd/MM')}</div>
               <div>Last: {format(new Date(node.last_seen), 'HH:mm:ss dd/MM')}</div>
             </div>
@@ -564,13 +564,13 @@ function NodeDetail({ node, onClose, host }) {
             )}
             {meta.cmdlines?.length > 0 && (
               <div>
-                <div className="text-[9px] uppercase tracking-wider text-siem-muted font-semibold mb-1">
+                <div className="text-2xs uppercase tracking-wider text-siem-muted font-semibold mb-1">
                   Commands ({meta.cmdlines.length})
                 </div>
                 <div className="space-y-1 max-h-40 overflow-y-auto">
                   {meta.cmdlines.map((cmd, i) => (
                     <div key={i} className="bg-siem-bg border border-siem-border/50 rounded px-2 py-1.5
-                      text-[9px] font-mono text-emerald-300 break-all leading-relaxed">
+                      text-2xs font-mono text-emerald-300 break-all leading-relaxed">
                       {cmd}
                     </div>
                   ))}
@@ -579,17 +579,17 @@ function NodeDetail({ node, onClose, host }) {
             )}
             {meta.top_connections?.length > 0 && (
               <div>
-                <div className="text-[9px] uppercase tracking-wider text-siem-muted font-semibold mb-1">
+                <div className="text-2xs uppercase tracking-wider text-siem-muted font-semibold mb-1">
                   Top Connections
                 </div>
                 <div className="space-y-0.5 max-h-32 overflow-y-auto">
                   {meta.top_connections.map((c, i) => (
-                    <div key={i} className="flex items-center gap-2 text-[9px]">
+                    <div key={i} className="flex items-center gap-2 text-2xs">
                       <span className={`font-mono ${c.ext ? 'text-orange-300' : 'text-siem-muted'}`}>
                         {c.ip}:{c.port}
                       </span>
                       <span className="text-siem-muted/50">×{c.count}</span>
-                      {c.ext && <span className="text-[8px] text-orange-400/60">ext</span>}
+                      {c.ext && <span className="text-2xs text-orange-400/60">ext</span>}
                     </div>
                   ))}
                 </div>
@@ -605,11 +605,11 @@ function NodeDetail({ node, onClose, host }) {
             {meta.query_type && <MetaRow label="Type" value={meta.query_type}/>}
             {meta.resolved_ips?.length > 0 && (
               <div>
-                <div className="text-[9px] uppercase tracking-wider text-siem-muted font-semibold mb-1">
+                <div className="text-2xs uppercase tracking-wider text-siem-muted font-semibold mb-1">
                   Resolved IPs
                 </div>
                 {meta.resolved_ips.map((ip, i) => (
-                  <div key={i} className="text-[10px] font-mono text-blue-400">{ip}</div>
+                  <div key={i} className="text-mini font-mono text-blue-400">{ip}</div>
                 ))}
               </div>
             )}
@@ -664,13 +664,13 @@ function NodeDetail({ node, onClose, host }) {
         {/* Alert correlation - shown for any node type */}
         {meta.alert_title && (
           <div className="border-t border-siem-border pt-3">
-            <div className="text-[9px] uppercase tracking-wider text-red-400 font-semibold mb-1.5 flex items-center gap-1">
+            <div className="text-2xs uppercase tracking-wider text-red-400 font-semibold mb-1.5 flex items-center gap-1">
               <span>⚠</span> Detection Alert
             </div>
             <div className="bg-red-950/30 border border-red-900/40 rounded-lg px-3 py-2">
-              <div className="text-[10px] text-red-300 break-words">{meta.alert_title}</div>
+              <div className="text-mini text-red-300 break-words">{meta.alert_title}</div>
               {meta.alert_severity && (
-                <div className="text-[9px] text-red-400/70 mt-0.5">Severity {meta.alert_severity}</div>
+                <div className="text-2xs text-red-400/70 mt-0.5">Severity {meta.alert_severity}</div>
               )}
             </div>
           </div>
@@ -678,20 +678,20 @@ function NodeDetail({ node, onClose, host }) {
 
         {/* Drilldown actions */}
         <div className="border-t border-siem-border pt-3 space-y-1.5">
-          <div className="text-[9px] uppercase tracking-wider text-siem-muted font-semibold mb-2">Investigate</div>
+          <div className="text-2xs uppercase tracking-wider text-siem-muted font-semibold mb-2">Investigate</div>
           <button onClick={() => navigate(eventsUrl())}
-            className="w-full flex items-center gap-2 text-[10px] px-3 py-2 bg-siem-bg border border-siem-border rounded-lg text-siem-muted hover:text-siem-accent hover:border-siem-accent/40 transition-colors">
+            className="w-full flex items-center gap-2 text-mini px-3 py-2 bg-siem-bg border border-siem-border rounded-lg text-siem-muted hover:text-siem-accent hover:border-siem-accent/40 transition-colors">
             <ExternalLink size={10}/> View events for this node
           </button>
           {host && (
             <button onClick={() => navigate(`/events?host=${encodeURIComponent(host)}&event_type=${node.type === 'process' ? 'process' : node.type === 'dns' ? 'dns' : node.type === 'file' ? 'file' : node.type === 'registry' ? 'registry' : node.type === 'logon' ? 'logon' : 'network'}`)}
-              className="w-full flex items-center gap-2 text-[10px] px-3 py-2 bg-siem-bg border border-siem-border rounded-lg text-siem-muted hover:text-siem-accent hover:border-siem-accent/40 transition-colors">
+              className="w-full flex items-center gap-2 text-mini px-3 py-2 bg-siem-bg border border-siem-border rounded-lg text-siem-muted hover:text-siem-accent hover:border-siem-accent/40 transition-colors">
               <ExternalLink size={10}/> All {node.type} events on host
             </button>
           )}
           {meta.alert_title && (
             <button onClick={() => navigate(`/alerts?host=${encodeURIComponent(host || '')}`)}
-              className="w-full flex items-center gap-2 text-[10px] px-3 py-2 bg-red-950/20 border border-red-800/40 rounded-lg text-red-400 hover:bg-red-950/40 transition-colors">
+              className="w-full flex items-center gap-2 text-mini px-3 py-2 bg-red-950/20 border border-red-800/40 rounded-lg text-red-400 hover:bg-red-950/40 transition-colors">
               <Bell size={10}/> View alerts for this host
             </button>
           )}
@@ -704,8 +704,8 @@ function NodeDetail({ node, onClose, host }) {
 function MetaRow({ label, value, mono }) {
   return (
     <div className="flex items-start gap-2">
-      <span className="text-[9px] text-siem-muted uppercase tracking-wider w-14 shrink-0 pt-0.5">{label}</span>
-      <span className={`text-[10px] ${mono ? 'font-mono text-emerald-300' : 'text-siem-text'} break-all flex-1`}>
+      <span className="text-2xs text-siem-muted uppercase tracking-wider w-14 shrink-0 pt-0.5">{label}</span>
+      <span className={`text-mini ${mono ? 'font-mono text-emerald-300' : 'text-siem-text'} break-all flex-1`}>
         {String(value)}
       </span>
     </div>
@@ -734,22 +734,22 @@ function Legend({ tab }) {
 
   return (
     <div className="absolute bottom-4 left-4 bg-siem-surface/80 backdrop-blur border border-siem-border rounded-xl px-3 py-2">
-      <div className="text-[8px] uppercase tracking-wider text-siem-muted font-semibold mb-1.5">Legend</div>
+      <div className="text-2xs uppercase tracking-wider text-siem-muted font-semibold mb-1.5">Legend</div>
       <div className="space-y-0.5">
         {items.map(({ color, label, shape }) => (
-          <div key={label} className="flex items-center gap-1.5 text-[9px] text-siem-muted">
+          <div key={label} className="flex items-center gap-1.5 text-2xs text-siem-muted">
             <span style={{ color }} className="text-xs leading-none">{shape}</span>
             {label}
           </div>
         ))}
         <div className="border-t border-siem-border/30 mt-1 pt-1 space-y-0.5">
-          <div className="flex items-center gap-1.5 text-[9px] text-red-400">
+          <div className="flex items-center gap-1.5 text-2xs text-red-400">
             <div className="w-2 h-px" style={{ background: EDGE_COLORS.lateral }}/> Lateral Movement
           </div>
-          <div className="flex items-center gap-1.5 text-[9px] text-blue-400">
+          <div className="flex items-center gap-1.5 text-2xs text-blue-400">
             <div className="w-2 h-px" style={{ background: EDGE_COLORS.connected }}/> Connection
           </div>
-          <div className="flex items-center gap-1.5 text-[9px] text-cyan-400">
+          <div className="flex items-center gap-1.5 text-2xs text-cyan-400">
             <div className="w-2 h-px" style={{ background: EDGE_COLORS.queried }}/> DNS Query
           </div>
         </div>
@@ -786,7 +786,7 @@ function Stat({ label, value, color }) {
   return (
     <div className="flex items-center gap-1.5">
       <span className={`text-xs font-bold font-mono ${color}`}>{value}</span>
-      <span className="text-[9px] text-siem-muted">{label}</span>
+      <span className="text-2xs text-siem-muted">{label}</span>
     </div>
   )
 }
@@ -797,19 +797,19 @@ function HostSelector({ agents, selected, onSelect, search, onSearch }) {
   return (
     <div className="w-52 shrink-0 bg-siem-surface border-r border-siem-border flex flex-col">
       <div className="p-3 border-b border-siem-border">
-        <div className="text-[9px] uppercase tracking-wider text-siem-muted font-semibold mb-2">
+        <div className="text-2xs uppercase tracking-wider text-siem-muted font-semibold mb-2">
           Hosts ({agents.length})
         </div>
         <div className="relative">
           <Search size={9} className="absolute left-2 top-1/2 -translate-y-1/2 text-siem-muted"/>
           <input value={search} onChange={e => onSearch(e.target.value)}
             placeholder="Search hosts..."
-            className="w-full bg-siem-bg border border-siem-border rounded-lg pl-5 pr-2 py-1.5 text-[9px] text-siem-text placeholder-siem-muted/40 outline-none focus:border-siem-accent/50"/>
+            className="w-full bg-siem-bg border border-siem-border rounded-lg pl-5 pr-2 py-1.5 text-2xs text-siem-text placeholder-siem-muted/40 outline-none focus:border-siem-accent/50"/>
         </div>
       </div>
       <div className="flex-1 overflow-y-auto p-2 space-y-1">
         {agents.length === 0 && (
-          <div className="text-center text-[9px] text-siem-muted py-6">No agents</div>
+          <div className="text-center text-2xs text-siem-muted py-6">No agents</div>
         )}
         {agents.map(a => (
           <button key={a.id} onClick={() => onSelect(a)}
@@ -822,7 +822,7 @@ function HostSelector({ agents, selected, onSelect, search, onSearch }) {
               <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${a.online ? 'bg-emerald-400' : 'bg-red-500'}`}/>
               <div className="flex-1 min-w-0">
                 <div className="text-xs font-medium truncate">{a.hostname}</div>
-                <div className="text-[8px] opacity-60">{a.last_ip || '-'} · {a.os}</div>
+                <div className="text-2xs opacity-60">{a.last_ip || '-'} · {a.os}</div>
               </div>
             </div>
           </button>
@@ -924,7 +924,7 @@ export default function ThreatGraph() {
           <Clock size={10} className="text-siem-muted"/>
           {HOURS.map(h => (
             <button key={h} onClick={() => setHours(h)}
-              className={`text-[9px] px-1.5 py-0.5 rounded ${hours === h ? 'bg-siem-accent text-white' : 'text-siem-muted hover:text-siem-text'}`}>
+              className={`text-2xs px-1.5 py-0.5 rounded ${hours === h ? 'bg-siem-accent text-white' : 'text-siem-muted hover:text-siem-text'}`}>
               {h < 24 ? `${h}h` : h === 168 ? '7d' : `${h/24}d`}
             </button>
           ))}
@@ -933,7 +933,7 @@ export default function ThreatGraph() {
         {selectedProcess && (
           <div className="flex items-center gap-1 ml-2 bg-siem-accent/10 border border-siem-accent/30 rounded-lg px-2 py-1">
             <Cpu size={10} className="text-siem-accent"/>
-            <span className="text-[10px] text-siem-accent font-mono">{selectedProcess.name}</span>
+            <span className="text-mini text-siem-accent font-mono">{selectedProcess.name}</span>
             <button onClick={() => { setSelectedProcess(null); setGraph(null) }}
               className="text-siem-muted hover:text-red-400 ml-1"><X size={9}/></button>
           </div>
@@ -941,7 +941,7 @@ export default function ThreatGraph() {
 
         <div className="ml-auto flex items-center gap-2">
           <button onClick={() => setShowSuspicious(s => !s)}
-            className={`flex items-center gap-1 text-[9px] border rounded-lg px-2 py-1 transition-colors ${
+            className={`flex items-center gap-1 text-2xs border rounded-lg px-2 py-1 transition-colors ${
               showSuspicious
                 ? 'bg-red-900/30 border-red-800 text-red-400'
                 : 'text-siem-muted border-siem-border hover:text-siem-text'
@@ -960,21 +960,21 @@ export default function ThreatGraph() {
           <div className="px-3 py-2 border-b border-siem-border">
             <div className="flex items-center gap-1.5">
               <Cpu size={10} className="text-siem-muted"/>
-              <span className="text-[10px] uppercase tracking-wider text-siem-muted font-semibold">Applications</span>
+              <span className="text-2xs uppercase tracking-wider text-siem-muted font-semibold">Applications</span>
             </div>
           </div>
 
           <div className="flex-1 overflow-y-auto">
             {!selectedAgent ? (
-              <div className="flex flex-col items-center justify-center h-32 text-siem-muted/40 text-[10px] text-center px-4">
+              <div className="flex flex-col items-center justify-center h-32 text-siem-muted/40 text-mini text-center px-4">
                 Select a host above to see running applications
               </div>
             ) : loadingProcs ? (
-              <div className="flex items-center justify-center h-20 text-siem-muted text-[10px]">
+              <div className="flex items-center justify-center h-20 text-siem-muted text-mini">
                 <RefreshCw size={10} className="animate-spin mr-1"/> Loading…
               </div>
             ) : processes.length === 0 ? (
-              <div className="flex items-center justify-center h-20 text-siem-muted/40 text-[10px]">
+              <div className="flex items-center justify-center h-20 text-siem-muted/40 text-mini">
                 No processes found
               </div>
             ) : (
@@ -992,10 +992,10 @@ export default function ThreatGraph() {
                     <Cpu size={10} className="text-siem-muted/40 shrink-0"/>
                   )}
                   <div className="flex-1 min-w-0">
-                    <div className={`text-[11px] font-mono truncate ${proc.suspicious ? 'text-red-300' : 'text-siem-text'}`}>
+                    <div className={`text-xs font-mono truncate ${proc.suspicious ? 'text-red-300' : 'text-siem-text'}`}>
                       {proc.name}
                     </div>
-                    <div className="text-[9px] text-siem-muted/60">
+                    <div className="text-2xs text-siem-muted/60">
                       {proc.event_count} events
                       {proc.max_severity >= 4 && <span className={`ml-1 ${getSevColor(proc.max_severity)}`}>sev{proc.max_severity}</span>}
                     </div>
@@ -1087,9 +1087,9 @@ export default function ThreatGraph() {
         <div className="shrink-0 border-t border-siem-border bg-siem-surface px-4 py-2 flex items-center gap-6">
           <div className="flex items-center gap-1.5">
             <Shield size={11} className="text-siem-accent"/>
-            <span className="text-[10px] uppercase tracking-wider text-siem-muted font-semibold">Threat Intel</span>
+            <span className="text-2xs uppercase tracking-wider text-siem-muted font-semibold">Threat Intel</span>
           </div>
-          <div className="flex items-center gap-4 text-[11px]">
+          <div className="flex items-center gap-4 text-xs">
             <span className="text-siem-muted">
               IPs: <span className="text-siem-text font-mono">{threatIntel?.ips?.length || 0}</span>
             </span>
@@ -1108,10 +1108,10 @@ export default function ThreatGraph() {
               </span>
             ) : null}
             {threatIntel?.ips?.slice(0, 3).map(ip => (
-              <span key={ip} className="font-mono text-siem-muted/60 text-[10px]">{ip}</span>
+              <span key={ip} className="font-mono text-siem-muted/60 text-mini">{ip}</span>
             ))}
             {threatIntel?.domains?.slice(0, 3).map(d => (
-              <span key={d} className="font-mono text-siem-muted/60 text-[10px]">{d}</span>
+              <span key={d} className="font-mono text-siem-muted/60 text-mini">{d}</span>
             ))}
           </div>
         </div>

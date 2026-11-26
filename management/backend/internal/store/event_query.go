@@ -69,6 +69,8 @@ const (
 	fSev
 	fType
 	fTime
+	fOS     // os name with aliases (macOS agents report "darwin" or "macos")
+	fDomain // domain names: the domain column, and DNS query names (stored in dst_ip by every agent)
 )
 
 type fieldSpec struct {
@@ -78,7 +80,7 @@ type fieldSpec struct {
 
 var queryFields = map[string]fieldSpec{
 	"host":     {fText, []string{"host"}},
-	"os":       {fText, []string{"os"}},
+	"os":       {fOS, []string{"os"}},
 	"user":     {fText, []string{"user_name"}},
 	"proc":     {fText, []string{"process_name"}},
 	"process":  {fText, []string{"process_name"}},
@@ -91,7 +93,10 @@ var queryFields = map[string]fieldSpec{
 	"reg":      {fText, []string{"reg_key"}},
 	"regkey":   {fText, []string{"reg_key"}},
 	"regvalue": {fText, []string{"reg_value"}},
-	"domain":   {fText, []string{"domain"}},
+	"domain":   {fDomain, []string{"domain"}},
+	"dns":      {fDomain, nil}, // DNS query names only
+	"query":    {fDomain, nil},
+	"action":   {fText, []string{"(raw->>'action')"}}, // the collector's action tag: ssh_login_failure, delete, sudo_exec...
 	"channel":  {fText, []string{"channel"}},
 	"source":   {fText, []string{"source"}},
 	"proto":    {fText, []string{"proto"}},
@@ -536,6 +541,10 @@ func (c *qsql) cond(e *QueryExpr) (string, error) {
 		return c.typeCond(e)
 	case fTime:
 		return c.timeCond(e)
+	case fOS:
+		return c.osCond(e)
+	case fDomain:
+		return c.domainCond(spec.cols, e)
 	}
 	return "", qerr("unsupported field %q", e.field)
 }
@@ -668,10 +677,82 @@ func (c *qsql) sevCond(e *QueryExpr) (string, error) {
 	return fmt.Sprintf("severity %s %s", op, c.arg(n)), nil
 }
 
+// osAliases: macOS agents report "darwin" from some collectors and "macos" from others; both mean macOS.
+var osAliases = map[string][]string{
+	"darwin": {"darwin", "macos"}, "macos": {"darwin", "macos"}, "mac": {"darwin", "macos"}, "osx": {"darwin", "macos"},
+	"windows": {"windows"}, "win": {"windows"}, "linux": {"linux"},
+}
+
+func (c *qsql) osCond(e *QueryExpr) (string, error) {
+	v := strings.ToLower(e.val)
+	names, known := osAliases[v]
+	if !known || strings.Contains(v, "*") {
+		return c.textCond([]string{"os"}, e)
+	}
+	switch e.op {
+	case ":", "=", "!=":
+	default:
+		return "", qerr("os supports :, = and != (not %s)", e.op)
+	}
+	args := make([]string, len(names))
+	for i, n := range names {
+		args[i] = c.arg(n)
+	}
+	s := "lower(COALESCE(os,'')) IN (" + strings.Join(args, ",") + ")"
+	if e.op == "!=" {
+		s = "NOT " + s
+	}
+	return s, nil
+}
+
+// domainCond matches domain names. Every agent stores a DNS query name in dst_ip (event_type dns), so domain:
+// looks there as well as in the domain column; dns: and query: look at DNS query names only.
+func (c *qsql) domainCond(cols []string, e *QueryExpr) (string, error) {
+	switch e.op {
+	case ":", "=", "!=":
+	default:
+		return "", qerr("%s supports :, = and != (not %s)", e.field, e.op)
+	}
+	var a, cmp string
+	if e.op == ":" || strings.Contains(e.val, "*") {
+		pat, _ := likePattern(e.val)
+		a, cmp = c.arg(pat), "ILIKE"
+	} else {
+		a, cmp = c.arg(strings.ToLower(e.val)), "="
+	}
+	col := func(x string) string {
+		if cmp == "=" {
+			return fmt.Sprintf("lower(COALESCE(%s,'')) = %s", x, a)
+		}
+		return fmt.Sprintf("COALESCE(%s,'') ILIKE %s", x, a)
+	}
+	parts := []string{}
+	for _, cl := range cols {
+		parts = append(parts, col(cl))
+	}
+	parts = append(parts, "(event_type = 'dns' AND "+col("dst_ip")+")")
+	s := anyOf(parts)
+	if e.op == "!=" {
+		s = "NOT " + s
+	}
+	return s, nil
+}
+
 func (c *qsql) typeCond(e *QueryExpr) (string, error) {
 	v := strings.ToLower(e.val)
 	if v == "cloud" {
 		v = "cloud.*"
+	}
+	if v == "sysmon" {
+		// Windows agents file Sysmon events under process, network, file or registry with source Sysmon.
+		s := "(lower(event_type) = 'sysmon' OR lower(COALESCE(source,'')) = 'sysmon')"
+		switch e.op {
+		case ":", "=":
+			return s, nil
+		case "!=":
+			return "NOT " + s, nil
+		}
+		return "", qerr("type supports :, = and != (not %s)", e.op)
 	}
 	var s string
 	if strings.Contains(v, "*") {

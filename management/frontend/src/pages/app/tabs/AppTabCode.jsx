@@ -57,7 +57,7 @@ function LinkDialog({ service, onClose, onSaved }) {
         <button className="ow-btn primary" disabled={!conn || !repo || state.busy} onClick={save}>{state.busy ? 'Linking…' : 'Link'}</button>
       </>}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-        <div className="t2" style={{ fontSize: 12.5 }}>The repository and branch this service is built from.</div>
+        <div className="t2" style={{ fontSize: 13.5 }}>The repository and branch this service is built from.</div>
         <Field label="Code connector">
           <select className={sel} value={conn} onChange={e => setConn(e.target.value)}>
             <option value="">Choose…</option>
@@ -76,8 +76,8 @@ function LinkDialog({ service, onClose, onSaved }) {
             {(branches || []).map(b => <option key={b.name} value={b.name}>{b.name}{b.default ? ' (default)' : ''}{b.scanned_at ? ` · scanned ${relTime(b.scanned_at)}` : ''}</option>)}
           </select>
         </Field>
-        {state.err && <div className="c-crit" style={{ fontSize: 12.5 }}>{state.err}</div>}
-        {conns.length === 0 && <div className="t3" style={{ fontSize: 12.5 }}>No code connectors yet. Add one under Code → DevOps first.</div>}
+        {state.err && <div className="c-crit" style={{ fontSize: 13.5 }}>{state.err}</div>}
+        {conns.length === 0 && <div className="t3" style={{ fontSize: 13.5 }}>No code connectors yet. Add one under Code → DevOps first.</div>}
       </div>
     </Dialog>
   )
@@ -101,12 +101,12 @@ const SCAN_STATE = {
 function Deployments({ link }) {
   const deps = link.deployments || []
   if (!deps.length) {
-    return <div className="t3" style={{ padding: '8px 14px', fontSize: 12.5 }}>
+    return <div className="t3" style={{ padding: '8px 14px', fontSize: 13.5 }}>
       <span className="mono">{link.repo}</span>: no instance reports the commit it runs, so findings are from the latest scan of <span className="mono">{link.branch || 'the default branch'}</span>. Add the commit as an OpenTelemetry resource attribute (<span className="mono">vcs.ref.head.revision</span>) or an image label (<span className="mono">org.opencontainers.image.revision</span>) to see exactly what runs.
     </div>
   }
   return (
-    <div style={{ padding: '8px 14px', display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12.5 }}>
+    <div style={{ padding: '8px 14px', display: 'flex', flexDirection: 'column', gap: 4, fontSize: 13.5 }}>
       {deps.map(d => {
         const [label, cls] = SCAN_STATE[d.scan.status] || SCAN_STATE.none
         return (
@@ -117,12 +117,12 @@ function Deployments({ link }) {
             <span className="t3"> · from {SRC[d.source] || d.source}</span>
             <span className={cls}> · {label}{d.scan.scanned_at ? ' ' + relTime(d.scan.scanned_at) : ''}</span>
             {d.scan.counts && <span style={{ marginLeft: 8 }}><Counts parts={[[d.scan.counts.critical, 'crit', 'var(--crit)'], [d.scan.counts.high, 'high', 'var(--warn)'], [d.scan.counts.medium, 'med']]}/></span>}
-            {d.repo_mismatch && <div className="c-crit" style={{ fontSize: 12 }}>This instance reports <span className="mono">{d.repo}</span>, not <span className="mono">{link.repo}</span>. Check the link.</div>}
-            {d.scan.error && <div className="c-crit" style={{ fontSize: 12 }}>{d.scan.error}</div>}
+            {d.repo_mismatch && <div className="c-crit" style={{ fontSize: 13.5 }}>This instance reports <span className="mono">{d.repo}</span>, not <span className="mono">{link.repo}</span>. Check the link.</div>}
+            {d.scan.error && <div className="c-crit" style={{ fontSize: 13.5 }}>{d.scan.error}</div>}
           </div>
         )
       })}
-      <div className="t3" style={{ fontSize: 12 }}>
+      <div className="t3" style={{ fontSize: 13.5 }}>
         {link.showing === 'commit'
           ? <>Findings below are from the scan of the running commit <span className="mono">{link.showing_revision.slice(0, 12)}</span>.</>
           : <>Findings below are from the latest scan of <span className="mono">{link.branch || 'the default branch'}</span> until the running commit is scanned.</>}
@@ -163,8 +163,8 @@ export default function AppTabCode({ service }) {
       const [l, c, t] = REACH[f.service_reach] || REACH.unknown
       return <span className={c} title={t}>{l}</span>
     } },
-    { key: 't', label: 'Finding', width: 'minmax(220px, 2fr)', title: f => f.detail, render: f => <span className="t1">{f.title}{f.package && <span className="mono t3" style={{ fontSize: 11.5 }}> · {f.package} {f.version}</span>}</span> },
-    { key: 'f', label: 'Where', width: 'minmax(150px, 1fr)', render: f => <span className="mono t2" style={{ fontSize: 11.5 }}>{f.repo} · {f.file}{f.line ? `:${f.line}` : ''}</span> },
+    { key: 't', label: 'Finding', width: 'minmax(220px, 2fr)', title: f => f.detail, render: f => <span className="t1">{f.title}{f.package && <span className="mono t3" style={{ fontSize: 13 }}> · {f.package} {f.version}</span>}</span> },
+    { key: 'f', label: 'Where', width: 'minmax(150px, 1fr)', render: f => <span className="mono t2" style={{ fontSize: 13 }}>{f.repo} · {f.file}{f.line ? `:${f.line}` : ''}</span> },
     { key: 'i', label: '', width: '70px', render: f => f.issue_url ? <a href={f.issue_url} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()}>issue</a> : null },
   ]
   return (
@@ -173,7 +173,7 @@ export default function AppTabCode({ service }) {
         <div className="ow-card" style={{ overflow: 'hidden' }}>
           <div className="ow-card-bar">
             <span style={{ fontWeight: 600 }}>Linked code</span>
-            <span className="t3" style={{ fontSize: 12 }}>Repositories this service is built from</span>
+            <span className="t3" style={{ fontSize: 13.5 }}>Repositories this service is built from</span>
             {admin && <button className="ow-btn primary" style={{ marginLeft: 'auto' }} onClick={() => setOpen(true)}>Link repository</button>}
           </div>
           <DenseTable rowKey={l => l.id} rows={links}
@@ -198,9 +198,9 @@ export default function AppTabCode({ service }) {
               <option value="code">Code and secrets ({findings.filter(f => !f.package).length})</option>
               <option value="all">All ({findings.length})</option>
             </select>
-            <span className="t3" style={{ fontSize: 12 }}>{nLoaded} vulnerable package{nLoaded === 1 ? '' : 's'} loaded by this service · {weighText(data.weighting)}</span>
+            <span className="t3" style={{ fontSize: 13.5 }}>{nLoaded} vulnerable package{nLoaded === 1 ? '' : 's'} loaded by this service · {weighText(data.weighting)}</span>
           </div>
-          {COVERAGE[data.inventory] && <div className="t3" style={{ padding: '8px 14px', fontSize: 12.5 }}>{COVERAGE[data.inventory]}</div>}
+          {COVERAGE[data.inventory] && <div className="t3" style={{ padding: '8px 14px', fontSize: 13.5 }}>{COVERAGE[data.inventory]}</div>}
           <DenseTable rowKey={f => `${f.connector_id}-${f.repo}-${f.rule_id}-${f.file}-${f.line}-${f.package || ''}`} rows={shown}
             rowState={f => (f.priority === 'critical' ? 'crit' : f.priority === 'high' ? 'warn' : null)}
             cols={cols} empty="No findings in this view."/>
@@ -209,12 +209,12 @@ export default function AppTabCode({ service }) {
         {(data.platform || []).some(p => p.os_package || p.port_risks.length || p.cves.length) && (
           <div className="ow-card" style={{ overflow: 'hidden' }}>
             <div className="ow-card-bar"><span style={{ fontWeight: 600 }}>From the host scan</span>
-              <span className="t3" style={{ fontSize: 12 }}>The installed package this service runs from, and scan findings on its ports</span></div>
+              <span className="t3" style={{ fontSize: 13.5 }}>The installed package this service runs from, and scan findings on its ports</span></div>
             <DenseTable rowKey={p => p.agent_id} rows={data.platform}
               cols={[
                 { key: 'h', label: 'Host', width: '160px', render: p => <Link className="mono t1" to={`/applications/hosts/${encodeURIComponent(p.agent_id)}`}>{p.host}</Link> },
                 { key: 'p', label: 'Installed package', width: '200px', render: p => p.os_package ? <span className="mono t2">{p.os_package} {p.os_package_version}</span> : <span className="t3">—</span> },
-                { key: 'r', label: 'Port findings', width: 'minmax(200px, 1.5fr)', render: p => p.port_risks.length ? p.port_risks.map(r => <div key={r.port} className="t2" style={{ fontSize: 12 }}><span className="mono">{r.port}</span> {r.risk_label} <span className="t3">{r.risk_detail}</span></div>) : <span className="t3">none</span> },
+                { key: 'r', label: 'Port findings', width: 'minmax(200px, 1.5fr)', render: p => p.port_risks.length ? p.port_risks.map(r => <div key={r.port} className="t2" style={{ fontSize: 13.5 }}><span className="mono">{r.port}</span> {r.risk_label} <span className="t3">{r.risk_detail}</span></div>) : <span className="t3">none</span> },
                 { key: 'c', label: 'CVEs', width: 'minmax(160px, 1fr)', render: p => p.cves.length ? <span className="c-crit">{p.cves.slice(0, 3).map(c => c.cve_id).join(', ')}{p.cves.length > 3 ? ` +${p.cves.length - 3}` : ''}</span> : <span className="t3">{p.scanned_at ? 'none known' : 'no scan'}</span> },
               ]}/>
           </div>)}
@@ -222,7 +222,7 @@ export default function AppTabCode({ service }) {
         {(data.unlinked_running || []).length > 0 && (
           <div className="ow-card" style={{ overflow: 'hidden' }}>
             <div className="ow-card-bar"><span style={{ fontWeight: 600 }}>Also loaded by this service</span>
-              <span className="t3" style={{ fontSize: 12 }}>Vulnerable package versions this service runs, found in repositories not linked to it</span></div>
+              <span className="t3" style={{ fontSize: 13.5 }}>Vulnerable package versions this service runs, found in repositories not linked to it</span></div>
             <DenseTable rowKey={u => `${u.connector_id}-${u.repo}-${u.vuln}-${u.package}`} rows={data.unlinked_running}
               cols={[
                 { key: 's', label: 'Severity', width: '92px', render: u => <SevWord sev={u.severity}/> },

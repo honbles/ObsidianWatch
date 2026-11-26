@@ -24,7 +24,7 @@ function ScanTrend({ connId, refreshKey }) {
   const first = vals[0], last = vals[vals.length - 1]
   const delta = last - first
   return (
-    <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:16, fontSize:11, color:'var(--text3)' }}>
+    <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:16, fontSize: 13, color:'var(--text3)' }}>
       <svg width={w} height={h} role="img" aria-label="Critical and high findings over time">
         <polyline fill="none" stroke="var(--crit)" strokeWidth="1.5" points={path}/>
       </svg>
@@ -120,10 +120,10 @@ export function PanelOverview({ conn, cspm, loading, onRunScan, scanning, onTabC
       {/* ── Top action bar ── */}
       <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:20 }}>
         <div>
-          <div style={{ fontSize:14, fontWeight:700, color:'var(--text)' }}>
+          <div style={{ fontSize: 15, fontWeight:700, color:'var(--text)' }}>
             {cspm?.project_id || cspm?.subscription_id || conn.account_id || (conn.provider === 'azure' ? 'Azure Subscription' : 'GCP Project')}
           </div>
-          {cspm && <div style={{ fontSize:11, color:'var(--text3)', marginTop:2 }}>
+          {cspm && <div style={{ fontSize: 13, color:'var(--text3)', marginTop:2 }}>
             Last scan: {cspm.scanned_at ? format(new Date(cspm.scanned_at), 'MMM d, yyyy HH:mm') : '-'}
             {' · '}{cspm.scan_duration || ''}
             {cspm.scc_enabled && <span style={{ color:'var(--ok)', marginLeft:8 }}>✓ SCC ({cspm.scc_findings||0} findings)</span>}
@@ -133,14 +133,14 @@ export function PanelOverview({ conn, cspm, loading, onRunScan, scanning, onTabC
         <div style={{ display:'flex', gap:8 }}>
           {cspm && (
             <button onClick={runAI} disabled={aiLoading}
-              style={{ display:'flex', alignItems:'center', gap:6, fontSize:11.5, padding:'7px 14px',
+              style={{ display:'flex', alignItems:'center', gap:6, fontSize: 13, padding:'7px 14px',
                 background:'rgb(var(--violet-c) / 0.1)', border:'1px solid rgb(var(--violet-c) / 0.3)',
                 color:'var(--violet)', borderRadius:8, cursor: aiLoading ? 'wait':'pointer', fontFamily:'inherit', fontWeight:600 }}>
               <Sparkles size={12}/>{aiLoading ? 'Analysing…' : 'AI Summary'}
             </button>
           )}
           <button onClick={onRunScan} disabled={scanning}
-            style={{ display:'flex', alignItems:'center', gap:6, fontSize:11.5, padding:'7px 14px',
+            style={{ display:'flex', alignItems:'center', gap:6, fontSize: 13, padding:'7px 14px',
               background: scanning ? 'var(--surface2)' : 'var(--accent)',
               color: scanning ? 'var(--text2)' : 'var(--onacc)',
               border:'none', borderRadius:8, cursor: scanning?'wait':'pointer', fontFamily:'inherit', fontWeight:700 }}>
@@ -159,8 +159,8 @@ export function PanelOverview({ conn, cspm, loading, onRunScan, scanning, onTabC
       {!loading && !cspm && !scanning && (
         <div style={{ display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', height:260, gap:12 }}>
           <Shield size={44} color="var(--border)" strokeWidth={1}/>
-          <div style={{ fontSize:14, fontWeight:600, color:'var(--text2)' }}>No scan results yet</div>
-          <div style={{ fontSize:12, color:'var(--text3)' }}>Click "Run Scan" to assess your cloud security posture</div>
+          <div style={{ fontSize: 15, fontWeight:600, color:'var(--text2)' }}>No scan results yet</div>
+          <div style={{ fontSize: 13.5, color:'var(--text3)' }}>Click "Run Scan" to assess your cloud security posture</div>
         </div>
       )}
 
@@ -170,7 +170,7 @@ export function PanelOverview({ conn, cspm, loading, onRunScan, scanning, onTabC
         {cspm.errors?.length > 0 && (
           <div style={{ marginBottom:16 }}>
             <button onClick={() => setShowErrors(e => !e)}
-              style={{ display:'flex', alignItems:'center', gap:6, fontSize:11, padding:'6px 12px',
+              style={{ display:'flex', alignItems:'center', gap:6, fontSize: 13, padding:'6px 12px',
                 background:'rgb(var(--high-c) / 0.08)', border:'1px solid rgb(var(--high-c) / 0.25)',
                 color:'var(--high)', borderRadius:7, cursor:'pointer', fontFamily:'inherit' }}>
               <AlertTriangle size={11}/>{cspm.errors.length} check{cspm.errors.length>1?'s':''} failed - {showErrors?'hide':'show'}
@@ -183,11 +183,11 @@ export function PanelOverview({ conn, cspm, loading, onRunScan, scanning, onTabC
                   return (
                     <div key={i} style={{ padding:'10px 14px', borderBottom: i < cspm.errors.length-1 ? '1px solid var(--border)':'none' }}>
                       <div style={{ display:'flex', gap:8, alignItems:'center', marginBottom:3 }}>
-                        <code style={{ fontSize:10.5, background:'var(--surface2)', border:'1px solid var(--border)', borderRadius:4, padding:'1px 6px', color:'var(--high)', fontFamily:'var(--font-data)' }}>{name}</code>
+                        <code style={{ fontSize: 12, background:'var(--surface2)', border:'1px solid var(--border)', borderRadius:4, padding:'1px 6px', color:'var(--high)', fontFamily:'var(--font-data)' }}>{name}</code>
                       </div>
-                      <div style={{ fontSize:10.5, color:'var(--text3)', fontFamily:'var(--font-data)', wordBreak:'break-all', marginBottom: requiredRoles[name] ? 5 : 0 }}>{msg.slice(0,180)}</div>
+                      <div style={{ fontSize: 12, color:'var(--text3)', fontFamily:'var(--font-data)', wordBreak:'break-all', marginBottom: requiredRoles[name] ? 5 : 0 }}>{msg.slice(0,180)}</div>
                       {requiredRoles[name] && (
-                        <div style={{ fontSize:10.5 }}><span style={{ color:'var(--ok)', fontWeight:600 }}>Fix: </span>
+                        <div style={{ fontSize: 12 }}><span style={{ color:'var(--ok)', fontWeight:600 }}>Fix: </span>
                           <code style={{ color:'var(--text2)', fontFamily:'var(--font-data)', background:'var(--surface2)', padding:'1px 6px', borderRadius:4 }}>{requiredRoles[name]}</code>
                         </div>
                       )}
@@ -200,18 +200,18 @@ export function PanelOverview({ conn, cspm, loading, onRunScan, scanning, onTabC
         )}
 
         {/* ── Hero row: score + KPIs ── */}
-        <div style={{ display:'grid', gridTemplateColumns:'180px 1fr', gap:16, marginBottom:16 }}>
+        <div style={{ display:'grid', gridTemplateColumns:'202px 1fr', gap:16, marginBottom:16 }}>
           {/* Risk gauge */}
           <div style={{ background:'var(--surface)', border:`1px solid var(--border)`, borderRadius:14,
             padding:'20px 16px', display:'flex', flexDirection:'column', alignItems:'center', gap:10,
             borderTop:`3px solid ${rl.color}` }}>
             <RiskScoreGauge score={score}/>
-            <div style={{ fontSize:10, color:'var(--text3)', textAlign:'center', lineHeight:1.4 }}>
-              <span style={{ fontSize:13, fontWeight:700, color:rl.color, display:'block' }}>{rl.label}</span>
+            <div style={{ fontSize: 12, color:'var(--text3)', textAlign:'center', lineHeight:1.4 }}>
+              <span style={{ fontSize: 14, fontWeight:700, color:rl.color, display:'block' }}>{rl.label}</span>
               Risk Score
             </div>
             {cspm.scc_enabled && (
-              <div style={{ display:'flex', alignItems:'center', gap:5, fontSize:10 }}>
+              <div style={{ display:'flex', alignItems:'center', gap:5, fontSize: 12 }}>
                 <span style={{ width:6, height:6, borderRadius:'50%', background:'var(--ok)', display:'inline-block' }}/>
                 <span style={{ color:'var(--ok)' }}>SCC Active</span>
               </div>
@@ -237,10 +237,10 @@ export function PanelOverview({ conn, cspm, loading, onRunScan, scanning, onTabC
                 onMouseEnter={e => { if (k.tab) e.currentTarget.style.opacity='0.8' }}
                 onMouseLeave={e => { e.currentTarget.style.opacity='1' }}
               >
-                <div style={{ fontSize:9.5, color:'var(--text3)', fontWeight:700, textTransform:'uppercase', letterSpacing:'0.07em', marginBottom:5 }}>
+                <div style={{ fontSize: 11, color:'var(--text3)', fontWeight:700, textTransform:'uppercase', letterSpacing:'0.07em', marginBottom:5 }}>
                   {k.label}{k.tab && <span style={{ marginLeft:4, opacity:0.5 }}>↗</span>}
                 </div>
-                <div style={{ fontSize:24, fontWeight:800, color:k.color, fontFamily:'var(--font-data)', lineHeight:1 }}>{k.value||0}</div>
+                <div style={{ fontSize: 24, fontWeight:800, color:k.color, fontFamily:'var(--font-data)', lineHeight:1 }}>{k.value||0}</div>
               </div>
             ))}
           </div>
@@ -250,44 +250,44 @@ export function PanelOverview({ conn, cspm, loading, onRunScan, scanning, onTabC
         {aiSummary && (
           <div style={{ background:'rgb(var(--violet-c) / 0.06)', border:'1px solid rgb(var(--violet-c) / 0.2)', borderRadius:12, padding:'16px 18px', marginBottom:16 }}>
             <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:10 }}>
-              <div style={{ fontSize:10, fontWeight:700, color:'var(--violet)', textTransform:'uppercase', letterSpacing:'0.06em' }}>✦ AI Executive Summary</div>
+              <div style={{ fontSize: 11.5, fontWeight:700, color:'var(--violet)', textTransform:'uppercase', letterSpacing:'0.06em' }}>✦ AI Executive Summary</div>
               <button onClick={() => setAiSummary(null)} style={{ background:'none', border:'none', color:'var(--text3)', cursor:'pointer', padding:0 }}><X size={13}/></button>
             </div>
-            {aiSummary.executive_summary && <p style={{ fontSize:12.5, color:'var(--text)', lineHeight:1.75, marginBottom:12 }}>{aiSummary.executive_summary}</p>}
+            {aiSummary.executive_summary && <p style={{ fontSize: 13.5, color:'var(--text)', lineHeight:1.75, marginBottom:12 }}>{aiSummary.executive_summary}</p>}
             <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:14 }}>
               {aiSummary.top_risks?.length > 0 && (
                 <div>
-                  <div style={{ fontSize:10, color:'var(--crit)', fontWeight:700, marginBottom:6 }}>⚠ Top Risks</div>
-                  {aiSummary.top_risks.map((r,i) => <div key={i} style={{ fontSize:11, color:'var(--text2)', marginBottom:4, lineHeight:1.5 }}>· {r}</div>)}
+                  <div style={{ fontSize: 12, color:'var(--crit)', fontWeight:700, marginBottom:6 }}>⚠ Top Risks</div>
+                  {aiSummary.top_risks.map((r,i) => <div key={i} style={{ fontSize: 13, color:'var(--text2)', marginBottom:4, lineHeight:1.5 }}>· {r}</div>)}
                 </div>
               )}
               {aiSummary.immediate_actions?.length > 0 && (
                 <div>
-                  <div style={{ fontSize:10, color:'var(--ok)', fontWeight:700, marginBottom:6 }}>✓ Immediate Actions</div>
-                  {aiSummary.immediate_actions.map((a,i) => <div key={i} style={{ fontSize:11, color:'var(--text2)', marginBottom:4, lineHeight:1.5 }}>· {a}</div>)}
+                  <div style={{ fontSize: 12, color:'var(--ok)', fontWeight:700, marginBottom:6 }}>✓ Immediate Actions</div>
+                  {aiSummary.immediate_actions.map((a,i) => <div key={i} style={{ fontSize: 13, color:'var(--text2)', marginBottom:4, lineHeight:1.5 }}>· {a}</div>)}
                 </div>
               )}
               {aiSummary.positive_findings?.length > 0 && (
                 <div>
-                  <div style={{ fontSize:10, color:'var(--info)', fontWeight:700, marginBottom:6 }}>✦ Doing Well</div>
-                  {aiSummary.positive_findings.map((p,i) => <div key={i} style={{ fontSize:11, color:'var(--text2)', marginBottom:4, lineHeight:1.5 }}>· {p}</div>)}
+                  <div style={{ fontSize: 12, color:'var(--info)', fontWeight:700, marginBottom:6 }}>✦ Doing Well</div>
+                  {aiSummary.positive_findings.map((p,i) => <div key={i} style={{ fontSize: 13, color:'var(--text2)', marginBottom:4, lineHeight:1.5 }}>· {p}</div>)}
                 </div>
               )}
             </div>
             {aiSummary.compliance_notes && (
-              <div style={{ marginTop:10, fontSize:11, color:'var(--text3)', fontStyle:'italic', borderTop:'1px solid rgb(var(--violet-c) / 0.15)', paddingTop:10 }}>{aiSummary.compliance_notes}</div>
+              <div style={{ marginTop:10, fontSize: 13, color:'var(--text3)', fontStyle:'italic', borderTop:'1px solid rgb(var(--violet-c) / 0.15)', paddingTop:10 }}>{aiSummary.compliance_notes}</div>
             )}
           </div>
         )}
 
         {/* ── Bottom row: category breakdown + compliance ── */}
-        <div style={{ display:'grid', gridTemplateColumns:'1fr 260px', gap:16 }}>
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 291px', gap:16 }}>
 
           {/* Category bar chart */}
           <div style={{ background:'var(--surface)', border:'1px solid var(--border)', borderRadius:12, padding:'16px 18px' }}>
-            <div style={{ fontSize:10, fontWeight:700, color:'var(--text3)', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:14 }}>Findings by Category</div>
+            <div style={{ fontSize: 11.5, fontWeight:700, color:'var(--text3)', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:14 }}>Findings by Category</div>
             {catBars.length === 0
-              ? <div style={{ fontSize:12, color:'var(--text3)', textAlign:'center', padding:'24px 0' }}>No findings</div>
+              ? <div style={{ fontSize: 13.5, color:'var(--text3)', textAlign:'center', padding:'24px 0' }}>No findings</div>
               : catBars.map(([cat, count]) => (
                 <div key={cat} style={{ marginBottom:10, cursor:'pointer' }}
                   onClick={() => onTabChange?.('deepdive')}
@@ -295,11 +295,11 @@ export function PanelOverview({ conn, cspm, loading, onRunScan, scanning, onTabC
                   onMouseLeave={e => e.currentTarget.style.opacity='1'}
                 >
                   <div style={{ display:'flex', justifyContent:'space-between', marginBottom:4 }}>
-                    <div style={{ display:'flex', alignItems:'center', gap:6, fontSize:11.5, color:'var(--text2)' }}>
+                    <div style={{ display:'flex', alignItems:'center', gap:6, fontSize: 13, color:'var(--text2)' }}>
                       {CAT_META[cat]?.icon && (() => { const Icon = CAT_META[cat].icon; return <Icon size={11} color={CAT_META[cat].color}/>; })()}
                       {CAT_META[cat]?.label || cat}
                     </div>
-                    <span style={{ fontSize:11, fontFamily:'var(--font-data)', color:'var(--text3)' }}>{count} ↗</span>
+                    <span style={{ fontSize: 13, fontFamily:'var(--font-data)', color:'var(--text3)' }}>{count} ↗</span>
                   </div>
                   <div style={{ height:5, background:'var(--surface2)', borderRadius:4, overflow:'hidden' }}>
                     <div style={{ height:'100%', borderRadius:4, width:`${(count/maxCat)*100}%`,
@@ -312,7 +312,7 @@ export function PanelOverview({ conn, cspm, loading, onRunScan, scanning, onTabC
 
           {/* Compliance status */}
           <div style={{ background:'var(--surface)', border:'1px solid var(--border)', borderRadius:12, padding:'16px 18px' }}>
-            <div style={{ fontSize:10, fontWeight:700, color:'var(--text3)', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:14 }}>Compliance Posture</div>
+            <div style={{ fontSize: 11.5, fontWeight:700, color:'var(--text3)', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:14 }}>Compliance Posture</div>
             {compChecks.map(({ name, cats, color }) => {
               // Count findings (fail) and passed checks in the relevant categories
               const failFindings = all.filter(f => cats.includes(f.category))
@@ -327,8 +327,8 @@ export function PanelOverview({ conn, cspm, loading, onRunScan, scanning, onTabC
                   onMouseLeave={e => e.currentTarget.style.opacity='1'}
                 >
                   <div style={{ display:'flex', justifyContent:'space-between', marginBottom:4 }}>
-                    <span style={{ fontSize:11, color:'var(--text2)' }}>{name}</span>
-                    <span style={{ fontSize:11, fontFamily:'var(--font-data)', color }}>{pct}% ↗</span>
+                    <span style={{ fontSize: 13, color:'var(--text2)' }}>{name}</span>
+                    <span style={{ fontSize: 13, fontFamily:'var(--font-data)', color }}>{pct}% ↗</span>
                   </div>
                   <div style={{ height:5, background:'var(--surface2)', borderRadius:4, overflow:'hidden' }}>
                     <div style={{ height:'100%', borderRadius:4, width:`${pct}%`, background:color, transition:'width 0.6s ease' }}/>
@@ -338,28 +338,28 @@ export function PanelOverview({ conn, cspm, loading, onRunScan, scanning, onTabC
             })}
             <div style={{ marginTop:14, paddingTop:12, borderTop:'1px solid var(--border)' }}>
               {conn?.provider === 'azure' ? (<>
-                <div style={{ fontSize:10, fontWeight:700, color:'var(--text3)', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:8 }}>Microsoft Defender for Cloud</div>
+                <div style={{ fontSize: 11.5, fontWeight:700, color:'var(--text3)', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:8 }}>Microsoft Defender for Cloud</div>
                 {cspm.defender_enabled
-                  ? <div style={{ display:'flex', alignItems:'center', gap:6, fontSize:11 }}>
+                  ? <div style={{ display:'flex', alignItems:'center', gap:6, fontSize: 13 }}>
                       <span style={{ width:7, height:7, borderRadius:'50%', background:'var(--ok)', display:'inline-block' }}/>
                       <span style={{ color:'var(--ok)', fontWeight:600 }}>Active</span>
                       <span style={{ color:'var(--text3)' }}>· {cspm.defender_findings||0} findings</span>
                     </div>
-                  : <div style={{ fontSize:11, color:'var(--text3)' }}>
+                  : <div style={{ fontSize: 13, color:'var(--text3)' }}>
                       Plans on Free tier ·{' '}
                       <a href="https://portal.azure.com/#view/Microsoft_Azure_Security" target="_blank" rel="noopener noreferrer"
                         style={{ color:'var(--accent)', textDecoration:'none' }}>Upgrade Defender →</a>
                     </div>
                 }
               </>) : (<>
-                <div style={{ fontSize:10, fontWeight:700, color:'var(--text3)', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:8 }}>Security Command Center</div>
+                <div style={{ fontSize: 11.5, fontWeight:700, color:'var(--text3)', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:8 }}>Security Command Center</div>
                 {cspm.scc_enabled
-                  ? <div style={{ display:'flex', alignItems:'center', gap:6, fontSize:11 }}>
+                  ? <div style={{ display:'flex', alignItems:'center', gap:6, fontSize: 13 }}>
                       <span style={{ width:7, height:7, borderRadius:'50%', background:'var(--ok)', display:'inline-block' }}/>
                       <span style={{ color:'var(--ok)', fontWeight:600 }}>Connected</span>
                       <span style={{ color:'var(--text3)' }}>· {cspm.scc_findings||0} findings</span>
                     </div>
-                  : <div style={{ fontSize:11, color:'var(--text3)' }}>
+                  : <div style={{ fontSize: 13, color:'var(--text3)' }}>
                       Not enabled ·{' '}
                       <a href="https://console.cloud.google.com/security/command-center" target="_blank" rel="noopener noreferrer"
                         style={{ color:'var(--accent)', textDecoration:'none' }}>Enable SCC →</a>
@@ -469,10 +469,10 @@ export function PanelAssetGraph({ cspm, cmdbAssets, cmdbLoading, onRunCMDB, conn
       {/* Left: grouped asset list */}
       <div style={{ flex:1, overflow:'auto', padding:'20px 18px' }}>
         <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:4 }}>
-          <div style={{ fontSize:13, fontWeight:700, color:'var(--text)' }}>Asset Inventory</div>
+          <div style={{ fontSize: 14, fontWeight:700, color:'var(--text)' }}>Asset Inventory</div>
           {(conn?.provider === 'gcp' || conn?.provider === 'azure') && (
             <button onClick={onRunCMDB} disabled={cmdbLoading}
-              style={{ display:'flex', alignItems:'center', gap:5, fontSize:10.5, padding:'5px 10px',
+              style={{ display:'flex', alignItems:'center', gap:5, fontSize: 12, padding:'5px 10px',
                 background:'rgb(var(--acc-c) / 0.08)', border:'1px solid rgb(var(--acc-c) / 0.2)',
                 color:'var(--accent)', borderRadius:6, cursor:cmdbLoading?'wait':'pointer', fontFamily:'inherit' }}>
               <RefreshCw size={10} style={cmdbLoading ? {animation:'spin 0.8s linear infinite'} : {}}/> 
@@ -481,7 +481,7 @@ export function PanelAssetGraph({ cspm, cmdbAssets, cmdbLoading, onRunCMDB, conn
           )}
         </div>
         <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:12, marginTop:6 }}>
-          <div style={{ fontSize:11, color:'var(--text3)', flex:1 }}>
+          <div style={{ fontSize: 13, color:'var(--text3)', flex:1 }}>
             {cmdbAssets ? (
               <span>{cmdbAssets.total_assets} total resources · {allAssets.filter(a=>!a.isClean).length} with findings</span>
             ) : (
@@ -492,7 +492,7 @@ export function PanelAssetGraph({ cspm, cmdbAssets, cmdbLoading, onRunCMDB, conn
             <div style={{ display:'flex', gap:4 }}>
               {[['all','All'],['findings','Issues'],['clean','Clean']].map(([v,l]) => (
                 <button key={v} onClick={()=>setViewMode(v)}
-                  style={{ fontSize:10, padding:'3px 8px', borderRadius:5, cursor:'pointer', fontFamily:'inherit',
+                  style={{ fontSize: 12, padding:'3px 8px', borderRadius:5, cursor:'pointer', fontFamily:'inherit',
                     background: viewMode===v ? 'rgb(var(--acc-c) / 0.1)' : 'transparent',
                     border: `1px solid ${viewMode===v ? 'rgb(var(--acc-c) / 0.3)' : 'var(--border)'}`,
                     color: viewMode===v ? 'var(--accent)' : 'var(--text3)', fontWeight: viewMode===v?600:400 }}>{l}</button>
@@ -504,9 +504,9 @@ export function PanelAssetGraph({ cspm, cmdbAssets, cmdbLoading, onRunCMDB, conn
         {assets.length === 0 && !cmdbLoading && (
           <div style={{ display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', height:200, color:'var(--text3)', gap:8 }}>
             <Layers size={36} strokeWidth={1} color="var(--border)"/>
-            <div style={{ fontSize:13 }}>{cmdbAssets ? 'No assets match this filter' : 'Run a scan or Full Inventory to populate'}</div>
+            <div style={{ fontSize: 14 }}>{cmdbAssets ? 'No assets match this filter' : 'Run a scan or Full Inventory to populate'}</div>
             {!cmdbAssets && (conn?.provider === 'gcp' || conn?.provider === 'azure') && (
-              <button onClick={onRunCMDB} style={{ fontSize:11, padding:'6px 14px', borderRadius:7, cursor:'pointer', fontFamily:'inherit',
+              <button onClick={onRunCMDB} style={{ fontSize: 13, padding:'6px 14px', borderRadius:7, cursor:'pointer', fontFamily:'inherit',
                 background:'rgb(var(--acc-c) / 0.08)', border:'1px solid rgb(var(--acc-c) / 0.2)', color:'var(--accent)' }}>
                 Run Full Inventory
               </button>
@@ -520,10 +520,10 @@ export function PanelAssetGraph({ cspm, cmdbAssets, cmdbLoading, onRunCMDB, conn
             <div key={type} style={{ marginBottom:20 }}>
               <div style={{ display:'flex', alignItems:'center', gap:7, marginBottom:8, paddingBottom:6, borderBottom:'1px solid var(--border)' }}>
                 <TypeIcon size={12} color="var(--text3)"/>
-                <span style={{ fontSize:10.5, fontWeight:700, color:'var(--text3)', textTransform:'uppercase', letterSpacing:'0.07em' }}>
+                <span style={{ fontSize: 11.5, fontWeight:700, color:'var(--text3)', textTransform:'uppercase', letterSpacing:'0.07em' }}>
                   {typeLabels[type] || type}
                 </span>
-                <span style={{ fontSize:10, background:'var(--surface2)', border:'1px solid var(--border)', borderRadius:10, padding:'0 6px', color:'var(--text3)' }}>
+                <span style={{ fontSize: 12, background:'var(--surface2)', border:'1px solid var(--border)', borderRadius:10, padding:'0 6px', color:'var(--text3)' }}>
                   {items.length}
                 </span>
               </div>
@@ -540,10 +540,10 @@ export function PanelAssetGraph({ cspm, cmdbAssets, cmdbLoading, onRunCMDB, conn
                         borderRadius:8, cursor:'pointer', textAlign:'left', fontFamily:'inherit',
                         width:'100%', transition:'all 0.15s' }}>
                       <div style={{ flex:1, minWidth:0 }}>
-                        <div style={{ fontSize:11.5, color:'var(--text)', fontFamily:'var(--font-data)', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>
+                        <div style={{ fontSize: 13, color:'var(--text)', fontFamily:'var(--font-data)', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>
                           {asset.shortName || asset.id}
                         </div>
-                        <div style={{ fontSize:10, color:'var(--text3)', marginTop:2 }}>
+                        <div style={{ fontSize: 12, color:'var(--text3)', marginTop:2 }}>
                           {asset.isClean
                             ? <span style={{ color:'var(--ok)' }}>✓ Clean</span>
                             : <>{asset.findings.length} finding{asset.findings.length!==1?'s':''} · {asset.category}</>
@@ -555,10 +555,10 @@ export function PanelAssetGraph({ cspm, cmdbAssets, cmdbLoading, onRunCMDB, conn
                         {!asset.isClean && ['critical','high','medium'].map(s => {
                           const n = asset.findings.filter(f => f.severity===s).length
                           if (!n) return null
-                          return <span key={s} style={{ fontSize:9.5, background:SEV_BG[s], color:SEV_COLOR[s],
+                          return <span key={s} style={{ fontSize: 11, background:SEV_BG[s], color:SEV_COLOR[s],
                             border:`1px solid ${SEV_BORDER[s]}`, borderRadius:10, padding:'1px 6px', fontFamily:'var(--font-data)' }}>{n}</span>
                         })}
-                        {asset.isClean && <span style={{ fontSize:9.5, color:'var(--ok)', opacity:0.6 }}>✓</span>}
+                        {asset.isClean && <span style={{ fontSize: 11, color:'var(--ok)', opacity:0.6 }}>✓</span>}
                       </div>
                       <ChevronRight size={11} color="var(--text3)" style={{ flexShrink:0, transform: isSelected ? 'rotate(90deg)' : 'none', transition:'transform 0.15s' }}/>
                     </button>
@@ -575,8 +575,8 @@ export function PanelAssetGraph({ cspm, cmdbAssets, cmdbLoading, onRunCMDB, conn
         <div style={{ width:340, flexShrink:0, borderLeft:'1px solid var(--border)', overflow:'auto', padding:'20px 18px', background:'var(--surface)' }}>
           <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:14 }}>
             <div>
-              <div style={{ fontSize:11, color:'var(--text3)', marginBottom:4, fontFamily:'var(--font-data)', wordBreak:'break-all' }}>{selAsset.id}</div>
-              <div style={{ fontSize:10, color:'var(--text3)' }}>{typeLabels[selAsset.type] || selAsset.type}</div>
+              <div style={{ fontSize: 13, color:'var(--text3)', marginBottom:4, fontFamily:'var(--font-data)', wordBreak:'break-all' }}>{selAsset.id}</div>
+              <div style={{ fontSize: 12, color:'var(--text3)' }}>{typeLabels[selAsset.type] || selAsset.type}</div>
             </div>
             <button onClick={() => setSelected(null)} style={{ background:'none', border:'none', color:'var(--text3)', cursor:'pointer', padding:0, flexShrink:0 }}>
               <X size={14}/>
@@ -586,7 +586,7 @@ export function PanelAssetGraph({ cspm, cmdbAssets, cmdbLoading, onRunCMDB, conn
             {['critical','high','medium','low'].map(s => {
               const n = selAsset.findings.filter(f => f.severity===s).length
               if (!n) return null
-              return <span key={s} style={{ fontSize:10.5, background:SEV_BG[s], color:SEV_COLOR[s], border:`1px solid ${SEV_BORDER[s]}`, borderRadius:6, padding:'2px 8px' }}>{n} {s}</span>
+              return <span key={s} style={{ fontSize: 12, background:SEV_BG[s], color:SEV_COLOR[s], border:`1px solid ${SEV_BORDER[s]}`, borderRadius:6, padding:'2px 8px' }}>{n} {s}</span>
             })}
           </div>
           <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
@@ -652,15 +652,15 @@ export function PanelAttackSurface({ cspm, conn }) {
 
   return (
     <div style={{ height:'100%', overflow:'auto', padding:'20px 24px', background:'var(--bg)' }}>
-      <div style={{ fontSize:13, fontWeight:700, color:'var(--text)', marginBottom:4 }}>Attack Surface</div>
-      <div style={{ fontSize:11, color:'var(--text3)', marginBottom:20 }}>
+      <div style={{ fontSize: 14, fontWeight:700, color:'var(--text)', marginBottom:4 }}>Attack Surface</div>
+      <div style={{ fontSize: 13, color:'var(--text3)', marginBottom:20 }}>
         Resources directly reachable from the internet or with critical network exposure
       </div>
 
       {all.length === 0 && (
         <div style={{ display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', height:220, color:'var(--text3)', gap:8 }}>
           <Shield size={40} strokeWidth={1} color="var(--border)"/>
-          <div style={{ fontSize:13 }}>Run a scan to map your attack surface</div>
+          <div style={{ fontSize: 14 }}>Run a scan to map your attack surface</div>
         </div>
       )}
 
@@ -673,10 +673,10 @@ export function PanelAttackSurface({ cspm, conn }) {
               borderTop: `3px solid ${card.color}`, borderRadius:10, cursor:'pointer', fontFamily:'inherit', textAlign:'left' }}>
             <div style={{ display:'flex', alignItems:'center', gap:7, marginBottom:8 }}>
               <card.icon size={13} color={card.color}/>
-              <span style={{ fontSize:10, fontWeight:700, color:'var(--text3)', textTransform:'uppercase', letterSpacing:'0.06em' }}>{card.label}</span>
+              <span style={{ fontSize: 11.5, fontWeight:700, color:'var(--text3)', textTransform:'uppercase', letterSpacing:'0.06em' }}>{card.label}</span>
             </div>
-            <div style={{ fontSize:26, fontWeight:800, color: card.count > 0 ? card.color : 'var(--ok)', fontFamily:'var(--font-data)', marginBottom:4 }}>{card.count}</div>
-            <div style={{ fontSize:10.5, color:'var(--text3)', lineHeight:1.4 }}>{card.count > 0 ? card.desc : 'None detected'}</div>
+            <div style={{ fontSize: 26, fontWeight:800, color: card.count > 0 ? card.color : 'var(--ok)', fontFamily:'var(--font-data)', marginBottom:4 }}>{card.count}</div>
+            <div style={{ fontSize: 12, color:'var(--text3)', lineHeight:1.4 }}>{card.count > 0 ? card.desc : 'None detected'}</div>
           </button>
         ))}
       </div>
@@ -686,7 +686,7 @@ export function PanelAttackSurface({ cspm, conn }) {
         const card = surfaceCards.find(c => c.label === expanded)
         return card?.items.length > 0 ? (
           <div style={{ marginBottom:20 }}>
-            <div style={{ fontSize:11, fontWeight:700, color:'var(--text3)', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:10 }}>
+            <div style={{ fontSize: 11.5, fontWeight:700, color:'var(--text3)', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:10 }}>
               {card.label} - {card.items.length} finding{card.items.length!==1?'s':''}
             </div>
             <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
@@ -699,11 +699,11 @@ export function PanelAttackSurface({ cspm, conn }) {
       {/* All network/exposure findings when nothing selected */}
       {!expanded && all.length > 0 && (
         <div>
-          <div style={{ fontSize:11, fontWeight:700, color:'var(--text3)', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:10 }}>
+          <div style={{ fontSize: 11.5, fontWeight:700, color:'var(--text3)', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:10 }}>
             All Network & Exposure Findings
           </div>
           {network.length === 0
-            ? <div style={{ fontSize:12, color:'var(--ok)', padding:'20px 0', textAlign:'center' }}>✓ No network exposure findings detected</div>
+            ? <div style={{ fontSize: 13.5, color:'var(--ok)', padding:'20px 0', textAlign:'center' }}>✓ No network exposure findings detected</div>
             : <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
                 {network.map((f,i) => <FindingCard key={f.id||i} f={f} provider={conn?.provider || "gcp"} projectId={cspm?.project_id} subscriptionId={cspm?.subscription_id}/>)}
               </div>
@@ -755,13 +755,13 @@ export function PanelEventTimeline({ events, loading, conn }) {
             <Search size={11} style={{ position:'absolute', left:9, top:'50%', transform:'translateY(-50%)', color:'var(--text3)' }}/>
             <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search events…"
               style={{ width:'100%', background:'var(--bg)', border:'1px solid var(--border)', borderRadius:7,
-                paddingLeft:28, paddingRight:10, paddingTop:6, paddingBottom:6, fontSize:11.5,
+                paddingLeft:28, paddingRight:10, paddingTop:6, paddingBottom:6, fontSize: 13,
                 color:'var(--text)', outline:'none', fontFamily:'inherit', boxSizing:'border-box' }}/>
           </div>
           <div style={{ display:'flex', gap:4 }}>
             {[['all','All'],[5,'Crit'],[4,'High'],[3,'Med'],[2,'Low'],[1,'Info']].map(([v,l]) => (
               <button key={v} onClick={() => setSevFilter(String(v))}
-                style={{ fontSize:10.5, padding:'4px 9px', borderRadius:6, cursor:'pointer', fontFamily:'inherit',
+                style={{ fontSize: 12, padding:'4px 9px', borderRadius:6, cursor:'pointer', fontFamily:'inherit',
                   background: String(sevFilter)===String(v) ? (SEV_BG[v]||'rgb(var(--acc-c) / 0.1)') : 'var(--surface)',
                   border: `1px solid ${String(sevFilter)===String(v) ? (SEV_BORDER[v]||'rgb(var(--acc-c) / 0.3)') : 'var(--border)'}`,
                   color: String(sevFilter)===String(v) ? (SEV_COLOR[v]||'var(--accent)') : 'var(--text3)',
@@ -770,13 +770,13 @@ export function PanelEventTimeline({ events, loading, conn }) {
           </div>
           {eventTypes.length > 0 && (
             <select value={typeFilter} onChange={e => setTypeFilter(e.target.value)}
-              style={{ fontSize:11, padding:'5px 8px', background:'var(--surface)', border:'1px solid var(--border)',
+              style={{ fontSize: 13, padding:'5px 8px', background:'var(--surface)', border:'1px solid var(--border)',
                 borderRadius:6, color:'var(--text2)', outline:'none', fontFamily:'inherit' }}>
               <option value="all">All types</option>
               {eventTypes.map(t => <option key={t} value={t}>{t}</option>)}
             </select>
           )}
-          <span style={{ fontSize:10.5, color:'var(--text3)', marginLeft:'auto' }}>{filtered.length} events</span>
+          <span style={{ fontSize: 12, color:'var(--text3)', marginLeft:'auto' }}>{filtered.length} events</span>
         </div>
 
         {/* Timeline */}
@@ -789,12 +789,12 @@ export function PanelEventTimeline({ events, loading, conn }) {
           {!loading && filtered.length === 0 && (
             <div style={{ display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', height:200, color:'var(--text3)', gap:8 }}>
               <Activity size={36} strokeWidth={1} color="var(--border)"/>
-              <div style={{ fontSize:13 }}>{events.length === 0 ? 'No events ingested yet - sync the connector' : 'No events match your filter'}</div>
+              <div style={{ fontSize: 14 }}>{events.length === 0 ? 'No events ingested yet - sync the connector' : 'No events match your filter'}</div>
             </div>
           )}
           {Object.entries(byDate).map(([date, dayEvents]) => (
             <div key={date} style={{ marginBottom:20 }}>
-              <div style={{ fontSize:10.5, fontWeight:700, color:'var(--text3)', textTransform:'uppercase', letterSpacing:'0.07em',
+              <div style={{ fontSize: 11.5, fontWeight:700, color:'var(--text3)', textTransform:'uppercase', letterSpacing:'0.07em',
                 marginBottom:8, paddingBottom:6, borderBottom:'1px solid var(--border)' }}>
                 {date} · {dayEvents.length} event{dayEvents.length!==1?'s':''}
               </div>
@@ -853,21 +853,21 @@ export function PanelEventTimeline({ events, loading, conn }) {
                           background: sevColor, border:'2px solid var(--bg)', flexShrink:0 }}/>
                         <div style={{ flex:1, minWidth:0 }}>
                           <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:2 }}>
-                            <span style={{ fontSize:11.5, fontWeight:600, color:'var(--text)',
+                            <span style={{ fontSize: 13, fontWeight:600, color:'var(--text)',
                               whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis', flex:1 }}>
                               {displayTitle}
                             </span>
                             {sourceTag && (
-                              <span style={{ fontSize:9, padding:'1px 5px', borderRadius:3, fontFamily:'var(--font-data)',
+                              <span style={{ fontSize: 11, padding:'1px 5px', borderRadius:3, fontFamily:'var(--font-data)',
                                 background: tint(sourceTag.color, 9), color:sourceTag.color, border:`1px solid ${tint(sourceTag.color, 25)}`, flexShrink:0 }}>
                                 {sourceTag.label}
                               </span>
                             )}
-                            <span style={{ fontSize:9.5, color:'var(--text3)', flexShrink:0 }}>
+                            <span style={{ fontSize: 11, color:'var(--text3)', flexShrink:0 }}>
                               {ev.time ? format(new Date(ev.time), 'HH:mm:ss') : ''}
                             </span>
                           </div>
-                          <div style={{ display:'flex', gap:8, fontSize:10.5, color:'var(--text3)' }}>
+                          <div style={{ display:'flex', gap:8, fontSize: 12, color:'var(--text3)' }}>
                             {principal && <span style={{ color:'var(--accent)', fontFamily:'var(--font-data)' }}>{principal}</span>}
                             {ev.src_ip && <span>{ev.src_ip}</span>}
                             <span style={{ color: sevColor }}>{SEV_NUM_LABEL[ev.severity] || ev.event_type}</span>

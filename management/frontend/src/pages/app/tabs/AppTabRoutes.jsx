@@ -7,7 +7,7 @@ import { appInt, appPct, appMs, appRel } from '../../../components/app/appFormat
 import { appReviewPath, appIsAdmin } from '../../../components/app/appFormat'
 import AppSpecPanel from '../../../components/app/AppSpecPanel'
 
-const tag = (cls, t) => <span key={t} className={`ml-1 text-[10px] rounded border px-1 ${cls}`}>{t}</span>
+const tag = (cls, t) => <span key={t} className={`ml-1 text-mini rounded border px-1 ${cls}`}>{t}</span>
 
 // Route inventory with RED, new routes flagged, login / export / public tags (spec 11.3).
 export default function AppTabRoutes({ service, range, focus }) {
@@ -51,9 +51,9 @@ export default function AppTabRoutes({ service, range, focus }) {
         {r.declared && !r.observed && tag('border-teal-500/40 text-teal-300', 'declared, no traffic yet')}
         {r.n_plus_one_count > 0 && tag('border-amber-500/40 text-amber-300', `N+1 x${r.n_plus_one_count}`)}
         {r.not_in_spec && tag('border-amber-500/40 text-amber-300', 'not in spec')}
-        {r.observed && !r.active && <span className="ml-1 text-[10px] text-siem-muted">no traffic in range</span>}
+        {r.observed && !r.active && <span className="ml-1 text-mini text-siem-muted">no traffic in range</span>}
         {r.top_children?.length > 0 && (
-          <span className="block text-[10px] text-siem-muted mt-0.5" title="The downstream calls that took the most total time for this route in the range">
+          <span className="block text-mini text-siem-muted mt-0.5" title="The downstream calls that took the most total time for this route in the range">
             slowest: {r.top_children.map(c => `${c.name}${c.target ? ` (${c.target})` : ''} ${appMs(c.total_ms / Math.max(1, r.stats.calls))}/req`).join(' · ')}
           </span>)}
       </span>), sort: r => r.route },
@@ -67,7 +67,7 @@ export default function AppTabRoutes({ service, range, focus }) {
       return (
         <span className="text-xs">
           {shown.map(p => <span key={p.name} title={`${p.name}: ${p.requests} requests${p.location ? `, ${p.location}` : ''}${p.undocumented ? '. Seen in traffic but not in the API spec.' : p.source === 'declared' ? '. Declared in the API spec, not seen yet.' : ''}`}
-            className={`mr-1 inline-block rounded border px-1 font-mono text-[10px] ${p.undocumented ? 'border-amber-500/60 text-amber-300' : p.source === 'declared' ? 'border-dashed border-siem-border text-siem-muted' : 'border-siem-border'}`}>{p.name}</span>)}
+            className={`mr-1 inline-block rounded border px-1 font-mono text-mini ${p.undocumented ? 'border-amber-500/60 text-amber-300' : p.source === 'declared' ? 'border-dashed border-siem-border text-siem-muted' : 'border-siem-border'}`}>{p.name}</span>)}
           {ps.length > 5 && (
             <button className="text-siem-accent hover:underline" onClick={() => setExpanded(e => ({ ...e, [k]: !e[k] }))}>
               {expanded[k] ? 'show fewer' : `+${ps.length - 5} more`}
@@ -90,7 +90,7 @@ export default function AppTabRoutes({ service, range, focus }) {
     <div className="space-y-2">
       <AppSpecPanel service={service} onChanged={() => setRev(x => x + 1)} />
       {service.attrs?.route_overflow > 0 && (
-        <div className="text-[11px] text-amber-300">{appInt(service.attrs.route_overflow)} requests counted under "other": over the route limit (agent setting max_routes_per_service, default 2,000).</div>
+        <div className="text-xs text-amber-300">{appInt(service.attrs.route_overflow)} requests counted under "other": over the route limit (agent setting max_routes_per_service, default 2,000).</div>
       )}
       <input value={q} onChange={e => setQ(e.target.value)} placeholder="Find a route: path or method, e.g. POST /orders"
         className="bg-siem-surface2 border border-siem-border rounded-lg px-2.5 py-1.5 text-xs text-siem-text w-80" />
@@ -118,7 +118,7 @@ export default function AppTabRoutes({ service, range, focus }) {
         </div>)}
       <div className="card"><DataTable columns={cols} rows={rows} loading={loading} error={error} rowKey={(r) => r.method + r.route}
         emptyText="No routes yet." initialSort={{ key: 'calls', dir: 'desc' }} pageSize={100} /></div>
-      <div className="text-[11px] text-siem-muted">Dashed: declared in the API spec, not seen yet. Amber: seen in traffic but not in the spec.</div>
+      <div className="text-xs text-siem-muted">Dashed: declared in the API spec, not seen yet. Amber: seen in traffic but not in the spec.</div>
     </div>
   )
 }

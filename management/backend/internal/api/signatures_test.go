@@ -175,23 +175,6 @@ func TestDevOpsTypedRules(t *testing.T) {
 	}
 }
 
-func TestParseSearchQuery(t *testing.T) {
-	tok, not, sp := parseSearchQuery(`powershell "encoded command" -chrome host:web1 sev:4`)
-	if len(tok) != 2 || tok[0] != "powershell" || tok[1] != "encoded command" {
-		t.Errorf("tokens: %v", tok)
-	}
-	if len(not) != 1 || not[0] != "chrome" {
-		t.Errorf("not tokens: %v", not)
-	}
-	f := store.EventFilter{}
-	for _, a := range sp {
-		a(&f)
-	}
-	if f.Host != "web1" || f.Severity != 4 {
-		t.Errorf("filters: %+v", f)
-	}
-}
-
 func TestAWSRoleARNAndSessionTokenSigning(t *testing.T) {
 	ok := "arn:aws:iam::123456789012:role/ObsidianWatchReadOnly"
 	if !awsRoleARNRe.MatchString(ok) {

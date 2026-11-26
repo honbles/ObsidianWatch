@@ -39,7 +39,7 @@ export function ConnectorForm({ provider, onSaved, onCancel }) {
       <div className="grid gap-3">
         {cfg.fields.map(f => (
           <div key={f.key}>
-            <label className="block text-[10px] uppercase tracking-wider text-siem-muted mb-1">{f.label}</label>
+            <label className="block text-2xs uppercase tracking-wider text-siem-muted mb-1">{f.label}</label>
             {f.multiline ? (
               <textarea rows={5}
                 className="w-full bg-siem-bg border border-siem-border rounded-lg px-3 py-2 text-xs text-siem-text font-mono focus:outline-none focus:border-siem-accent resize-none"
@@ -80,13 +80,13 @@ export function ConnectorForm({ provider, onSaved, onCancel }) {
         <button onClick={onCancel} className="text-xs border border-siem-border text-siem-muted rounded-lg px-4 py-2">Cancel</button>
       </div>
       <div className="bg-siem-bg border border-siem-border/40 rounded-xl p-3 space-y-1">
-        <p className="text-[10px] text-siem-muted font-medium uppercase tracking-wider mb-2">What will be pulled</p>
+        <p className="text-2xs text-siem-muted font-medium uppercase tracking-wider mb-2">What will be pulled</p>
         {cfg.pulls.map(p => (
           <div key={p} className="flex items-center gap-2 text-xs text-siem-muted">
             <span className="w-1 h-1 rounded-full bg-siem-accent/60 shrink-0"/>{p}
           </div>
         ))}
-        <p className="text-[10px] text-siem-muted/50 pt-1">Polled every 5 minutes · Read-only credentials required</p>
+        <p className="text-mini text-siem-muted/50 pt-1">Polled every 5 minutes · Read-only credentials required</p>
       </div>
     </div>
   )
@@ -269,11 +269,11 @@ export function ConnectorDetail({ conn, onSync, onDisconnect, syncing }) {
             </span>
             <div>
               <div className="text-sm font-semibold text-siem-text">{conn.account_label || conn.account_id || 'Unnamed account'}</div>
-              <div className="text-[11px] text-siem-muted">{conn.account_id || 'Project ID not set'}</div>
+              <div className="text-xs text-siem-muted">{conn.account_id || 'Project ID not set'}</div>
             </div>
-            <span className={`text-[10px] border rounded-full px-2 py-0.5 ${statusBadge}`}>{conn.status}</span>
+            <span className={`text-mini border rounded-full px-2 py-0.5 ${statusBadge}`}>{conn.status}</span>
             {cspm && (
-              <span style={{ fontSize:10, padding:'2px 8px', borderRadius:10,
+              <span style={{ fontSize: 12, padding:'2px 8px', borderRadius:10,
                 background: cspm.critical > 0 ? 'rgb(var(--crit-c) / 0.1)' : 'rgb(var(--ok-c) / 0.1)',
                 color: cspm.critical > 0 ? 'var(--crit)' : 'var(--ok)',
                 border: `1px solid ${cspm.critical > 0 ? 'rgb(var(--crit-c) / 0.25)' : 'rgb(var(--ok-c) / 0.25)'}` }}>
@@ -311,7 +311,7 @@ export function ConnectorDetail({ conn, onSync, onDisconnect, syncing }) {
                 }`}>
                 <Icon size={11}/>{label}
                 {count !== null && count > 0 && (
-                  <span style={{ fontSize:9.5, background: tab===id ? 'rgba(0,0,0,0.2)' : 'rgb(var(--acc-c) / 0.15)',
+                  <span style={{ fontSize: 11, background: tab===id ? 'rgba(0,0,0,0.2)' : 'rgb(var(--acc-c) / 0.15)',
                     color: tab===id ? 'var(--onacc)' : 'var(--accent)', borderRadius:10, padding:'0 5px', minWidth:15, textAlign:'center' }}>
                     {count}
                   </span>

@@ -22,12 +22,12 @@ export default function AppTabEvents({ service, range }) {
   const { data, loading, error } = useAppLoad(() => appApi.timeline(service.id, range, extra), [service.id, range.from, range.to, category, host])
   const cols = [
     { key: 'time', label: 'Time', width: 170, render: e => appTime(e.time), sort: e => e.time },
-    { key: 'category', label: 'Type', width: 100, render: e => <span className={`inline-flex rounded border px-1.5 py-0.5 text-[10px] font-medium ${CAT_CLS[e.category] || ''}`}>{e.category}</span> },
+    { key: 'category', label: 'Type', width: 100, render: e => <span className={`inline-flex rounded border px-1.5 py-0.5 text-mini font-medium ${CAT_CLS[e.category] || ''}`}>{e.category}</span> },
     { key: 'host', label: 'Host', width: 120, render: e => e.host || <span className="text-siem-muted">-</span> },
     { key: 'title', label: 'Event', render: e => (
       <span>
         {e.kind === 'request' ? <Link className="text-siem-accent hover:underline" to={appReviewPath(service, e.method, e.route)}>{e.title}</Link> : e.alert_id ? <Link className="text-siem-accent hover:underline" to={e.host ? `/alerts?host=${encodeURIComponent(e.host)}` : "/alerts"}>{e.title}</Link> : e.title}
-        {e.first_seen && <span className="ml-1.5 rounded border border-orange-500/40 px-1 text-[10px] text-orange-300" title="Not contacted by this service in the 30 days before the range">first seen</span>}
+        {e.first_seen && <span className="ml-1.5 rounded border border-orange-500/40 px-1 text-mini text-orange-300" title="Not contacted by this service in the 30 days before the range">first seen</span>}
       </span>) },
     { key: 'detail', label: 'Detail', render: e => <span className="font-mono text-xs break-all">{e.detail}</span> },
   ]
@@ -42,7 +42,7 @@ export default function AppTabEvents({ service, range }) {
       </div>
       <div className="card"><DataTable columns={cols} rows={data?.items} loading={loading} error={error} rowKey={(e, i) => `${e.time}${e.kind}${i}`}
         emptyText="No activity in this range." /></div>
-      <div className="text-[11px] text-siem-muted">Newest first.</div>
+      <div className="text-xs text-siem-muted">Newest first.</div>
     </div>
   )
 }

@@ -100,7 +100,11 @@ func handleEventSearch(db *store.DB) http.HandlerFunc {
 				writeJSON(w, 400, map[string]string{"error": qe.Error()})
 				return
 			}
-			writeJSON(w, 500, map[string]string{"error": "search failed"})
+			if errors.Is(err, context.DeadlineExceeded) || errors.Is(ctx.Err(), context.DeadlineExceeded) {
+				writeJSON(w, http.StatusGatewayTimeout, map[string]string{"error": "The search took longer than 10 seconds. Narrow the time range or add a field, such as type: or host:."})
+				return
+			}
+			writeJSON(w, 500, map[string]string{"error": "The search failed on the server."})
 			return
 		}
 
@@ -111,72 +115,6 @@ func handleEventSearch(db *store.DB) http.HandlerFunc {
 			"query":  raw,
 		})
 	}
-}
-
-// parseSearchQuery turns the search box syntax (terms, "phrases", -exclusions,
-// prefix:filters) into an EventFilter's tokens and field filters. Shared by
-// interactive search and scheduled searches (P-07).
-func parseSearchQuery(raw string) (tokens, notTokens []string, specialFilters []func(*store.EventFilter)) {
-	if raw != "" {
-		for _, tok := range splitSearchTerms(raw) {
-			tok = strings.TrimSpace(tok)
-			if tok == "" {
-				continue
-			}
-			// F-07: -term excludes events containing term.
-			if strings.HasPrefix(tok, "-") && len(tok) > 1 {
-				notTokens = append(notTokens, strings.Trim(tok[1:], `"`))
-				continue
-			}
-			// Quoted phrase: matched literally as a single token.
-			if strings.HasPrefix(tok, `"`) {
-				if t := strings.Trim(tok, `"`); t != "" {
-					tokens = append(tokens, t)
-				}
-				continue
-			}
-
-			// Special prefix filters: host:lab, type:process, sev:4, src:1.2.3.4
-			if strings.Contains(tok, ":") {
-				parts := strings.SplitN(tok, ":", 2)
-				key, val := strings.ToLower(parts[0]), parts[1]
-				switch key {
-				case "host":
-					specialFilters = append(specialFilters, func(f *store.EventFilter) { f.Host = val })
-				case "type", "event_type":
-					specialFilters = append(specialFilters, func(f *store.EventFilter) { f.EventType = val })
-				case "sev", "severity":
-					if n, err := strconv.Atoi(val); err == nil {
-						specialFilters = append(specialFilters, func(f *store.EventFilter) { f.Severity = n })
-					}
-				case "src", "src_ip":
-					specialFilters = append(specialFilters, func(f *store.EventFilter) { f.SrcIP = val })
-				case "dst", "dst_ip":
-					specialFilters = append(specialFilters, func(f *store.EventFilter) { f.DstIP = val })
-				case "user":
-					specialFilters = append(specialFilters, func(f *store.EventFilter) { f.UserName = val })
-				case "proc", "process":
-					specialFilters = append(specialFilters, func(f *store.EventFilter) { f.ProcessName = val })
-				case "reg", "regkey":
-					specialFilters = append(specialFilters, func(f *store.EventFilter) { f.RegKey = val })
-				case "file", "path":
-					specialFilters = append(specialFilters, func(f *store.EventFilter) { f.FilePath = val })
-				case "cmd", "cmdline":
-					specialFilters = append(specialFilters, func(f *store.EventFilter) { f.CommandLine = val })
-				case "os":
-					specialFilters = append(specialFilters, func(f *store.EventFilter) { f.OS = val })
-				case "source":
-					specialFilters = append(specialFilters, func(f *store.EventFilter) { f.Source = val })
-				default:
-					// Unknown prefix - treat as regular token
-					tokens = append(tokens, tok)
-				}
-			} else {
-				tokens = append(tokens, tok)
-			}
-		}
-	}
-	return
 }
 
 // splitSearchTerms splits on whitespace but keeps "quoted phrases" (with

@@ -67,7 +67,7 @@ export function TabDevice({ agent }) {
     return (
       <div className="bg-siem-surface border border-siem-border rounded-xl p-3">
         <div className="flex items-center justify-between mb-2">
-          <span className="text-[10px] uppercase tracking-wider text-siem-muted font-semibold">{label}</span>
+          <span className="text-2xs uppercase tracking-wider text-siem-muted font-semibold">{label}</span>
           {data[data.length-1] && <span className="text-xs font-mono text-siem-text">{Number(data[data.length-1].v).toFixed(1)}{unit}</span>}
         </div>
         <div className="h-20">
@@ -79,8 +79,8 @@ export function TabDevice({ agent }) {
                   <stop offset="95%" stopColor={color} stopOpacity={0}/>
                 </linearGradient>
               </defs>
-              <XAxis dataKey="t" tick={{ fontSize: 8, fill: 'var(--t3)' }} interval="preserveStartEnd" tickLine={false} axisLine={false}/>
-              <Tooltip contentStyle={{ background: 'var(--s2)', border: '1px solid var(--line2)', borderRadius: 6, fontSize: 10 }} formatter={v => [`${Number(v).toFixed(1)}${unit}`, label]}/>
+              <XAxis dataKey="t" tick={{ fontSize: 11, fill: 'var(--t3)' }} interval="preserveStartEnd" tickLine={false} axisLine={false}/>
+              <Tooltip contentStyle={{ background: 'var(--s2)', border: '1px solid var(--line2)', borderRadius: 6, fontSize: 12 }} formatter={v => [`${Number(v).toFixed(1)}${unit}`, label]}/>
               <Area type="monotone" dataKey="v" stroke={color} fill={`url(#grad-${label})`} strokeWidth={1.5} dot={false}/>
             </AreaChart>
           </ResponsiveContainer>
@@ -94,7 +94,7 @@ export function TabDevice({ agent }) {
 
       {/* System info */}
       <div className="bg-siem-surface border border-siem-border rounded-xl p-4">
-        <div className="text-[10px] uppercase tracking-wider text-siem-muted font-semibold mb-3">System</div>
+        <div className="text-2xs uppercase tracking-wider text-siem-muted font-semibold mb-3">System</div>
         {[
           ['Hostname',    agent.hostname],
           ['OS',          agent.os || '-'],
@@ -105,7 +105,7 @@ export function TabDevice({ agent }) {
         ].map(([k, v]) => (
           <div key={k} className="flex justify-between text-xs py-1.5 border-b border-siem-border/40 last:border-0">
             <span className="text-siem-muted">{k}</span>
-            <span className="font-mono text-siem-text text-[11px]">{v}</span>
+            <span className="font-mono text-siem-text text-xs">{v}</span>
           </div>
         ))}
       </div>
@@ -115,7 +115,7 @@ export function TabDevice({ agent }) {
       {!loading && !raw && (
         <div className="bg-siem-surface border border-siem-border rounded-xl p-6 text-center space-y-2">
           <div className="text-sm text-siem-muted">No health data yet</div>
-          <div className="text-[10px] text-siem-muted/50 max-w-xs mx-auto">
+          <div className="text-mini text-siem-muted/50 max-w-xs mx-auto">
             This agent version sends no system metrics. Update the agent.
           </div>
         </div>
@@ -131,7 +131,7 @@ export function TabDevice({ agent }) {
 
         {/* Current resource bars */}
         <div className="bg-siem-surface border border-siem-border rounded-xl p-4 space-y-3">
-          <div className="text-[10px] uppercase tracking-wider text-siem-muted font-semibold flex items-center justify-between">
+          <div className="text-2xs uppercase tracking-wider text-siem-muted font-semibold flex items-center justify-between">
             Resources
             {latest && <span className="font-normal">updated {formatDistanceToNow(new Date(latest.time), { addSuffix: true })}</span>}
           </div>
@@ -153,7 +153,7 @@ export function TabDevice({ agent }) {
         {/* All disks */}
         {raw.disks?.length > 0 && (
           <div className="bg-siem-surface border border-siem-border rounded-xl p-4 space-y-3">
-            <div className="text-[10px] uppercase tracking-wider text-siem-muted font-semibold">
+            <div className="text-2xs uppercase tracking-wider text-siem-muted font-semibold">
               Disks ({raw.disks.length})
             </div>
             {raw.disks.map((d, i) => (
@@ -171,19 +171,19 @@ export function TabDevice({ agent }) {
         {raw.top_processes?.length > 0 && (
           <div className="bg-siem-surface border border-siem-border rounded-xl overflow-hidden">
             <div className="px-4 py-3 border-b border-siem-border">
-              <div className="text-[10px] uppercase tracking-wider text-siem-muted font-semibold">
+              <div className="text-2xs uppercase tracking-wider text-siem-muted font-semibold">
                 Top processes by CPU + Memory
               </div>
             </div>
             {/* CPU bar chart */}
             <div className="px-4 pt-3 pb-1">
-              <div className="text-[9px] text-siem-muted mb-2">CPU %</div>
+              <div className="text-2xs text-siem-muted mb-2">CPU %</div>
               <div className="h-28">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={cpuTop(raw.top_processes)} layout="vertical" margin={{ top:0, right:40, bottom:0, left:80 }}>
-                    <XAxis type="number" domain={[0, 100]} tick={{ fontSize: 9, fill: 'var(--t3)' }} tickLine={false} axisLine={false}/>
-                    <YAxis type="category" dataKey="name" tick={{ fontSize: 9, fill: 'var(--t2)' }} width={80} tickLine={false} axisLine={false}/>
-                    <Tooltip contentStyle={{ background:'var(--s2)', border:'1px solid var(--line2)', borderRadius:6, fontSize:10 }} formatter={v => [`${Number(v).toFixed(1)}%`, 'CPU']}/>
+                    <XAxis type="number" domain={[0, 100]} tick={{ fontSize: 11, fill: 'var(--t3)' }} tickLine={false} axisLine={false}/>
+                    <YAxis type="category" dataKey="name" tick={{ fontSize: 11, fill: 'var(--t2)' }} width={80} tickLine={false} axisLine={false}/>
+                    <Tooltip contentStyle={{ background:'var(--s2)', border:'1px solid var(--line2)', borderRadius:6, fontSize: 12 }} formatter={v => [`${Number(v).toFixed(1)}%`, 'CPU']}/>
                     <Bar dataKey="cpu_percent" radius={[0,3,3,0]}>
                       {cpuTop(raw.top_processes).map((p,i) => (
                         <Cell key={i} fill={p.cpu_percent > 50 ? 'var(--crit)' : p.cpu_percent > 20 ? 'var(--high)' : 'var(--ok)'}/>
@@ -195,13 +195,13 @@ export function TabDevice({ agent }) {
             </div>
             {/* Memory bar chart */}
             <div className="px-4 pt-1 pb-3 border-t border-siem-border/30">
-              <div className="text-[9px] text-siem-muted mb-2">Memory (MB)</div>
+              <div className="text-2xs text-siem-muted mb-2">Memory (MB)</div>
               <div className="h-28">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={[...raw.top_processes].sort((a,b) => b.mem_mb - a.mem_mb).slice(0,10)} layout="vertical" margin={{ top:0, right:40, bottom:0, left:80 }}>
-                    <XAxis type="number" tick={{ fontSize: 9, fill: 'var(--t3)' }} tickLine={false} axisLine={false}/>
-                    <YAxis type="category" dataKey="name" tick={{ fontSize: 9, fill: 'var(--t2)' }} width={80} tickLine={false} axisLine={false}/>
-                    <Tooltip contentStyle={{ background:'var(--s2)', border:'1px solid var(--line2)', borderRadius:6, fontSize:10 }} formatter={v => [`${Number(v).toFixed(0)} MB`, 'Memory']}/>
+                    <XAxis type="number" tick={{ fontSize: 11, fill: 'var(--t3)' }} tickLine={false} axisLine={false}/>
+                    <YAxis type="category" dataKey="name" tick={{ fontSize: 11, fill: 'var(--t2)' }} width={80} tickLine={false} axisLine={false}/>
+                    <Tooltip contentStyle={{ background:'var(--s2)', border:'1px solid var(--line2)', borderRadius:6, fontSize: 12 }} formatter={v => [`${Number(v).toFixed(0)} MB`, 'Memory']}/>
                     <Bar dataKey="mem_mb" radius={[0,3,3,0]}>
                       {raw.top_processes.slice(0,10).map((p,i) => (
                         <Cell key={i} fill="var(--info)"/>
@@ -216,7 +216,7 @@ export function TabDevice({ agent }) {
 
         {/* Agent internals */}
         <div className="bg-siem-surface border border-siem-border rounded-xl p-4">
-          <div className="text-[10px] uppercase tracking-wider text-siem-muted font-semibold mb-3">Agent internals</div>
+          <div className="text-2xs uppercase tracking-wider text-siem-muted font-semibold mb-3">Agent internals</div>
           <div className="grid grid-cols-2 gap-x-6">
             {[
               ['Status',           raw.status],
@@ -231,7 +231,7 @@ export function TabDevice({ agent }) {
             ].filter(([,v]) => v != null).map(([k, v]) => (
               <div key={k} className="flex justify-between text-xs py-1.5 border-b border-siem-border/30 last:border-0">
                 <span className="text-siem-muted">{k}</span>
-                <span className={`font-mono text-[11px] ${
+                <span className={`font-mono text-xs ${
                   k==='Events dropped'  && Number(raw.events_dropped)  > 0 ? 'text-orange-400' :
                   k==='Forward errors'  && Number(raw.forward_errors)  > 0 ? 'text-red-400' : 'text-siem-text'
                 }`}>{String(v)}</span>
@@ -240,10 +240,10 @@ export function TabDevice({ agent }) {
           </div>
           {raw.collectors?.length > 0 && (
             <div className="mt-3 pt-3 border-t border-siem-border/30">
-              <div className="text-[10px] text-siem-muted mb-2">Active collectors</div>
+              <div className="text-mini text-siem-muted mb-2">Active collectors</div>
               <div className="flex flex-wrap gap-1.5">
                 {raw.collectors.map(c => (
-                  <span key={c} className="text-[10px] px-2 py-0.5 bg-emerald-900/20 text-emerald-400 border border-emerald-800/30 rounded-full">{c}</span>
+                  <span key={c} className="text-mini px-2 py-0.5 bg-emerald-900/20 text-emerald-400 border border-emerald-800/30 rounded-full">{c}</span>
                 ))}
               </div>
             </div>
@@ -251,7 +251,7 @@ export function TabDevice({ agent }) {
         </div>
       </>)}
       <div className="bg-siem-surface border border-siem-border rounded-xl p-4">
-        <div className="text-[10px] uppercase tracking-wider text-siem-muted font-semibold mb-2">Running processes</div>
+        <div className="text-2xs uppercase tracking-wider text-siem-muted font-semibold mb-2">Running processes</div>
         <ProcessTree agent={agent} canKill={isAdminUser()} onBlock={async p => {
           if (!window.confirm(`Block ${p.path} from running on ${agent.hostname}?\n\nRunning copies are ended and it cannot start again until you unblock it (Response tab).`)) return
           const r = await runAction(agent.id, 'block_process', { path: p.path })
@@ -321,7 +321,7 @@ export function TabLocation({ agent }) {
             ['Updated',     loc.location_updated ? formatDistanceToNow(new Date(loc.location_updated), { addSuffix: true }) : '-'],
           ].map(([k, v]) => (
             <div key={k}>
-              <div className="text-[9px] uppercase tracking-wider text-siem-muted mb-0.5">{k}</div>
+              <div className="text-2xs uppercase tracking-wider text-siem-muted mb-0.5">{k}</div>
               <div className="text-xs font-mono text-siem-text">{v}</div>
             </div>
           ))}
@@ -431,7 +431,7 @@ export function TabTerminal({ agent }) {
 
       const term = new XTerm({
         cursorBlink: true,
-        fontSize:    13,
+        fontSize: 14,
         fontFamily: TERMINAL_FONT,
         theme: TERMINAL_THEME,
         rows: 30, cols: 120,
@@ -519,14 +519,14 @@ export function TabTerminal({ agent }) {
             {session.username}@{session.hostname}
           </span>
           {connected && (
-            <span className="flex items-center gap-1 text-[10px] text-emerald-400">
+            <span className="flex items-center gap-1 text-mini text-emerald-400">
               <Activity size={10} className="animate-pulse"/> Live
             </span>
           )}
         </div>
         <button
           onClick={endSession}
-          className="flex items-center gap-1.5 text-[11px] text-red-400 hover:text-red-300 px-2 py-1 rounded border border-red-800 hover:border-red-600 transition-colors"
+          className="flex items-center gap-1.5 text-xs text-red-400 hover:text-red-300 px-2 py-1 rounded border border-red-800 hover:border-red-600 transition-colors"
         >
           <Square size={10}/> End Session
         </button>

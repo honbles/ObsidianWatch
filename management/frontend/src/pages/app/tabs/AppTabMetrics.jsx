@@ -19,7 +19,7 @@ function Detail({ service, range, row, instance }) {
   return (
     <div className="px-3 py-2 bg-siem-surface2/40">
       <Sparkline values={pts.map(p => p.avg)} width={480} height={48} />
-      <div className="text-[11px] text-siem-muted mt-1">{pts.length} points, step {data?.step_min || '-'} min. Highest {fmt(Math.max(...pts.map(p => p.max), 0), row.unit)}.</div>
+      <div className="text-xs text-siem-muted mt-1">{pts.length} points, step {data?.step_min || '-'} min. Highest {fmt(Math.max(...pts.map(p => p.max), 0), row.unit)}.</div>
     </div>
   )
 }
@@ -59,7 +59,7 @@ export default function AppTabMetrics({ service, range }) {
               </tbody>
             </table>)}
       </div>
-      <div className="text-[11px] text-siem-muted">Only runtime and connection-pool metrics are accepted.</div>
+      <div className="text-xs text-siem-muted">Only runtime and connection-pool metrics are accepted.</div>
     </div>
   )
 }

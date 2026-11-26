@@ -5,7 +5,7 @@ import { PageHeader, SevPill, StatePill, Section, relTime } from '../../componen
 import { usePosture, cloudFindingPath, PROVIDER, CAT_LABEL } from './PostureOverview'
 
 function Row({ k, children }) {
-  return <div style={{ display: 'grid', gridTemplateColumns: '160px 1fr', gap: 12, padding: '6px 0', borderBottom: '1px solid var(--line)' }}><span className="t3">{k}</span><span>{children}</span></div>
+  return <div style={{ display: 'grid', gridTemplateColumns: '179px 1fr', gap: 12, padding: '6px 0', borderBottom: '1px solid var(--line)' }}><span className="t3">{k}</span><span>{children}</span></div>
 }
 
 export default function CloudFindingPage() {
@@ -17,7 +17,7 @@ export default function CloudFindingPage() {
   const sameRule = f ? d.findings.filter(x => x !== f && x.title === f.title) : []
   if (!d.loading && !f) return <div><PageHeader title="Finding not found" sub="It may have been fixed and dropped from the latest assessment." actions={<Link className="ow-btn" style={{ textDecoration: 'none' }} to="/cloud">All findings</Link>}/></div>
   const list = (items, empty) => items.length === 0 ? <div className="t3" style={{ padding: 14 }}>{empty}</div> : items.slice(0, 10).map(x => (
-    <Link key={x.connector + x.id} to={cloudFindingPath(x)} className="ow-grid click" style={{ gridTemplateColumns: '84px 1fr', textDecoration: 'none', color: 'inherit' }}>
+    <Link key={x.connector + x.id} to={cloudFindingPath(x)} className="ow-grid click" style={{ gridTemplateColumns: '94px 1fr', textDecoration: 'none', color: 'inherit' }}>
       <SevPill sev={x.sevN}/><span className="t1" title={x.title}>{x.title} <span className="t3">· {x.account}{x.resource && x.resource !== f.resource ? ` · ${x.resource}` : ''}</span></span>
     </Link>))
   return (
@@ -28,7 +28,7 @@ export default function CloudFindingPage() {
         {f && <div style={{ marginTop: 10, display: 'flex', gap: 8 }}><SevPill sev={f.sevN}/>{f.status === 'suppressed' && <StatePill state="none">Suppressed</StatePill>}</div>}
       </PageHeader>
       {f && (
-        <div className="ow-body" style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 2fr) minmax(300px, 1fr)', gap: 16, alignItems: 'start' }}>
+        <div className="ow-body" style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 2fr) minmax(336px, 1fr)', gap: 16, alignItems: 'start' }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
             <Section title="Details">
               <Row k="Account">{PROVIDER[f.provider]} · {f.account}</Row>

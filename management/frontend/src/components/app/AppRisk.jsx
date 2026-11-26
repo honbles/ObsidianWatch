@@ -15,7 +15,7 @@ export function Counts({ parts }) {
   const shown = parts.filter(([n]) => n > 0)
   if (!shown.length) return <span className="t3">—</span>
   return <span className="mono" style={{ display: 'inline-flex', gap: 8 }}>
-    {shown.map(([n, label, color]) => <span key={label} title={label} style={{ color }}>{n} <span className="t3" style={{ fontSize: 11 }}>{label}</span></span>)}
+    {shown.map(([n, label, color]) => <span key={label} title={label} style={{ color }}>{n} <span className="t3" style={{ fontSize: 13 }}>{label}</span></span>)}
   </span>
 }
 
@@ -53,7 +53,7 @@ export function RiskTable({ risks, host, showService = true, empty = 'No open ri
     ...(showService ? [{ key: 'svc', label: 'Service', width: 'minmax(110px, 0.8fr)', render: r => r.service
       ? <Link className="mono" to={`/applications/services/${encodeURIComponent(r.service_key)}`} onClick={e => e.stopPropagation()}>{r.service}</Link>
       : <span className="t3">host</span> }] : []),
-    { key: 'e', label: 'Evidence', width: 'minmax(140px, 1fr)', render: r => <span className="t2" style={{ fontSize: 12 }}>
+    { key: 'e', label: 'Evidence', width: 'minmax(140px, 1fr)', render: r => <span className="t2" style={{ fontSize: 13.5 }}>
       {r.kind === 'code_vuln' ? <>{EVIDENCE[r.evidence] || r.evidence} · <span className="mono">{r.repo}</span>{r.linked ? <span className="c-ok"> · linked</span> : r.service ? <span className="t3"> · not linked</span> : null}</> : r.time ? relTime(r.time) : r.evidence}
     </span> },
   ]
@@ -68,7 +68,7 @@ export function RiskTable({ risks, host, showService = true, empty = 'No open ri
           <option value="">All services</option><option value="-">Host only</option>
           {svcs.map(s => <option key={s}>{s}</option>)}
         </select>}
-        <span className="t3" style={{ fontSize: 12 }}>{rows.length} shown · worst first</span>
+        <span className="t3" style={{ fontSize: 13.5 }}>{rows.length} shown · worst first</span>
       </div>
       <DenseTable cols={cols} rows={rows} rowKey={r => r._k}
         rowState={r => (r.severity === 'critical' ? 'crit' : r.severity === 'high' ? 'warn' : null)} empty={empty}/>

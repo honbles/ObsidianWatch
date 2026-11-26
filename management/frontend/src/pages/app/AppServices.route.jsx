@@ -71,22 +71,22 @@ export default function AppServices() {
   const n = st => withState.filter(x => x._st.state === st).length
 
   const cols = [
-    { key: 'st', label: 'State', width: '96px', sortKey: 'state', render: x => x.tier === 0
+    { key: 'st', label: 'State', width: '88px', sortKey: 'state', render: x => x.tier === 0
       ? <StatePill state={x.instances ? 'ok' : 'none'} title="Host only: request health needs OpenTelemetry">{x.instances ? 'Running' : 'Stopped'}</StatePill>
       : <StatePill state={x._st.state} title={x._st.why}>{{ ok: 'OK', warn: 'Degraded', crit: 'Failing', none: 'No traffic' }[x._st.state]}</StatePill> },
-    { key: 'name', label: 'Service', width: 'minmax(160px, 1.3fr)', sortKey: 'name', render: x => <span><span className="mono t1">{x.name}</span>{x.role_label && <span className="t3" style={{ fontSize: 11.5 }}> · {x.role_label}</span>}{x.code_links > 0 && <span className="t3" style={{ fontSize: 11.5 }} title="Repository linked"> · code</span>}</span> },
-    { key: 'env', label: 'Env', width: '80px', render: x => <span className="t2">{x.environment}</span> },
-    { key: 'runs', label: 'Runs on', width: 'minmax(140px, 1fr)', render: x => {
+    { key: 'name', label: 'Service', width: 'minmax(130px, 1.3fr)', sortKey: 'name', render: x => <span><span className="mono t1">{x.name}</span>{x.role_label && <span className="t3" style={{ fontSize: 13 }}> · {x.role_label}</span>}{x.code_links > 0 && <span className="t3" style={{ fontSize: 13 }} title="Repository linked"> · code</span>}</span> },
+    { key: 'env', label: 'Env', width: '62px', render: x => <span className="t2">{x.environment}</span> },
+    { key: 'runs', label: 'Runs on', width: 'minmax(90px, .8fr)', render: x => {
       const c = x.containers || [], u = x.units || [], h = x.hosts || []
       const v = c.length ? c : u.length ? u : h
       return <span className="mono t2" title={[...c, ...u, ...h].join(', ')}>{v.length ? v.slice(0, 2).join(', ') + (v.length > 2 ? ` +${v.length - 2}` : '') : '—'}</span>
     } },
     { key: 'tier', label: 'Tier', width: '56px', render: x => <AppTierBadge tier={x.tier} instrumentation={x.instrumentation}/> },
     { key: 'exp', label: 'Exposure', width: '96px', render: x => <AppExposureBadge exposure={x.settings.exposure} settings={x.settings}/> },
-    { key: 'rpm', label: 'req/min', width: '84px', align: 'right', sortKey: 'rpm', render: x => <span className="mono">{x.red ? (x.red.calls / spanMin).toFixed(x.red.calls / spanMin < 10 ? 1 : 0) : '—'}</span> },
-    { key: 'err', label: 'Errors', width: '76px', align: 'right', sortKey: 'err', render: x => <span className="mono" style={{ color: x.red?.error_rate >= 0.05 ? 'var(--crit)' : x.red?.error_rate >= 0.01 ? 'var(--warn)' : undefined }}>{x.red ? appPct(x.red.error_rate) : '—'}</span> },
-    { key: 'p95', label: 'p95', width: '80px', align: 'right', sortKey: 'p95', render: x => <span className="mono" style={{ color: x.settings.latency_target_ms && x.red?.p95_ms > x.settings.latency_target_ms ? 'var(--warn)' : undefined }}>{x.red ? appMs(x.red.p95_ms, x.red.over_range) : '—'}</span> },
-    { key: 'inst', label: 'Inst.', width: '52px', align: 'right', render: x => <span className="mono t2">{x.instances}</span> },
+    { key: 'rpm', label: 'req/min', width: '74px', align: 'right', sortKey: 'rpm', render: x => <span className="mono">{x.red ? (x.red.calls / spanMin).toFixed(x.red.calls / spanMin < 10 ? 1 : 0) : '—'}</span> },
+    { key: 'err', label: 'Errors', width: '64px', align: 'right', sortKey: 'err', render: x => <span className="mono" style={{ color: x.red?.error_rate >= 0.05 ? 'var(--crit)' : x.red?.error_rate >= 0.01 ? 'var(--warn)' : undefined }}>{x.red ? appPct(x.red.error_rate) : '—'}</span> },
+    { key: 'p95', label: 'p95', width: '72px', align: 'right', sortKey: 'p95', render: x => <span className="mono" style={{ color: x.settings.latency_target_ms && x.red?.p95_ms > x.settings.latency_target_ms ? 'var(--warn)' : undefined }}>{x.red ? appMs(x.red.p95_ms, x.red.over_range) : '—'}</span> },
+    { key: 'inst', label: 'Inst.', width: '44px', align: 'right', render: x => <span className="mono t2">{x.instances}</span> },
   ]
   return (
     <div>
@@ -123,8 +123,8 @@ export default function AppServices() {
               <label className="ow-field" style={{ flex: 1, maxWidth: 380, height: 28 }}>
                 <input value={q} onChange={e => setQ(e.target.value)} placeholder="Filter by service, host or container" aria-label="Filter services"/>
               </label>
-              <span className="t2" style={{ fontSize: 12 }}>{shown.length} of {all.length}</span>
-              {bulk.msg && <span className="c-ok" style={{ fontSize: 12 }}>{bulk.msg}</span>}
+              <span className="t2" style={{ fontSize: 13.5 }}>{shown.length} of {all.length}</span>
+              {bulk.msg && <span className="c-ok" style={{ fontSize: 13.5 }}>{bulk.msg}</span>}
             </div>
           )}
           {error && <div className="c-crit" style={{ padding: '10px 14px' }}>{String(error)}</div>}

@@ -118,9 +118,9 @@ export function NodeDetail({ node, onClose, host }) {
           <div className="flex-1 min-w-0">
             <div className="text-xs font-mono font-bold text-siem-text truncate">{node.label}</div>
             <div className="flex items-center gap-2 mt-1">
-              <span className="text-[9px] uppercase tracking-wider" style={{color}}>{node.type}</span>
-              {node.suspicious && <span className="text-[9px] px-1.5 py-px bg-red-900/40 text-red-400 border border-red-800 rounded-full font-bold">SUSPICIOUS</span>}
-              <span className="text-[9px] text-siem-muted ml-auto">{node.event_count} events</span>
+              <span className="text-2xs uppercase tracking-wider" style={{color}}>{node.type}</span>
+              {node.suspicious && <span className="text-2xs px-1.5 py-px bg-red-900/40 text-red-400 border border-red-800 rounded-full font-bold">SUSPICIOUS</span>}
+              <span className="text-2xs text-siem-muted ml-auto">{node.event_count} events</span>
             </div>
           </div>
           <button onClick={onClose} className="text-siem-muted hover:text-siem-text shrink-0"><X size={12}/></button>
@@ -131,20 +131,20 @@ export function NodeDetail({ node, onClose, host }) {
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-3 space-y-3 text-[10px]">
+      <div className="flex-1 overflow-y-auto p-3 space-y-3 text-mini">
 
         {/* First/last seen */}
         {node.first_seen && (
           <div className="flex gap-4 text-siem-muted">
-            <div><div className="text-[9px] uppercase tracking-wider mb-0.5 text-siem-muted/60">First seen</div>{format(new Date(node.first_seen),'HH:mm:ss dd/MM')}</div>
-            <div><div className="text-[9px] uppercase tracking-wider mb-0.5 text-siem-muted/60">Last seen</div>{format(new Date(node.last_seen),'HH:mm:ss dd/MM')}</div>
+            <div><div className="text-2xs uppercase tracking-wider mb-0.5 text-siem-muted/60">First seen</div>{format(new Date(node.first_seen),'HH:mm:ss dd/MM')}</div>
+            <div><div className="text-2xs uppercase tracking-wider mb-0.5 text-siem-muted/60">Last seen</div>{format(new Date(node.last_seen),'HH:mm:ss dd/MM')}</div>
           </div>
         )}
 
         {/* Detection alert */}
         {meta.alert_title && (
           <div className="bg-red-950/30 border border-red-900/40 rounded-lg px-2.5 py-2">
-            <div className="text-[9px] uppercase tracking-wider text-red-400 font-semibold mb-1">⚠ Detection Alert</div>
+            <div className="text-2xs uppercase tracking-wider text-red-400 font-semibold mb-1">⚠ Detection Alert</div>
             <div className="text-red-300 break-words">{meta.alert_title}</div>
           </div>
         )}
@@ -152,10 +152,10 @@ export function NodeDetail({ node, onClose, host }) {
         {/* Commands for process nodes */}
         {node.type === 'process' && meta.cmdlines?.length > 0 && (
           <div>
-            <div className="text-[9px] uppercase tracking-wider text-siem-muted font-semibold mb-1">Commands ({meta.cmdlines.length})</div>
+            <div className="text-2xs uppercase tracking-wider text-siem-muted font-semibold mb-1">Commands ({meta.cmdlines.length})</div>
             <div className="space-y-1 max-h-24 overflow-y-auto">
               {meta.cmdlines.map((cmd, i) => (
-                <div key={i} className="bg-siem-bg border border-siem-border/50 rounded px-2 py-1 text-[9px] font-mono text-emerald-300/80 break-all">{cmd}</div>
+                <div key={i} className="bg-siem-bg border border-siem-border/50 rounded px-2 py-1 text-2xs font-mono text-emerald-300/80 break-all">{cmd}</div>
               ))}
             </div>
           </div>
@@ -164,10 +164,10 @@ export function NodeDetail({ node, onClose, host }) {
         {/* Collapsed file list */}
         {node.type === 'file' && meta.file_list?.length > 0 && (
           <div>
-            <div className="text-[9px] uppercase tracking-wider text-siem-muted font-semibold mb-1">Files ({meta.file_list.length})</div>
+            <div className="text-2xs uppercase tracking-wider text-siem-muted font-semibold mb-1">Files ({meta.file_list.length})</div>
             <div className="space-y-0.5 max-h-32 overflow-y-auto">
               {meta.file_list.map((f, i) => (
-                <div key={i} className="text-[9px] font-mono text-yellow-400/70 truncate px-1" title={f}>{f}</div>
+                <div key={i} className="text-2xs font-mono text-yellow-400/70 truncate px-1" title={f}>{f}</div>
               ))}
             </div>
           </div>
@@ -175,7 +175,7 @@ export function NodeDetail({ node, onClose, host }) {
 
         {/* Timeline - actual events */}
         <div>
-          <div className="text-[9px] uppercase tracking-wider text-siem-muted font-semibold mb-1.5 flex items-center gap-1">
+          <div className="text-2xs uppercase tracking-wider text-siem-muted font-semibold mb-1.5 flex items-center gap-1">
             Timeline
             {loadingEvts && <RefreshCw size={8} className="animate-spin ml-1"/>}
             {!loadingEvts && <span className="text-siem-muted/50 font-normal">({events.length})</span>}
@@ -191,7 +191,7 @@ export function NodeDetail({ node, onClose, host }) {
               return (
                 <div key={ev.id || i} className="flex gap-2 bg-siem-bg/50 rounded px-2 py-1.5 border border-siem-border/30">
                   <div className="shrink-0">
-                    <div className="text-[9px] font-mono text-siem-muted/60">{format(new Date(ev.time), 'HH:mm:ss')}</div>
+                    <div className="text-2xs font-mono text-siem-muted/60">{format(new Date(ev.time), 'HH:mm:ss')}</div>
                     <div className="mt-0.5">
                       {[1,2,3,4,5].map(s => (
                         <span key={s} className="inline-block w-1.5 h-1.5 rounded-full mr-px" style={{background: s <= ev.severity ? SEV_COLORS[s] : 'var(--s3)'}}/>
@@ -199,8 +199,8 @@ export function NodeDetail({ node, onClose, host }) {
                     </div>
                   </div>
                   <div className="flex-1 min-w-0">
-                    <div className="text-[9px] text-siem-muted/70 uppercase tracking-wider">{ev.event_type}</div>
-                    {detail && <div className="text-[9px] font-mono text-siem-text/80 truncate mt-0.5" title={detail}>{detail}</div>}
+                    <div className="text-2xs text-siem-muted/70 uppercase tracking-wider">{ev.event_type}</div>
+                    {detail && <div className="text-2xs font-mono text-siem-text/80 truncate mt-0.5" title={detail}>{detail}</div>}
                   </div>
                 </div>
               )

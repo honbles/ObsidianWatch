@@ -96,7 +96,7 @@ export function ProcessTree({ agent, onKill, onBlock, canKill }) {
         <button onClick={reload} disabled={loading} className="px-2 py-1.5 rounded border border-siem-border text-xs text-siem-text flex items-center gap-1 disabled:opacity-50">
           {loading ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />} Refresh
         </button>
-        <span className="text-[11px] text-siem-muted">{rows.length} processes{at ? ` · read ${at.toLocaleTimeString()}` : ''}</span>
+        <span className="text-xs text-siem-muted">{rows.length} processes{at ? ` · read ${at.toLocaleTimeString()}` : ''}</span>
       </div>
       {error && <div className="rounded border border-red-800 bg-red-950/20 p-2 text-xs text-red-200">{error}. Needs the agent online with Live Response enabled.</div>}
       <div className="rounded-lg border border-siem-border overflow-auto max-h-[calc(60*var(--vh))]">
@@ -145,7 +145,7 @@ export function ProcessPicker({ agentId, onPick, enabled }) {
         <option value="">{loading ? 'Loading processes...' : error ? 'Could not load processes' : `Pick a running process (${shown.length})`}</option>
         {shown.map(r => <option key={r.pid} value={r.pid}>{r.name}  |  PID {r.pid}  |  {r.user || '-'}{r.mem ? `  |  ${r.mem} MB` : ''}</option>)}
       </select>
-      {error && <div className="text-[11px] text-red-300">{error}</div>}
+      {error && <div className="text-xs text-red-300">{error}</div>}
     </div>
   )
 }

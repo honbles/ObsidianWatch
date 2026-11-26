@@ -603,7 +603,7 @@ export default function Detections() {
                   <Filter size={13} style={{ color: 'var(--t3)' }}/>
                   <input value={q} onChange={e => setQ(e.target.value)} placeholder="Filter by name, ID, MITRE technique or tactic" aria-label="Filter rules"/>
                 </label>
-                <span className="t2" style={{ fontSize: 12 }}>{rows.length.toLocaleString()} of {sigs.length.toLocaleString()}</span>
+                <span className="t2" style={{ fontSize: 13.5 }}>{rows.length.toLocaleString()} of {sigs.length.toLocaleString()}</span>
               </div>
             )}
             <DenseTable rows={loading ? [] : rows} rowKey={s => s.id} onRow={s => setOpenSig(s)} current={openSig?.id}
@@ -627,9 +627,9 @@ export default function Detections() {
           <div className="ow-card" style={{ padding: 16, display: 'flex', alignItems: 'center', gap: 16 }}>
             <div style={{ flex: 1 }}>
               <div style={{ fontWeight: 600, marginBottom: 4 }}>SigmaHQ community rules · {sigmaCount.toLocaleString()} rules</div>
-              <div className="t2" style={{ fontSize: 12.5 }}>Mapped to MITRE ATT&CK. A rule alerts at most once per host per hour.</div>
+              <div className="t2" style={{ fontSize: 13.5 }}>Mapped to MITRE ATT&CK. A rule alerts at most once per host per hour.</div>
             </div>
-            <span className="t2" style={{ fontSize: 12.5 }}>{sigmaToggling ? 'Saving…' : sigmaEnabled ? 'Enabled' : 'Disabled'}</span>
+            <span className="t2" style={{ fontSize: 13.5 }}>{sigmaToggling ? 'Saving…' : sigmaEnabled ? 'Enabled' : 'Disabled'}</span>
             <Switch on={sigmaEnabled} busy={sigmaToggling} onClick={toggleSigma} label="Sigma rules on or off"/>
           </div>
           <SigmaRuleList />
@@ -650,8 +650,8 @@ export default function Detections() {
                 <Filter size={13} style={{ color: 'var(--t3)' }}/>
                 <input value={sastSearch} onChange={e => setSastSearch(e.target.value)} placeholder="Filter by title, CWE or ID" aria-label="Filter SAST rules"/>
               </label>
-              <span className="t2" style={{ fontSize: 12 }}>{sastRows.length} of {sastRules.length}</span>
-              <span className="t3" style={{ marginLeft: 'auto', fontSize: 12 }}>Used when repositories are scanned (Code › Connectors and scans)</span>
+              <span className="t2" style={{ fontSize: 13.5 }}>{sastRows.length} of {sastRules.length}</span>
+              <span className="t3" style={{ marginLeft: 'auto', fontSize: 13.5 }}>Used when repositories are scanned (Code › Connectors and scans)</span>
             </div>
             <DenseTable rows={sastRows} rowKey={r => r.id} onRow={r => setOpenSast(r)} current={openSast?.id} empty="Loading rules…"
               cols={[
@@ -668,8 +668,8 @@ export default function Detections() {
 
       {osTab === 'sources' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <div className="t2" style={{ fontSize: 12.5 }}>Indicators sync daily; a match raises an alert.</div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: 12 }}>
+          <div className="t2" style={{ fontSize: 13.5 }}>Indicators sync daily; a match raises an alert.</div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(381px, 1fr))', gap: 12 }}>
             {sources.map(s => <SourceCard key={s.name} source={s} onUpdate={updateSource} onSync={syncSource} />)}
           </div>
           <ManualIOCs />
@@ -680,7 +680,7 @@ export default function Detections() {
         <div className="ow-card" style={{ overflow: 'hidden' }}>
           <div className="ow-card-bar">
             <span style={{ fontWeight: 600 }}>Cloud alert suppressions</span>
-            <span className="t3" style={{ fontSize: 12 }}>Quiet known, legitimate cloud activity (CI/CD key creation, trusted principals, internal ranges) without turning a rule off</span>
+            <span className="t3" style={{ fontSize: 13.5 }}>Quiet known, legitimate cloud activity (CI/CD key creation, trusted principals, internal ranges) without turning a rule off</span>
             <button className="ow-btn primary" style={{ marginLeft: 'auto' }} onClick={() => setShowSuppressForm(v => !v)}>{showSuppressForm ? 'Cancel' : 'New suppression'}</button>
           </div>
           {showSuppressForm && (
@@ -692,7 +692,7 @@ export default function Detections() {
                 <Field key={f.k} label={f.label}><input className="input mono" value={suppressForm[f.k]} onChange={e => setSuppressForm(p => ({ ...p, [f.k]: e.target.value }))} placeholder={f.ph}/></Field>
               ))}
               <div style={{ gridColumn: '1 / -1', display: 'flex', justifyContent: 'flex-end', gap: 8, alignItems: 'center' }}>
-                <span className="t3" style={{ fontSize: 12 }}>Needs a description and at least one match condition.</span>
+                <span className="t3" style={{ fontSize: 13.5 }}>Needs a description and at least one match condition.</span>
                 <button className="ow-btn primary" onClick={saveSuppress} disabled={suppressSaving || !suppressForm.description}>{suppressSaving ? 'Saving…' : 'Save suppression'}</button>
               </div>
             </div>
@@ -723,7 +723,7 @@ export default function Detections() {
               {s.description && <div className="t2" style={{ lineHeight: 1.55 }}>{s.description}</div>}
               {s.mitre && <div><div className="ow-lbl" style={{ marginBottom: 4 }}>MITRE ATT&CK</div>
                 <a className="c-acc mono" href={`https://attack.mitre.org/techniques/${s.mitre.replace('.', '/')}/`} target="_blank" rel="noopener noreferrer">{s.mitre} <ExternalLink size={11} style={{ display: 'inline' }}/></a></div>}
-              <div><div className="ow-lbl" style={{ marginBottom: 4 }}>Backtest</div><div className="t3" style={{ fontSize: 12, marginBottom: 6 }}>Run the rule over the last 24 hours of stored events to see what it would have caught.</div><Backtest sigId={s.id}/></div>
+              <div><div className="ow-lbl" style={{ marginBottom: 4 }}>Backtest</div><div className="t3" style={{ fontSize: 13.5, marginBottom: 6 }}>Run the rule over the last 24 hours of stored events to see what it would have caught.</div><Backtest sigId={s.id}/></div>
             </div>
           </div>) })()}
       </Drawer>

@@ -167,13 +167,13 @@ export function TabVuln({ agent }) {
             ].map(([n, label, color]) => n > 0 && (
               <div key={label} className="text-center">
                 <div className={"text-lg font-bold font-mono " + color}>{n}</div>
-                <div className="text-[9px] text-siem-muted uppercase tracking-wide">{label}</div>
+                <div className="text-2xs text-siem-muted uppercase tracking-wide">{label}</div>
               </div>
             ))}
           </div>
 
           {/* Scan metadata */}
-          <div className="ml-auto flex items-center gap-3 text-[10px] text-siem-muted">
+          <div className="ml-auto flex items-center gap-3 text-mini text-siem-muted">
             {data?.time && <span>{formatDistanceToNow(new Date(data.time), {addSuffix:true})}</span>}
             {scan.scan_duration_secs && <span>{scan.scan_duration_secs.toFixed(0)}s scan</span>}
             <span className="font-mono">65,535 ports</span>
@@ -212,7 +212,7 @@ export function TabVuln({ agent }) {
           <div className="p-5 space-y-4">
             {/* System info */}
             <div className="bg-siem-surface border border-siem-border rounded-xl p-4">
-              <div className="text-[10px] uppercase tracking-wider text-siem-muted/60 font-semibold mb-3">System</div>
+              <div className="text-2xs uppercase tracking-wider text-siem-muted/60 font-semibold mb-3">System</div>
               <div className="grid grid-cols-2 gap-x-8">
                 {[
                   ["Hostname",    scan.system?.hostname || agent.hostname],
@@ -226,7 +226,7 @@ export function TabVuln({ agent }) {
                 ].map(([k,v]) => (
                   <div key={k} className="flex justify-between text-xs py-1.5 border-b border-siem-border/20 last:border-0">
                     <span className="text-siem-muted">{k}</span>
-                    <span className="font-mono text-siem-text text-[11px]">{v}</span>
+                    <span className="font-mono text-siem-text text-xs">{v}</span>
                   </div>
                 ))}
               </div>
@@ -235,7 +235,7 @@ export function TabVuln({ agent }) {
             {/* Host findings */}
             {findings.length > 0 && (
               <div className="space-y-3">
-                <div className="text-[10px] uppercase tracking-wider text-siem-muted/60 font-semibold">Security Findings</div>
+                <div className="text-2xs uppercase tracking-wider text-siem-muted/60 font-semibold">Security Findings</div>
                 {findings.sort((a,b) => b.severity - a.severity).map((f,i) => (
                   <FindingCard key={i} f={f} SEV={SEV}/>
                 ))}
@@ -250,7 +250,7 @@ export function TabVuln({ agent }) {
                     <Bug size={13} className="text-red-400"/>
                     <span className="text-xs font-semibold text-siem-text">Critical & High Risk Ports</span>
                   </div>
-                  <button onClick={() => setActiveSection("ports")} className="text-[10px] text-siem-muted hover:text-siem-accent">
+                  <button onClick={() => setActiveSection("ports")} className="text-mini text-siem-muted hover:text-siem-accent">
                     View all →
                   </button>
                 </div>
@@ -276,7 +276,7 @@ export function TabVuln({ agent }) {
             <div className="flex items-center justify-between">
               <div className="text-xs text-siem-muted">{ports.length} open TCP ports found</div>
               <button onClick={() => setExpandAll(e => !e)}
-                className="text-[10px] text-siem-muted hover:text-siem-text border border-siem-border rounded-lg px-2.5 py-1">
+                className="text-mini text-siem-muted hover:text-siem-text border border-siem-border rounded-lg px-2.5 py-1">
                 {expandAll ? "Collapse all" : "Expand all"}
               </button>
             </div>
@@ -289,7 +289,7 @@ export function TabVuln({ agent }) {
               <div className="bg-siem-surface border border-siem-border rounded-xl overflow-hidden">
                 <div className="grid gap-0 px-4 py-2 border-b border-siem-border/40 bg-siem-bg/40" style={{gridTemplateColumns:"72px 90px 140px 1fr 80px"}}>
                   {["Port","Proto","Service","Risk","Severity"].map(h => (
-                    <span key={h} className="text-[9px] uppercase tracking-wider text-siem-muted/50 font-semibold">{h}</span>
+                    <span key={h} className="text-2xs uppercase tracking-wider text-siem-muted/50 font-semibold">{h}</span>
                   ))}
                 </div>
                 {[...critical,...high,...medium,...low].map((p,i) => (
@@ -319,7 +319,7 @@ export function TabVuln({ agent }) {
         {/* ── CVEs (NVD) ── */}
         {activeSection === "cves" && cve && (
           <div className="p-5 space-y-3">
-            <div className="bg-siem-surface border border-siem-border rounded-xl p-4 text-[11px] space-y-1.5">
+            <div className="bg-siem-surface border border-siem-border rounded-xl p-4 text-xs space-y-1.5">
               <div className="flex items-center gap-2 text-siem-text">
                 {cve.status === "running" && <RefreshCw size={12} className="animate-spin text-siem-accent"/>}
                 <span className="font-semibold">
@@ -348,9 +348,9 @@ export function TabVuln({ agent }) {
                   const k = ({CRITICAL:5, HIGH:4, MEDIUM:3, LOW:2}[String(f.severity).toUpperCase()]) || 3
                   const st = SEV[k]
                   return (
-                    <div key={f.cve_id + i} className="px-4 py-2.5 border-b border-siem-border/15 last:border-0 text-[11px]">
+                    <div key={f.cve_id + i} className="px-4 py-2.5 border-b border-siem-border/15 last:border-0 text-xs">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <span className={"px-1.5 py-0.5 rounded border text-[9px] font-semibold uppercase " + st.bg + " " + st.border + " " + st.text}>{st.label}</span>
+                        <span className={"px-1.5 py-0.5 rounded border text-2xs font-semibold uppercase " + st.bg + " " + st.border + " " + st.text}>{st.label}</span>
                         <a href={cveHref(f.cve_id)} target="_blank" rel="noopener noreferrer" className="font-mono text-siem-accent hover:underline">{f.cve_id}</a>
                         <span className="font-mono text-siem-muted">CVSS {Number(f.cvss).toFixed(1)}</span>
                         <span className="text-siem-text">{f.package}</span>
@@ -365,7 +365,7 @@ export function TabVuln({ agent }) {
             )}
 
             {(cve.checked||[]).length > 0 && (
-              <details className="text-[11px] text-siem-muted">
+              <details className="text-xs text-siem-muted">
                 <summary className="cursor-pointer hover:text-siem-text">Products checked ({cve.checked.length})</summary>
                 <div className="mt-2 bg-siem-surface border border-siem-border rounded-xl divide-y divide-siem-border/15">
                   {cve.checked.map((c, i) => (
@@ -387,7 +387,7 @@ export function TabVuln({ agent }) {
             {packages.length === 0 ? (
               <div className="text-center text-sm text-siem-muted py-12 px-6 space-y-1">
                 <div>No package inventory from this agent.</div>
-                <div className="text-[11px]">No package list from this host, so no CVE lookups ran.</div>
+                <div className="text-xs">No package list from this host, so no CVE lookups ran.</div>
               </div>
             ) : (<>
               <div className="mb-3 flex items-center gap-3">
@@ -409,7 +409,7 @@ export function TabVuln({ agent }) {
               </div>
               {hc && (
                 <div className="mb-4 bg-siem-surface border border-siem-border rounded-xl">
-                  <div className="px-4 py-2 text-[11px] text-siem-muted border-b border-siem-border/30">
+                  <div className="px-4 py-2 text-xs text-siem-muted border-b border-siem-border/30">
                     <span className="text-emerald-400">{hc.passed} passed</span>
                     {" · "}<span className="text-red-400">{hc.failed ?? (hc.total - hc.passed)} failed</span>
                     {hc.unknown > 0 && <>{" · "}<span className="text-amber-400">{hc.unknown} could not be checked</span></>}
@@ -419,7 +419,7 @@ export function TabVuln({ agent }) {
                     .sort((a, b) => ({fail:0, unknown:1, pass:2}[a.status] ?? 3) - ({fail:0, unknown:1, pass:2}[b.status] ?? 3)
                       || ({critical:0, high:1, medium:2, low:3}[a.severity] ?? 4) - ({critical:0, high:1, medium:2, low:3}[b.severity] ?? 4))
                     .map(c => (
-                    <div key={c.id} className="px-4 py-2 border-b border-siem-border/15 last:border-0 text-[11px]">
+                    <div key={c.id} className="px-4 py-2 border-b border-siem-border/15 last:border-0 text-xs">
                       <span className={c.status === "pass" ? "text-emerald-400" : c.status === "fail" ? "text-red-400" : "text-amber-400"}>{c.status === "unknown" ? "UNKNOWN" : c.status.toUpperCase()}</span>
                       <span className="ml-2 text-siem-text">{c.id} {c.title}</span>
                       {c.category && <span className="ml-2 text-siem-muted/60">{c.category}</span>}
@@ -432,7 +432,7 @@ export function TabVuln({ agent }) {
               {osv && (osv.findings||[]).length > 0 && (
                 <div className="mb-4 bg-siem-surface border border-siem-border rounded-xl max-h-[320px] overflow-y-auto">
                   {osv.findings.map((f,i) => (
-                    <div key={i} className="px-4 py-2 border-b border-siem-border/15 last:border-0 text-[11px]">
+                    <div key={i} className="px-4 py-2 border-b border-siem-border/15 last:border-0 text-xs">
                       <span className="font-mono text-siem-text">{f.title || f.id}</span>
                       <span className="ml-2 text-siem-muted">{f.severity}</span>
                       {f.fix && <span className="ml-2 text-emerald-400">{f.fix}</span>}
@@ -444,15 +444,15 @@ export function TabVuln({ agent }) {
               <div className="bg-siem-surface border border-siem-border rounded-xl overflow-hidden">
                 <div className="grid px-4 py-2 border-b border-siem-border/40 bg-siem-bg/40" style={{gridTemplateColumns:"1fr 160px 80px"}}>
                   {["Package","Version","Manager"].map(h => (
-                    <span key={h} className="text-[9px] uppercase tracking-wider text-siem-muted/50 font-semibold">{h}</span>
+                    <span key={h} className="text-2xs uppercase tracking-wider text-siem-muted/50 font-semibold">{h}</span>
                   ))}
                 </div>
                 <div className="max-h-[600px] overflow-y-auto">
                   {packages.map((pkg,i) => (
-                    <div key={i} className="grid px-4 py-2 border-b border-siem-border/15 last:border-0 text-[11px]" style={{gridTemplateColumns:"1fr 160px 80px"}}>
+                    <div key={i} className="grid px-4 py-2 border-b border-siem-border/15 last:border-0 text-xs" style={{gridTemplateColumns:"1fr 160px 80px"}}>
                       <span className="font-mono text-siem-text truncate">{pkg.name}</span>
                       <span className="font-mono text-siem-muted">{pkg.version}</span>
-                      <span className="text-siem-muted/50 uppercase text-[9px]">{pkg.manager}</span>
+                      <span className="text-siem-muted/50 uppercase text-2xs">{pkg.manager}</span>
                     </div>
                   ))}
                 </div>
@@ -516,7 +516,7 @@ export function TabVuln({ agent }) {
                         </svg>
                         <div className="absolute inset-0 flex flex-col items-center justify-center">
                           <span className="text-xl font-bold font-mono text-siem-text">{aiResult.risk_score}</span>
-                          <span className="text-[9px] text-siem-muted">risk</span>
+                          <span className="text-2xs text-siem-muted">risk</span>
                         </div>
                       </div>
                     )}
@@ -543,11 +543,11 @@ export function TabVuln({ agent }) {
                 {/* Immediate actions */}
                 {aiResult.immediate_actions?.length > 0 && (
                   <div className="bg-siem-surface border border-siem-border rounded-xl p-4">
-                    <div className="text-[10px] uppercase tracking-wider text-siem-muted/60 font-semibold mb-3">Immediate Actions Required</div>
+                    <div className="text-2xs uppercase tracking-wider text-siem-muted/60 font-semibold mb-3">Immediate Actions Required</div>
                     <div className="space-y-2">
                       {aiResult.immediate_actions.map((action, i) => (
                         <div key={i} className="flex items-start gap-3">
-                          <span className="w-5 h-5 rounded-full bg-red-500/20 border border-red-500/30 text-red-400 text-[9px] font-bold flex items-center justify-center shrink-0 mt-0.5">{i+1}</span>
+                          <span className="w-5 h-5 rounded-full bg-red-500/20 border border-red-500/30 text-red-400 text-2xs font-bold flex items-center justify-center shrink-0 mt-0.5">{i+1}</span>
                           <span className="text-xs text-siem-text">{action}</span>
                         </div>
                       ))}
@@ -558,7 +558,7 @@ export function TabVuln({ agent }) {
                 {/* Critical findings */}
                 {aiResult.critical_findings?.length > 0 && (
                   <div className="space-y-2">
-                    <div className="text-[10px] uppercase tracking-wider text-red-400/80 font-semibold">Critical Findings</div>
+                    <div className="text-2xs uppercase tracking-wider text-red-400/80 font-semibold">Critical Findings</div>
                     {aiResult.critical_findings.map((f,i) => <AIFindingCard key={i} finding={f} type="critical"/>)}
                   </div>
                 )}
@@ -566,7 +566,7 @@ export function TabVuln({ agent }) {
                 {/* High findings */}
                 {aiResult.high_findings?.length > 0 && (
                   <div className="space-y-2">
-                    <div className="text-[10px] uppercase tracking-wider text-orange-400/80 font-semibold">High Risk Findings</div>
+                    <div className="text-2xs uppercase tracking-wider text-orange-400/80 font-semibold">High Risk Findings</div>
                     {aiResult.high_findings.map((f,i) => <AIFindingCard key={i} finding={f} type="high"/>)}
                   </div>
                 )}
@@ -574,7 +574,7 @@ export function TabVuln({ agent }) {
                 {/* Medium findings */}
                 {aiResult.medium_findings?.length > 0 && (
                   <div className="space-y-2">
-                    <div className="text-[10px] uppercase tracking-wider text-yellow-400/80 font-semibold">Medium Risk Findings</div>
+                    <div className="text-2xs uppercase tracking-wider text-yellow-400/80 font-semibold">Medium Risk Findings</div>
                     {aiResult.medium_findings.map((f,i) => <AIFindingCard key={i} finding={f} type="medium"/>)}
                   </div>
                 )}
@@ -590,20 +590,20 @@ export function TabVuln({ agent }) {
                       <div key={i} className="px-4 py-3 border-b border-siem-border/20 last:border-0">
                         <div className="flex items-center gap-3 mb-1.5">
                           <span className="text-sm font-mono font-semibold text-siem-text">{sw.name}</span>
-                          <span className="text-[10px] font-mono text-red-400 bg-red-950/20 border border-red-800/30 rounded px-1.5 py-0.5">{sw.installed_version}</span>
+                          <span className="text-mini font-mono text-red-400 bg-red-950/20 border border-red-800/30 rounded px-1.5 py-0.5">{sw.installed_version}</span>
                           {sw.recommended_version && (
                             <><span className="text-siem-muted/40 text-xs">→</span>
-                            <span className="text-[10px] font-mono text-emerald-400 bg-emerald-950/20 border border-emerald-800/30 rounded px-1.5 py-0.5">{sw.recommended_version}</span></>
+                            <span className="text-mini font-mono text-emerald-400 bg-emerald-950/20 border border-emerald-800/30 rounded px-1.5 py-0.5">{sw.recommended_version}</span></>
                           )}
                           {sw.cves?.map(cve => (
                             <a key={cve} href={cveHref(cve)} target="_blank" rel="noreferrer"
-                              className="text-[9px] font-mono text-violet-400 border border-violet-800/40 bg-violet-950/20 rounded px-1.5 py-0.5 hover:opacity-80">
+                              className="text-2xs font-mono text-violet-400 border border-violet-800/40 bg-violet-950/20 rounded px-1.5 py-0.5 hover:opacity-80">
                               {cve} ↗
                             </a>
                           ))}
                         </div>
                         {sw.upgrade_command && (
-                          <code className="text-[10px] font-mono text-emerald-400/80">{sw.upgrade_command}</code>
+                          <code className="text-mini font-mono text-emerald-400/80">{sw.upgrade_command}</code>
                         )}
                       </div>
                     ))}
@@ -613,16 +613,16 @@ export function TabVuln({ agent }) {
                 {/* Remediation plan */}
                 {aiResult.remediation_plan?.length > 0 && (
                   <div className="bg-siem-surface border border-siem-border rounded-xl p-4">
-                    <div className="text-[10px] uppercase tracking-wider text-siem-muted/60 font-semibold mb-3">Remediation Plan</div>
+                    <div className="text-2xs uppercase tracking-wider text-siem-muted/60 font-semibold mb-3">Remediation Plan</div>
                     <div className="space-y-3">
                       {aiResult.remediation_plan.map((step,i) => (
                         <div key={i} className="flex items-start gap-3">
-                          <span className="w-6 h-6 rounded-lg bg-siem-bg border border-siem-border text-[10px] font-bold text-siem-accent flex items-center justify-center shrink-0 mt-0.5">{step.priority}</span>
+                          <span className="w-6 h-6 rounded-lg bg-siem-bg border border-siem-border text-mini font-bold text-siem-accent flex items-center justify-center shrink-0 mt-0.5">{step.priority}</span>
                           <div className="flex-1">
                             <div className="text-xs text-siem-text font-medium">{step.action}</div>
                             <div className="flex gap-3 mt-1">
-                              {step.effort && <span className="text-[9px] text-siem-muted">Effort: {step.effort}</span>}
-                              {step.impact && <span className="text-[9px] text-siem-muted/60">{step.impact}</span>}
+                              {step.effort && <span className="text-2xs text-siem-muted">Effort: {step.effort}</span>}
+                              {step.impact && <span className="text-2xs text-siem-muted/60">{step.impact}</span>}
                             </div>
                           </div>
                         </div>
@@ -635,13 +635,13 @@ export function TabVuln({ agent }) {
                 <div className="grid grid-cols-2 gap-3">
                   {aiResult.compliance_notes && (
                     <div className="bg-siem-surface border border-siem-border rounded-xl p-4">
-                      <div className="text-[10px] uppercase tracking-wider text-siem-muted/60 font-semibold mb-2">Compliance Notes</div>
+                      <div className="text-2xs uppercase tracking-wider text-siem-muted/60 font-semibold mb-2">Compliance Notes</div>
                       <p className="text-xs text-siem-muted/80">{aiResult.compliance_notes}</p>
                     </div>
                   )}
                   {aiResult.positive_findings?.length > 0 && (
                     <div className="bg-emerald-950/15 border border-emerald-800/25 rounded-xl p-4">
-                      <div className="text-[10px] uppercase tracking-wider text-emerald-400/70 font-semibold mb-2">✓ Good Practices</div>
+                      <div className="text-2xs uppercase tracking-wider text-emerald-400/70 font-semibold mb-2">✓ Good Practices</div>
                       <ul className="space-y-1">
                         {aiResult.positive_findings.map((p,i) => (
                           <li key={i} className="flex items-start gap-2 text-xs text-siem-muted/80">
@@ -773,11 +773,11 @@ export function TabRCA({ agent }) {
         <div className="flex items-center gap-3">
           <div className="flex-1">
             <div className="text-xs font-semibold text-siem-text">Root Cause Analysis</div>
-            <div className="text-[10px] text-siem-muted">AI-powered incident investigation for {agent.hostname}</div>
+            <div className="text-mini text-siem-muted">AI-powered incident investigation for {agent.hostname}</div>
           </div>
           {phase === 'report' && (
             <button onClick={() => { setPhase('form'); setRca(null); setChatHistory([]) }}
-              className="text-[10px] text-siem-muted border border-siem-border rounded-lg px-3 py-1.5 hover:text-siem-text transition-colors">
+              className="text-mini text-siem-muted border border-siem-border rounded-lg px-3 py-1.5 hover:text-siem-text transition-colors">
               New RCA
             </button>
           )}
@@ -793,7 +793,7 @@ export function TabRCA({ agent }) {
             {/* Context preview */}
             {context && (
               <div className="bg-siem-surface border border-siem-border rounded-xl p-4">
-                <div className="text-[10px] uppercase tracking-wider text-siem-muted/60 font-semibold mb-3">
+                <div className="text-2xs uppercase tracking-wider text-siem-muted/60 font-semibold mb-3">
                   What will be analysed (±48h window)
                 </div>
                 <div className="grid grid-cols-3 gap-3">
@@ -804,11 +804,11 @@ export function TabRCA({ agent }) {
                   ].map(([label, val, color]) => (
                     <div key={label} className="bg-siem-bg border border-siem-border rounded-lg p-3 text-center">
                       <div className={`text-xl font-bold font-mono ${color}`}>{val}</div>
-                      <div className="text-[9px] text-siem-muted uppercase tracking-wide mt-0.5">{label}</div>
+                      <div className="text-2xs text-siem-muted uppercase tracking-wide mt-0.5">{label}</div>
                     </div>
                   ))}
                 </div>
-                <div className="mt-2 text-[10px] text-siem-muted/50 text-center">
+                <div className="mt-2 text-mini text-siem-muted/50 text-center">
                   Events sampled: top 60 by severity, deduplicated · Vuln scan: ports & findings only, no package list
                 </div>
               </div>
@@ -816,7 +816,7 @@ export function TabRCA({ agent }) {
 
             {/* Incident time */}
             <div>
-              <label className="block text-[10px] uppercase tracking-wider text-siem-muted font-semibold mb-2">
+              <label className="block text-2xs uppercase tracking-wider text-siem-muted font-semibold mb-2">
                 When did the incident occur?
               </label>
               <input type="datetime-local" value={incidentAt}
@@ -826,7 +826,7 @@ export function TabRCA({ agent }) {
 
             {/* Description */}
             <div>
-              <label className="block text-[10px] uppercase tracking-wider text-siem-muted font-semibold mb-2">
+              <label className="block text-2xs uppercase tracking-wider text-siem-muted font-semibold mb-2">
                 Describe what you observed *
               </label>
               <textarea rows={4} value={description} onChange={e => setDescription(e.target.value)}
@@ -848,7 +848,7 @@ export function TabRCA({ agent }) {
                 {['Gathering alerts and events', 'Correlating security signals', 'Mapping attack chain', 'Determining root cause', 'Writing RCA report'].map((msg, i) => (
                   <div key={i} className="flex items-center gap-2">
                     <div className="w-1.5 h-1.5 rounded-full bg-siem-accent/60 animate-pulse" style={{animationDelay:(i*400)+'ms'}}/>
-                    <span className="text-[11px] text-siem-muted">{msg}…</span>
+                    <span className="text-xs text-siem-muted">{msg}…</span>
                   </div>
                 ))}
               </div>
@@ -861,7 +861,7 @@ export function TabRCA({ agent }) {
 
             {/* Privacy note */}
             <div className="bg-siem-bg border border-siem-border/50 rounded-xl p-3">
-              <div className="text-[9px] text-siem-muted/60 leading-relaxed">
+              <div className="text-2xs text-siem-muted/60 leading-relaxed">
                 <span className="text-siem-muted/80 font-medium">What's sent to AI:</span> Sends alert titles, event types, process names, command lines, IPs and file paths from ±48 h to the AI provider. No file contents or passwords.
               </div>
             </div>
@@ -876,7 +876,7 @@ export function TabRCA({ agent }) {
             <div className="bg-siem-surface border border-siem-border rounded-xl p-5">
               <div className="flex items-start justify-between gap-4 mb-3">
                 <div>
-                  <div className="text-[10px] uppercase tracking-wider text-siem-muted/60 mb-1">Root Cause Analysis Report</div>
+                  <div className="text-2xs uppercase tracking-wider text-siem-muted/60 mb-1">Root Cause Analysis Report</div>
                   <div className="text-base font-bold text-siem-text">{rca.incident_title || 'Security Incident'}</div>
                 </div>
                 {rca.confidence && (
@@ -884,25 +884,25 @@ export function TabRCA({ agent }) {
                     <div className={`text-sm font-bold ${CONF_COLOR[rca.confidence] || 'text-siem-muted'}`}>
                       {rca.confidence}
                     </div>
-                    <div className="text-[9px] text-siem-muted uppercase tracking-wide">Confidence</div>
+                    <div className="text-2xs text-siem-muted uppercase tracking-wide">Confidence</div>
                   </div>
                 )}
               </div>
               {rca.root_cause && (
                 <div className="bg-siem-bg border border-siem-border rounded-lg p-3">
-                  <div className="text-[9px] uppercase tracking-wider text-siem-muted/60 font-semibold mb-1.5">Root Cause</div>
+                  <div className="text-2xs uppercase tracking-wider text-siem-muted/60 font-semibold mb-1.5">Root Cause</div>
                   <p className="text-sm text-siem-text leading-relaxed font-medium">{rca.root_cause}</p>
                 </div>
               )}
               {rca.confidence_reason && (
-                <p className="text-[11px] text-siem-muted mt-2 leading-relaxed">{rca.confidence_reason}</p>
+                <p className="text-xs text-siem-muted mt-2 leading-relaxed">{rca.confidence_reason}</p>
               )}
             </div>
 
             {/* Executive Summary */}
             {rca.executive_summary && (
               <div className="bg-siem-surface border border-siem-border rounded-xl p-4">
-                <div className="text-[10px] uppercase tracking-wider text-siem-muted/60 font-semibold mb-2 flex items-center gap-1.5">
+                <div className="text-2xs uppercase tracking-wider text-siem-muted/60 font-semibold mb-2 flex items-center gap-1.5">
                   <Shield size={11}/> Executive Summary
                 </div>
                 <p className="text-sm text-siem-text leading-relaxed">{rca.executive_summary}</p>
@@ -912,7 +912,7 @@ export function TabRCA({ agent }) {
             {/* Attack chain - visual flow */}
             {rca.attack_chain?.length > 0 && (
               <div>
-                <div className="text-[10px] uppercase tracking-wider text-siem-muted/60 font-semibold mb-3">Attack Chain</div>
+                <div className="text-2xs uppercase tracking-wider text-siem-muted/60 font-semibold mb-3">Attack Chain</div>
                 <div className="space-y-2">
                   {rca.attack_chain.map((step, i) => {
                     const st = getPhaseStyle(step.phase)
@@ -920,7 +920,7 @@ export function TabRCA({ agent }) {
                       <div key={i} className="flex items-stretch gap-3">
                         {/* Connector */}
                         <div className="flex flex-col items-center shrink-0 w-8">
-                          <div className={`w-7 h-7 rounded-full flex items-center justify-center border text-[9px] font-bold ${st.bg} ${st.border} ${st.text}`}>
+                          <div className={`w-7 h-7 rounded-full flex items-center justify-center border text-2xs font-bold ${st.bg} ${st.border} ${st.text}`}>
                             {i + 1}
                           </div>
                           {i < rca.attack_chain.length - 1 && (
@@ -930,23 +930,23 @@ export function TabRCA({ agent }) {
                         {/* Card */}
                         <div className={`flex-1 rounded-xl border p-3 mb-1 ${st.bg} ${st.border}`}>
                           <div className="flex items-center gap-2 mb-1.5 flex-wrap">
-                            <span className={`text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded border ${st.bg} ${st.border} ${st.text}`}>
+                            <span className={`text-2xs font-bold uppercase tracking-wider px-2 py-0.5 rounded border ${st.bg} ${st.border} ${st.text}`}>
                               {step.phase}
                             </span>
                             {step.mitre && (
                               <a href={`https://attack.mitre.org/techniques/${step.mitre.replace('.','/')}`}
                                 target="_blank" rel="noreferrer"
-                                className="text-[9px] font-mono text-violet-400 border border-violet-800/40 bg-violet-950/20 rounded px-1.5 py-0.5 hover:opacity-80">
+                                className="text-2xs font-mono text-violet-400 border border-violet-800/40 bg-violet-950/20 rounded px-1.5 py-0.5 hover:opacity-80">
                                 {step.mitre} ↗
                               </a>
                             )}
                           </div>
                           <div className={`text-xs font-semibold mb-1 ${st.text}`}>{step.technique}</div>
                           {step.description && (
-                            <div className="text-[11px] text-siem-text/80 leading-relaxed mb-1.5">{step.description}</div>
+                            <div className="text-xs text-siem-text/80 leading-relaxed mb-1.5">{step.description}</div>
                           )}
                           {step.evidence && (
-                            <div className="text-[10px] text-siem-muted/80 leading-snug italic border-l-2 border-siem-border/50 pl-2">Evidence: {step.evidence}</div>
+                            <div className="text-mini text-siem-muted/80 leading-snug italic border-l-2 border-siem-border/50 pl-2">Evidence: {step.evidence}</div>
                           )}
                         </div>
                       </div>
@@ -959,19 +959,19 @@ export function TabRCA({ agent }) {
             {/* Timeline */}
             {rca.timeline?.length > 0 && (
               <div className="bg-siem-surface border border-siem-border rounded-xl p-4">
-                <div className="text-[10px] uppercase tracking-wider text-siem-muted/60 font-semibold mb-3 flex items-center gap-2">
+                <div className="text-2xs uppercase tracking-wider text-siem-muted/60 font-semibold mb-3 flex items-center gap-2">
                   <Clock size={11}/> Incident Timeline
                 </div>
                 <div className="space-y-2">
                   {rca.timeline.map((t, i) => (
                     <div key={i} className="flex items-start gap-3">
                       <div className="flex flex-col items-center shrink-0">
-                        <span className="text-[9px] font-mono text-siem-accent bg-siem-accent/10 border border-siem-accent/20 rounded px-2 py-0.5 whitespace-nowrap">{t.time}</span>
+                        <span className="text-2xs font-mono text-siem-accent bg-siem-accent/10 border border-siem-accent/20 rounded px-2 py-0.5 whitespace-nowrap">{t.time}</span>
                         {i < rca.timeline.length - 1 && <div className="w-px h-3 bg-siem-border/30 mt-1"/>}
                       </div>
                       <div className="flex-1 pb-1">
                         <div className="text-xs text-siem-text">{t.event}</div>
-                        {t.significance && <div className="text-[10px] text-siem-muted/60 mt-0.5">{t.significance}</div>}
+                        {t.significance && <div className="text-mini text-siem-muted/60 mt-0.5">{t.significance}</div>}
                       </div>
                     </div>
                   ))}
@@ -982,16 +982,16 @@ export function TabRCA({ agent }) {
             {/* Key indicators */}
             {rca.key_indicators?.length > 0 && (
               <div className="bg-siem-surface border border-siem-border rounded-xl overflow-hidden">
-                <div className="px-4 py-2.5 border-b border-siem-border/40 text-[10px] uppercase tracking-wider text-siem-muted/60 font-semibold flex items-center gap-2">
+                <div className="px-4 py-2.5 border-b border-siem-border/40 text-2xs uppercase tracking-wider text-siem-muted/60 font-semibold flex items-center gap-2">
                   <Activity size={11}/> Key Indicators of Compromise
                 </div>
                 {rca.key_indicators.map((ioc, i) => (
                   <div key={i} className={`px-4 py-2.5 border-b border-siem-border/20 last:border-0 ${i%2?'bg-white/[0.01]':''}`}>
                     <div className="flex items-center gap-2 mb-0.5">
-                      <span className="text-[9px] uppercase font-semibold text-siem-accent bg-siem-accent/10 border border-siem-accent/20 rounded px-1.5 py-0.5">{ioc.type}</span>
-                      <code className="text-[11px] font-mono text-siem-text break-all">{ioc.indicator}</code>
+                      <span className="text-2xs uppercase font-semibold text-siem-accent bg-siem-accent/10 border border-siem-accent/20 rounded px-1.5 py-0.5">{ioc.type}</span>
+                      <code className="text-xs font-mono text-siem-text break-all">{ioc.indicator}</code>
                     </div>
-                    {ioc.significance && <div className="text-[10px] text-siem-muted/60 pl-14">{ioc.significance}</div>}
+                    {ioc.significance && <div className="text-mini text-siem-muted/60 pl-14">{ioc.significance}</div>}
                   </div>
                 ))}
               </div>
@@ -1000,42 +1000,42 @@ export function TabRCA({ agent }) {
             {/* Impact */}
             {rca.impact_assessment && (
               <div className="bg-red-950/15 border border-red-800/25 rounded-xl p-4">
-                <div className="text-[10px] uppercase tracking-wider text-red-400/70 font-semibold mb-3 flex items-center gap-2">
+                <div className="text-2xs uppercase tracking-wider text-red-400/70 font-semibold mb-3 flex items-center gap-2">
                   <AlertTriangle size={11}/> Impact Assessment
                 </div>
                 <div className="space-y-2">
                   {rca.impact_assessment.systems_affected?.length > 0 && (
                     <div>
-                      <div className="text-[9px] text-siem-muted/60 uppercase mb-1">Systems Affected</div>
+                      <div className="text-2xs text-siem-muted/60 uppercase mb-1">Systems Affected</div>
                       <div className="flex gap-1.5 flex-wrap">
                         {rca.impact_assessment.systems_affected.map((s,i) => (
-                          <span key={i} className="text-[10px] font-mono bg-red-950/20 border border-red-800/30 text-red-300 rounded px-2 py-0.5">{s}</span>
+                          <span key={i} className="text-mini font-mono bg-red-950/20 border border-red-800/30 text-red-300 rounded px-2 py-0.5">{s}</span>
                         ))}
                       </div>
                     </div>
                   )}
                   {rca.impact_assessment.data_at_risk && (
                     <div>
-                      <div className="text-[9px] text-siem-muted/60 uppercase mb-0.5">Data at Risk</div>
+                      <div className="text-2xs text-siem-muted/60 uppercase mb-0.5">Data at Risk</div>
                       <p className="text-xs text-siem-text">{rca.impact_assessment.data_at_risk}</p>
                     </div>
                   )}
                   {rca.impact_assessment.business_impact && (
                     <div>
-                      <div className="text-[9px] text-siem-muted/60 uppercase mb-0.5">Business Impact</div>
+                      <div className="text-2xs text-siem-muted/60 uppercase mb-0.5">Business Impact</div>
                       <p className="text-xs text-siem-text">{rca.impact_assessment.business_impact}</p>
                     </div>
                   )}
                   {rca.impact_assessment.severity && (
                     <div className="flex items-center gap-2 mt-1">
-                      <div className="text-[9px] text-siem-muted/60 uppercase">Severity:</div>
-                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded border ${
+                      <div className="text-2xs text-siem-muted/60 uppercase">Severity:</div>
+                      <span className={`text-mini font-bold px-2 py-0.5 rounded border ${
                         rca.impact_assessment.severity === 'Critical' ? 'bg-red-900/40 border-red-700 text-red-300' :
                         rca.impact_assessment.severity === 'High' ? 'bg-orange-900/30 border-orange-700 text-orange-300' :
                         'bg-yellow-900/20 border-yellow-700 text-yellow-300'
                       }`}>{rca.impact_assessment.severity}</span>
                       {rca.impact_assessment.severity_rationale && (
-                        <span className="text-[10px] text-siem-muted/60">- {rca.impact_assessment.severity_rationale}</span>
+                        <span className="text-mini text-siem-muted/60">- {rca.impact_assessment.severity_rationale}</span>
                       )}
                     </div>
                   )}
@@ -1046,7 +1046,7 @@ export function TabRCA({ agent }) {
             {/* Contributing factors */}
             {rca.contributing_factors?.length > 0 && (
               <div className="bg-yellow-950/15 border border-yellow-800/25 rounded-xl p-4">
-                <div className="text-[10px] uppercase tracking-wider text-yellow-400/70 font-semibold mb-2">Contributing Factors</div>
+                <div className="text-2xs uppercase tracking-wider text-yellow-400/70 font-semibold mb-2">Contributing Factors</div>
                 <ul className="space-y-1.5">
                   {rca.contributing_factors.map((f,i) => (
                     <li key={i} className="flex items-start gap-2 text-xs text-siem-text">
@@ -1060,7 +1060,7 @@ export function TabRCA({ agent }) {
             {/* Remediation */}
             {rca.remediation && (
               <div className="bg-emerald-950/10 border border-emerald-800/20 rounded-xl p-4">
-                <div className="text-[10px] uppercase tracking-wider text-emerald-400/70 font-semibold mb-3 flex items-center gap-2">
+                <div className="text-2xs uppercase tracking-wider text-emerald-400/70 font-semibold mb-3 flex items-center gap-2">
                   <CheckCircle size={11}/> Remediation Plan
                 </div>
                 {[
@@ -1069,11 +1069,11 @@ export function TabRCA({ agent }) {
                   ['Long-term (systemic)', rca.remediation.long_term, 'text-emerald-400'],
                 ].map(([label, items, color]) => items?.length > 0 && (
                   <div key={label} className="mb-3 last:mb-0">
-                    <div className={`text-[9px] uppercase font-semibold mb-1.5 ${color}`}>{label}</div>
+                    <div className={`text-2xs uppercase font-semibold mb-1.5 ${color}`}>{label}</div>
                     <ul className="space-y-1">
                       {items.map((a,i) => (
                         <li key={i} className="flex items-start gap-2 text-xs text-siem-text">
-                          <span className="w-4 h-4 rounded bg-siem-bg border border-siem-border text-[8px] font-bold text-siem-muted flex items-center justify-center shrink-0 mt-0.5">{i+1}</span>
+                          <span className="w-4 h-4 rounded bg-siem-bg border border-siem-border text-2xs font-bold text-siem-muted flex items-center justify-center shrink-0 mt-0.5">{i+1}</span>
                           {a}
                         </li>
                       ))}
@@ -1086,7 +1086,7 @@ export function TabRCA({ agent }) {
             {/* Detection gaps */}
             {rca.detection_gaps?.length > 0 && (
               <div className="bg-blue-950/15 border border-blue-800/25 rounded-xl p-4">
-                <div className="text-[10px] uppercase tracking-wider text-blue-400/70 font-semibold mb-2 flex items-center gap-1.5">
+                <div className="text-2xs uppercase tracking-wider text-blue-400/70 font-semibold mb-2 flex items-center gap-1.5">
                   <Search size={11}/> Detection Gaps
                 </div>
                 <ul className="space-y-1.5">
@@ -1102,7 +1102,7 @@ export function TabRCA({ agent }) {
             {/* Lessons learned */}
             {rca.lessons_learned?.length > 0 && (
               <div className="bg-siem-surface border border-siem-border rounded-xl p-4">
-                <div className="text-[10px] uppercase tracking-wider text-siem-muted/60 font-semibold mb-2">Lessons Learned</div>
+                <div className="text-2xs uppercase tracking-wider text-siem-muted/60 font-semibold mb-2">Lessons Learned</div>
                 <ul className="space-y-1.5">
                   {rca.lessons_learned.map((l,i) => (
                     <li key={i} className="flex items-start gap-2 text-xs text-siem-muted">
@@ -1116,11 +1116,11 @@ export function TabRCA({ agent }) {
             {/* AI questions */}
             {rca.questions_for_analyst?.length > 0 && (
               <div className="bg-violet-950/15 border border-violet-800/25 rounded-xl p-4">
-                <div className="text-[10px] uppercase tracking-wider text-violet-400/70 font-semibold mb-2">AI Questions for You</div>
+                <div className="text-2xs uppercase tracking-wider text-violet-400/70 font-semibold mb-2">AI Questions for You</div>
                 <ul className="space-y-2">
                   {rca.questions_for_analyst.map((q,i) => (
                     <li key={i} className="flex items-start gap-2">
-                      <span className="text-[10px] text-violet-400/60 shrink-0 mt-0.5">?</span>
+                      <span className="text-mini text-violet-400/60 shrink-0 mt-0.5">?</span>
                       <button onClick={() => setChatInput(q)}
                         className="text-xs text-siem-text text-left hover:text-violet-400 transition-colors leading-relaxed">
                         {q}
@@ -1136,7 +1136,7 @@ export function TabRCA({ agent }) {
               <div className="px-4 py-3 border-b border-siem-border/40 flex items-center gap-2">
                 <MessageSquare size={13} className="text-siem-accent"/>
                 <span className="text-sm font-semibold text-siem-text">Continue Investigation</span>
-                <span className="text-[10px] text-siem-muted ml-1">- ask follow-up questions about this incident</span>
+                <span className="text-mini text-siem-muted ml-1">- ask follow-up questions about this incident</span>
               </div>
 
               {/* Suggested questions */}
@@ -1144,7 +1144,7 @@ export function TabRCA({ agent }) {
                 <div className="px-4 py-3 border-b border-siem-border/30 flex flex-wrap gap-2">
                   {rca.questions_for_analyst.slice(0, 3).map((q, i) => (
                     <button key={i} onClick={() => setChatInput(q)}
-                      className="text-[10px] text-left px-2.5 py-1.5 bg-violet-950/20 border border-violet-800/30 text-violet-300 rounded-lg hover:bg-violet-950/40 transition-colors max-w-xs truncate">
+                      className="text-mini text-left px-2.5 py-1.5 bg-violet-950/20 border border-violet-800/30 text-violet-300 rounded-lg hover:bg-violet-950/40 transition-colors max-w-xs truncate">
                       <Lightbulb size={12} style={{ flexShrink: 0 }}/> {q}
                     </button>
                   ))}
@@ -1160,7 +1160,7 @@ export function TabRCA({ agent }) {
                 ) : chatHistory.map((msg, i) => (
                   <div key={i} className={`flex gap-3 ${msg.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}>
                     {/* Avatar */}
-                    <div className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 text-[10px] font-bold border ${
+                    <div className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 text-mini font-bold border ${
                       msg.role === 'user'
                         ? 'bg-violet-950/30 border-violet-800/50 text-violet-300'
                         : 'bg-siem-accent/10 border-siem-accent/30 text-siem-accent'
@@ -1195,14 +1195,14 @@ export function TabRCA({ agent }) {
                 ))}
                 {chatLoading && (
                   <div className="flex gap-3">
-                    <div className="w-7 h-7 rounded-full bg-siem-accent/10 border border-siem-accent/30 flex items-center justify-center text-[10px] font-bold text-siem-accent shrink-0">AI</div>
+                    <div className="w-7 h-7 rounded-full bg-siem-accent/10 border border-siem-accent/30 flex items-center justify-center text-mini font-bold text-siem-accent shrink-0">AI</div>
                     <div className="flex-1 bg-siem-bg border border-siem-border/60 rounded-xl px-4 py-3">
                       <div className="flex gap-1.5 items-center h-5">
                         {[0,1,2].map(i => (
                           <div key={i} className="w-2 h-2 rounded-full bg-siem-accent/60 animate-bounce"
                             style={{animationDelay:(i*150)+'ms'}}/>
                         ))}
-                        <span className="text-[10px] text-siem-muted ml-1">Analysing…</span>
+                        <span className="text-mini text-siem-muted ml-1">Analysing…</span>
                       </div>
                     </div>
                   </div>

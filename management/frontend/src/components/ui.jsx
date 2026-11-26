@@ -67,12 +67,12 @@ export function Num({ k, v, unit, tone, delta, deltaTone, grow, children, title 
 export function StatTile({ k, v, unit, note, noteTone, tone, children, style }) {
   return (
     <div className="ow-stat" style={style}>
-      <div style={{ fontSize: 12, color: 'var(--t2)' }}>{k}</div>
+      <div style={{ fontSize: 13.5, color: 'var(--t2)' }}>{k}</div>
       <div className="ow-stat-v" style={tone ? { color: `var(--${tone})` } : undefined}>
-        {v}{unit && <span style={{ fontSize: 13, color: 'var(--t2)', fontWeight: 500 }}> {unit}</span>}
+        {v}{unit && <span style={{ fontSize: 14, color: 'var(--t2)', fontWeight: 500 }}> {unit}</span>}
       </div>
       {children}
-      {note && <div style={{ fontSize: 12, color: noteTone ? `var(--${noteTone})` : 'var(--t2)' }}>{note}</div>}
+      {note && <div style={{ fontSize: 13.5, color: noteTone ? `var(--${noteTone})` : 'var(--t2)' }}>{note}</div>}
     </div>
   )
 }
@@ -103,7 +103,7 @@ export function StateBar({ parts, height = 10 }) {
           <div key={p.label} style={{ flex: p.n, background: p.state === 'none' ? 'var(--t3)' : `var(--${p.state})` }} title={`${p.n} ${p.label}`}/>
         ))}
       </div>
-      <div style={{ fontSize: 11.5, color: 'var(--t3)', marginTop: 4 }}>{parts.map(p => `${p.n.toLocaleString()} ${p.label}`).join(' · ')}</div>
+      <div style={{ fontSize: 13, color: 'var(--t3)', marginTop: 4 }}>{parts.map(p => `${p.n.toLocaleString()} ${p.label}`).join(' · ')}</div>
     </div>
   )
 }
@@ -162,14 +162,23 @@ export function useFacetFilter(rows, getters, selected) {
 // ── Dense table ───────────────────────────────────────────────────────────────
 // cols: [{ key, label, width, render(row), title?, align? }]; rowState(row) → stripe.
 // Selection (optional): selected: Set of keys, onSelect(key, checked), onSelectAll(checked). current: key of the open row.
+// Column widths are written for the type scale before the text grew (Nov 2026). Widths in px scale with
+// it, so badges and numbers still fit; fr and auto are left alone.
+export const COL_SCALE = 1.12
+// The minimum of a flexible column (minmax) is not scaled: the column grows from the free space instead.
+export const scaleCol = (w) => /minmax/.test(String(w)) ? String(w)
+  : String(w).replace(/(\d+(?:\.\d+)?)px/g, (_, n) => `${Math.round(n * COL_SCALE)}px`)
+
 export function DenseTable({ cols, rows, rowKey, rowState, onRow, empty = 'Nothing to show', head, selected, onSelect, onSelectAll, current, sort, onSort }) {
   const sel = !!onSelect
-  const tpl = (sel ? '28px ' : '') + cols.map(c => c.width || '1fr').join(' ')
+  const tpl = (sel ? '28px ' : '') + cols.map(c => scaleCol(c.width || '1fr')).join(' ')
   const all = sel && rows.length > 0 && rows.every(r => selected.has(rowKey(r)))
   const some = sel && rows.some(r => selected.has(rowKey(r)))
   return (
     <div role="table">
       {head}
+      {/* never clip a column: on a narrow window the table scrolls sideways */}
+      <div className="ow-table-x"><div className="ow-table-in">
       <div className="ow-grid h" role="row" style={{ gridTemplateColumns: tpl }}>
         {sel && <div><Check checked={all} indeterminate={!all && some} onChange={onSelectAll} label="Select all rows"/></div>}
         {cols.map(c => (
@@ -195,6 +204,7 @@ export function DenseTable({ cols, rows, rowKey, rowState, onRow, empty = 'Nothi
           </div>
         )
       })}
+      </div></div>
     </div>
   )
 }
@@ -311,7 +321,7 @@ export function Histogram({ items, stacks, from, to, buckets = 60, height = 72, 
           )
         })}
       </svg>
-      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: 'var(--t3)', marginTop: 4 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: 'var(--t3)', marginTop: 4 }}>
         <span>{fmt(lo)}</span><span>{fmt(lo + span / 2)}</span><span>{fmt(hi)}</span>
       </div>
     </div>
@@ -364,7 +374,7 @@ export function Section({ title, sub, actions, children, pad = true, style }) {
       {(title || actions) && (
         <div className="ow-card-bar">
           {title && <span style={{ fontWeight: 600 }}>{title}</span>}
-          {sub && <span className="t3" style={{ fontSize: 12 }}>{sub}</span>}
+          {sub && <span className="t3" style={{ fontSize: 13.5 }}>{sub}</span>}
           {actions && <span style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>{actions}</span>}
         </div>
       )}
@@ -393,7 +403,7 @@ export function Dialog({ title, onClose, children, footer, width = 460 }) {
   return (
     <div className="ow-palette-back" style={{ paddingTop: 'calc(14 * var(--vh))' }} onMouseDown={onClose}>
       <div className="ow-palette" role="dialog" aria-modal="true" aria-label={title} style={{ width: `min(${width}px, calc(92 * var(--vw)))` }} onMouseDown={e => e.stopPropagation()}>
-        <div className="ow-card-bar" style={{ minHeight: 48 }}><span style={{ fontWeight: 600, fontSize: 14 }}>{title}</span>
+        <div className="ow-card-bar" style={{ minHeight: 48 }}><span style={{ fontWeight: 600, fontSize: 15 }}>{title}</span>
           <button className="ow-btn quiet" style={{ marginLeft: 'auto', height: 26 }} onClick={onClose} aria-label="Close">Esc</button></div>
         <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>{children}</div>
         {footer && <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', padding: '12px 16px', borderTop: '1px solid var(--line)' }}>{footer}</div>}
@@ -405,9 +415,9 @@ export function Dialog({ title, onClose, children, footer, width = 460 }) {
 export function Field({ label, children, hint }) {
   return (
     <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-      <span style={{ fontSize: 12, color: 'var(--t2)', fontWeight: 500 }}>{label}</span>
+      <span style={{ fontSize: 13.5, color: 'var(--t2)', fontWeight: 500 }}>{label}</span>
       {children}
-      {hint && <span style={{ fontSize: 11.5, color: 'var(--t3)' }}>{hint}</span>}
+      {hint && <span style={{ fontSize: 13, color: 'var(--t3)' }}>{hint}</span>}
     </label>
   )
 }

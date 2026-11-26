@@ -19,6 +19,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	pathpkg "path"
 	"sort"
@@ -49,6 +50,11 @@ type EndpointSuppression struct {
 	UserName       string     `json:"user_name"`
 	CmdlineContain string     `json:"cmdline_contains"`
 	FilePathGlob   string     `json:"file_path_glob"`
+	FileHash       string     `json:"file_hash"`  // any of the event's hashes (MD5, SHA-1, SHA-256)
+	IP             string     `json:"ip"`         // the event's source or destination IP
+	DNSDomain      string     `json:"dns_domain"` // a DNS query for this domain or a subdomain of it
+	Indicator      string     `json:"indicator"`  // the threat-intel indicator value an IOC alert matched
+	SourceAlertID  *int64     `json:"source_alert_id,omitempty"`
 	Reason         string     `json:"reason"`
 	CreatedBy      string     `json:"created_by"`
 	ExpiresAt      *time.Time `json:"expires_at,omitempty"`
@@ -76,13 +82,14 @@ type endpointSuppressor struct {
 var endpointSupp = &endpointSuppressor{hits: map[suppHitKey]int64{}}
 
 const suppCols = `id, rule_id, match_mode, host, process_name, image_path_glob, parent_process, user_name,
-	cmdline_contains, file_path_glob, reason, created_by, expires_at, permanent, created_at`
+	cmdline_contains, file_path_glob, file_hash, ip, dns_domain, indicator, source_alert_id, reason, created_by, expires_at, permanent, created_at`
 
 func scanSuppression(rows *sql.Rows) (EndpointSuppression, error) {
 	var r EndpointSuppression
 	var exp sql.NullTime
 	err := rows.Scan(&r.ID, &r.RuleID, &r.MatchMode, &r.Host, &r.ProcessName, &r.ImagePathGlob, &r.ParentProcess,
-		&r.UserName, &r.CmdlineContain, &r.FilePathGlob, &r.Reason, &r.CreatedBy, &exp, &r.Permanent, &r.CreatedAt)
+		&r.UserName, &r.CmdlineContain, &r.FilePathGlob, &r.FileHash, &r.IP, &r.DNSDomain, &r.Indicator, &r.SourceAlertID,
+		&r.Reason, &r.CreatedBy, &exp, &r.Permanent, &r.CreatedAt)
 	if exp.Valid {
 		t := exp.Time
 		r.ExpiresAt = &t
@@ -170,8 +177,37 @@ func eventImagePath(ev store.Event) string {
 	return ""
 }
 
+// eventHashes: the event's file hashes, lower case; Windows lists them as "SHA256=..,MD5=..".
+func eventHashes(ev store.Event) []string {
+	if ev.FileHash == nil {
+		return nil
+	}
+	var out []string
+	for _, part := range strings.Split(*ev.FileHash, ",") {
+		h := strings.ToLower(strings.TrimSpace(part))
+		if i := strings.Index(h, "="); i >= 0 {
+			h = h[i+1:]
+		}
+		if h != "" {
+			out = append(out, h)
+		}
+	}
+	return out
+}
+
+// domainCovers: d is the suppressed domain, q a queried name; q matches d itself or any subdomain of it.
+func domainCovers(d, q string) bool {
+	d, q = strings.TrimSuffix(strings.ToLower(d), "."), strings.TrimSuffix(strings.ToLower(q), ".")
+	return q == d || strings.HasSuffix(q, "."+d)
+}
+
 // suppressionMatches reports whether rule r suppresses sigID for ev at time now.
 func suppressionMatches(r EndpointSuppression, sigID string, ev store.Event, now time.Time) bool {
+	return suppressionMatchesIndicator(r, sigID, "", ev, now)
+}
+
+// suppressionMatchesIndicator also knows the threat-intel indicator value an IOC rule matched ("" otherwise).
+func suppressionMatchesIndicator(r EndpointSuppression, sigID, indicator string, ev store.Event, now time.Time) bool {
 	if r.ExpiresAt != nil && now.After(*r.ExpiresAt) {
 		return false
 	}
@@ -224,17 +260,51 @@ func suppressionMatches(r EndpointSuppression, sigID string, ev store.Event, now
 			return false
 		}
 	}
+	if r.Indicator != "" && !strings.EqualFold(r.Indicator, indicator) {
+		return false
+	}
+	if r.FileHash != "" {
+		found := false
+		for _, h := range eventHashes(ev) {
+			if h == strings.ToLower(r.FileHash) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return false
+		}
+	}
+	if r.IP != "" && !(ev.SrcIP != nil && strings.EqualFold(*ev.SrcIP, r.IP) || ev.DstIP != nil && strings.EqualFold(*ev.DstIP, r.IP)) {
+		return false
+	}
+	if r.DNSDomain != "" {
+		q := ""
+		if ev.EventType == "dns" && ev.DstIP != nil { // every agent stores the DNS query name in dst_ip
+			q = *ev.DstIP
+		} else if ev.Domain != nil {
+			q = *ev.Domain
+		}
+		if q == "" || !domainCovers(r.DNSDomain, q) {
+			return false
+		}
+	}
 	return true
 }
 
 // endpointSuppressed reports whether a (rule, event) pair is suppressed and
 // counts the suppressed match.
 func endpointSuppressed(sigID string, ev store.Event) bool {
+	return endpointSuppressedIndicator(sigID, "", ev)
+}
+
+// endpointSuppressedIndicator is endpointSuppressed for a threat-intel match on indicator.
+func endpointSuppressedIndicator(sigID, indicator string, ev store.Event) bool {
 	now := time.Now()
 	endpointSupp.mu.RLock()
 	var hit int64
 	for _, r := range endpointSupp.rules {
-		if suppressionMatches(r, sigID, ev, now) {
+		if suppressionMatchesIndicator(r, sigID, indicator, ev, now) {
 			hit = r.ID
 			break
 		}
@@ -273,7 +343,7 @@ func registeredRuleIDs() []string {
 }
 
 func dynamicNamespace(id string) bool {
-	return strings.HasPrefix(id, "IOC:") || strings.HasPrefix(id, "SIGMA:")
+	return strings.HasPrefix(id, "IOC:") || strings.HasPrefix(id, "SIGMA:") || id == rareBinaryRuleID
 }
 
 // coveredRuleIDs lists the built-in IDs a (rule_id, mode) pair would suppress.
@@ -303,8 +373,13 @@ func validateSuppression(req *EndpointSuppression, now time.Time) string {
 	if req.RuleID == "" {
 		return "rule_id is required: suppressing all rules for a host/process is not allowed"
 	}
+	req.FileHash, req.IP = strings.ToLower(strings.TrimSpace(req.FileHash)), strings.TrimSpace(req.IP)
+	req.DNSDomain, req.Indicator = strings.ToLower(strings.TrimSpace(req.DNSDomain)), strings.TrimSpace(req.Indicator)
+	if req.IP != "" && net.ParseIP(req.IP) == nil {
+		return "ip must be an IP address"
+	}
 	for _, f := range []string{req.RuleID, req.Host, req.ProcessName, req.ImagePathGlob, req.ParentProcess,
-		req.UserName, req.CmdlineContain, req.FilePathGlob} {
+		req.UserName, req.CmdlineContain, req.FilePathGlob, req.FileHash, req.DNSDomain, req.Indicator} {
 		if len(f) > 255 {
 			return "field too long"
 		}
@@ -316,7 +391,9 @@ func validateSuppression(req *EndpointSuppression, now time.Time) string {
 			}
 		}
 	}
-	if req.MatchMode == suppModePrefix {
+	if req.MatchMode == suppModePrefix && req.RuleID == "IOC:" && req.Indicator != "" {
+		// one indicator value across every intel source: narrow by the indicator, not the rule
+	} else if req.MatchMode == suppModePrefix {
 		if len(req.RuleID) < suppPrefixMinLen {
 			return fmt.Sprintf("prefix mode requires a rule_id prefix of at least %d characters", suppPrefixMinLen)
 		}
@@ -364,6 +441,7 @@ func suppAuditDetail(s EndpointSuppression) string {
 	b, _ := json.Marshal(map[string]interface{}{
 		"rule_id": s.RuleID, "mode": s.MatchMode, "host": s.Host, "process": s.ProcessName, "image": s.ImagePathGlob,
 		"parent": s.ParentProcess, "user": s.UserName, "cmdline": s.CmdlineContain, "file": s.FilePathGlob,
+		"hash": s.FileHash, "ip": s.IP, "domain": s.DNSDomain, "indicator": s.Indicator, "from_alert": s.SourceAlertID,
 		"expires": exp, "permanent": s.Permanent, "reason": s.Reason,
 	})
 	return string(b)
@@ -432,10 +510,10 @@ func handleCreateSuppression(db *store.DB) http.HandlerFunc {
 		var id int64
 		err := db.QueryRowContext(r.Context(), `
 			INSERT INTO endpoint_suppressions (rule_id, match_mode, host, process_name, image_path_glob, parent_process,
-				user_name, cmdline_contains, file_path_glob, reason, created_by, expires_at, permanent)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING id`,
+				user_name, cmdline_contains, file_path_glob, file_hash, ip, dns_domain, indicator, reason, created_by, expires_at, permanent)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17) RETURNING id`,
 			req.RuleID, req.MatchMode, req.Host, req.ProcessName, req.ImagePathGlob, req.ParentProcess, req.UserName,
-			req.CmdlineContain, req.FilePathGlob, req.Reason, actor, req.ExpiresAt, req.Permanent).Scan(&id)
+			req.CmdlineContain, req.FilePathGlob, req.FileHash, req.IP, req.DNSDomain, req.Indicator, req.Reason, actor, req.ExpiresAt, req.Permanent).Scan(&id)
 		if err != nil {
 			writeJSON(w, 500, map[string]string{"error": "could not save rule"})
 			return
@@ -466,10 +544,11 @@ func handleUpdateSuppression(db *store.DB) http.HandlerFunc {
 		}
 		res, err := db.ExecContext(r.Context(), `
 			UPDATE endpoint_suppressions SET rule_id=$2, match_mode=$3, host=$4, process_name=$5, image_path_glob=$6,
-				parent_process=$7, user_name=$8, cmdline_contains=$9, file_path_glob=$10, reason=$11, expires_at=$12, permanent=$13
+				parent_process=$7, user_name=$8, cmdline_contains=$9, file_path_glob=$10, reason=$11, expires_at=$12, permanent=$13,
+				file_hash=$14, ip=$15, dns_domain=$16, indicator=$17
 			WHERE id=$1`,
 			id, req.RuleID, req.MatchMode, req.Host, req.ProcessName, req.ImagePathGlob, req.ParentProcess, req.UserName,
-			req.CmdlineContain, req.FilePathGlob, req.Reason, req.ExpiresAt, req.Permanent)
+			req.CmdlineContain, req.FilePathGlob, req.Reason, req.ExpiresAt, req.Permanent, req.FileHash, req.IP, req.DNSDomain, req.Indicator)
 		if err != nil {
 			writeJSON(w, 500, map[string]string{"error": "could not save rule"})
 			return

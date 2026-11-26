@@ -23,7 +23,7 @@ export const TERMINAL_THEME = {
   black: '#1d1a2b', red: '#ff6369', green: '#3dd68c', yellow: '#f5bd45', blue: '#5ca8ff', magenta: '#a896ff', cyan: '#3cc8dc', white: '#e7e4f2',
   brightBlack: '#6f6a86', brightRed: '#ff8a8f', brightGreen: '#6ee7ab', brightYellow: '#ffd27a', brightBlue: '#8cc2ff', brightMagenta: '#c4b8ff', brightCyan: '#7fdcea', brightWhite: '#ffffff',
 }
-export const TERMINAL_FONT = '"IBM Plex Mono", ui-monospace, Menlo, monospace'
+export const TERMINAL_FONT = '"JetBrains Mono", ui-monospace, Menlo, monospace'
 
 // Sign-in stage: the animated network behind the sign-in form (always on the obsidian background).
 export const STAGE = {

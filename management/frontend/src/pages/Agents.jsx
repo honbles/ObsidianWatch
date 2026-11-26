@@ -165,7 +165,7 @@ function TagDialog({ mode, rows, allTags, onClose, onDone }) {
         <datalist id="ow-tag-options">{options.map(t => <option key={t} value={t}/>)}</datalist>
       </Field>
       {options.length > 0 && <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>{options.slice(0, 20).map(t => <button key={t} className="tag mono" style={{ cursor: 'pointer', border: 0 }} onClick={() => setTag(t)}>{t}</button>)}</div>}
-      {err && <div className="c-crit" style={{ fontSize: 12.5 }}>{err}</div>}
+      {err && <div className="c-crit" style={{ fontSize: 13.5 }}>{err}</div>}
     </Dialog>
   )
 }
@@ -246,9 +246,9 @@ function FleetHosts({ rows, onOpen, onTamper, filter, setFilter, sort, setSort, 
               <input value={filter} onChange={e => setFilter(e.target.value)} placeholder="Filter hosts · tag:env:prod os:linux status:offline" aria-label="Filter hosts"/>
               {filter && <button onClick={() => setFilter('')} aria-label="Clear filter" style={{ background: 'none', border: 0, color: 'var(--t3)', cursor: 'pointer' }}><X size={12}/></button>}
             </label>
-            <span className="t2" style={{ fontSize: 12 }}>{shown.length.toLocaleString()} of {total.toLocaleString()}</span>
-            <label className="t2" style={{ marginLeft: 'auto', fontSize: 12, display: 'flex', alignItems: 'center', gap: 6 }}>Sort
-              <select value={sort} onChange={e => setSort(e.target.value)} className="ow-field" style={{ height: 26, padding: '0 6px', fontSize: 12 }}>
+            <span className="t2" style={{ fontSize: 13.5 }}>{shown.length.toLocaleString()} of {total.toLocaleString()}</span>
+            <label className="t2" style={{ marginLeft: 'auto', fontSize: 13.5, display: 'flex', alignItems: 'center', gap: 6 }}>Sort
+              <select value={sort} onChange={e => setSort(e.target.value)} className="ow-field" style={{ height: 26, padding: '0 6px', fontSize: 13.5 }}>
                 <option value="status">offline first</option><option value="alerts">open alerts</option><option value="name">name</option><option value="seen">last seen</option>
               </select>
             </label>
@@ -293,7 +293,7 @@ function FleetTags({ rows, onPick }) {
   return (
     <div className="ow-card" style={{ overflow: 'hidden' }}>
       <div className="ow-card-bar"><span style={{ fontWeight: 600 }}>Tags</span>
-        <span className="t3" style={{ fontSize: 12 }}>Select hosts on the Hosts tab to add or remove tags. Response approvals and policies target tags.</span></div>
+        <span className="t3" style={{ fontSize: 13.5 }}>Select hosts on the Hosts tab to add or remove tags. Response approvals and policies target tags.</span></div>
       <DenseTable cols={cols} rows={tags} rowKey={g => g.name} onRow={g => onPick(g.name)} empty="No hosts yet."/>
     </div>
   )

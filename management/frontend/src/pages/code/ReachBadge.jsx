@@ -19,5 +19,5 @@ export function reachTitle(r) {
 export default function ReachBadge({ reach }) {
   if (!reach) return null
   const [label, cls] = STYLE[reach.level] || STYLE.unknown
-  return <span title={reachTitle(reach)} className={`text-[9px] px-1.5 py-0.5 rounded border shrink-0 ${cls}`}>{label}</span>
+  return <span title={reachTitle(reach)} className={`text-2xs px-1.5 py-0.5 rounded border shrink-0 ${cls}`}>{label}</span>
 }

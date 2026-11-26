@@ -50,12 +50,12 @@ export default function ManualIOCs() {
         </select>
         <button disabled={busy} className="flex items-center gap-1 border border-siem-accent text-siem-accent rounded px-3 py-1.5 hover:bg-siem-accent/10 disabled:opacity-50"><Plus size={12} /> Add</button>
       </form>
-      {msg && <div className="text-[11px] text-siem-muted">{msg}</div>}
+      {msg && <div className="text-xs text-siem-muted">{msg}</div>}
       {rows.length > 0 && (
         <div className="divide-y divide-siem-border border border-siem-border rounded-lg">
           {rows.map(r => (
             <div key={r.id} className="flex items-center gap-3 px-3 py-1.5 text-xs">
-              <span className="uppercase text-[10px] text-siem-muted w-12">{r.type}</span>
+              <span className="uppercase text-2xs text-siem-muted w-12">{r.type}</span>
               <span className="font-mono flex-1 truncate" title={r.value}>{r.value}</span>
               <span className="text-siem-muted truncate max-w-[160px]">{r.label}</span>
               <span className="text-siem-muted">sev {r.severity}</span>

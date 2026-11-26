@@ -153,7 +153,7 @@ function FilterBadges({ rule }) {
   ].filter(Boolean)
 
   if (badges.length === 0) return <span className="t3">any event</span>
-  return <span className="mono t2" style={{ fontSize: 12 }} title={badges.join('  ')}>{badges.join('  ·  ')}</span>
+  return <span className="mono t2" style={{ fontSize: 13.5 }} title={badges.join('  ')}>{badges.join('  ·  ')}</span>
 }
 
 export default function AlertRules() {
@@ -198,7 +198,7 @@ export default function AlertRules() {
             <label className="ow-field" style={{ flex: 1, maxWidth: 380, height: 28 }}>
               <input value={q} onChange={e => setQ(e.target.value)} placeholder="Filter rules" aria-label="Filter rules"/>
             </label>
-            <span className="t2" style={{ fontSize: 12 }}>{shown.length} of {rules.length}</span>
+            <span className="t2" style={{ fontSize: 13.5 }}>{shown.length} of {rules.length}</span>
           </div>
           <DenseTable rows={loading ? [] : shown} rowKey={r => r.id} onRow={r => { setShowCreate(false); setEditing(r.id) }} current={editing}
             empty={loading ? 'Loading…' : rules.length ? 'No rules match.' : 'No alert rules yet. Built-in detections live under Rules; add your own here.'}

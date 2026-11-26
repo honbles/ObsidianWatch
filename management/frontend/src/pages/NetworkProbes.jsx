@@ -36,7 +36,7 @@ export default function NetworkProbes() {
       <div className="bg-cyan-950/20 border border-cyan-800/30 rounded-xl p-4">
         <div className="flex items-start gap-3">
           <Radio size={14} className="text-cyan-400 mt-0.5 shrink-0"/>
-          <div className="text-[11px] text-cyan-300/80 leading-relaxed">
+          <div className="text-xs text-cyan-300/80 leading-relaxed">
             Syslog (514), NetFlow (2055) and SNMP, analysed on the probe. Only alerts and summaries reach this server.
           </div>
         </div>
@@ -75,11 +75,11 @@ export default function NetworkProbes() {
               ].map(({ step, text, icon: Icon }) => (
                 <div key={step} className="flex items-start gap-3">
                   <div className="w-5 h-5 rounded-full bg-cyan-500/20 border border-cyan-500/30 flex items-center justify-center shrink-0 mt-0.5">
-                    <span className="text-[9px] font-bold text-cyan-400">{step}</span>
+                    <span className="text-2xs font-bold text-cyan-400">{step}</span>
                   </div>
                   <div className="flex items-center gap-2">
                     <Icon size={11} className="text-siem-muted shrink-0"/>
-                    <span className="text-[11px] text-siem-muted">{text}</span>
+                    <span className="text-xs text-siem-muted">{text}</span>
                   </div>
                 </div>
               ))}
@@ -101,7 +101,7 @@ export default function NetworkProbes() {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
                     <span className="font-mono text-sm font-semibold text-siem-text">{probe.hostname}</span>
-                    <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full border ${
+                    <span className={`text-2xs font-bold px-2 py-0.5 rounded-full border ${
                       probe.online
                         ? 'text-cyan-400 bg-cyan-950/30 border-cyan-800/40'
                         : 'text-siem-muted bg-siem-bg border-siem-border'
@@ -111,18 +111,18 @@ export default function NetworkProbes() {
                   </div>
                   <div className="flex items-center gap-4 mt-1">
                     {probe.last_seen && (
-                      <span className="flex items-center gap-1 text-[10px] text-siem-muted">
+                      <span className="flex items-center gap-1 text-mini text-siem-muted">
                         <Clock size={9}/>
                         {formatDistanceToNow(new Date(probe.last_seen), { addSuffix: true })}
                       </span>
                     )}
                     {probe.last_ip && (
-                      <span className="flex items-center gap-1 text-[10px] text-siem-muted font-mono">
+                      <span className="flex items-center gap-1 text-mini text-siem-muted font-mono">
                         <MapPin size={9}/>
                         {probe.last_ip}
                       </span>
                     )}
-                    <span className="flex items-center gap-1 text-[10px] text-siem-muted">
+                    <span className="flex items-center gap-1 text-mini text-siem-muted">
                       <Activity size={9}/>
                       {probe.event_count?.toLocaleString() || 0} events
                     </span>
@@ -130,7 +130,7 @@ export default function NetworkProbes() {
                 </div>
                 <div className="flex items-center gap-2">
                   <button onClick={e => { e.stopPropagation(); navigate(`/alerts?host=${probe.hostname}`) }}
-                    className="flex items-center gap-1 text-[10px] text-siem-muted border border-siem-border rounded-lg px-2.5 py-1.5 hover:text-siem-accent hover:border-siem-accent/30 transition-colors">
+                    className="flex items-center gap-1 text-mini text-siem-muted border border-siem-border rounded-lg px-2.5 py-1.5 hover:text-siem-accent hover:border-siem-accent/30 transition-colors">
                     <Bell size={10}/> Alerts
                   </button>
                   <ChevronRight size={14} className="text-siem-muted/30 group-hover:text-siem-muted transition-colors"/>

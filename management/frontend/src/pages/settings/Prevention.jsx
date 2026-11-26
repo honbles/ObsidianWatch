@@ -57,19 +57,19 @@ export default function Prevention() {
     <div style={{ display: 'grid', gap: 14 }}>
       <Section title="Indicator types" sub="What agents match and what they do on a match"
         actions={<button className="ow-btn quiet" onClick={load}><RefreshCw size={13}/>Refresh</button>}>
-        <p className="t2" style={{ margin: '0 0 12px', fontSize: 13 }}>
+        <p className="t2" style={{ margin: '0 0 12px', fontSize: 14 }}>
           Audit alerts only; enforce also blocks.
         </p>
         <div style={{ display: 'grid', gap: 10 }}>
           {TYPES.map(([k, label, how]) => (
-            <div key={k} className="ow-card" style={{ padding: 12, display: 'grid', gridTemplateColumns: '1fr 190px', gap: 12, alignItems: 'start' }}>
+            <div key={k} className="ow-card" style={{ padding: 12, display: 'grid', gridTemplateColumns: '1fr 213px', gap: 12, alignItems: 'start' }}>
               <div>
                 <div style={{ fontWeight: 600, display: 'flex', gap: 8, alignItems: 'center' }}>
                   {label}
                   <StatePill state={pol[k] === 'enforce' ? 'crit' : pol[k] === 'audit' ? 'warn' : 'none'}>{MODES.find(m => m[0] === pol[k])?.[1]}</StatePill>
                 </div>
-                <div className="t3" style={{ fontSize: 12, marginTop: 4 }}>{how}</div>
-                <div className="t3" style={{ fontSize: 11.5, marginTop: 6 }}>
+                <div className="t3" style={{ fontSize: 13.5, marginTop: 4 }}>{how}</div>
+                <div className="t3" style={{ fontSize: 13, marginTop: 6 }}>
                   {counts[k] ?? 0} indicators{Object.keys(bySrc[k] || {}).length > 0 && <> from {Object.keys(bySrc[k]).map(s => SOURCES[s] || s).join(', ')}</>}
                 </div>
               </div>
@@ -82,7 +82,7 @@ export default function Prevention() {
       </Section>
 
       <Section title="Scope">
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 12 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(336px, 1fr))', gap: 12 }}>
           <Field label="Enforce only on hosts tagged" hint="Empty means every host. Other hosts stay in audit.">
             <input className="input" disabled={!admin} value={(pol.enforce_tags || []).join(', ')}
               onChange={e => upd('enforce_tags', e.target.value.split(',').map(s => s.trim()).filter(Boolean))} placeholder="canary"/>
@@ -93,7 +93,7 @@ export default function Prevention() {
               placeholder="/srv/uploads, D:\Shares\Incoming"/>
           </Field>
         </div>
-        <p className="t3" style={{ fontSize: 12, margin: '12px 0 0' }}>
+        <p className="t3" style={{ fontSize: 13.5, margin: '12px 0 0' }}>
           Indicators come from ThreatFox, Feodo Tracker, manual IOCs (Threat intelligence) and files the fleet's reputation lookups judged malicious.
           Private addresses, the ObsidianWatch server and DNS resolvers are never blocked.
           {pol.updated_by && <> Last changed by {pol.updated_by} {relTime(pol.updated_at)}.</>}
@@ -103,9 +103,9 @@ export default function Prevention() {
       {admin ? (
         <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
           <button className="ow-btn primary" onClick={save} disabled={busy}><Save size={13}/>{busy ? 'Saving…' : 'Save policy'}</button>
-          {msg && <span className="t3" style={{ fontSize: 12.5 }}>{msg}</span>}
+          {msg && <span className="t3" style={{ fontSize: 13.5 }}>{msg}</span>}
         </div>
-      ) : <div className="t3" style={{ fontSize: 12.5 }}>Only administrators can change the prevention policy.</div>}
+      ) : <div className="t3" style={{ fontSize: 13.5 }}>Only administrators can change the prevention policy.</div>}
     </div>
   )
 }

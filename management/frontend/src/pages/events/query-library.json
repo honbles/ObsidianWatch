@@ -1,0 +1,1107 @@
+[
+ {
+  "group": "Windows",
+  "label": "PowerShell encoded command",
+  "q": "os:windows type:process proc:(powershell or pwsh) cmd:-enc"
+ },
+ {
+  "group": "Windows",
+  "label": "PowerShell download cradle",
+  "q": "os:windows type:process proc:(powershell or pwsh) cmd:(downloadstring or downloadfile or invoke-webrequest or \"net.webclient\" or start-bitstransfer)"
+ },
+ {
+  "group": "Windows",
+  "label": "MSHTA, WScript, CScript",
+  "q": "os:windows type:process proc:(mshta or wscript or cscript)"
+ },
+ {
+  "group": "Windows",
+  "label": "Regsvr32 or Rundll32",
+  "q": "os:windows type:process proc:(regsvr32 or rundll32)"
+ },
+ {
+  "group": "Windows",
+  "label": "WMI process creation",
+  "q": "os:windows type:process (proc:wmic or cmd:\"process call create\")"
+ },
+ {
+  "group": "Windows",
+  "label": "Run key persistence",
+  "q": "os:windows type:registry reg:CurrentVersion\\Run"
+ },
+ {
+  "group": "Windows",
+  "label": "Scheduled task created",
+  "q": "os:windows ((type:process proc:schtasks cmd:/create) or event_id:4698)"
+ },
+ {
+  "group": "Windows",
+  "label": "New service installed",
+  "q": "os:windows ((type:process proc:sc.exe cmd:create) or event_id:7045 or event_id:4697)"
+ },
+ {
+  "group": "Windows",
+  "label": "UAC bypass binaries",
+  "q": "os:windows type:process proc:(fodhelper or computerdefaults or eventvwr or sdclt)"
+ },
+ {
+  "group": "Windows",
+  "label": "AMSI bypass",
+  "q": "os:windows type:process cmd:(amsiutils or amsiinitfailed or amsiscanbuffer)"
+ },
+ {
+  "group": "Windows",
+  "label": "Event log cleared",
+  "q": "os:windows (event_id:1102 or event_id:104 or (type:process proc:wevtutil cmd:\" cl \"))"
+ },
+ {
+  "group": "Windows",
+  "label": "Defender disabled",
+  "q": "os:windows type:process cmd:(disablerealtimemonitoring or disableantispyware or \"set-mppreference\")"
+ },
+ {
+  "group": "Windows",
+  "label": "LSASS access or Mimikatz",
+  "q": "os:windows (cmd:(lsass or sekurlsa or mimikatz) or (type:sysmon event_id:10 lsass))"
+ },
+ {
+  "group": "Windows",
+  "label": "SAM or NTDS dump",
+  "q": "os:windows type:process (cmd:ntds.dit or cmd:\"hklm\\sam\" or proc:ntdsutil)"
+ },
+ {
+  "group": "Windows",
+  "label": "Failed logons (4625)",
+  "q": "os:windows type:logon event_id:4625",
+  "needs": "Windows auditing"
+ },
+ {
+  "group": "Windows",
+  "label": "SMB to other hosts",
+  "q": "os:windows type:network dstport:445"
+ },
+ {
+  "group": "Windows",
+  "label": "RDP to other hosts",
+  "q": "os:windows type:network dstport:3389"
+ },
+ {
+  "group": "Windows",
+  "label": "PsExec",
+  "q": "os:windows (proc:(psexec or psexesvc) or cmd:psexec)"
+ },
+ {
+  "group": "Windows",
+  "label": "Shadow copy deletion",
+  "q": "os:windows type:process ((proc:vssadmin cmd:delete) or (proc:wmic cmd:shadowcopy cmd:delete) or (proc:wbadmin cmd:delete))"
+ },
+ {
+  "group": "Windows",
+  "label": "Discovery commands",
+  "q": "os:windows type:process proc:(tasklist or whoami or systeminfo or ipconfig or nltest or net.exe)"
+ },
+ {
+  "group": "Windows",
+  "label": "High severity on Windows",
+  "q": "os:windows sev>=high"
+ },
+ {
+  "group": "Linux",
+  "label": "Reverse shell",
+  "q": "os:linux type:process cmd:(\"bash -i\" or \"/dev/tcp/\" or \"sh -i\")"
+ },
+ {
+  "group": "Linux",
+  "label": "Python or Perl one-liner",
+  "q": "os:linux type:process proc:(python or perl) cmd:(\" -c \" or \" -e \")"
+ },
+ {
+  "group": "Linux",
+  "label": "curl or wget into /tmp",
+  "q": "os:linux type:process proc:(curl or wget) cmd:(/tmp/ or /dev/shm/)"
+ },
+ {
+  "group": "Linux",
+  "label": "Cron persistence",
+  "q": "os:linux ((type:process proc:crontab) or (type:file file:cron))"
+ },
+ {
+  "group": "Linux",
+  "label": "New systemd unit",
+  "q": "os:linux ((type:file file:/systemd/system/) or (type:process proc:systemctl cmd:enable))"
+ },
+ {
+  "group": "Linux",
+  "label": "SSH authorized_keys changed",
+  "q": "os:linux type:file file:authorized_keys"
+ },
+ {
+  "group": "Linux",
+  "label": "SUID bit set",
+  "q": "os:linux type:process proc:chmod cmd:(+s or 4755)"
+ },
+ {
+  "group": "Linux",
+  "label": "sudo to a root shell",
+  "q": "os:linux action:sudo_exec \"COMMAND=/bin/bash\"",
+  "needs": "journald"
+ },
+ {
+  "group": "Linux",
+  "label": "Kernel module loaded",
+  "q": "os:linux (action:kernel_module_load or (type:process proc:(insmod or modprobe)))"
+ },
+ {
+  "group": "Linux",
+  "label": "SSH brute force",
+  "q": "os:linux action:(ssh_login_failure or ssh_invalid_user)",
+  "needs": "journald"
+ },
+ {
+  "group": "Linux",
+  "label": "/etc/shadow access",
+  "q": "os:linux type:file file:/etc/shadow"
+ },
+ {
+  "group": "Linux",
+  "label": "/etc changes",
+  "q": "os:linux type:file file:/etc/"
+ },
+ {
+  "group": "Linux",
+  "label": "Shell history cleared",
+  "q": "os:linux (cmd:(\"history -c\" or \"unset histfile\") or (type:file file:.bash_history action:delete))"
+ },
+ {
+  "group": "Linux",
+  "label": "Port scanners",
+  "q": "os:linux type:process proc:(nmap or masscan or rustscan)"
+ },
+ {
+  "group": "Linux",
+  "label": "Cloud metadata access",
+  "q": "os:linux (dst:169.254.169.254 or cmd:169.254.169.254)"
+ },
+ {
+  "group": "Linux",
+  "label": "DNS zone transfer attempt",
+  "q": "os:linux type:process proc:(dig or host or nslookup) cmd:axfr"
+ },
+ {
+  "group": "Linux",
+  "label": "High severity on Linux",
+  "q": "os:linux sev>=high"
+ },
+ {
+  "group": "Linux",
+  "label": "All Linux process events",
+  "q": "os:linux type:process"
+ },
+ {
+  "group": "Linux",
+  "label": "Shell executions",
+  "q": "os:linux type:process proc=(bash or sh or zsh or dash)"
+ },
+ {
+  "group": "Linux",
+  "label": "Python executions",
+  "q": "os:linux type:process proc:python"
+ },
+ {
+  "group": "Linux",
+  "label": "Perl executions",
+  "q": "os:linux type:process proc:perl"
+ },
+ {
+  "group": "Linux",
+  "label": "curl or wget",
+  "q": "os:linux type:process proc:(curl or wget)"
+ },
+ {
+  "group": "Linux",
+  "label": "Netcat, ncat, socat",
+  "q": "os:linux type:process (proc=nc or proc:(ncat or netcat or socat))"
+ },
+ {
+  "group": "Linux",
+  "label": "chmod +x",
+  "q": "os:linux type:process proc:chmod cmd:+x"
+ },
+ {
+  "group": "Linux",
+  "label": "Program run from /tmp",
+  "q": "os:linux type:process image:/tmp/"
+ },
+ {
+  "group": "Linux",
+  "label": "Program run from /dev/shm",
+  "q": "os:linux type:process image:/dev/shm/"
+ },
+ {
+  "group": "Linux",
+  "label": "LD_PRELOAD in a command line",
+  "q": "os:linux type:process cmd:ld_preload"
+ },
+ {
+  "group": "Linux",
+  "label": "Debuggers and tracers",
+  "q": "os:linux type:process proc:(strace or ltrace or gdb)"
+ },
+ {
+  "group": "Linux",
+  "label": "High severity Linux processes",
+  "q": "os:linux type:process sev>=high"
+ },
+ {
+  "group": "Linux",
+  "label": "sudo",
+  "q": "os:linux (proc=sudo or action:sudo_exec)"
+ },
+ {
+  "group": "Linux",
+  "label": "sudo failures",
+  "q": "os:linux action:sudo_failure",
+  "needs": "journald"
+ },
+ {
+  "group": "Linux",
+  "label": "SSH logins",
+  "q": "os:linux action:ssh_login_success",
+  "needs": "journald"
+ },
+ {
+  "group": "Linux",
+  "label": "su",
+  "q": "os:linux action:(su_attempt or su_success)",
+  "needs": "journald"
+ },
+ {
+  "group": "Linux",
+  "label": "PAM authentication failures",
+  "q": "os:linux action:pam_auth_failure",
+  "needs": "journald"
+ },
+ {
+  "group": "Linux",
+  "label": "All Linux logon events",
+  "q": "os:linux type:logon"
+ },
+ {
+  "group": "Linux",
+  "label": "User or group changes",
+  "q": "os:linux (action:(useradd_exec or userdel_exec or usermod_exec or groupadd_exec) or type:process proc:(useradd or userdel or usermod))"
+ },
+ {
+  "group": "Linux",
+  "label": "Processes run as root",
+  "q": "os:linux type:process user=root"
+ },
+ {
+  "group": "Linux",
+  "label": "All file monitoring events",
+  "q": "os:linux type:file"
+ },
+ {
+  "group": "Linux",
+  "label": "/etc/passwd changed",
+  "q": "os:linux type:file file:/etc/passwd"
+ },
+ {
+  "group": "Linux",
+  "label": "/etc/shadow changed",
+  "q": "os:linux type:file file:/etc/shadow"
+ },
+ {
+  "group": "Linux",
+  "label": "/etc/sudoers changed",
+  "q": "os:linux type:file file:/etc/sudoers"
+ },
+ {
+  "group": "Linux",
+  "label": "SSH configuration changed",
+  "q": "os:linux type:file file:/etc/ssh/"
+ },
+ {
+  "group": "Linux",
+  "label": "Cron files changed",
+  "q": "os:linux type:file file:cron"
+ },
+ {
+  "group": "Linux",
+  "label": "Files dropped in /tmp",
+  "q": "os:linux type:file file:/tmp/"
+ },
+ {
+  "group": "Linux",
+  "label": "Files dropped in /dev/shm",
+  "q": "os:linux type:file file:/dev/shm/"
+ },
+ {
+  "group": "Linux",
+  "label": "ld.so.preload changed",
+  "q": "os:linux type:file file:ld.so.preload"
+ },
+ {
+  "group": "Linux",
+  "label": "systemd unit files changed",
+  "q": "os:linux type:file file:/systemd/"
+ },
+ {
+  "group": "Linux",
+  "label": "Binaries replaced in /usr/bin",
+  "q": "os:linux type:file file:/usr/bin/"
+ },
+ {
+  "group": "Linux",
+  "label": "Shell profile changed",
+  "q": "os:linux type:file file:(.bashrc or .profile or .zshrc)"
+ },
+ {
+  "group": "Linux",
+  "label": "High severity file events",
+  "q": "os:linux type:file sev>=high"
+ },
+ {
+  "group": "Linux",
+  "label": "auditd events",
+  "q": "os:linux source:auditd",
+  "needs": "auditd"
+ },
+ {
+  "group": "Linux",
+  "label": "journald events",
+  "q": "os:linux source:journald",
+  "needs": "journald"
+ },
+ {
+  "group": "Linux",
+  "label": "Out-of-memory kills",
+  "q": "os:linux action:kernel_oom",
+  "needs": "journald"
+ },
+ {
+  "group": "Linux",
+  "label": "Segfaults",
+  "q": "os:linux action:kernel_segfault",
+  "needs": "journald"
+ },
+ {
+  "group": "Linux",
+  "label": "Cron job runs",
+  "q": "os:linux action:cron_exec",
+  "needs": "journald"
+ },
+ {
+  "group": "Linux",
+  "label": "systemd unit started, stopped or failed",
+  "q": "os:linux action:systemd_unit_change",
+  "needs": "journald"
+ },
+ {
+  "group": "Linux",
+  "label": "Agent health on Linux",
+  "q": "os:linux type:health"
+ },
+ {
+  "group": "macOS",
+  "label": "LaunchDaemon installed",
+  "q": "os:macos type:file file:/Library/LaunchDaemons/"
+ },
+ {
+  "group": "macOS",
+  "label": "LaunchAgent installed",
+  "q": "os:macos type:file file:/LaunchAgents/"
+ },
+ {
+  "group": "macOS",
+  "label": "Login item added",
+  "q": "os:macos (file:backgrounditems or file:loginitems or cmd:\"login item\")"
+ },
+ {
+  "group": "macOS",
+  "label": "Gatekeeper disabled",
+  "q": "os:macos type:process ((proc:spctl cmd:disable) or (proc:xattr cmd:quarantine))"
+ },
+ {
+  "group": "macOS",
+  "label": "SIP changed (csrutil)",
+  "q": "os:macos type:process proc:csrutil"
+ },
+ {
+  "group": "macOS",
+  "label": "TCC database access",
+  "q": "os:macos type:file file:TCC.db"
+ },
+ {
+  "group": "macOS",
+  "label": "Keychain dump",
+  "q": "os:macos type:process proc:security cmd:(dump-keychain or find-generic-password or find-internet-password)"
+ },
+ {
+  "group": "macOS",
+  "label": "osascript",
+  "q": "os:macos type:process proc:osascript"
+ },
+ {
+  "group": "macOS",
+  "label": "curl",
+  "q": "os:macos type:process proc:curl"
+ },
+ {
+  "group": "macOS",
+  "label": "Python or Perl one-liner",
+  "q": "os:macos type:process proc:(python or perl) cmd:(\" -c \" or \" -e \")"
+ },
+ {
+  "group": "macOS",
+  "label": "High severity on macOS",
+  "q": "os:macos sev>=high"
+ },
+ {
+  "group": "Process",
+  "label": "All processes",
+  "q": "type:process"
+ },
+ {
+  "group": "Process",
+  "label": "PowerShell",
+  "q": "type:process proc:(powershell or pwsh)"
+ },
+ {
+  "group": "Process",
+  "label": "PowerShell encoded commands",
+  "q": "type:process proc:(powershell or pwsh) cmd:-enc"
+ },
+ {
+  "group": "Process",
+  "label": "PowerShell download cradles",
+  "q": "type:process proc:(powershell or pwsh) cmd:(downloadstring or downloadfile or invoke-webrequest)"
+ },
+ {
+  "group": "Process",
+  "label": "cmd.exe",
+  "q": "type:process proc=cmd.exe"
+ },
+ {
+  "group": "Process",
+  "label": "rundll32",
+  "q": "type:process proc:rundll32"
+ },
+ {
+  "group": "Process",
+  "label": "mshta",
+  "q": "type:process proc:mshta"
+ },
+ {
+  "group": "Process",
+  "label": "WScript or CScript",
+  "q": "type:process proc:(wscript or cscript)"
+ },
+ {
+  "group": "Process",
+  "label": "regsvr32",
+  "q": "type:process proc:regsvr32"
+ },
+ {
+  "group": "Process",
+  "label": "certutil download or decode",
+  "q": "type:process proc:certutil cmd:(urlcache or -decode or -encode)"
+ },
+ {
+  "group": "Process",
+  "label": "bitsadmin",
+  "q": "type:process proc:bitsadmin"
+ },
+ {
+  "group": "Process",
+  "label": "Scheduled task creation",
+  "q": "type:process proc:schtasks cmd:/create"
+ },
+ {
+  "group": "Process",
+  "label": "Service creation (sc create)",
+  "q": "type:process proc:sc.exe cmd:create"
+ },
+ {
+  "group": "Process",
+  "label": "PsExec",
+  "q": "type:process proc:(psexec or psexesvc)"
+ },
+ {
+  "group": "Process",
+  "label": "High severity processes",
+  "q": "type:process sev>=high"
+ },
+ {
+  "group": "Process",
+  "label": "net user and net group",
+  "q": "type:process proc:(net.exe or net1.exe) cmd:(user or group)"
+ },
+ {
+  "group": "Process",
+  "label": "whoami",
+  "q": "type:process proc:whoami"
+ },
+ {
+  "group": "Process",
+  "label": "wmic",
+  "q": "type:process proc:wmic"
+ },
+ {
+  "group": "Process",
+  "label": "bcdedit recovery changes",
+  "q": "type:process proc:bcdedit cmd:(recoveryenabled or bootstatuspolicy)"
+ },
+ {
+  "group": "Credential",
+  "label": "All logon events",
+  "q": "type:logon"
+ },
+ {
+  "group": "Credential",
+  "label": "Failed logons (4625)",
+  "q": "type:logon event_id:4625",
+  "needs": "Windows auditing"
+ },
+ {
+  "group": "Credential",
+  "label": "Successful logons (4624)",
+  "q": "type:logon event_id:4624",
+  "needs": "Windows auditing"
+ },
+ {
+  "group": "Credential",
+  "label": "Explicit credentials (4648)",
+  "q": "type:logon event_id:4648",
+  "needs": "Windows auditing"
+ },
+ {
+  "group": "Credential",
+  "label": "LSASS access",
+  "q": "cmd:lsass or (type:sysmon event_id:10 lsass)"
+ },
+ {
+  "group": "Credential",
+  "label": "Mimikatz",
+  "q": "proc:mimikatz or cmd:(sekurlsa or \"privilege::debug\")"
+ },
+ {
+  "group": "Credential",
+  "label": "procdump",
+  "q": "type:process proc:procdump"
+ },
+ {
+  "group": "Credential",
+  "label": "SAM hive access",
+  "q": "type:registry reg:\"\\SAM\\\""
+ },
+ {
+  "group": "Credential",
+  "label": "Passwords in command lines",
+  "q": "type:process cmd:(password or passwd= or pwd=)"
+ },
+ {
+  "group": "Credential",
+  "label": "High severity logons",
+  "q": "type:logon sev>=high"
+ },
+ {
+  "group": "Network",
+  "label": "All connections",
+  "q": "type:network"
+ },
+ {
+  "group": "Network",
+  "label": "RDP out (3389)",
+  "q": "type:network dstport:3389"
+ },
+ {
+  "group": "Network",
+  "label": "SMB out (445)",
+  "q": "type:network dstport:445"
+ },
+ {
+  "group": "Network",
+  "label": "SSH out (22)",
+  "q": "type:network dstport:22"
+ },
+ {
+  "group": "Network",
+  "label": "FTP out (21)",
+  "q": "type:network dstport:21"
+ },
+ {
+  "group": "Network",
+  "label": "HTTP (80)",
+  "q": "type:network dstport:80"
+ },
+ {
+  "group": "Network",
+  "label": "HTTPS (443)",
+  "q": "type:network dstport:443"
+ },
+ {
+  "group": "Network",
+  "label": "DNS over the network (53)",
+  "q": "type:network dstport:53"
+ },
+ {
+  "group": "Network",
+  "label": "SMTP submission (587)",
+  "q": "type:network dstport:587"
+ },
+ {
+  "group": "Network",
+  "label": "WinRM (5985, 5986)",
+  "q": "type:network dstport:(5985 or 5986)"
+ },
+ {
+  "group": "Network",
+  "label": "LDAP (389, 636)",
+  "q": "type:network dstport:(389 or 636)"
+ },
+ {
+  "group": "Network",
+  "label": "Kerberos (88)",
+  "q": "type:network dstport:88"
+ },
+ {
+  "group": "Network",
+  "label": "SQL Server (1433)",
+  "q": "type:network dstport:1433"
+ },
+ {
+  "group": "Network",
+  "label": "TCP connections",
+  "q": "type:network proto:tcp"
+ },
+ {
+  "group": "Network",
+  "label": "High severity network events",
+  "q": "type:network sev>=high"
+ },
+ {
+  "group": "DNS",
+  "label": "All DNS queries",
+  "q": "type:dns"
+ },
+ {
+  "group": "DNS",
+  "label": "RustDesk",
+  "q": "dns:rustdesk"
+ },
+ {
+  "group": "DNS",
+  "label": "WPAD discovery",
+  "q": "dns:wpad"
+ },
+ {
+  "group": "DNS",
+  "label": "Urban VPN",
+  "q": "dns:urban-vpn"
+ },
+ {
+  "group": "DNS",
+  "label": "ngrok tunnels",
+  "q": "dns:ngrok"
+ },
+ {
+  "group": "DNS",
+  "label": "Pastebin",
+  "q": "dns:pastebin"
+ },
+ {
+  "group": "DNS",
+  "label": "Tor (.onion)",
+  "q": "dns:*.onion"
+ },
+ {
+  "group": "DNS",
+  "label": "AnyDesk",
+  "q": "dns:anydesk"
+ },
+ {
+  "group": "DNS",
+  "label": "TeamViewer",
+  "q": "dns:teamviewer"
+ },
+ {
+  "group": "DNS",
+  "label": "High severity DNS",
+  "q": "type:dns sev>=high"
+ },
+ {
+  "group": "File",
+  "label": "All file events",
+  "q": "type:file"
+ },
+ {
+  "group": "File",
+  "label": "Windows temp folders",
+  "q": "type:file file:\\temp\\"
+ },
+ {
+  "group": "File",
+  "label": "AppData",
+  "q": "type:file file:\\appdata\\"
+ },
+ {
+  "group": "File",
+  "label": "Desktop",
+  "q": "type:file file:\\desktop\\"
+ },
+ {
+  "group": "File",
+  "label": "Executables written (.exe)",
+  "q": "type:file file:*.exe"
+ },
+ {
+  "group": "File",
+  "label": "PowerShell scripts written (.ps1)",
+  "q": "type:file file:*.ps1"
+ },
+ {
+  "group": "File",
+  "label": "Startup folder",
+  "q": "type:file file:\"\\start menu\\programs\\startup\\\""
+ },
+ {
+  "group": "File",
+  "label": "System32",
+  "q": "type:file file:\\system32\\"
+ },
+ {
+  "group": "File",
+  "label": "Ransomware extensions",
+  "q": "type:file file:(*.locked or *.encrypted or *.crypt)"
+ },
+ {
+  "group": "File",
+  "label": "High severity file events",
+  "q": "type:file sev>=high"
+ },
+ {
+  "group": "Registry",
+  "label": "All registry events",
+  "q": "type:registry"
+ },
+ {
+  "group": "Registry",
+  "label": "Run keys",
+  "q": "type:registry reg:CurrentVersion\\Run"
+ },
+ {
+  "group": "Registry",
+  "label": "RunOnce keys",
+  "q": "type:registry reg:RunOnce"
+ },
+ {
+  "group": "Registry",
+  "label": "Policies",
+  "q": "type:registry reg:\\Policies\\"
+ },
+ {
+  "group": "Registry",
+  "label": "Services",
+  "q": "type:registry reg:CurrentControlSet\\Services\\"
+ },
+ {
+  "group": "Registry",
+  "label": "LSA",
+  "q": "type:registry reg:Control\\Lsa"
+ },
+ {
+  "group": "Registry",
+  "label": "Winlogon",
+  "q": "type:registry reg:Winlogon"
+ },
+ {
+  "group": "Registry",
+  "label": "AppInit_DLLs",
+  "q": "type:registry reg:AppInit_DLLs"
+ },
+ {
+  "group": "Registry",
+  "label": "Internet zone settings",
+  "q": "type:registry reg:ZoneMap"
+ },
+ {
+  "group": "Registry",
+  "label": "High severity registry events",
+  "q": "type:registry sev>=high"
+ },
+ {
+  "group": "User",
+  "label": "SYSTEM account",
+  "q": "user:system"
+ },
+ {
+  "group": "User",
+  "label": "Administrator",
+  "q": "user:administrator"
+ },
+ {
+  "group": "User",
+  "label": "Guest",
+  "q": "user:guest"
+ },
+ {
+  "group": "User",
+  "label": "NETWORK SERVICE",
+  "q": "user:\"network service\""
+ },
+ {
+  "group": "User",
+  "label": "Service account logons",
+  "q": "type:logon user:svc"
+ },
+ {
+  "group": "User",
+  "label": "Account created (4720)",
+  "q": "event_id:4720",
+  "needs": "Windows auditing"
+ },
+ {
+  "group": "User",
+  "label": "High severity events",
+  "q": "sev>=high"
+ },
+ {
+  "group": "Sysmon",
+  "label": "All Sysmon events",
+  "q": "type:sysmon",
+  "needs": "Sysmon"
+ },
+ {
+  "group": "Sysmon",
+  "label": "Process creation (1)",
+  "q": "type:sysmon event_id:1",
+  "needs": "Sysmon"
+ },
+ {
+  "group": "Sysmon",
+  "label": "Network connection (3)",
+  "q": "type:sysmon event_id:3",
+  "needs": "Sysmon"
+ },
+ {
+  "group": "Sysmon",
+  "label": "File created (11)",
+  "q": "type:sysmon event_id:11",
+  "needs": "Sysmon"
+ },
+ {
+  "group": "Sysmon",
+  "label": "Registry (12, 13, 14)",
+  "q": "type:sysmon event_id:(12 or 13 or 14)",
+  "needs": "Sysmon"
+ },
+ {
+  "group": "Sysmon",
+  "label": "Image loaded (7)",
+  "q": "type:sysmon event_id:7",
+  "needs": "Sysmon"
+ },
+ {
+  "group": "Sysmon",
+  "label": "Process access (10)",
+  "q": "type:sysmon event_id:10",
+  "needs": "Sysmon"
+ },
+ {
+  "group": "Sysmon",
+  "label": "DNS query (22)",
+  "q": "type:sysmon event_id:22",
+  "needs": "Sysmon"
+ },
+ {
+  "group": "Sysmon",
+  "label": "Critical events",
+  "q": "sev>=critical"
+ },
+ {
+  "group": "Sysmon",
+  "label": "Security channel",
+  "q": "channel:Security"
+ },
+ {
+  "group": "Sysmon",
+  "label": "System channel",
+  "q": "channel:System"
+ },
+ {
+  "group": "Sysmon",
+  "label": "PowerShell channel",
+  "q": "channel:PowerShell"
+ },
+ {
+  "group": "Sysmon",
+  "label": "Event log cleared (1102)",
+  "q": "event_id:1102"
+ },
+ {
+  "group": "Sysmon",
+  "label": "AppLocker block (8004)",
+  "q": "event_id:8004"
+ },
+ {
+  "group": "Sysmon",
+  "label": "Unclassified Windows events",
+  "q": "type:raw"
+ },
+ {
+  "group": "Code",
+  "label": "All code-platform events",
+  "q": "type:devops.*"
+ },
+ {
+  "group": "Code",
+  "label": "Secrets pushed",
+  "q": "type:devops.secret_push"
+ },
+ {
+  "group": "Code",
+  "label": "CI/CD changed",
+  "q": "type:devops.cicd_modified"
+ },
+ {
+  "group": "Code",
+  "label": "Sensitive files changed",
+  "q": "type:devops.sensitive_file"
+ },
+ {
+  "group": "Code",
+  "label": "Repositories made public",
+  "q": "type:devops.repo_publicized"
+ },
+ {
+  "group": "Code",
+  "label": "Repositories deleted",
+  "q": "type:devops.repo_deleted"
+ },
+ {
+  "group": "Code",
+  "label": "Members added",
+  "q": "type:(devops.member_added or devops.org_member_added)"
+ },
+ {
+  "group": "Code",
+  "label": "Dependency changes",
+  "q": "type:devops.dependency_change"
+ },
+ {
+  "group": "Code",
+  "label": "Mass deletion",
+  "q": "type:devops.mass_deletion"
+ },
+ {
+  "group": "Code",
+  "label": "Pipeline runs",
+  "q": "type:(devops.pipeline_run or devops.workflow_run)"
+ },
+ {
+  "group": "Code",
+  "label": "Platform audit log",
+  "q": "type:devops.audit"
+ },
+ {
+  "group": "Code",
+  "label": "High severity code events",
+  "q": "type:devops.* sev>=high"
+ },
+ {
+  "group": "Cloud",
+  "label": "All cloud events",
+  "q": "type:cloud.*"
+ },
+ {
+  "group": "Cloud",
+  "label": "AWS CloudTrail",
+  "q": "type:cloud.cloudtrail"
+ },
+ {
+  "group": "Cloud",
+  "label": "AWS GuardDuty",
+  "q": "type:cloud.guardduty"
+ },
+ {
+  "group": "Cloud",
+  "label": "AWS Security Hub",
+  "q": "type:cloud.securityhub"
+ },
+ {
+  "group": "Cloud",
+  "label": "Azure activity log",
+  "q": "type:cloud.azure_activity"
+ },
+ {
+  "group": "Cloud",
+  "label": "Azure Defender",
+  "q": "type:cloud.azure_defender"
+ },
+ {
+  "group": "Cloud",
+  "label": "Entra ID sign-ins",
+  "q": "type:cloud.entra_signin"
+ },
+ {
+  "group": "Cloud",
+  "label": "Entra ID audit",
+  "q": "type:cloud.entra_audit"
+ },
+ {
+  "group": "Cloud",
+  "label": "GCP audit log",
+  "q": "type:cloud.gcp_audit"
+ },
+ {
+  "group": "Cloud",
+  "label": "GKE audit log",
+  "q": "type:cloud.gcp_gke_audit"
+ },
+ {
+  "group": "Cloud",
+  "label": "GCP policy denials",
+  "q": "type:cloud.gcp_policy_denied"
+ },
+ {
+  "group": "Cloud",
+  "label": "GCP Security Command Center",
+  "q": "type:cloud.gcp_scc"
+ },
+ {
+  "group": "Cloud",
+  "label": "Cloud posture findings",
+  "q": "type:cloud.cspm"
+ },
+ {
+  "group": "Cloud",
+  "label": "Cloud anomalies and correlations",
+  "q": "type:(cloud.aws_anomaly or cloud.azure_anomaly or cloud.gcp_anomaly or cloud.azure_correlation or cloud.gcp_correlation)"
+ },
+ {
+  "group": "Cloud",
+  "label": "High severity cloud events",
+  "q": "type:cloud.* sev>=high"
+ },
+ {
+  "group": "Application",
+  "label": "Application security events",
+  "q": "type:app.security"
+ },
+ {
+  "group": "Application",
+  "label": "Application alerts",
+  "q": "type:app.alert"
+ },
+ {
+  "group": "Application",
+  "label": "Application logs",
+  "q": "type:applog"
+ },
+ {
+  "group": "Application",
+  "label": "All application events",
+  "q": "type:app.*"
+ }
+]

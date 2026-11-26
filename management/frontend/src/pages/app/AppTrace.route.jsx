@@ -32,7 +32,7 @@ export default function AppTrace() {
         <StateBlock loading={loading && !t} error={error} empty={!loading && !t} emptyText="This trace is gone. Sampled traces are kept for 7 days.">
           {t && <div className="ow-card" style={{ padding: 16 }}><AppTraceWaterfall trace={t}/></div>}
         </StateBlock>
-        {t?.status === 'error' && <div className="t3" style={{ fontSize: 12, marginTop: 8 }}><StatePill state="crit">Error</StatePill> Failed spans are marked in the waterfall.</div>}
+        {t?.status === 'error' && <div className="t3" style={{ fontSize: 13.5, marginTop: 8 }}><StatePill state="crit">Error</StatePill> Failed spans are marked in the waterfall.</div>}
       </div>
     </div>
   )

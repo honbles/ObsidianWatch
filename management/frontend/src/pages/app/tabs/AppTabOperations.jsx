@@ -25,7 +25,7 @@ export default function AppTabOperations({ service, range }) {
                   <td className="text-right px-3">{appRel(o.last_run)}</td></tr>))}</tbody>
             </table>)}
       </div>
-      <div className="text-[11px] text-siem-muted">Only job and queue names are sent.</div>
+      <div className="text-xs text-siem-muted">Only job and queue names are sent.</div>
     </div>
   )
 }

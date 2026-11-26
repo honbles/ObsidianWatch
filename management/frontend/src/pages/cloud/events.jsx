@@ -61,7 +61,7 @@ export function CloudEventPanel({ event, onClose }) {
         {/* Header */}
         <div className="flex-shrink-0 flex items-center justify-between px-5 py-4 border-b border-siem-border sticky top-0 bg-siem-surface z-10">
           <div className="flex items-center gap-2">
-            <span className={`text-[10px] border rounded px-1.5 py-0.5 font-mono ${SEV_COLORS_CLS[ev.severity]||'text-siem-muted'} border-current/30`}>
+            <span className={`text-mini border rounded px-1.5 py-0.5 font-mono ${SEV_COLORS_CLS[ev.severity]||'text-siem-muted'} border-current/30`}>
               {SEV_LABELS[ev.severity]||'Event'}
             </span>
             <span className="text-xs font-mono text-siem-accent">{ev.event_type}</span>
@@ -115,25 +115,25 @@ export function CloudEventPanel({ event, onClose }) {
                   <div className="space-y-4">
                     {aiText.summary && (
                       <div className="bg-siem-bg border border-siem-border rounded-xl p-4">
-                        <div className="text-[10px] uppercase tracking-wider text-siem-muted mb-2">Summary</div>
+                        <div className="text-2xs uppercase tracking-wider text-siem-muted mb-2">Summary</div>
                         <p className="text-sm text-siem-text leading-relaxed">{aiText.summary}</p>
                       </div>
                     )}
                     {aiText.what_happened && (
                       <div className="bg-siem-bg border border-siem-border rounded-xl p-4">
-                        <div className="text-[10px] uppercase tracking-wider text-siem-muted mb-2">What Happened</div>
+                        <div className="text-2xs uppercase tracking-wider text-siem-muted mb-2">What Happened</div>
                         <p className="text-xs text-siem-text/80 leading-relaxed">{aiText.what_happened}</p>
                       </div>
                     )}
                     {aiText.threat_assessment && (
                       <div className="bg-siem-bg border border-siem-border rounded-xl p-4">
-                        <div className="text-[10px] uppercase tracking-wider text-siem-muted mb-2">Threat Assessment</div>
+                        <div className="text-2xs uppercase tracking-wider text-siem-muted mb-2">Threat Assessment</div>
                         <p className="text-xs text-siem-text/80 leading-relaxed">{aiText.threat_assessment}</p>
                       </div>
                     )}
                     {aiText.recommended_actions?.length > 0 && (
                       <div className="bg-siem-bg border border-siem-border rounded-xl p-4">
-                        <div className="text-[10px] uppercase tracking-wider text-siem-muted mb-2">Recommended Actions</div>
+                        <div className="text-2xs uppercase tracking-wider text-siem-muted mb-2">Recommended Actions</div>
                         <div className="space-y-1">
                           {aiText.recommended_actions.map((a, i) => (
                             <div key={i} className="flex gap-2 text-xs text-siem-text/80">
@@ -145,7 +145,7 @@ export function CloudEventPanel({ event, onClose }) {
                     )}
                     {aiText.false_positive_indicators && (
                       <div className="bg-siem-bg border border-siem-border rounded-xl p-4">
-                        <div className="text-[10px] uppercase tracking-wider text-siem-muted mb-2">False Positive Indicators</div>
+                        <div className="text-2xs uppercase tracking-wider text-siem-muted mb-2">False Positive Indicators</div>
                         <p className="text-xs text-siem-text/70 leading-relaxed">{aiText.false_positive_indicators}</p>
                       </div>
                     )}
@@ -181,7 +181,7 @@ export function CloudEventPanel({ event, onClose }) {
                     <div className="text-xs uppercase tracking-wider text-siem-muted mb-2">Related Events (±5 min)</div>
                     <div className="space-y-1">
                       {related.slice(0,10).map((r, i) => (
-                        <div key={i} className="flex items-center gap-2 text-[11px] bg-siem-bg border border-siem-border rounded-lg px-3 py-1.5">
+                        <div key={i} className="flex items-center gap-2 text-xs bg-siem-bg border border-siem-border rounded-lg px-3 py-1.5">
                           <span className="text-siem-muted font-mono">{format(new Date(r.time), 'HH:mm:ss')}</span>
                           <span className="text-siem-accent font-mono">{r.event_type}</span>
                           <span className="text-siem-muted truncate flex-1">{r.source}</span>
@@ -253,21 +253,21 @@ export function CloudEventsAlerts({ tab, events, alerts, loadingE, loadingA, sea
               className="w-full px-5 py-3 hover:bg-siem-surface/60 text-left transition-colors group">
               <div className="flex items-center justify-between gap-3">
                 <div className="flex items-center gap-2 min-w-0">
-                  <span className={`text-[10px] font-mono border rounded px-1.5 py-0.5 shrink-0 ${SEV_COLORS_CLS[ev.severity]||'text-siem-muted'} border-current/30`}>
+                  <span className={`text-mini font-mono border rounded px-1.5 py-0.5 shrink-0 ${SEV_COLORS_CLS[ev.severity]||'text-siem-muted'} border-current/30`}>
                     {SEV_LABELS[ev.severity]||'-'}
                   </span>
-                  <span className="text-[10px] font-mono text-siem-accent shrink-0">{ev.event_type}</span>
+                  <span className="text-mini font-mono text-siem-accent shrink-0">{ev.event_type}</span>
                   <span className="text-xs text-siem-text truncate">{ev.source || ev.host}</span>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
-                  <span className="text-[10px] text-siem-muted opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1">
+                  <span className="text-mini text-siem-muted opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1">
                     <Sparkles size={9}/> AI
                   </span>
-                  <span className="text-[10px] text-siem-muted">{ev.time ? formatDistanceToNow(new Date(ev.time), { addSuffix: true }) : ''}</span>
+                  <span className="text-mini text-siem-muted">{ev.time ? formatDistanceToNow(new Date(ev.time), { addSuffix: true }) : ''}</span>
                   <ChevronRight size={12} className="text-siem-muted/40 group-hover:text-siem-accent transition-colors"/>
                 </div>
               </div>
-              {ev.user_name && <div className="text-[10px] text-siem-muted mt-0.5 ml-16">User: {ev.user_name}</div>}
+              {ev.user_name && <div className="text-mini text-siem-muted mt-0.5 ml-16">User: {ev.user_name}</div>}
             </button>
           ))}
         </>}
@@ -291,22 +291,22 @@ export function CloudEventsAlerts({ tab, events, alerts, loadingE, loadingA, sea
                 className="w-full px-5 py-3 hover:bg-siem-surface/60 text-left transition-colors group">
                 <div className="flex items-center justify-between gap-3">
                   <div className="flex items-center gap-2 min-w-0">
-                    <span className={`text-[10px] font-mono shrink-0 ${sevColor}`}>
+                    <span className={`text-mini font-mono shrink-0 ${sevColor}`}>
                       {SEV_LABELS[a.severity]||'-'}
                     </span>
                     <span className="text-xs font-medium text-siem-text truncate">{a.title}</span>
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
-                    <span className="text-[10px] text-siem-muted opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1">
+                    <span className="text-mini text-siem-muted opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1">
                       <Sparkles size={9}/> AI
                     </span>
-                    <span className={`text-[10px] ${statusColor}`}>{a.status}</span>
-                    <span className="text-[10px] text-siem-muted">{a.created_at ? formatDistanceToNow(new Date(a.created_at), { addSuffix: true }) : ''}</span>
+                    <span className={`text-mini ${statusColor}`}>{a.status}</span>
+                    <span className="text-mini text-siem-muted">{a.created_at ? formatDistanceToNow(new Date(a.created_at), { addSuffix: true }) : ''}</span>
                     <ChevronRight size={12} className="text-siem-muted/40 group-hover:text-siem-accent transition-colors"/>
                   </div>
                 </div>
                 {a.description && (
-                  <div className="text-[10px] text-siem-muted mt-1 line-clamp-1 ml-8">{a.description}</div>
+                  <div className="text-mini text-siem-muted mt-1 line-clamp-1 ml-8">{a.description}</div>
                 )}
               </button>
             )

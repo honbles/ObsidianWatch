@@ -95,7 +95,7 @@ function FindingsTab({ findings, multiProvider }) {
               <input value={q} onChange={e => setQ(e.target.value)} placeholder="Filter · severity:critical,high or a resource name" aria-label="Filter findings"/>
               {q && <button onClick={() => setQ('')} aria-label="Clear filter" style={{ background: 'none', border: 0, color: 'var(--t3)', cursor: 'pointer' }}><X size={12}/></button>}
             </label>
-            <span className="t2" style={{ fontSize: 12 }}>{rows.length.toLocaleString()} of {findings.length.toLocaleString()}</span>
+            <span className="t2" style={{ fontSize: 13.5 }}>{rows.length.toLocaleString()} of {findings.length.toLocaleString()}</span>
           </div>
           <DenseTable cols={cols} rows={rows.slice(0, 500)} rowKey={f => `${f.connector}|${f.id}|${f.resource}`} rowState={f => f.status === 'suppressed' ? 'none' : sevState(f.sevN)}
             onRow={f => navigate(cloudFindingPath(f))}
@@ -122,7 +122,7 @@ function AccountsTab({ accounts, onOpen }) {
   ]
   return (
     <div className="ow-card" style={{ overflow: 'hidden' }}>
-      <div className="ow-card-bar"><span style={{ fontWeight: 600 }}>Accounts</span><span className="t3" style={{ fontSize: 12 }}>Open the account to run scans, check compliance and see its events</span></div>
+      <div className="ow-card-bar"><span style={{ fontWeight: 600 }}>Accounts</span><span className="t3" style={{ fontSize: 13.5 }}>Open the account to run scans, check compliance and see its events</span></div>
       <DenseTable cols={cols} rows={[...accounts].sort((a, b) => b.worst - a.worst || b.risk - a.risk)} rowKey={a => a.id} rowState={st} onRow={onOpen}
         empty="No cloud accounts connected yet."/>
     </div>
@@ -176,7 +176,7 @@ export default function PostureOverview({ connectorsView, onOpenAccount }) {
             <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginTop: 4 }}>
               {bars.map(([l, v, c]) => (
                 <div key={l} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <div className="t2" style={{ width: 56, fontSize: 12 }}>{l}</div>
+                  <div className="t2" style={{ width: 56, fontSize: 13.5 }}>{l}</div>
                   <div style={{ flex: 1 }}><Meter pct={(v / maxBar) * 100} state={c} height={8}/></div>
                   <span className="mono" style={{ width: 34, textAlign: 'right' }}>{v}</span>
                 </div>
