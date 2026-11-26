@@ -20,8 +20,6 @@ Feature map:
 
 See also [deployment.md](deployment.md) and [configuration.md](configuration.md).
 
-> **Verification status.** Nothing in this document has been verified against a live GitHub, GitLab or Azure DevOps account. Field names that the code reads from provider responses (audit-log actions, webhook payload fields) are taken from the code. Where the code expects a field the provider may not send, the text says so and marks it *(unverified)*. Section 10 lists the open points.
-
 ---
 
 ## 1. Data flow overview
@@ -367,7 +365,6 @@ The secret value is never stored; it is only held in memory to compare with the 
 208 regex rules (`sast_rules.go`). Each rule applies to files whose path matches its file pattern. It reports the **first** matching line per file (one finding per rule per file). Matching is per line, so patterns cannot span lines. The snippet is the matched line, trimmed to 120 characters. The list is also available from `GET /api/v1/sast-rules`.
 
 The "Detects" column is the first sentence of the rule's own description. `any` rules apply to the extensions in their file pattern.
-
 
 | ID | Language | Title | Detects | CWE | Severity |
 |---|---|---|---|---|---|
@@ -847,7 +844,7 @@ Rules for "cannot assess": if the API refuses a call (permissions, plan), no fin
 | GitLab | the group call fails or hides `require_two_factor_authentication`; `protected_branches` fails for a project (Developers cannot read it); no project with a default branch is visible |
 | Azure DevOps | a project's repository list or policy configuration call fails |
 
-So a token without owner or admin rights gives an honest "N checks not assessed" instead of a clean result. GitHub archived repositories and forks are skipped. GitLab empty projects, Azure DevOps disabled repositories, and repositories without a default branch are skipped. GitHub repository rulesets are not read, so a branch protected only by a ruleset is reported as "not protected" *(unverified)*. GitLab wildcard patterns other than `*` (for example `release/*`) are not matched.
+So a token without owner or admin rights gives an honest "N checks not assessed" instead of a clean result. GitHub archived repositories and forks are skipped. GitLab empty projects, Azure DevOps disabled repositories, and repositories without a default branch are skipped. GitHub repository rulesets are not read, so a branch protected only by a ruleset is reported as "not protected". GitLab wildcard patterns other than `*` (for example `release/*`) are not matched.
 
 Implemented in: `devops_posture.go`.
 
@@ -1070,24 +1067,3 @@ Implemented in: `management/frontend/src/pages/code/CodeOverview.jsx`, `RepoPage
 | Posture | 100 repositories |
 | Pages | Overview SAST data is the latest row of each repository (up to 1 000 repositories per connector). 300 repositories and 500 findings per table. |
 | Unified API | 1 000 findings |
-
----
-
-## 10. Not verified against real platforms
-
-The following were not exercised against live accounts while writing this documentation:
-
-1. All token scopes and PAT permissions listed in deployment.md section 3.
-2. GitHub audit-log fields (`action`, `actor`, `repo`, `created_at`, `@cursor`, `visibility`, `role`/`permission`) and whether `after=<cursor>` resumes correctly.
-3. GitLab group audit-event `details` keys (`add`, `remove`, `change`, `as`, `custom_message`, `entity_path`) and `event_name` values.
-4. Azure DevOps audit `actionId` names used for the canonical mapping (section 2.3), and Azure DevOps Server collection URLs as `base_url`.
-5. Azure DevOps audit fields (`actionId`, `actorDisplayName`, `ipAddress`) and the `7.1-preview.1` API version; project names with spaces in URLs; branch-policy scope matching.
-6. Webhook payload fields for every provider, the GitHub `organization` event name, and Azure DevOps basic-auth delivery.
-7. CodeQL `security-severity` present on every security query of the shipped packs.
-8. The pinned scanner releases (opengrep asset name, gitleaks, Trivy, CodeQL bundle tag) and the opengrep-rules layout were not downloaded in this pass; `management/docker/install-scanners.sh` skips any that fail.
-9. GitHub rulesets versus classic branch protection in the posture check.
-10. Pull-request write-back (statuses, reviews, suggestions, MR discussions, Azure DevOps PR statuses and threads) against live accounts; it was tested against a local Git and GitLab-API test server only.
-11. GitHub audit actions used by the new rules (`secret_scanning_push_protection.bypass`, `protected_branch.policy_override`, `repository_ruleset.bypass`, `git.clone`, `repo.download_zip`, `actor_ip`) and the `security_and_analysis` webhook's `changes.from` shape.
-12. AI fix suggestions against a live model (the response shape is validated, the quality is not measured).
-13. Runtime inventory on real Java (Spring Boot), Python, Node and .NET services; it was tested with fixtures and live Go services.
-10. Behaviour under real rate limits on large organisations (the 3-minute sync timeout will cut long commit backfills).

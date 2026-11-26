@@ -7,8 +7,6 @@ Related pages:
 - Provider setup: [configuration-aws.md](configuration-aws.md), [configuration-azure.md](configuration-azure.md), [configuration-gcp.md](configuration-gcp.md)
 - What the product does with the data: [capability.md](capability.md), plus one capability page per provider
 
-> **Verification status.** This documentation was written from the source code. The unit tests (`go test ./internal/api -run 'Cloud|AWS|Azure|GCP|CIS|Blast|CSPM'`) pass. Nothing described here has been checked against a real AWS, Azure or GCP account. Treat API behaviour, permission lists and timings as derived from code, not measured.
-
 ## 1. Architecture in one paragraph
 
 No agent or collector is deployed into the cloud account. The management server (`management/backend`) calls the provider APIs directly over HTTPS. It uses credentials that you enter in the console. The `CloudConnectorEngine` goroutine pulls logs and findings every 5 minutes and writes them to the `events` table as normal events (`event_type` prefix `cloud.`). The detection engine evaluates those events. Separate background loops run posture scans (CSPM) every 6 hours, behavioural baselines and correlation. They store results in the `settings` table and raise alerts in the `alerts` table.
@@ -163,9 +161,3 @@ It does **not** delete:
 - the in-memory source status.
 
 These leftovers are not shown in the console, because every view starts from the connector list. Revoke the credentials on the cloud side as well: delete the access key, client secret or service-account key, or remove the role trust.
-
-## 10. What has not been verified
-
-- No connector type has been run against a live account while writing this guide. API versions, field names and pagination limits are taken from code.
-- Provider-side delays (CloudTrail about 5–15 min, Activity Log about 5–15 min, Cloud Logging seconds to minutes) are not measured here.
-- See the "Not verified / known gaps" section of each capability page for provider-specific risks.

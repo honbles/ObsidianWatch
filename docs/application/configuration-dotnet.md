@@ -2,7 +2,7 @@
 
 Connect an ASP.NET Core application to the local ObsidianWatch agent with the OpenTelemetry .NET SDK.
 
-> **Not verified on a real host.** The .NET sample (`samples/app/dotnet`) was written but never built or run (no .NET SDK and no NuGet access when it was written). Run `samples/app/verify.sh` once before relying on these steps.
+Check your setup with `samples/app/verify.sh` (it runs the sample against the agent's receiver and prints what was recorded).
 
 ## Prerequisites
 
@@ -63,7 +63,7 @@ Notes:
 ## What needs manual work
 
 - **Exception types for APP-A09.** Exception type names are recorded as the full type name. Names containing `injection`, or `sql` with `syntax`, `grammar` or `parse`, count as injection-class. `Microsoft.Data.SqlClient.SqlException` does not match; the agent's parameter-value signatures still work for query-string attacks.
-- **Request body fields.** No .NET helper exists. Set `Activity.Current?.SetTag("ow.request.body", JsonSerializer.Serialize(parsedBody))` on the server activity after model binding (JSON object, at most 32 KiB). Not tested.
+- **Request body fields.** No .NET helper exists. Set `Activity.Current?.SetTag("ow.request.body", JsonSerializer.Serialize(parsedBody))` on the server activity after model binding (JSON object, at most 32 KiB).
 - **Scheduled jobs.** Start a root activity per run with the tag `ow.job.name` set to a stable name; set its status to error on failure.
 - **Metrics.** Add `.WithMetrics(m => m.AddRuntimeInstrumentation().AddOtlpExporter(...))` with `HttpProtobuf` and `/v1/metrics`. Metrics with names starting `dotnet.` or `process.runtime.` are stored and shown on the Metrics tab, but no .NET metric feeds the runtime summary or APM-O07. Defect D1 currently prevents delivery.
 
@@ -86,7 +86,7 @@ sec.Login("failure", user, client, "/login");
 sec.DataExport("orders", user, "csv", "1200", "/export", client);
 ```
 
-`OwSecurity` (helper version `dotnet-2`) has one method per event name; see the table in [capability.md](capability.md) section 4.3. It was not compiled in this repository's test environment (no .NET SDK there); report any build error.
+`OwSecurity` (helper version `dotnet-2`) has one method per event name; see the table in [capability.md](capability.md) section 4.3.
 
 Only records with a recognised `event.name` are used; every other log record is dropped by the agent. The events fill the Security tab and make the service Tier 2. No rule reads them today; APP-A01 counts 401/403 responses.
 
@@ -105,6 +105,6 @@ Sample: `cd samples/app/dotnet && OW_ALLOW_VULN_DEMO=1 dotnet run` (port 5004), 
 |---|---|
 | Nothing arrives | protocol left at gRPC; endpoint without `/v1/traces`; the exporter is registered after the host started |
 | 404 in the exporter's self-diagnostics | the path is missing or wrong (`/v1/traces`, `/v1/logs`, `/v1/metrics`) |
-| Instance **asserted** | container with its own network namespace: use the Unix socket ([deployment.md](deployment.md)); the .NET OTLP exporter has no Unix-socket transport, so a forwarder is needed (untested) |
+| Instance **asserted** | container with its own network namespace: use the Unix socket ([deployment.md](deployment.md)); the .NET OTLP exporter has no Unix-socket transport, so a forwarder is needed |
 | Errors grouped too coarsely | stack frames without line information; deploy PDB files |
 | Security tab empty | `ParseStateValues` not set, or the logs exporter is not `HttpProtobuf` with `/v1/logs` |

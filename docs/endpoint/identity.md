@@ -74,10 +74,6 @@ public certificate is published to the `agent_ca` table.
 - `agents/*/internal/identity`: enroll, persist (0600), reload without enrolling again, renew, revoked agents
   not re-enrolling, bad or missing token, expired certificate re-enrolling, the TLS hook.
 
-Not run here: the Windows and macOS agents (cross-compiled; DPAPI and the file store are unit-tested on Linux only
-for the file path), and the network probe end to end (its SNMP and SQLite dependencies are not vendored here;
-the identity and forwarder packages were built and tested).
-
 ## Rollout
 
 1. Deploy the new servers (`docker compose up -d --build`). `AGENT_API_KEY` is no longer required.

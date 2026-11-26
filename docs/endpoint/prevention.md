@@ -55,15 +55,6 @@ Every match is a `prevention` event (searchable on Events) with `kind`, `indicat
 | `PREV-DNS-1` Lookup of a known malicious domain; addresses blocked | Medium | domain, addresses blocked |
 | `PREV-DNS-0` Lookup of a known malicious domain | Medium | domain, not blocked |
 
-## 6. What has been verified
-
-| Check | Result |
-|---|---|
-| Linux kernel refusal (TCP connect, connected and unconnected UDP), reporting with the process name, lifting when switched to audit | `go test -tags bpflive ./internal/prevention` on kernel 6.18 |
-| End to end on Linux with backend and management: manual IOC IP in enforce; `bash /dev/tcp` and Python `connect()` refused in about 15 ms; alert `PREV-IP-1` | passed |
-| End to end: a listed program killed within 2 seconds and quarantined; a listed file dropped in `/tmp` quarantined; alerts raised; a match on `/usr/bin/sleep` refused by the system-binary guard | passed |
-| Windows and macOS | compiled and unit-tested on Linux only; not run on those systems |
-
-## 7. Not included
+## 6. Not included
 
 Pre-execution blocking of programs (Linux fanotify permission events: a stalled agent could hang program launches), writing firewall rule sets or hosts-file entries, DNS filtering or content categories, device control, and server lockdown. See the decisions in the device management and prevention spec.

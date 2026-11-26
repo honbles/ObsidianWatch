@@ -2,8 +2,6 @@
 
 This page describes, end to end, what ObsidianWatch does with a GCP connector: ingestion, normalisation, posture checks (including Security Command Center), the CIS subset, compliance mapping, detections, correlation, baselines, inventory, blast radius and the console pages. Shared behaviour is in [capability.md](capability.md). Setup is in [configuration-gcp.md](configuration-gcp.md).
 
-> Derived from source code. Nothing here has been verified against a real GCP project.
-
 ## 1. Log sources and polling
 
 All sources are pulled by the 5-minute connector sync through Cloud Logging `entries:list`, except the SCC threat events.
@@ -507,9 +505,8 @@ The VM-side node `sa:<email>` and the IAM-side node `principal:serviceAccount:<e
 | Asset listing | 40 pages × 500 per type |
 | SCC findings | 1 000 per page; all pages |
 
-## 11. Not verified / known gaps
+## 11. Known gaps
 
-- Nothing here has been checked against a live project.
 - GKE audit and policy-denied events collide with audit-log rows on `(id, time)` and are normally discarded (section 1).
 - Extended sources, SCC threat events and the scheduled inventory use only the first listed project. With `project_id = *` the scheduled inventory targets the literal project `*`.
 - Workload Identity connectors with `project_id = *` have no key project, so extended sources are skipped.

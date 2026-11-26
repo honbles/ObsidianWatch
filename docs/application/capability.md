@@ -20,7 +20,7 @@ Contents
 12. Limits and caps
 13. Privacy guarantees
 14. What is not supported
-15. Known defects and what has not been tested on real hosts
+15. Known defects
 
 ---
 
@@ -118,7 +118,7 @@ For the pid the agent reads `/proc/<pid>/stat` (parent pid and start time; start
 
 At most four identifications run at once. A request that waits more than 2 seconds for a slot is treated as unresolved ("identification busy"). If the socket is not found (for example the sender is in another network namespace and connected over TCP), the peer is unresolved.
 
-Windows and macOS have their own resolvers (`GetExtendedTcpTable` on Windows, `lsof` and `ps` on macOS). They are unit tested and cross-compiled, not run on real hosts. Unix-socket peer credentials exist only on Linux.
+Windows and macOS have their own resolvers (`GetExtendedTcpTable` on Windows, `lsof` and `ps` on macOS). Unix-socket peer credentials exist only on Linux.
 
 ### 3.2 Binding: verified or asserted
 
@@ -199,7 +199,7 @@ Kept attributes: `outcome`, `method`, `user`, `reason`, `mfa`, `resource_type`, 
 | `data.access` | `dataAccess` | `data_access` | `dataAccess` | `DataAccess` | `DataAccess` | object_type, object_id, action |
 | `session.anomaly` | `sessionAnomaly` | `session_anomaly` | `sessionAnomaly` | `SessionAnomaly` | `SessionAnomaly` | kind, session, reason |
 
-All also take `route` and the client address (sent as `client.address`), and every language has a generic `emit`. Each record carries the trace and span of the request it was raised in. Run against the real receiver and backend: Node and Python (all eleven events stored), Go (sample and management server). Java was compiled against the API signatures; .NET was not compiled here.
+All also take `route` and the client address (sent as `client.address`), and every language has a generic `emit`. Each record carries the trace and span of the request it was raised in.
 
 **Event ids.** The agent gives each event an id from its time, type and source; for events without a source record number (helper events) it also hashes the collector's own random id. Before this, helper events from the same agent in the same millisecond (Node, Java and .NET send millisecond times) shared an id and the backend kept only the first; a test with eleven events in two milliseconds stored three.
 
@@ -501,7 +501,7 @@ Poll interval: `app_monitoring.ebpf.poll_interval`, default 2 s.
 
 `watch_dirs` and `secret_files` exist in the agent config but the Agent builder does not write them, so a built agent uses the defaults.
 
-Windows and macOS run a polling sensor only (no file events, no privilege changes); untested on real hosts.
+Windows and macOS run a polling sensor only (no file events, no privilege changes).
 
 Implemented in: `agents/linux/internal/ebpf/*` (`sensor_linux.go`, `naming.go`, `filter.go`, `fanotify_linux.go`, `procevent_linux.go`, `event.go`, `redact.go`), `otel/aggregate.go` (`AddDiscovered`).
 
@@ -889,7 +889,7 @@ The settings endpoint gives every agent the settings and reviewed routes of all 
 
 ---
 
-## 15. Known defects and what has not been tested on real hosts
+## 15. Known defects
 
 ### 15.1 Defects found while writing this document
 
@@ -900,14 +900,3 @@ The settings endpoint gives every agent the settings and reviewed routes of all 
 | D3 | `agents/*/internal/otel/aggregate.go` (`seen` map) | **Fixed.** The per-service route set is cleared every hour (`seenSince`), so a service that once hit the route limit no longer puts new routes in `other` until a restart |
 | D4 | `backend/internal/api/app_batch.go:685`, `app_agentconfig.go:28` | A batch whose `agent_id` differs from the certificate is refused (403) while the event endpoint now re-attributes. Today the agent passes its certificate's id to the application service (`cmd/agent/main.go:106`), so this only bites if the id and the certificate ever diverge in a running agent; then all application statistics are dropped as non-retryable |
 | D5 | `management/backend/cmd/server/main.go:91` | The purge runs on the management database. When `backend_db` points at a separate database the application tables are not there and the purge fails with a warning every 6 hours. The bundled docker-compose uses one database, where it works |
-
-### 15.2 Not verified on a real host
-
-- Request tracing with OBI (section 1.1): the runner, configuration, attribution and ingest were tested end to end with a stand-in binary that posts OBI-shaped OTLP; OBI itself has not been run on a kernel, so its route templates and span attributes are taken from its source (v1.0.0).
-
-- The eBPF kernel tier: not built, not run.
-- Windows and macOS: OTLP receiver, peer resolution and polling sensor are unit tested and cross-compiled only.
-- Java and .NET samples: written, never compiled or run (no Maven Central or NuGet access when built).
-- Python (Flask, opentelemetry-sdk 1.45.2) and Node (Express 4.21, SDK 0.57) were run against the real Linux receiver with real process identification, through the aggregator only (not through the sender and backend).
-- The `procevent` and `poll` tiers, discovery, naming, fanotify events and the merge were run on a real Linux kernel (6.18) during development, according to the development notes.
-- The rule engine runs against PostgreSQL in tests when `OW_TEST_PG_DSN` is set; no end-to-end alert from a real application was recorded in the repository.

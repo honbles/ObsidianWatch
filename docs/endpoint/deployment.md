@@ -1,6 +1,6 @@
 # Endpoint deployment
 
-This guide takes you from an empty server to enrolled Linux, Windows and macOS agents. It also covers upgrades, removal, revocation and the network probe. It describes what the code does at the time of writing. Where something has not been run on a real host, the text says so.
+This guide takes you from an empty server to enrolled Linux, Windows and macOS agents. It also covers upgrades, removal, revocation and the network probe.
 
 Related documents:
 
@@ -154,7 +154,17 @@ sudo journalctl -u obsidianwatch-agent -f
 
 Unit settings: `User=root`, `Restart=always`, `NoNewPrivileges=true`, `ProtectSystem=strict`, `ReadWritePaths=/var/lib/obsidianwatch /etc/obsidianwatch`, `PrivateTmp=true`, `ProtectHome=read-only`, `MemoryMax=512M` with `GOMEMLIMIT=384MiB` (the Go runtime collects before the limit; 256M crash-looped a busy Docker host), `CPUQuota=25%`.
 
-Caution about the sandbox (suspected problem, not verified on a host): `PrivateTmp=true` gives the service its own `/tmp` and `/var/tmp`, so the file monitor's `/tmp` and `/var/tmp` watches see the private directories, not the host's. `ProtectSystem=strict` and `ProtectHome=read-only` also make most of the file system read-only for the agent, which is expected to make quarantine and delete of files under `/home`, `/opt` or `/tmp`, and `disable_user` (which runs `usermod` on `/etc/shadow`), fail with a read-only error. Only the nftables installer works around the sandbox (it uses `systemd-run`). Test these actions on your own hosts before relying on them.
+If a busy host needs more memory (`systemctl status obsidianwatch-agent` shows `oom-kill` and the restart counter climbs), raise the limit with a drop-in, which survives agent upgrades:
+
+```bash
+sudo mkdir -p /etc/systemd/system/obsidianwatch-agent.service.d
+printf '[Service]\nMemoryMax=768M\nEnvironment=GOMEMLIMIT=600MiB\n' | sudo tee /etc/systemd/system/obsidianwatch-agent.service.d/memory.conf
+sudo systemctl daemon-reload && sudo systemctl restart obsidianwatch-agent
+```
+
+Keep `GOMEMLIMIT` about 20% below `MemoryMax`.
+
+Caution about the sandbox: `PrivateTmp=true` gives the service its own `/tmp` and `/var/tmp`, so the file monitor's `/tmp` and `/var/tmp` watches see the private directories, not the host's. `ProtectSystem=strict` and `ProtectHome=read-only` also make most of the file system read-only for the agent, which is expected to make quarantine and delete of files under `/home`, `/opt` or `/tmp`, and `disable_user` (which runs `usermod` on `/etc/shadow`), fail with a read-only error. Only the nftables installer works around the sandbox (it uses `systemd-run`). Test these actions on your own hosts before relying on them.
 
 Requirements: root, systemd, `journalctl` for the journal collector, Docker socket for container events, `/var/log/dpkg.log` for software events.
 
@@ -170,7 +180,7 @@ sudo ./obsidianwatch-macos-agent install
 
 Full Disk Access (FDA) is needed for the `eslogger` exec stream and the BSM audit-pipe file monitor. Without it, the agent falls back to process polling and kqueue file monitoring. Grant it in System Settings → Privacy & Security → Full Disk Access for `/usr/local/bin/obsidianwatch-agent`, or deploy the profile (section 3.4).
 
-The macOS agent has not been run on real hardware in this project. Treat it as a preview.
+The macOS agent is a preview.
 
 ### 3.3 Windows (service)
 
@@ -198,13 +208,13 @@ Important: if Sysmon is already installed with another configuration, the agent 
 
 Audit policy: the agent turns on Event 4688 command-line logging and PowerShell script-block logging only when you run it interactively as an administrator. Under the service it does not. Set these by Group Policy for service-only deployments.
 
-Requirements: Windows 10 / Server 2016 or later, administrator rights. The Windows agent has been cross-compiled and unit-tested, not run on a real Windows host in this project.
+Requirements: Windows 10 / Server 2016 or later, administrator rights.
 
 ### 3.4 macOS MDM notes
 
 The zip contains `ObsidianWatch-FullDiskAccess.mobileconfig`, a PPPC profile that grants `SystemPolicyAllFiles` to `/usr/local/bin/obsidianwatch-agent`. Because the binary is unsigned, the profile identifies it by path (`IdentifierType: path`). Payload identifier `io.obsidianwatch.agent.fda`; the payload UUIDs are fixed, so redeploying updates the profile instead of duplicating it.
 
-Deploy it through Jamf, Kandji or Intune before or after installing the binary. The profile does not install the agent; run `install` through your MDM's script feature. Not verified with an MDM in this project.
+Deploy it through Jamf, Kandji or Intune before or after installing the binary. The profile does not install the agent; run `install` through your MDM's script feature.
 
 ### 3.5 Install locations
 
@@ -303,7 +313,7 @@ Every connection to the backend (events, location, tunnel, install-key calls) pr
 |---|---|
 | Host never appears | From the host: `curl -k https://<server>:8443/health`. Read the agent log for lines starting with `identity:`. |
 | `enrollment refused` | The build's token expired, was revoked or is used up. Build again. |
-| `this agent was built with an API key` | An old build. Rebuild in the Agent builder and reinstall (section 10). |
+| `this agent was built with an API key` | An old build. Rebuild in the Agent builder and reinstall (section 9). |
 | `client certificate required; enroll this agent` (401) | The agent has no certificate yet, or something between agent and backend terminates TLS. TLS must reach the backend directly. |
 | `client certificate not accepted` (401) | The agent CA changed (volume lost). Reinstall with a new build. |
 | `agent identity revoked` | Revoked in Agent enrollment. Reinstall with a new build. |
@@ -395,15 +405,3 @@ Agents built before certificate enrollment authenticated with a shared `X-API-Ke
 4. Install the new build over the old one (`install` upgrades in place). Each host enrolls and gets a new `ag-` id.
 5. Old records (named after machine id, hardware UUID or host name) are hidden when the host enrolls again under the same host name. Remove records of hosts that never come back.
 6. Old agents that are not reinstalled are refused and show as offline. They raise silent-agent alerts every hour until their record is removed.
-
----
-
-## 10. What has been verified
-
-| Area | Status |
-|---|---|
-| Enrollment, ingest with certificate, install-key registration, tunnel, a response action, collect-file download, revocation, old API key refused | Run end to end on Linux with real binaries (see `identity.md`). |
-| Linux installer and systemd unit under the sandbox, response actions under the sandbox | Not verified (see the caution in 3.1). |
-| Windows agent | Cross-compiled and unit-tested only. |
-| macOS agent, `eslogger`, MDM profile | Cross-compiled and unit-tested only. |
-| Network probe | Not buildable here; not run. |

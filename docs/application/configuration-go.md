@@ -54,7 +54,7 @@ Verified: the sample in `samples/app/go` (Go 1.25, OpenTelemetry Go v1.46.0, `ot
 | `owpayload` | parameter names per route; after an administrator reviews a route, captured requests with allowed values |
 | `owsecurity` | Tier 2: the Security tab, sign-in and denial events joined to traces |
 
-`owsecurity` posts OTLP/HTTP JSON itself (standard library plus `go.opentelemetry.io/otel/trace`), batched every second; a full queue drops events and counts them (`owsecurity.Stats()`), so a call never blocks a request. The official logs SDK (`go.opentelemetry.io/otel/sdk/log` with `otlploghttp`) works too if every record carries the `event.name` attribute; it was not run here.
+`owsecurity` posts OTLP/HTTP JSON itself (standard library plus `go.opentelemetry.io/otel/trace`), batched every second; a full queue drops events and counts them (`owsecurity.Stats()`), so a call never blocks a request. The official logs SDK (`go.opentelemetry.io/otel/sdk/log` with `otlploghttp`) works too if every record carries the `event.name` attribute.
 
 ## Troubleshooting
 

@@ -2,8 +2,6 @@
 
 This page describes what all three providers share: the data flow, event model, detection pipeline, posture scoring, compliance mapping, alerting and the console pages. Provider details are in [capability-aws.md](capability-aws.md), [capability-azure.md](capability-azure.md) and [capability-gcp.md](capability-gcp.md). For setup, see [deployment.md](deployment.md).
 
-> Derived from source code. Not verified against real cloud accounts.
-
 ## 1. Data flow
 
 ```

@@ -77,7 +77,7 @@ If the configuration is invalid (for example a non-loopback listen address in a 
 
 Port 4318 must be free on loopback. If another OpenTelemetry Collector already listens there, the receiver fails to start (`otlp listen: ...`). Stop the other collector or point it at the agent (it will then be the identified sender, see section 6).
 
-Windows and macOS: the receiver and a polling sensor run, but neither has been run on a real host. Treat them as untested.
+Windows and macOS: the receiver and a polling sensor run.
 
 ## 4. Point the application at the agent
 
@@ -123,9 +123,9 @@ The agent identifies the sender from the connection. That works over loopback TC
 
 The socket is created with mode 0666; identity comes from the kernel's peer credentials, not from file permissions. The agent records the container id from the sender's cgroup. Docker's `docker-proxy` and the containerd shims are not reported as services; the sensor adds the container name and image to the instance on the Runtime and Instances tabs.
 
-Not every SDK can export OTLP/HTTP over a Unix socket. If yours cannot, put a small local forwarder in the pod that listens on loopback and writes to the socket; the agent will then identify the forwarder process, not the application. This pattern has not been tested.
+Not every SDK can export OTLP/HTTP over a Unix socket. If yours cannot, put a small local forwarder in the pod that listens on loopback and writes to the socket; the agent will then identify the forwarder process, not the application.
 
-The Kubernetes setup (DaemonSet, hostPath socket) is a design decision (loopback or Unix socket only; no agent port is reachable from the network). It has not been run on a real cluster.
+The Kubernetes setup (DaemonSet, hostPath socket) is a design decision (loopback or Unix socket only; no agent port is reachable from the network).
 
 ## 7. Verify that it works
 

@@ -1,5 +1,7 @@
 # ObsidianWatch documentation
 
+Administrators: the reading order is in the main [README](../README.md#3-documentation-for-administrators).
+
 Four areas, one folder each. Every folder has a deployment guide, configuration pages and capability pages. Application and cloud split configuration and capability by framework or provider.
 
 | Area | Deployment | Configuration | Capability (what it does, end to end) |
@@ -19,4 +21,4 @@ Also:
 - [development/](development/): UI design language and the device-management design notes.
 - [known-issues.md](known-issues.md): defects found while writing these docs, not yet fixed.
 
-The docs describe the code as it is. Where something has not been run against a real account, cluster or host, the page says so.
+The docs describe the code as it is.

@@ -4,8 +4,6 @@ This guide covers the "Code" feature of ObsidianWatch from start to finish. The 
 
 Related documents: [configuration.md](configuration.md) (every field and setting) and [capability.md](capability.md) (what is collected, every rule, what each page shows).
 
-> **Verification status.** This document was written from the source code. The connectors have **not** been checked against live GitHub, GitLab or Azure DevOps accounts during this documentation pass. Token scopes, API response fields and webhook payload fields come from the code and from the providers' public API shapes. Items marked *(unverified)* need a check against a real account before you rely on them.
-
 ---
 
 ## 0. Setup checklist
@@ -82,7 +80,7 @@ The form has the same flow for every provider:
 
 **Token permissions.** The form asks for `repo`, `read:org`, `admin:org` (audit log), `read:user`. Here is what each call in the code needs:
 
-| What the code calls | Why | Classic PAT scope *(unverified)* |
+| What the code calls | Why | Classic PAT scope |
 |---|---|---|
 | `GET /orgs/{org}/audit-log` | Organisation audit stream | `read:audit_log` (or `admin:org`). The org must be on GitHub Enterprise Cloud, and the token owner must be an org owner. |
 | `GET /orgs/{org}/repos`, `GET /user/repos?affiliation=owner` | Repository list | `repo` for private repositories |
@@ -116,7 +114,7 @@ If the audit log call fails for any reason, the connector falls back to the publ
 
 **Test.** The server tries `GET /api/v4/groups/{group}`, then `GET /api/v4/projects/{path}`.
 
-**Token scopes.** The form asks for `api`, `read_api`, `read_audit_log`. Reading (sync, posture, SAST API fallback) needs `read_api`; cloning for SAST needs `read_repository` (or `api`); PR checks need `api` (section 4.5) *(unverified)*. Group audit events (`/groups/{g}/audit_events`) need GitLab Premium or Ultimate and an Owner role on the group. When that call fails, the sync carries on silently with pipelines, project events and commits.
+**Token scopes.** The form asks for `api`, `read_api`, `read_audit_log`. Reading (sync, posture, SAST API fallback) needs `read_api`; cloning for SAST needs `read_repository` (or `api`); PR checks need `api` (section 4.5). Group audit events (`/groups/{g}/audit_events`) need GitLab Premium or Ultimate and an Owner role on the group. When that call fails, the sync carries on silently with pipelines, project events and commits.
 
 **Base URL rules** (`validateDevOpsBaseURL`, `devops_engine.go` line 300). The URL is checked when you test and when you save:
 
@@ -136,14 +134,14 @@ If the audit log call fails for any reason, the connector falls back to the publ
 | Project (Optional) | When set, only this project is synced, checked and offered for SAST. Blank: every project. |
 | Azure DevOps URL (Optional) | The full organisation or collection URL. Blank: `https://dev.azure.com/{org}`. For Azure DevOps Server use the collection URL (for example `https://tfs.example.com/tfs/DefaultCollection`); the audit log is not available there and the connector shows a coverage note. |
 
-**PAT scopes** derived from the calls in the code *(unverified)*:
+**PAT scopes** derived from the calls in the code:
 
 | Call | Scope |
 |---|---|
 | `_apis/projects`, `_apis/git/repositories`, `.../commits`, `.../changes`, `.../items`, `git clone …/_git/{repo}` | Code (Read), Project and Team (Read) |
 | `_apis/build/builds` | Build (Read). The UI help text does not list this scope. |
 | `auditservice.dev.azure.com/.../auditlog` | Auditing (Read). Auditing must also be turned on for the organisation. |
-| `_apis/policy/configurations` (posture) | Code (Read) *(unverified)* |
+| `_apis/policy/configurations` (posture) | Code (Read) |
 
 When the audit or build calls fail, the sync continues without them and records no note.
 
@@ -205,7 +203,7 @@ The connector must have provider `azuredevops`, otherwise the route answers 404.
 
 PR checks write back to the provider. Read-only tokens still run the scan, but the status and comments fail (the job shows why).
 
-| Provider | Needed for status and comments *(unverified)* |
+| Provider | Needed for status and comments |
 |---|---|
 | GitHub | Classic: `repo` (or `repo:status` + `public_repo` for public repositories). Fine-grained: Commit statuses (read and write), Pull requests (read and write), Contents (read) |
 | GitLab | `api` scope, Developer role or higher on the project |

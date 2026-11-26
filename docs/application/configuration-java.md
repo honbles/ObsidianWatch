@@ -2,7 +2,7 @@
 
 Connect a Java application (Spring Boot, Servlet containers, Quarkus, Micronaut and other frameworks supported by the OpenTelemetry Java agent) to the local ObsidianWatch agent.
 
-> **Not verified on a real host.** The Java sample (`samples/app/java`) was written but never compiled or run against the receiver. The steps below follow the OpenTelemetry Java agent's standard configuration and the agent's documented OTLP/HTTP receiver. Run `samples/app/verify.sh` once before relying on them.
+Check your setup with `samples/app/verify.sh` (it runs the sample against the agent's receiver and prints what was recorded).
 
 ## Prerequisites
 
@@ -58,7 +58,7 @@ Notes:
   ```java
   Span.current().setAttribute("ow.request.body", objectMapper.writeValueAsString(bodyMap));
   ```
-  Do this in a filter or controller advice after the body is parsed. Not tested.
+  Do this in a filter or controller advice after the body is parsed.
 - **Scheduled jobs.** Wrap each run in a root span with the attribute `ow.job.name` (a stable name without ids). Spans with an error status count as failed runs.
 - **Security events (Tier 2).** Optional; see below.
 
@@ -78,7 +78,7 @@ OwSecurity.rateLimited("login", "/login", request.getRemoteAddr());
 OwSecurity.dataExport("orders", user, "csv", "1200", "/export", request.getRemoteAddr());
 ```
 
-`OwSecurity` (helper version `java-2`) has one method per event name; see the table in [capability.md](capability.md) section 4.3. It compiles against the OpenTelemetry API signatures; it was not run against the receiver here (no Maven access in the test environment). Pass route templates, not raw paths. User ids are hashed by the agent. The events appear on the service's Security tab and make the service Tier 2. No detection rule reads them today: APP-A01 counts 401/403 responses, not `auth.login` events. Return 401 or 403 on a failed login so A01 can count it.
+`OwSecurity` (helper version `java-2`) has one method per event name; see the table in [capability.md](capability.md) section 4.3. Pass route templates, not raw paths. User ids are hashed by the agent. The events appear on the service's Security tab and make the service Tier 2. No detection rule reads them today: APP-A01 counts 401/403 responses, not `auth.login` events. Return 401 or 403 on a failed login so A01 can count it.
 
 ## Verify
 

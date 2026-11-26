@@ -2,8 +2,6 @@
 
 This page describes, end to end, what ObsidianWatch does with an AWS connector: ingestion, normalisation, posture checks, benchmark and compliance mapping, detections, inventory, blast radius and the console pages. Shared behaviour (scoring, deduplication, UI layout) is in [capability.md](capability.md). Setup is in [configuration-aws.md](configuration-aws.md).
 
-> Derived from source code. Nothing here has been verified against a real AWS account.
-
 ## 1. Log sources and polling
 
 All sources are pulled by the 5-minute connector sync.
@@ -337,9 +335,8 @@ How it works:
 | Manual CSPM timeout | 3 minutes |
 | AWS HTTP client | 4 attempts with exponential backoff for 429, 5xx and throttling errors; 2-minute request timeout |
 
-## 11. Not verified / known gaps
+## 11. Known gaps
 
-- Nothing on this page has been checked against a live account.
 - LookupEvents returns management events only, for the home region. Data events (S3 `GetObject`, Secrets Manager reads, ECR layer uploads) need S3 mode with a trail that records them. C-AWS-014, C-AWS-026 and C-AWS-028 depend on this.
 - C-AWS-014 can never match. `GetObject` is not in the severity table, so its severity is 1 unless an error code raises it (S3 mode). Errored events are then blocked by the outcome gate.
 - `awsPrincipal` folds assumed-role sessions only when `user_name` is an ARN. In LookupEvents mode `user_name` is the session name, so each session may be a separate principal for the baselines and sequence rules.

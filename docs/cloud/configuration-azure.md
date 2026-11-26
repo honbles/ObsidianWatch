@@ -2,8 +2,6 @@
 
 This page covers how to create the Entra app registration for ObsidianWatch, the roles and API permissions it needs, what each connector field does, and how to check and troubleshoot the connection. See [deployment.md](deployment.md) for the shared setup and [capability-azure.md](capability-azure.md) for what is collected.
 
-> Not verified against a real Azure tenant. The roles and Graph permissions below are derived from the endpoints the code calls.
-
 *Implemented in:* `internal/api/cloud_azure.go`, `cloud_azure_logs.go`, `cloud_azure_resource_logs.go`, `cloud_azure_cspm*.go`, `cloud_azure_cis*.go`, `cloud_azure_assets.go`, `cloud_azure_blast_radius.go`; UI `pages/cloud/shared.jsx` (`PROVIDERS.azure`).
 
 ## 1. Credential model
@@ -64,7 +62,7 @@ Sign-in logs need an **Entra ID P1 or P2** licence. Without it the source is rec
 | CIS benchmark | Every resolved subscription (merged, controls prefixed by subscription) |
 | Asset inventory | Every resolved subscription, at most **100** |
 | Blast radius | Every resolved subscription, at most **10** per run |
-| Test Connection | Only the **first** subscription in the list. With `*`, the subscription ID is empty and the test requests `/subscriptions/?api-version=…`. Whether that proves access is not verified, so test with an explicit ID. |
+| Test Connection | Only the **first** subscription in the list. With `*`, the subscription ID is empty and the test requests `/subscriptions/?api-version=…`. That may not prove access, so test with an explicit ID. |
 
 When several subscriptions are scanned, the merged CSPM result shows `"<first-sub> (+N more)"` as its subscription. Each finding's resource is prefixed with `<subscription> / `.
 

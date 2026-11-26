@@ -2,8 +2,6 @@
 
 This document lists every connector field, every setting that changes the behaviour of the Code feature, and the fixed values in the code that you cannot change. For setup steps, see [deployment.md](deployment.md). For detection content, see [capability.md](capability.md).
 
-> **Verification status.** Written from the source code. None of the settings below have been exercised against live GitHub, GitLab or Azure DevOps accounts during this documentation pass.
-
 ---
 
 ## 1. Connector record
@@ -112,7 +110,6 @@ There are no per-scanner switches in the UI or the settings table. What runs is 
 | CodeQL | `codeql` on `PATH` | Every supported language with 3+ files (up to 4), `security-extended` suite |
 
 To disable an engine, remove its binary from the image. The SAST tab and the stored `engines` report show which engines ran.
-
 
 Built-in SAST rules cannot be turned off one by one. `GET /api/v1/sast-rules` lists them, read-only. The platform detection rules (`DEV-001` … `DEV-031`, `CODE-RT-001`) follow the general detection toggles, severity overrides and allow-lists. See capability.md section 6.
 

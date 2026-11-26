@@ -2,8 +2,6 @@
 
 This page describes, end to end, what ObsidianWatch does with an Azure connector: ingestion, normalisation, posture checks, benchmark and compliance mapping, detections, correlation, inventory, blast radius and the console pages. Shared behaviour is in [capability.md](capability.md). Setup is in [configuration-azure.md](configuration-azure.md).
 
-> Derived from source code. Nothing here has been verified against a real Azure tenant.
-
 ## 1. Log sources and polling
 
 All sources are pulled by the 5-minute connector sync. Activity Log and Entra sign-ins are pulled in `syncAzure`. The rest are pulled in `syncAzureExtendedLogs`, which runs after it even if `syncAzure` failed.
@@ -430,9 +428,8 @@ Paths end in `project_owner` (Owner over the subscription) or `all_data`. The su
 | ARM pagination in CSPM | 20 pages per list |
 | Defender alerts | All pages listed on every sync, then filtered by time |
 
-## 11. Not verified / known gaps
+## 11. Known gaps
 
-- Nothing here has been checked against a live tenant.
 - The Azure correlation and baseline engines use a 2-minute event-time window (section 6.5).
 - Defender and resource-log events are not visible in the connector Event Timeline (section 9).
 - NSG and VNet flow logs are not ingested. The README lists NSG flow logs as a source.

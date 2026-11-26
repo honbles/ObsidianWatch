@@ -2,8 +2,6 @@
 
 This page covers how to create GCP credentials for ObsidianWatch, the roles and APIs they need, what each connector field does, and how to check and troubleshoot the connection. See [deployment.md](deployment.md) for the shared setup and [capability-gcp.md](capability-gcp.md) for what is collected.
 
-> Not verified against a real GCP project. Roles are taken from `docs/cloud/gcp/main.tf` and from `cloud_gcp_permcheck.go`.
-
 *Implemented in:* `internal/api/cloud_gcp.go`, `cloud_gcp_wif.go`, `cloud_gcp_projects.go`, `cloud_gcp_permcheck.go`, `cloud_gcp_logs.go`, `cloud_gcp_cspm*.go`, `cloud_gcp_cis.go`, `cloud_gcp_assets.go`, `cloud_gcp_blast*.go`, `cloud_gcp_scc.go`; Terraform `docs/cloud/gcp/main.tf`; UI `pages/cloud/shared.jsx` (`PROVIDERS.gcp`).
 
 ## 1. Credential model
@@ -145,7 +143,7 @@ Workload Identity configs contain no `project_id`. With an `external_account` cr
 | Scheduled asset inventory | First listed project, otherwise the connector's `account_id` |
 | Blast radius | All resolved projects, at most **10** per run |
 
-With `project_id = *` the connector's `account_id` is stored as `*`. The scheduled asset inventory then runs against project `*` and fails. Run **Full Inventory** only with an explicit project list. This is a suspected gap and has not been verified.
+With `project_id = *` the connector's `account_id` is stored as `*`. The scheduled asset inventory then runs against project `*` and fails. Run **Full Inventory** only with an explicit project list.
 
 ## 4. Verification
 

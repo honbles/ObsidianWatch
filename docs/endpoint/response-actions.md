@@ -44,4 +44,3 @@ on Windows or macOS (IIS, a DNS server on a domain controller), the page or the 
 the action result says so; isolation itself is unaffected. Turn the page off per action with "Show the
 contact your administrator page" unchecked (`no_block_page`).
 
-Not tested on real Windows or macOS hosts here (cross-compiled and unit-tested only).

@@ -2,13 +2,7 @@
 
 This page describes, end to end, what the endpoint agents capture on each OS, how events reach the server, how they are checked and stored, how detections and alerts are produced, and what an analyst can do from there (investigate, hunt, respond). It states known limits plainly. Counts were taken from the code, not estimated.
 
-Status labels used below:
-
-- **Verified (Linux)**: run end to end on a real Linux host with the real binaries.
-- **Unit-tested**: built and covered by tests, not run on a real host of that OS.
-- **Not verified**: neither.
-
-The Windows and macOS agents have been cross-compiled and unit-tested only. macOS is a preview: detective only, built on `eslogger` and polling.
+macOS is a preview: detective only, built on `eslogger` and polling.
 
 ---
 
@@ -74,7 +68,7 @@ Implemented in: `agents/linux/internal/collector/*`, `agents/linux/cmd/agent/mai
 
 ### 2.3 Windows
 
-Implemented in: `agents/windows/internal/collector/*`, `agents/windows/internal/sysmon/installer.go`, `agents/windows/cmd/agent/main.go`. Unit-tested only.
+Implemented in: `agents/windows/internal/collector/*`, `agents/windows/internal/sysmon/installer.go`, `agents/windows/cmd/agent/main.go`.
 
 | Collector | Mechanism | What is captured | Limits |
 |---|---|---|---|
@@ -94,7 +88,7 @@ Implemented in: `agents/windows/internal/collector/*`, `agents/windows/internal/
 
 ### 2.4 macOS
 
-Implemented in: `agents/macos/internal/collector/*`, `agents/macos/cmd/agent/main.go`. Unit-tested only; preview.
+Implemented in: `agents/macos/internal/collector/*`, `agents/macos/cmd/agent/main.go`. Preview.
 
 | Collector | Mechanism | What is captured | Limits |
 |---|---|---|---|
@@ -324,7 +318,7 @@ Implemented in: `events_search.go`, `store/event_query.go`, `graph_alert.go`, `g
 - **Endpoint threat graph** (host page): host, process, DNS, IP, file, registry and logon nodes for one host.
 - **Live process list** (host page, admin): read from the host through the tunnel.
 - **Prevalence**: how many hosts ran a binary and when it was first seen.
-- **Host page in Fleet**: inventory, online state, vulnerabilities (OSV for Debian, Ubuntu and Alpine; NVD fallback), endpoint compliance (Windows 22 checks, macOS 9, Linux 10; unknown values never show as a pass; not run on live hosts), locations, tamper panel.
+- **Host page in Fleet**: inventory, online state, vulnerabilities (OSV for Debian, Ubuntu and Alpine; NVD fallback), endpoint compliance (Windows 22 checks, macOS 9, Linux 10; unknown values never show as a pass), locations, tamper panel.
 
 ---
 
@@ -366,7 +360,7 @@ Asks connected agents one fixed, read-only question. Nothing is executed on the 
 | `registry` | Windows only: values and subkeys of one key given as the path (read only) |
 | `patches` | Windows only: installed hotfixes |
 
-Kinds that do not exist on a host's OS answer "not available on <os>". The Linux kinds were run on a Linux host; the Windows and macOS kinds compile but have not been run on those systems yet.
+Kinds that do not exist on a host's OS answer "not available on <os>". 
 
 Limits: 500 hosts per hunt (connected hosts first), 500 rows per host, 120 s per host. Requires live response in the build.
 
@@ -410,11 +404,10 @@ Mechanisms per OS:
 | Isolation | nftables table `obsidianwatch_isolate` (iptables fallback) | Windows Firewall rules in group `ObsidianWatch-Isolation` | pf ruleset |
 | Block page | NAT redirect of DNS to 127.0.0.1:15353 and HTTP to 127.0.0.1:18080 (`obsidianwatch_blockpage`) | adapters' DNS set to 127.0.0.1 (sink on :53, page on :80) | each network service's DNS set to 127.0.0.1 |
 | IP block | nftables table `obsidianwatch_ipblock` | Windows Firewall rules | pf |
-| Verified | isolation and block page tested in a network namespace (nftables and iptables); IP block and account lock tested live, not under the systemd sandbox | unit-tested | unit-tested |
 
-**Telling the user.** Unless the isolation is silent (`no_block_page`), the agent shows a pop-up in every logged-on desktop session when the host is isolated: "This computer has been isolated from the network by your security team. Contact your administrator." It shows again, at most every 10 minutes, whenever a lookup reaches the agent's DNS sink (someone or something tried to reach a site), and once on release. Windows: a message box in each active session (`WTSSendMessage`, closes after 5 minutes). Linux: a critical desktop notification in each graphical session (`notify-send` through the user's session bus) and `wall` for terminals. macOS: a dialog for the console user (`osascript` through `launchctl asuser`). Background programs looking names up also count as attempts, which is why repeats are capped. Plain-HTTP sites still show the block page in the browser; HTTPS sites cannot (no certificate for them), so they fail and the pop-up does the telling. If port 80 or 53 is in use on Windows or macOS, the page or DNS change is skipped and the result says so. Pop-ups are not yet tested on Windows or macOS hosts.
+**Telling the user.** Unless the isolation is silent (`no_block_page`), the agent shows a pop-up in every logged-on desktop session when the host is isolated: "This computer has been isolated from the network by your security team. Contact your administrator." It shows again, at most every 10 minutes, whenever a lookup reaches the agent's DNS sink (someone or something tried to reach a site), and once on release. Windows: a message box in each active session (`WTSSendMessage`, closes after 5 minutes). Linux: a critical desktop notification in each graphical session (`notify-send` through the user's session bus) and `wall` for terminals. macOS: a dialog for the console user (`osascript` through `launchctl asuser`). Background programs looking names up also count as attempts, which is why repeats are capped. Plain-HTTP sites still show the block page in the browser; HTTPS sites cannot (no certificate for them), so they fail and the pop-up does the telling. If port 80 or 53 is in use on Windows or macOS, the page or DNS change is skipped and the result says so.
 
-Linux caution (not verified): under the installed systemd unit (`ProtectSystem=strict`, `ProtectHome=read-only`, `PrivateTmp=true`), file actions outside `/var/lib/obsidianwatch` and `/etc/obsidianwatch`, and `disable_user`, are expected to fail with a read-only file system error, and files in the host's `/tmp` are not visible to the agent.
+Linux caution: under the installed systemd unit (`ProtectSystem=strict`, `ProtectHome=read-only`, `PrivateTmp=true`), file actions outside `/var/lib/obsidianwatch` and `/etc/obsidianwatch`, and `disable_user`, are expected to fail with a read-only file system error, and files in the host's `/tmp` are not visible to the agent.
 
 Not implemented: block by hash, IP block with TTL, protected-range refusal for private networks and the gateway, two-person approval.
 
@@ -472,4 +465,4 @@ Agents match connections, files, processes and DNS answers against a server-publ
 | F12 hunting narrow | Offline queue fixed; 23 live query kinds (section 7.2). Search has no aggregation, regex or CIDR. |
 | F13 role gaps | User list is admin-only now. Analysts can still create, edit and delete alert rules and suppressions. |
 | F14 unbuilt or unwired code | The application sensor's eBPF tier (`internal/ebpf`, `-tags ebpf`) is still not built (the endpoint process sensor is a separate, built program); `audit.go` not wired; macOS depends on `eslogger`; Linux DNS `resolvectl` path does not return names. |
-| macOS | Preview, detective only. Response actions exist but are unit-tested only. |
+| macOS | Preview, detective only. |

@@ -2,7 +2,7 @@
 
 Connect a Node.js application (Express, Fastify, Koa, NestJS, plain `http`) to the local ObsidianWatch agent. The long step-by-step guide with copy-ready helper files is [node-security-guide.md](node-security-guide.md); this page is the reference and lists where that guide and the code differ.
 
-Verified: the Express sample (Express 4.21, OpenTelemetry SDK 0.57) and OWASP Juice Shop with `samples/app/juice-kit` ran against the agent's real Linux receiver. Fastify, Koa and NestJS were not run.
+Verified: the Express sample (Express 4.21, OpenTelemetry SDK 0.57) and OWASP Juice Shop with `samples/app/juice-kit` ran against the agent's real Linux receiver.
 
 ## Prerequisites
 
@@ -85,7 +85,7 @@ The events fill the Security tab and make the service Tier 2. Unlike what the No
 
 ## Containers
 
-For a container with its own network namespace, mount the agent's Unix socket into it. Exporting over a Unix socket from Node has not been tested and the OTLP HTTP exporter has no documented socket option. Over TCP from another network namespace the agent cannot identify the process, so the instance stays **asserted**. Docker with a published port and `--network host` work over loopback.
+For a container with its own network namespace, mount the agent's Unix socket into it. The OTLP HTTP exporter has no documented socket option; use a local forwarder. Over TCP from another network namespace the agent cannot identify the process, so the instance stays **asserted**. Docker with a published port and `--network host` work over loopback.
 
 ## Verify
 

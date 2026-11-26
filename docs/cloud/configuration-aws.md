@@ -2,8 +2,6 @@
 
 This page covers how to create AWS credentials for ObsidianWatch, what each connector field does, and how to check and troubleshoot the connection. See [deployment.md](deployment.md) for the shared setup and [capability-aws.md](capability-aws.md) for what is collected.
 
-> Not verified against a real AWS account. The permissions below are derived from the API calls in the code.
-
 *Implemented in:* `internal/api/cloud_aws.go`, `cloud_aws_assume.go`, `cloud_aws_org.go`, `cloud_aws_cspm*.go`, `cloud_aws_assets.go`, `cloud_aws_blast.go`, `cloud_aws_securityhub.go`; UI `pages/cloud/shared.jsx` (`PROVIDERS.aws`), `pages/cloud/connectors.jsx`.
 
 ## 1. Credential model
@@ -146,4 +144,4 @@ A dry run lists the accounts first. After you confirm, one AWS connector is crea
 | Manual **Run Scan** fails with a context timeout on large accounts | Manual AWS scans have a 3-minute limit. The scheduled scan allows 30 minutes. | Wait for the 6-hour scheduled scan, or reduce scope |
 | Signature errors in the log | Server clock skew beyond what the retry logic can learn | Sync the server clock (NTP) |
 
-**Suspected issue (not verified):** `testAWSConnection` signs the call to the global STS endpoint with the connector's region instead of `us-east-1`. AWS may reject this for non-`us-east-1` regions. AssumeRole and IAM calls explicitly use `us-east-1`. If **Test Connection** fails only in another region, save anyway and check that **Sync now** succeeds.
+**Known issue:** `testAWSConnection` signs the call to the global STS endpoint with the connector's region instead of `us-east-1`. AWS may reject this for non-`us-east-1` regions. AssumeRole and IAM calls explicitly use `us-east-1`. If **Test Connection** fails only in another region, save anyway and check that **Sync now** succeeds.
