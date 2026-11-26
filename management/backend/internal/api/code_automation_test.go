@@ -236,3 +236,26 @@ func TestPRCheckoutScanAndReport(t *testing.T) {
 func pemCert(srv *httptest.Server) []byte {
 	return pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: srv.Certificate().Raw})
 }
+
+func TestEvery5dSchedule(t *testing.T) {
+	p := defaultCodeScanPolicy().normalised()
+	if p.Schedule != "every5d" || p.ScheduleBranches != "all" {
+		t.Fatalf("default %+v", p)
+	}
+	at := time.Date(2026, 11, 26, p.ScheduleHour, 0, 0, 0, time.UTC)
+	if !scheduleDue(p, at, time.Time{}) {
+		t.Fatal("first run must be due")
+	}
+	if scheduleDue(p, at, at.AddDate(0, 0, -3)) {
+		t.Fatal("3 days after the last run is not due")
+	}
+	if !scheduleDue(p, at, at.AddDate(0, 0, -5)) {
+		t.Fatal("5 days after the last run is due")
+	}
+	if scheduleDue(p, at.Add(time.Hour), time.Time{}) {
+		t.Fatal("only at the schedule hour")
+	}
+	if (codeScanPolicy{ScheduleBranches: "default"}).normalised().ScheduleBranches != "default" {
+		t.Fatal("default branch choice kept")
+	}
+}

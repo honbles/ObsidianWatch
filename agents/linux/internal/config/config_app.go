@@ -90,7 +90,7 @@ func (c *AppMonitoringConfig) ApplyDefaults() {
 		c.BaselineSamplePct = 1
 	}
 	if c.MaxRoutesPerService <= 0 {
-		c.MaxRoutesPerService = 500
+		c.MaxRoutesPerService = 2000
 	}
 	if c.MaxOpenTraces <= 0 {
 		c.MaxOpenTraces = 2000
@@ -165,12 +165,23 @@ func (c *Config) StartAppMonitoring(ctx context.Context, agentID, hostname strin
 		UserHashKey: app.UserHashKey, CleartextServices: app.CleartextServices,
 		ClientIPDefault: app.ClientIPDefault, ClientIPByService: app.ClientIPByService,
 		FlushInterval: app.FlushInterval, ConfigInterval: app.SettingsPollInterval,
+		// Security-helper events are few and matter: wait up to 2 s for room in
+		// the agent's event channel (it is often full on a busy host, and a
+		// non-blocking send then lost every one of them). Only the HTTP request
+		// that carried the event waits; the receiver keeps serving others.
 		Emit: func(ev schema.Event) bool {
 			select {
 			case events <- ev:
 				return true
 			default:
-				return false // channel full: drop and count, never block the receiver
+			}
+			t := time.NewTimer(2 * time.Second)
+			defer t.Stop()
+			select {
+			case events <- ev:
+				return true
+			case <-t.C:
+				return false // still full: drop and count
 			}
 		},
 		Logger: logger,

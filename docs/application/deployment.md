@@ -49,7 +49,7 @@ app_monitoring:
 - `listen` is always `127.0.0.1:4318`. The builder offers no other address.
 - `user_hash_key` is derived from the server's `OW_SECRET_KEY` (HMAC-SHA-256 with a fixed label). Every agent of the installation gets the same key, so a user is pseudonymised the same way on every host. If `OW_SECRET_KEY` is empty, no key is written and the agent does not send user ids at all. Changing `OW_SECRET_KEY` changes all pseudonyms for agents built afterwards.
 - The host sensor is always enabled with the profile. There is no builder switch to have the receiver without the sensor.
-- Settings not written by the builder keep their agent defaults: `max_routes_per_service` 500, `max_open_traces` 2000, `flush_interval` 30 s, `settings_poll_interval` 5 min, `ebpf.poll_interval` 2 s, no extra `watch_dirs` or `secret_files`, no `cleartext_services`, no `client_ip_by_service`, no `slow_ms_by_service`.
+- Settings not written by the builder keep their agent defaults: `max_routes_per_service` 2000, `max_open_traces` 2000, `flush_interval` 30 s, `settings_poll_interval` 5 min, `ebpf.poll_interval` 2 s, no extra `watch_dirs` or `secret_files`, no `cleartext_services`, no `client_ip_by_service`, no `slow_ms_by_service`.
 
 Implemented in: `management/backend/internal/api/agent_builder.go` (`[APP-FIELDS]`, `[APP-YAML]` markers), `app_agent_profile.go`; `management/frontend/src/pages/AgentBuilder.jsx` (`[APP-BUILDER]`); `agents/linux/internal/config/config_app.go`.
 
@@ -89,7 +89,7 @@ The application exports OTLP over HTTP to `http://127.0.0.1:4318` (`/v1/traces`,
 
 Do not set `host.*`, `container.*` or `k8s.*`; they are discarded.
 
-Per-runtime steps: [Java](configuration-java.md), [.NET](configuration-dotnet.md), [Python](configuration-python.md), [Node.js](configuration-node.md), [other OpenTelemetry SDKs](configuration-other-sdks.md).
+Per-runtime steps: [Java](configuration-java.md), [.NET](configuration-dotnet.md), [Python](configuration-python.md), [Node.js](configuration-node.md), [Go](configuration-go.md), [other OpenTelemetry SDKs](configuration-other-sdks.md).
 
 Quick receiver check from the host:
 
@@ -167,7 +167,7 @@ The management server (Go) is instrumented with the official OpenTelemetry Go SD
 | `OW_VERSION`, `OW_BUILD_COMMIT` | `service.version` and the commit (`vcs.ref.head.revision`); without `OW_BUILD_COMMIT` the commit Go stamped into the binary is used when the build had git metadata |
 | `OTEL_SDK_DISABLED=true` | Off |
 
-What it records: a server span per API request (method, route template from the router, e.g. `/api/v1/app/services/{id}`; unknown API paths are `(unmatched)`; status; peer and forwarded client address); a client span per database statement made while serving a request (operation, table, statement text, which the agent turns into a value-free fingerprint only when the service's statement setting is on); a job span per background run (`detection.pass`, `detection.devops`, `code-scan.<kind>`, `runtime-inventory.index`, `deployed-commit.sweep`), shown on the Jobs tab; a client span per outgoing HTTP call made under a request or job through the default client, the DevOps client or the AWS client (GitHub, GitLab, Azure DevOps, NVD, AWS...), which become dependencies, with no trace headers sent to those third parties; an `exception` event with the Go stack when a handler panics, and an error status for 5xx answers. WebSocket upgrades are not traced. Spans go out as OTLP/HTTP protobuf through the SDK batch processor (every 2 s or 512 spans, queue 8 192, dropped when full); a trace keeps at most 200 child spans.
+What it records: a server span per API request, with the query string (`url.query`) and, for JSON POST/PUT/PATCH bodies up to 32 KiB, the body (`ow.request.body`), so **Endpoints** lists each route's parameters and its **Review** page can show captured requests once an administrator has reviewed the route (values are sampled only after review, never credential-like ones; `/auth/*` bodies, which carry passwords, are never reported); method, route template from the router, e.g. `/api/v1/app/services/{id}`; unknown API paths are `(unmatched)`; status; peer and forwarded client address); a client span per database statement made while serving a request (operation, table, statement text, which the agent turns into a value-free fingerprint only when the service's statement setting is on); a job span per background run (`detection.pass`, `detection.devops`, `code-scan.<kind>`, `runtime-inventory.index`, `deployed-commit.sweep`), shown on the Jobs tab; a client span per outgoing HTTP call from any client (`http.DefaultTransport` is wrapped at start-up; the DevOps, AWS and default clients wrap their own), joined to the request or job that made it or as a trace of its own: GitHub, GitLab, Azure DevOps, cloud APIs, NVD, threat-intel feeds, AI providers, IP enrichment and VirusTotal all become dependencies. No trace headers are sent to those third parties; an `exception` event with the Go stack when a handler panics, and an error status for 5xx answers. WebSocket upgrades are not traced. Spans go out as OTLP/HTTP protobuf through the SDK batch processor (every 2 s or 512 spans, queue 8 192, dropped when full); a trace keeps at most 200 child spans.
 
 Security events (Tier 2), sent as OTLP log records (JSON, `helper_version` `ow-go/1`) with the trace and span of the request, route and client address:
 
@@ -181,15 +181,22 @@ Security events (Tier 2), sent as OTLP log records (JSON, `helper_version` `ow-g
 
 User names, object ids and sessions are pseudonymised by the agent with the organisation key unless the service is set to cleartext users.
 
-**Docker, step by step** (`docker-compose.yml` already passes the variables and mounts `/run/obsidianwatch/otlp`):
+**Docker, step by step** (`docker-compose.yml` already passes the variables and mounts the host's `/run/obsidianwatch/otlp` at `/run/ow-otlp` in the container; not under `/run/obsidianwatch`, because in the Alpine image `/var/run` is `/run` and the restart-signal volume at `/var/run/obsidianwatch` would hide it):
 
 1. On the Docker host, install an agent built with the app-server profile and **Unix socket path** `/run/obsidianwatch/otlp/otlp.sock` (Agent builder).
-2. In the `.env` next to `docker-compose.yml` add `OTEL_EXPORTER_OTLP_ENDPOINT=unix:///run/obsidianwatch/otlp/otlp.sock`, optionally `OW_ENVIRONMENT=prod` and `OW_BUILD_COMMIT=<git rev-parse HEAD of the build>`.
+2. In the `.env` next to `docker-compose.yml` add `OTEL_EXPORTER_OTLP_ENDPOINT=unix:///run/ow-otlp/otlp.sock` (the path inside the container), optionally `OW_ENVIRONMENT=prod` and `OW_BUILD_COMMIT=<git rev-parse HEAD of the build>`.
 3. `docker compose up -d mgmt-api`. The management log shows `telemetry: OpenTelemetry SDK exporting traces`; within two minutes **Applications → Services** lists `obsidianwatch-management` at Tier 1, and at Tier 2 after the first security event (any sign-in).
+
+**If the service does not appear**, check in this order:
+
+1. `docker compose exec mgmt-api env | grep OTEL` shows the endpoint, and `docker compose exec mgmt-api ls -l /run/ow-otlp/` lists `otlp.sock`. If empty, `.env` was not picked up; run `docker compose up -d mgmt-api` again (a restart does not reread `.env`).
+2. `docker compose logs mgmt-api | grep telemetry`. `OpenTelemetry SDK exporting traces` means it is on; `first export accepted by the receiver` means the agent took the data. `export failing ... no such file or directory` means the socket is not in the mounted directory (agent built without the socket, or with another path); `connection refused` means the agent is not running.
+3. On the host, `ls -l /run/obsidianwatch/otlp/` must show `otlp.sock`, and `journalctl -u obsidianwatch-agent | grep "otlp receiver listening"` must list it.
+4. The image must be rebuilt after updating the code: `docker compose build mgmt-api && docker compose up -d mgmt-api`.
 
 The directory is mounted (not the socket file) so an agent restart, which recreates the socket, does not break it.
 
-**Why a socket.** The management container cannot reach the host agent's loopback receiver. Build the host's agent with the OTLP Unix socket (Agent builder, "Unix socket path", e.g. `/run/obsidianwatch/otlp.sock`), mount that directory into the management container, and set `OTEL_EXPORTER_OTLP_ENDPOINT=unix:///run/obsidianwatch/otlp.sock`. On a host install without Docker, `http://127.0.0.1:4318` is enough. The service then appears as `obsidianwatch-management` at Tier 2 (sdk `opentelemetry 1.46.0`), bound to the server process (identity verified), with its database as a dependency. Linking this repository to it (Code tab) checks findings against the exact commit when `OW_BUILD_COMMIT` is set at build time.
+**Why a socket.** The management container cannot reach the host agent's loopback receiver. Build the host's agent with the OTLP Unix socket (Agent builder, "Unix socket path" `/run/obsidianwatch/otlp/otlp.sock`), mount that directory into the management container (docker-compose mounts it at `/run/ow-otlp`), and set `OTEL_EXPORTER_OTLP_ENDPOINT=unix:///run/ow-otlp/otlp.sock`. On a host install without Docker, `http://127.0.0.1:4318` is enough. The service then appears as `obsidianwatch-management` at Tier 2 (sdk `opentelemetry 1.46.0`), bound to the server process (identity verified), with its database as a dependency. Linking this repository to it (Code tab) checks findings against the exact commit when `OW_BUILD_COMMIT` is set at build time.
 
 **SDK version.** OpenTelemetry Go v1.47 and later need Go 1.26. To move up, raise the Go version in `go.mod` and in `management/docker/Dockerfile` first, then run `tools/fetch-otel-sdk.ps1` (or `.sh`) with the new versions. The repository keeps only `go.mod`/`go.sum`; `vendor/` is git-ignored and the Docker build downloads the modules.
 

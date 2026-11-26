@@ -17,7 +17,7 @@ import (
 
 const (
 	appSpecMaxBytes      = 5 << 20
-	appSpecMaxRoutes     = 500 // the same per-service route limit the ingest applies
+	appSpecMaxRoutes     = 2000 // the same per-service route limit the agent applies
 	appSpecMaxFields     = 100 // names kept per route
 	appSpecMaxSchemaDeep = 4   // the depth the agent flattens bodies to
 )

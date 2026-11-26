@@ -152,7 +152,7 @@ sudo journalctl -u obsidianwatch-agent -f
 7. `systemctl daemon-reload` and `systemctl enable --now`.
 8. `chattr +i` on the binary, the unit file and the install-key file.
 
-Unit settings: `User=root`, `Restart=always`, `NoNewPrivileges=true`, `ProtectSystem=strict`, `ReadWritePaths=/var/lib/obsidianwatch /etc/obsidianwatch`, `PrivateTmp=true`, `ProtectHome=read-only`, `MemoryMax=256M`, `CPUQuota=25%`.
+Unit settings: `User=root`, `Restart=always`, `NoNewPrivileges=true`, `ProtectSystem=strict`, `ReadWritePaths=/var/lib/obsidianwatch /etc/obsidianwatch`, `PrivateTmp=true`, `ProtectHome=read-only`, `MemoryMax=512M` with `GOMEMLIMIT=384MiB` (the Go runtime collects before the limit; 256M crash-looped a busy Docker host), `CPUQuota=25%`.
 
 Caution about the sandbox (suspected problem, not verified on a host): `PrivateTmp=true` gives the service its own `/tmp` and `/var/tmp`, so the file monitor's `/tmp` and `/var/tmp` watches see the private directories, not the host's. `ProtectSystem=strict` and `ProtectHome=read-only` also make most of the file system read-only for the agent, which is expected to make quarantine and delete of files under `/home`, `/opt` or `/tmp`, and `disable_user` (which runs `usermod` on `/etc/shadow`), fail with a read-only error. Only the nftables installer works around the sandbox (it uses `systemd-run`). Test these actions on your own hosts before relying on them.
 

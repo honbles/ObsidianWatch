@@ -7,7 +7,7 @@ const { logs, SeverityNumber } = require('@opentelemetry/api-logs')
 const { LoggerProvider, BatchLogRecordProcessor } = require('@opentelemetry/sdk-logs')
 const { OTLPLogExporter } = require('@opentelemetry/exporter-logs-otlp-http')
 
-const HELPER_VERSION = 'js-1'
+const HELPER_VERSION = 'js-2'
 let logger = null
 
 // sdk-logs 0.x processors take (exporter, config); newer ones take ({ exporter, ...config }). Build whichever works.
@@ -42,10 +42,32 @@ function emit(eventName, attrs = {}) {
   logger.emit({ severityNumber: SeverityNumber.WARN, severityText: 'WARN', body: eventName, attributes })
 }
 
+// One helper per event name the agent accepts. Attribute names are the ones the agent keeps
+// (docs/application/capability.md 4.3); anything else is dropped on the host. user, session and
+// object_id are pseudonymised by the agent unless the service is set to cleartext users.
+const c = (client) => ({ 'client.address': client })
 module.exports = {
-  init, emit,
-  login: (outcome, { user, client, route, mfa } = {}) => emit('auth.login', { outcome, user, 'client.address': client, route, mfa }),
-  inputRejected: (kind, { route, parameter, client } = {}) => emit('input.rejected', { kind, route, parameter, 'client.address': client }),
-  rateLimited: (limitName, { route, client } = {}) => emit('ratelimit.hit', { limit_name: limitName, route, 'client.address': client }),
-  authzDenied: (resourceType, action, { user, route, client } = {}) => emit('authz.deny', { resource_type: resourceType, action, user, route, 'client.address': client }),
+  init, emit, HELPER_VERSION,
+  login: (outcome, { user, client, route, method, reason, mfa } = {}) =>
+    emit('auth.login', { outcome, user, route, method, reason, mfa, ...c(client) }),
+  mfa: (outcome, { user, client, route, method, reason } = {}) =>
+    emit('auth.mfa', { outcome, user, route, method, reason, ...c(client) }),
+  authzDenied: (resourceType, action, { user, route, client, policy } = {}) =>
+    emit('authz.deny', { resource_type: resourceType, action, user, route, policy, ...c(client) }),
+  inputRejected: (kind, { route, parameter, client } = {}) =>
+    emit('input.rejected', { kind, route, parameter, ...c(client) }),
+  ssrfBlocked: (targetHost, { route, client, reason } = {}) =>
+    emit('ssrf.blocked', { target_host: targetHost, route, reason, ...c(client) }),
+  deserializationBlocked: (typeName, { route, client } = {}) =>
+    emit('deserialization.blocked', { type_name: typeName, route, ...c(client) }),
+  rateLimited: (limitName, { route, client, user } = {}) =>
+    emit('ratelimit.hit', { limit_name: limitName, route, user, ...c(client) }),
+  adminAction: (action, { user, targetType, targetId, outcome = 'success', route, client } = {}) =>
+    emit('admin.action', { action, user, target_type: targetType, target_id: targetId, outcome, route, ...c(client) }),
+  dataExport: (objectType, { user, format, rows, bytes, route, client } = {}) =>
+    emit('data.export', { object_type: objectType, user, format, rows, bytes, route, ...c(client) }),
+  dataAccess: (objectType, objectId, { user, action = 'read', route, client } = {}) =>
+    emit('data.access', { object_type: objectType, object_id: objectId, user, action, route, ...c(client) }),
+  sessionAnomaly: (kind, { user, session, reason, route, client } = {}) =>
+    emit('session.anomaly', { kind, user, session, reason, route, ...c(client) }),
 }

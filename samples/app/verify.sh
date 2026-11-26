@@ -2,6 +2,7 @@
 # Proves the agent's OTLP receiver against a REAL OpenTelemetry SDK application.
 #   ./verify.sh <port> <command that starts a sample app on that port ...>
 # Example: OW_ALLOW_VULN_DEMO=1 ./verify.sh 5001 python3 python/app.py
+#          (cd go && go build -o /tmp/ow-sample-go .) && OW_ALLOW_VULN_DEMO=1 PORT=5004 ./verify.sh 5004 /tmp/ow-sample-go
 # It starts the real receiver (agents/linux, loopback :4318, real process resolver), starts the sample
 # app, runs attack_sim.py against it, then prints what the receiver decoded (verify_report.py).
 # Needs: Go (see the repo README), and whatever runtime the sample needs. Linux only (the receiver's

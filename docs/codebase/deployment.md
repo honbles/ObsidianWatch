@@ -298,7 +298,7 @@ To see what a host reports, search the events for `event_type: runtime_inventory
 
 1. **Webhook events.** Add pull request events to the webhook: GitHub `pull_request` (and `push`); GitLab Merge request events (and Push events); Azure DevOps service hooks "Pull request created" and "Pull request updated" (and "Code pushed"). Section 4 has the full lists.
 2. **Token write access** (section 4.5). Without it the scan still runs but the status and comments fail; the job in the Automation tab shows the provider's error.
-3. **Policy.** In Code → Repositories → Connectors and scans → *connector* → **Automation** (admin): tick **Scan every pull request**, **Post comments**, optionally **Run CodeQL on pull requests** and **AI fix suggestions in comments**; choose **Fail the check on**; tick **Scan on every push to the default branch**; choose a **Scheduled scan** and hour (UTC); optionally list repositories for scheduled scans. Save.
+3. **Policy.** In Code → Repositories → Connectors and scans → *connector* → **Automation** (admin): tick **Scan every pull request**, **Post comments**, optionally **Run CodeQL on pull requests** and **AI fix suggestions in comments**; choose **Fail the check on**; tick **Scan on every push to the default branch**; choose a **Scheduled scan** (every 5 days by default), its branches (all, or the default branch) and hour (UTC); optionally list repositories for scheduled scans. Save.
 4. **Block merges** by making the status required at the platform:
 
 | Provider | Status | Where |
@@ -350,7 +350,7 @@ Implemented in: `management/backend/internal/store/secrets.go`, `store/credmask.
 | `OW_SAST_MAX_REPO_MB` | `2048` | Largest checkout scanned |
 | `OW_SEMGREP_RULES` | – | Directory of pattern rules to use instead of the bundled opengrep-rules |
 | `OW_TRIVY_CACHE_DIR` | `/var/cache/trivy` | Trivy databases |
-| `OTEL_EXPORTER_OTLP_ENDPOINT` | – (off) | Self-monitoring of the management server (OpenTelemetry Go SDK, Tier 2 with security events). `http://127.0.0.1:4318` or `unix:///run/obsidianwatch/otlp/otlp.sock`. Details and the other `OTEL_*` variables: [application/deployment.md](../application/deployment.md) section 7a |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | – (off) | Self-monitoring of the management server (OpenTelemetry Go SDK, Tier 2 with security events). `http://127.0.0.1:4318` or `unix:///run/ow-otlp/otlp.sock` (Docker). Details and the other `OTEL_*` variables: [application/deployment.md](../application/deployment.md) section 7a |
 | `OW_SCANNER_DB_UPDATE` | `true` | `false`: never refresh the Trivy databases (fully offline) |
 | `OW_CODE_SCAN_WORKERS` | `1` | Automated scan jobs run in parallel (1-4) |
 | `OW_SAST_HEAVY_SLOTS` | `1` | Pattern-rule and CodeQL runs allowed at the same time across all scans (1-8). Each needs 1-2 GB of memory; other scans wait. Raise only with memory to match. |

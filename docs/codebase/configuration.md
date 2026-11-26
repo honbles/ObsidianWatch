@@ -85,7 +85,7 @@ One SAST job per connector **and repository/branch** can run at a time when star
 | Connector polling | At start-up, then every 5 minutes | no |
 | Sync timeout | 3 minutes per connector per run | no |
 | Detection on `devops.*` events | Every detection-engine cycle (`detectionInterval()`) | Detection-engine setting, not specific to Code |
-| SAST (all engines) | Manual; on push to the default branch; daily or weekly; on every pull/merge request update | **Automation** tab, per connector (capability.md section 4.10) |
+| SAST (all engines) | Manual; on push to the default branch; every 5 days (default, all repositories and branches), daily or weekly; on every pull/merge request update | **Automation** tab, per connector (capability.md section 4.10) |
 | Code scan, posture | Manual only | no |
 | Automation schedule check | Every 10 minutes | no |
 | Webhook replay memory | 24 hours, in memory | no |
@@ -94,7 +94,7 @@ One SAST job per connector **and repository/branch** can run at a time when star
 
 ## 4a. Automation policy
 
-Per connector, Automation tab (setting `code.policy.{id}`): `pr_checks`, `pr_comments`, `pr_codeql`, `pr_ai_fixes`, `block_on` (none/critical/high/medium/low, default critical), `max_comments` (1-100, default 20), `scan_on_push`, `schedule` (off/daily/weekly), `schedule_hour` (UTC, default 2), `repos`. All off by default except comments. See capability.md 4.10 and deployment.md 6b.
+Per connector, Automation tab (setting `code.policy.{id}`): `pr_checks`, `pr_comments`, `pr_codeql`, `pr_ai_fixes`, `block_on` (none/critical/high/medium/low, default critical), `max_comments` (1-100, default 20), `scan_on_push`, `schedule` (off/every5d/daily/weekly, default every5d), `schedule_branches` (all/default, default all), `schedule_hour` (UTC, default 2), `repos`. Off by default except comments and the 5-day schedule. A policy saved before the 5-day default existed (no `schedule_branches`) with `schedule` off is read as every5d/all; saving the Automation tab with **off** keeps it off. See capability.md 4.10 and deployment.md 6b.
 
 ---
 

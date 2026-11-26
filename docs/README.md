@@ -5,7 +5,7 @@ Four areas, one folder each. Every folder has a deployment guide, configuration 
 | Area | Deployment | Configuration | Capability (what it does, end to end) |
 |---|---|---|---|
 | [Endpoint](endpoint/) | [deployment.md](endpoint/deployment.md) | [configuration.md](endpoint/configuration.md) | [capability.md](endpoint/capability.md) |
-| [Application (APM)](application/) | [deployment.md](application/deployment.md) | [platform](application/configuration-platform.md), [Java](application/configuration-java.md), [.NET](application/configuration-dotnet.md), [Python](application/configuration-python.md), [Node](application/configuration-node.md), [other SDKs](application/configuration-other-sdks.md) | [capability.md](application/capability.md) |
+| [Application (APM)](application/) | [deployment.md](application/deployment.md) | [platform](application/configuration-platform.md), [Java](application/configuration-java.md), [.NET](application/configuration-dotnet.md), [Python](application/configuration-python.md), [Node](application/configuration-node.md), [Go](application/configuration-go.md), [other SDKs](application/configuration-other-sdks.md) | [capability.md](application/capability.md) |
 | [Cloud](cloud/) | [deployment.md](cloud/deployment.md) | [AWS](cloud/configuration-aws.md), [Azure](cloud/configuration-azure.md), [GCP](cloud/configuration-gcp.md) | [shared](cloud/capability.md), [AWS](cloud/capability-aws.md), [Azure](cloud/capability-azure.md), [GCP](cloud/capability-gcp.md) |
 | [Codebase](codebase/) | [deployment.md](codebase/deployment.md) | [configuration.md](codebase/configuration.md) | [capability.md](codebase/capability.md) |
 

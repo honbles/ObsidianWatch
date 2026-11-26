@@ -23,7 +23,7 @@ import (
 	"obsidianwatch/management/internal/store"
 )
 
-const appBulkMaxRoutes = 1000
+const appBulkMaxRoutes = 2000
 
 func appHandleBulkPayloadPolicy(db, backendDB *store.DB) http.HandlerFunc {
 	idb := appIngestDB(db, backendDB)

@@ -2,7 +2,7 @@ package api
 
 // sast_branches.go - branch list for the SAST tab's Branch dropdown.
 // GET /api/v1/devops-connectors/{id}/sast/branches?repo=<full name>
-// returns the repository's branches from the provider (up to 300, default
+// returns the repository's branches from the provider (up to 2,000, default
 // first) and, for each, when it was last scanned.
 
 import (
@@ -32,7 +32,7 @@ func providerBranches(ctx context.Context, conn *store.DevOpsConnector, repo str
 	switch conn.Provider {
 	case "github":
 		h := map[string]string{"Authorization": "Bearer " + token, "Accept": "application/vnd.github+json"}
-		for page := 1; page <= 3; page++ {
+		for page := 1; page <= 20; page++ { // up to 2,000 branches
 			var b []struct{ Name string }
 			if err := devopsJSON(ctx, "GET", fmt.Sprintf("https://api.github.com/repos/%s/branches?per_page=100&page=%d", repo, page), h, nil, &b); err != nil {
 				if page == 1 {
@@ -53,7 +53,7 @@ func providerBranches(ctx context.Context, conn *store.DevOpsConnector, repo str
 			base = "https://gitlab.com"
 		}
 		c := &gitlabClient{token: token, baseURL: base}
-		b, err := gitlabGetAll[struct{ Name string }](ctx, c, "/api/v4/projects/"+gitlabID(repo)+"/repository/branches?per_page=100", 3)
+		b, err := gitlabGetAll[struct{ Name string }](ctx, c, "/api/v4/projects/"+gitlabID(repo)+"/repository/branches?per_page=100", 20)
 		if err != nil {
 			return nil, err
 		}
@@ -70,7 +70,7 @@ func providerBranches(ctx context.Context, conn *store.DevOpsConnector, repo str
 			Value []struct{ Name string } `json:"value"`
 		}
 		h := map[string]string{"Authorization": "Basic " + base64.StdEncoding.EncodeToString([]byte(":"+token))}
-		u := fmt.Sprintf("%s/%s/_apis/git/repositories/%s/refs?filter=heads/&$top=300&api-version=7.0", c.baseURL, neturl.PathEscape(parts[1]), neturl.PathEscape(parts[2]))
+		u := fmt.Sprintf("%s/%s/_apis/git/repositories/%s/refs?filter=heads/&$top=2000&api-version=7.0", c.baseURL, neturl.PathEscape(parts[1]), neturl.PathEscape(parts[2]))
 		if err := devopsJSON(ctx, "GET", u, h, nil, &resp); err != nil {
 			return nil, err
 		}

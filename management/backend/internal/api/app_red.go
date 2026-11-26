@@ -30,7 +30,7 @@ const (
 	appHistLen      = 12
 	appMaxRangeDays = 90
 	appMaxSeriesPts = 2000
-	appMaxRouteRows = 1000
+	appMaxRouteRows = 2000
 	appStepMinSecs  = 60
 	appStepMaxSecs  = 86400
 )

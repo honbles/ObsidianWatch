@@ -24,7 +24,8 @@ export default function AppTabRoutes({ service, range, focus }) {
   const st = service.settings
   const rows = useMemo(() => {
     const base = new Date(service.first_seen).getTime() + 3600e3
-    return (data?.routes || []).filter(r => (!q || r.route.toLowerCase().includes(q.toLowerCase())) && (!reviewOnly || r.payload_review === 'needs_review')).map(r => ({
+    const ql = q.trim().toLowerCase()
+    return (data?.routes || []).filter(r => (!ql || `${r.method} ${r.route}`.toLowerCase().includes(ql)) && (!reviewOnly || r.payload_review === 'needs_review')).map(r => ({
       ...r, isNew: new Date(r.first_seen) >= new Date(range.from) && new Date(r.first_seen).getTime() > base,
     }))
   }, [data, q, reviewOnly, service.first_seen, range.from])
@@ -88,8 +89,12 @@ export default function AppTabRoutes({ service, range, focus }) {
   return (
     <div className="space-y-2">
       <AppSpecPanel service={service} onChanged={() => setRev(x => x + 1)} />
-      <input value={q} onChange={e => setQ(e.target.value)} placeholder="Filter routes…"
-        className="bg-siem-surface2 border border-siem-border rounded-lg px-2.5 py-1.5 text-xs text-siem-text w-64" />
+      {service.attrs?.route_overflow > 0 && (
+        <div className="text-[11px] text-amber-300">{appInt(service.attrs.route_overflow)} requests were counted under "other" because this service went over the agent's per-service route limit (2,000 by default; agent setting max_routes_per_service). Check that http.route is a template, not a raw path, or raise the limit.</div>
+      )}
+      <input value={q} onChange={e => setQ(e.target.value)} placeholder="Find a route: path or method, e.g. POST /orders"
+        className="bg-siem-surface2 border border-siem-border rounded-lg px-2.5 py-1.5 text-xs text-siem-text w-80" />
+      <span className="ml-2 text-xs text-siem-muted">{q || reviewOnly ? `${appInt(rows.length)} of ${appInt((data?.routes || []).length)} routes` : `${appInt((data?.routes || []).length)} routes`}{(data?.routes || []).length >= 2000 ? ' (the 2,000 busiest; filter to find others)' : ''}</span>
       <label className="ml-3 inline-flex items-center gap-1.5 text-xs text-siem-muted">
         <input type="checkbox" checked={reviewOnly} onChange={e => setReviewOnly(e.target.checked)} /> Needs review only
       </label>
@@ -112,11 +117,8 @@ export default function AppTabRoutes({ service, range, focus }) {
             </div>)}
         </div>)}
       <div className="card"><DataTable columns={cols} rows={rows} loading={loading} error={error} rowKey={(r) => r.method + r.route}
-        emptyText="No routes yet. Routes appear once this service sends OpenTelemetry server spans with http.route." initialSort={{ key: 'calls', dir: 'desc' }} /></div>
+        emptyText="No routes yet. Routes appear once this service sends OpenTelemetry server spans with http.route." initialSort={{ key: 'calls', dir: 'desc' }} pageSize={100} /></div>
       <div className="text-[11px] text-siem-muted">Parameter names come from the request query string and are shown without values. Open Review on a route to choose which fields are masked and to see the requests captured for it. Dashed names are declared in the API spec and not seen yet; amber names were seen in traffic but are not in the spec (undocumented, a common sign of mass assignment). A route that shows "needs review" has not been reviewed; no parameter values are collected for it until it is.</div>
-      {service.attrs?.route_overflow > 0 && (
-        <div className="text-[11px] text-amber-300">{appInt(service.attrs.route_overflow)} requests were counted under "other" because this service exceeded the per-service route limit. Check that http.route is a template, not a raw path.</div>
-      )}
     </div>
   )
 }

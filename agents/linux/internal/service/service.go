@@ -221,7 +221,11 @@ NoNewPrivileges=true
 RestrictSUIDSGID=true
 LockPersonality=true
 LimitNOFILE=65536
-MemoryMax=256M
+# GOMEMLIMIT makes the Go runtime collect before the cgroup limit is reached
+# instead of being OOM-killed (256M without it crash-looped a Docker host
+# running app monitoring, the eBPF sensor and the weekly host scan).
+Environment=GOMEMLIMIT=384MiB
+MemoryMax=512M
 CPUQuota=25%
 
 [Install]

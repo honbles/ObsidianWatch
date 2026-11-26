@@ -71,7 +71,7 @@ Behind a proxy, set `client.address` from the forwarded header and add the proxy
 ## What needs manual work
 
 - **Exception types for APP-A09.** Python records the class name, for example `SyntaxError` from a driver wrapper or `psycopg2.errors.SyntaxError`. Names with `sql` and `syntax` (or containing `injection`) are injection-class. The sample defines `SqlSyntaxError` for this reason.
-- **Request body fields.** Copy `samples/app/python/ow_payload.py`. For Flask call `ow_payload.flask_install(app)` after instrumenting. For Django or FastAPI call `ow_payload.set_body(parsed_dict)` from a middleware or dependency. The helper sets `ow.request.body` on the current server span; multipart and binary bodies are skipped. Bodies whose JSON exceeds 4 KiB produce no field names (defect D2), although the helper accepts 32 KiB.
+- **Request body fields.** Copy `samples/app/python/ow_payload.py`. For Flask call `ow_payload.flask_install(app)` after instrumenting. For Django or FastAPI call `ow_payload.set_body(parsed_dict)` from a middleware or dependency. The helper sets `ow.request.body` on the current server span; multipart and binary bodies are skipped. Bodies up to 32 KiB are read.
 - **Scheduled jobs.** No Python job helper exists. Start a root span per run with the attribute `ow.job.name`:
   ```python
   with tracer.start_as_current_span("nightly-report", context=Context(), attributes={"ow.job.name": "nightly-report"}):
@@ -90,10 +90,10 @@ ow_security.login("failure", user=name, client=request.remote_addr, route="/logi
 ow_security.authz_denied("invoice", "read", user=uid, route="/invoices/<id>", client=request.remote_addr)
 ow_security.input_rejected("sqli", route="/search", parameter="q", client=request.remote_addr)
 ow_security.rate_limited("login", route="/login", client=request.remote_addr)
-ow_security.emit("data.export", rows="1200", format="csv", route="/export")
+ow_security.data_export("orders", user=name, format="csv", rows=1200, route="/export", client=request.remote_addr)
 ```
 
-The events fill the Security tab and make the service Tier 2. No rule reads them today; APP-A01 counts 401/403 responses.
+There is one function per event name (helper version `py-2`; table in [capability.md](capability.md) section 4.3); all eleven were run against the real receiver with `opentelemetry-sdk 1.45.2` and stored. The events fill the Security tab and make the service Tier 2. No rule reads them today; APP-A01 counts 401/403 responses.
 
 ## Verify
 
@@ -115,5 +115,5 @@ The sample is intentionally vulnerable and must never be deployed.
 |---|---|
 | Nothing arrives | gRPC exporter installed instead of `proto-http`; endpoint without `/v1/traces`; the provider is set after the app was instrumented in a forking server (configure per worker, for example in gunicorn's `post_fork`) |
 | Instance **asserted** | container with its own network namespace; use the Unix socket ([deployment.md](deployment.md)) |
-| POST routes show no fields | `ow_payload` not installed, body not a JSON object or form, body over 4 KiB |
+| POST routes show no fields | `ow_payload` not installed, body not a JSON object or form, body over 32 KiB |
 | Security tab empty | `ow_security.init` not called, or wrong logs URL |

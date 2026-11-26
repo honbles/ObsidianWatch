@@ -148,14 +148,19 @@ export default function AutomationPanel({ conn }) {
         </div>
 
         <div className="bg-siem-surface border border-siem-border rounded-xl p-4 space-y-3">
-          <div className="text-[10px] uppercase tracking-wider text-siem-muted font-semibold">Default branch</div>
+          <div className="text-[10px] uppercase tracking-wider text-siem-muted font-semibold">Pushes and schedule</div>
           <Toggle label="Scan on every push to the default branch" checked={policy.scan_on_push} onChange={v => set('scan_on_push', v)}
             help="Needs the push webhook. The result replaces the repository's stored SAST result." />
           <div className="flex items-center gap-2 flex-wrap">
             <span className="text-xs text-siem-text">Scheduled scan</span>
             <select value={policy.schedule} onChange={e => set('schedule', e.target.value)}
               className="bg-siem-bg border border-siem-border rounded-lg px-2 py-1 text-xs text-siem-text">
-              <option value="off">off</option><option value="daily">daily</option><option value="weekly">weekly (Monday)</option>
+              <option value="off">off</option><option value="every5d">every 5 days (default)</option><option value="daily">daily</option><option value="weekly">weekly (Monday)</option>
+            </select>
+            <span className="text-xs text-siem-muted">of</span>
+            <select value={policy.schedule_branches || 'all'} onChange={e => set('schedule_branches', e.target.value)}
+              className="bg-siem-bg border border-siem-border rounded-lg px-2 py-1 text-xs text-siem-text">
+              <option value="all">all branches</option><option value="default">the default branch</option>
             </select>
             <span className="text-xs text-siem-muted">at</span>
             <select value={policy.schedule_hour} onChange={e => set('schedule_hour', Number(e.target.value))}
@@ -168,6 +173,7 @@ export default function AutomationPanel({ conn }) {
             <textarea rows={3} value={(policy.repos || []).join('\n')} onChange={e => set('repos', e.target.value.split('\n').map(s => s.trim()))}
               placeholder="One per line. Empty: every repository seen for this connector."
               className="mt-1 w-full bg-siem-bg border border-siem-border rounded-lg px-2 py-1.5 text-xs text-siem-text font-mono" />
+            <p className="text-[11px] text-siem-muted mt-1">A scheduled rescan is how a fixed issue is noticed: each branch's new result replaces its old one, so fixed findings drop out. "All branches" scans every branch the provider lists (up to 2,000 per repository), one job each, through the same queue as other scans.</p>
           </div>
         </div>
       </div>

@@ -50,7 +50,7 @@ func (o *AggOptions) defaults() {
 		o.BaselinePct = 1
 	}
 	if o.MaxRoutes <= 0 {
-		o.MaxRoutes = 500
+		o.MaxRoutes = 2000
 	}
 	if o.MaxOpenTraces <= 0 {
 		o.MaxOpenTraces = 2000

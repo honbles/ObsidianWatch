@@ -42,7 +42,7 @@ app_monitoring:
 		t.Fatalf("sensor config: %+v", a.Ebpf)
 	}
 	if !a.Enabled || a.OTLP.Socket != "/run/ow/otlp.sock" || a.ClientIPByService["billing|prod"] != "off" || a.SlowMsByService["api|prod"] != 300 ||
-		a.SlowMs != 1000 || a.MaxRoutesPerService != 500 || a.FlushInterval != 30*time.Second || a.BaselineSamplePct != 1 {
+		a.SlowMs != 1000 || a.MaxRoutesPerService != 2000 || a.FlushInterval != 30*time.Second || a.BaselineSamplePct != 1 {
 		t.Fatalf("%+v", a)
 	}
 }

@@ -2,8 +2,11 @@ package telemetry
 
 import (
 	"bufio"
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"runtime/debug"
@@ -40,6 +43,7 @@ func Middleware(route func(*http.Request) string) func(http.Handler) http.Handle
 				client = strings.TrimSpace(strings.Split(xff, ",")[0])
 			}
 			span.Set("client.address", client)
+			requestFields(span, r)
 			ctx = context.WithValue(ctx, reqKey{}, reqInfo{route: rt, client: client, peer: peer})
 			sw := &statusWriter{ResponseWriter: w}
 			defer func() {
@@ -61,6 +65,47 @@ func Middleware(route func(*http.Request) string) func(http.Handler) http.Handle
 			}()
 			next.ServeHTTP(sw, r.WithContext(ctx))
 		})
+	}
+}
+
+// maxBodyField is the largest JSON body reported as ow.request.body (the
+// agent's limit for helper bodies).
+const maxBodyField = 32 << 10
+
+// requestFields reports the query string (url.query) and a JSON request body
+// (ow.request.body) so the agent can list parameter names per route and, for
+// routes an administrator has reviewed, sample allowed values. Values are
+// never sent without that review and credential-like values never at all
+// (agent side). Sign-in and password routes are skipped here entirely.
+func requestFields(span *Span, r *http.Request) {
+	if span == nil || strings.HasPrefix(r.URL.Path, "/auth/") {
+		return
+	}
+	if r.URL.RawQuery != "" {
+		span.Set("url.query", r.URL.RawQuery)
+	}
+	switch r.Method {
+	case http.MethodPost, http.MethodPut, http.MethodPatch:
+	default:
+		return
+	}
+	if ct := strings.ToLower(r.Header.Get("Content-Type")); r.Body == nil || (ct != "" && !strings.HasPrefix(ct, "application/json")) {
+		return
+	}
+	if r.ContentLength > maxBodyField {
+		return
+	}
+	buf, err := io.ReadAll(io.LimitReader(r.Body, maxBodyField+1))
+	// Give the handler the whole body back, whatever was read here.
+	r.Body = struct {
+		io.Reader
+		io.Closer
+	}{io.MultiReader(bytes.NewReader(buf), r.Body), r.Body}
+	if err != nil || len(buf) == 0 || len(buf) > maxBodyField {
+		return
+	}
+	if t := bytes.TrimSpace(buf); len(t) > 0 && t[0] == '{' && json.Valid(t) {
+		span.Set("ow.request.body", string(t))
 	}
 }
 

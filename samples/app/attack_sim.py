@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Attack simulation for the ObsidianWatch sample apps (Python, Node, Java, .NET all expose the same routes).
+"""Attack simulation for the ObsidianWatch sample apps (Python, Node, Java, .NET and Go all expose the same routes).
 
 Everything goes to a sample app on YOUR OWN machine (default http://127.0.0.1:5001). The script refuses
 non-loopback targets. It exercises the Application rules:

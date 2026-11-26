@@ -45,7 +45,7 @@ console  Applications → Overview, Services, Dependencies, Coverage, Settings, 
 
 Two other streams join the picture:
 
-- **Security-helper events.** Optional OTLP log records with an `event.name` such as `auth.login`. The agent turns them into `app.security` events and sends them through its normal event channel, not the batch endpoint.
+- **Security-helper events.** Optional OTLP log records with an `event.name` such as `auth.login`. The agent turns them into `app.security` events and sends them through its normal event channel, not the batch endpoint. When that channel is full (a busy host), the receiver waits up to 2 s for room before dropping the event; before this fix they were dropped at once, which lost every helper event on a busy Docker host.
 - **Host runtime sensor.** Part of the same agent profile. It discovers services by their listening ports (Tier 0) and reports process, network and file events under service processes. Those go through the normal event channel too.
 
 Telemetry tiers:
@@ -89,7 +89,7 @@ The agent runs an HTTP server only when the agent was built with the app-server 
 | Body size | 4 MiB as sent, 16 MiB after gunzip. Larger: HTTP 413 |
 | Items per request | 20 000 spans, 5 000 log records, 20 000 metric points. More: HTTP 400 |
 | Attributes | first 256 per span, resource or log record are read |
-| String values | every attribute string is cut to 4 096 bytes during decoding (see section 15, defect D2) |
+| String values | span, event and attribute names are cut to 4 096 bytes; attribute values (helper bodies, stack traces) to 32 KiB (defect D2, fixed) |
 | Timeouts | header 10 s, request 30 s, idle 120 s, headers 64 KiB |
 | Success reply | empty `Export*ServiceResponse` in the request's encoding (`{}` for JSON) |
 
@@ -183,6 +183,26 @@ Only records whose `event.name` attribute (or the OTLP `event_name` field) is on
 
 Kept attributes: `outcome`, `method`, `user`, `reason`, `mfa`, `resource_type`, `action`, `route`, `policy`, `kind`, `parameter`, `target_host`, `type_name`, `limit_name`, `target_type`, `target_id`, `rows`, `bytes`, `format`, `session`, `object_type`, `object_id`, `helper_version`, `client.address`, `network.peer.address`, `enduser.id`.
 
+**Helper functions.** Every language helper (v2; Go v1) has one function per event name, all sending the attribute names above:
+
+| Event | Node (`ow-security.js`) | Python (`ow_security.py`) | Java (`OwSecurity`) | .NET (`OwSecurity`) | Go (`owsecurity`) | Main attributes |
+|---|---|---|---|---|---|---|
+| `auth.login` | `login` | `login` | `login` | `Login` | `Login` | outcome, user, method, reason, mfa |
+| `auth.mfa` | `mfa` | `mfa` | `mfa` | `Mfa` | `MFA` | outcome, user, method |
+| `authz.deny` | `authzDenied` | `authz_denied` | `authzDenied` | `AuthzDenied` | `AuthzDenied` | resource_type, action, policy, user |
+| `input.rejected` | `inputRejected` | `input_rejected` | `inputRejected` | `InputRejected` | `InputRejected` | kind, parameter |
+| `ssrf.blocked` | `ssrfBlocked` | `ssrf_blocked` | `ssrfBlocked` | `SsrfBlocked` | `SSRFBlocked` | target_host |
+| `deserialization.blocked` | `deserializationBlocked` | `deserialization_blocked` | `deserializationBlocked` | `DeserializationBlocked` | `DeserializationBlocked` | type_name |
+| `ratelimit.hit` | `rateLimited` | `rate_limited` | `rateLimited` | `RateLimited` | `RateLimited` | limit_name |
+| `admin.action` | `adminAction` | `admin_action` | `adminAction` | `AdminAction` | `AdminAction` | action, target_type, target_id, outcome |
+| `data.export` | `dataExport` | `data_export` | `dataExport` | `DataExport` | `DataExport` | object_type, format, rows, bytes |
+| `data.access` | `dataAccess` | `data_access` | `dataAccess` | `DataAccess` | `DataAccess` | object_type, object_id, action |
+| `session.anomaly` | `sessionAnomaly` | `session_anomaly` | `sessionAnomaly` | `SessionAnomaly` | `SessionAnomaly` | kind, session, reason |
+
+All also take `route` and the client address (sent as `client.address`), and every language has a generic `emit`. Each record carries the trace and span of the request it was raised in. Run against the real receiver and backend: Node and Python (all eleven events stored), Go (sample and management server). Java was compiled against the API signatures; .NET was not compiled here.
+
+**Event ids.** The agent gives each event an id from its time, type and source; for events without a source record number (helper events) it also hashes the collector's own random id. Before this, helper events from the same agent in the same millisecond (Node, Java and .NET send millisecond times) shared an id and the backend kept only the first; a test with eleven events in two milliseconds stored three.
+
 ### 4.4 Metrics
 
 Kept only when the name starts with one of: `process.cpu.`, `process.memory.`, `process.runtime.`, `process.uptime`, `v8js.`, `nodejs.`, `jvm.`, `dotnet.`, `db.client.connections.`, `db.client.connection.`, `http.server.active_requests` (names up to 96 bytes).
@@ -207,7 +227,7 @@ A **server span** (kind SERVER) contributes when it has a method, a route or an 
 
 - **Route**: `http.route` only. A server span without it is counted as `(unmatched)`. The raw path is never used. Routes longer than 256 bytes are cut.
 - **Method**: the attribute, or the first word of the span name when it is at most 8 characters, else `*`.
-- **Cardinality cap**: 500 distinct `(route, method)` pairs per service (`app_monitoring.max_routes_per_service`). Further pairs are counted under the route `other` and the overflow is reported (Overview → Needs attention, reason `route_overflow`). The set of seen pairs is never reset while the agent runs.
+- **Cardinality cap**: 2,000 distinct `(route, method)` pairs per service (`app_monitoring.max_routes_per_service`). Further pairs are counted under the route `other` and the overflow is reported (Overview → Needs attention, reason `route_overflow`). The set of seen pairs is never reset while the agent runs.
 - **Minute**: the span's end time, truncated to the minute. If the application clock is more than 5 minutes off, the receive time is used and the skew is counted.
 
 Per `(minute, service, route, method)` the agent keeps:
@@ -244,7 +264,7 @@ Addresses follow the service's client-address mode (`full`, `truncated` to /24 o
 The agent reads parameter **names** from the query string (`url.query`, or the part after `?` in `http.target`/`http.url`) and from `ow.request.body` (a JSON object set by a language helper).
 
 - Query: names are URL-decoded; a name must be 1–64 characters of `A–Z a–z 0–9 _ - . [ ]`; a bare token longer than 32 characters with no `=` is ignored; the first value of each name is kept in memory, cut to 256 bytes; at most 50 names per span.
-- Body: must be a JSON object of at most 32 KiB (in practice 4 KiB, defect D2). Nested names are joined with dots (`address.zip`); an array contributes the shape of its first element (`items[].sku`); depth at most 4; at most 200 elements walked; scalars become strings cut to 256 bytes.
+- Body: must be a JSON object of at most 32 KiB. Nested names are joined with dots (`address.zip`); an array contributes the shape of its first element (`items[].sku`); depth at most 4; at most 200 elements walked; scalars become strings cut to 256 bytes.
 
 What leaves the host:
 
@@ -509,6 +529,8 @@ Implemented in: `app_red.go`, `app_sketch.go`.
 
 Each row: route template, method, first/last seen, active in range, RED totals, Apdex, parameter names with their state, review state, top 3 slow downstream calls (by total time), N+1 count, and spec flags. States of a parameter: `always_masked`, `pending`, `new`, `masked`, `captured`. Route review: `needs_review` (has names, no policy), `reviewed`, `new_fields` (a name not in the saved review). With an API spec: `declared`, `not_in_spec` (observed, spec loaded, not listed), declared-only rows, and `undocumented` fields (observed on a route the spec lists, not in the spec). Declared and observed templates are matched by shape (`/users/{id}` = `/users/:id`). At most 1 000 route rows.
 
+The tab shows 100 routes per page (First / Previous / Next / Last), sorted across all pages, with a finder that matches the method and path (`POST /orders`) and a count of matching routes. The server returns the 2,000 busiest routes in the range; the agent tracks at most 2,000 routes per service (`max_routes_per_service`) and counts the rest under `other`, which the tab reports at the top.
+
 Implemented in: `app_red.go` (`appHandleRoutes`), `app_diagnosis.go`, `app_openapi*.go`, `app_payload_policy.go`.
 
 ### 10.3 Traces
@@ -587,7 +609,7 @@ Implemented in: `otel/model.go`, `app_payload_policy.go`, `app_payload_bulk.go`,
 
 ### 10.10 API spec (OpenAPI)
 
-API (admin only): `GET/POST/DELETE /services/{id}/openapi`. OpenAPI 3.x or Swagger 2.0, JSON or YAML, up to 5 MB, by upload or URL (fetched by the management server; loopback and link-local addresses refused), optional `base_path`. Up to 500 routes and 100 field names per route. Path, query and header parameter names and request-body property names (depth 4, `a.b`, `items[].sku`) are read; cookie parameters, examples and defaults are not; external `$ref` files are not followed.
+API (admin only): `GET/POST/DELETE /services/{id}/openapi`. OpenAPI 3.x or Swagger 2.0, JSON or YAML, up to 5 MB, by upload or URL (fetched by the management server; loopback and link-local addresses refused), optional `base_path`. Up to 2,000 routes and 100 field names per route. Path, query and header parameter names and request-body property names (depth 4, `a.b`, `items[].sku`) are read; cookie parameters, examples and defaults are not; external `$ref` files are not followed.
 
 Implemented in: `app_openapi.go`, `app_openapi_parse.go`.
 
@@ -765,7 +787,7 @@ Implemented in: `app_rules_meta.go`, `app_rules_host.go`, `app_rules_app.go`, `a
 | Attribute string length | 4 096 bytes | `maxStringBytes` |
 | Concurrent peer identifications | 4 (2 s wait) | `resolveSem` |
 | Bound processes per service / services | 64 / 2 000 | `maxBoundPerService`, `maxBoundServices` |
-| Routes per service | 500 (then `other`) | `max_routes_per_service` |
+| Routes per service | 2,000 (then `other`) | `max_routes_per_service` |
 | Route length | 256 | |
 | Stat keys in memory | 100 000 | `MaxStatKeys` |
 | Client failure keys | 200 per service per minute | `MaxClientKeys` |
@@ -822,8 +844,8 @@ Implemented in: `app_rules_meta.go`, `app_rules_host.go`, `app_rules_app.go`, `a
 | Settings lists (proxies, routes) | 200 entries, 256 characters each (`appMaxListItems`) |
 | Maintenance windows | 50 |
 | Payload policy names | 200 (`appMaxPolicyNames`) |
-| Bulk approve | 1 000 routes (`appBulkMaxRoutes`) |
-| API spec | 5 MB, 500 routes, 100 fields per route, depth 4 |
+| Bulk approve | 2 000 routes (`appBulkMaxRoutes`) |
+| API spec | 5 MB, 2,000 routes, 100 fields per route, depth 4 |
 | Metric series per request | 300 (`appMetricMaxSeries`) |
 | Rule queue | 20 000 events; scan every minute; 2 000 services per scan |
 
@@ -874,8 +896,8 @@ The settings endpoint gives every agent the settings and reviewed routes of all 
 | Id | Where | Effect |
 |---|---|---|
 | D1 | `agents/{linux,windows,macos}/internal/otel/batch.go` `(*Batch).Split` | **Fixed.** `Split` now carries queries, errors, metrics and operations into the pieces it sends (`splitInto`); the Queries, Errors, Metrics and Jobs tabs fill when the application sends that data |
-| D2 | `otel/otlp.go` `clip` (`maxStringBytes = 4096`) | Every attribute string is cut to 4 096 bytes before use. A helper body (`ow.request.body`) over 4 KiB becomes invalid JSON and yields no field names at all (confirmed), although the helpers and docs allow 32 KiB. Stack traces and statements are also cut to 4 KiB (the code intends 16 KiB and 4 KiB) |
-| D3 | `agents/*/internal/otel/aggregate.go` (`seen` map) | The per-service route set is never reset, so once 500 routes were seen, new routes go to `other` until the agent restarts |
+| D2 | `otel/otlp.go` `clip` | **Fixed.** Names are cut to 4 096 bytes and attribute values to 32 KiB (`clipValue`), so helper bodies up to 32 KiB yield field names; stack traces keep 16 KiB, statements 4 KiB |
+| D3 | `agents/*/internal/otel/aggregate.go` (`seen` map) | **Fixed.** The per-service route set is cleared every hour (`seenSince`), so a service that once hit the route limit no longer puts new routes in `other` until a restart |
 | D4 | `backend/internal/api/app_batch.go:685`, `app_agentconfig.go:28` | A batch whose `agent_id` differs from the certificate is refused (403) while the event endpoint now re-attributes. Today the agent passes its certificate's id to the application service (`cmd/agent/main.go:106`), so this only bites if the id and the certificate ever diverge in a running agent; then all application statistics are dropped as non-retryable |
 | D5 | `management/backend/cmd/server/main.go:91` | The purge runs on the management database. When `backend_db` points at a separate database the application tables are not there and the purge fails with a warning every 6 hours. The bundled docker-compose uses one database, where it works |
 

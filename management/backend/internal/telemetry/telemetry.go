@@ -8,7 +8,8 @@
 //     handler panics;
 //   - client spans for every database statement made while serving a request
 //     or running a job (sql.go), and for outgoing HTTP calls made with
-//     http.DefaultClient, the DevOps client and the AWS client (Transport);
+//     any HTTP client (http.DefaultTransport is wrapped at Init; the DevOps,
+//     AWS and default clients wrap their own transports);
 //   - internal spans for background jobs (ow.job.name);
 //   - security events: auth.login, authz.deny, ratelimit.hit, admin.action,
 //     data.export (events.go).
@@ -28,6 +29,7 @@ import (
 	"os"
 	"runtime/debug"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -70,6 +72,7 @@ type Tracer struct {
 	sent    atomic.Int64
 	dropped atomic.Int64
 	logger  *slog.Logger
+	health  exportHealth
 }
 
 var global atomic.Pointer[Tracer]
@@ -125,7 +128,15 @@ func Init(ctx context.Context, version string, logger *slog.Logger) *Tracer {
 	otel.SetTextMapPropagator(propagation.TraceContext{})
 	otel.SetErrorHandler(otel.ErrorHandlerFunc(func(err error) { logger.Debug("telemetry: sdk", "err", err) }))
 
+	// Clients without a transport of their own use http.DefaultTransport
+	// (NVD, threat-intel feeds, AI providers, IP enrichment, VirusTotal ...).
+	// Wrapping it here, after every package's init has cloned or type-asserted
+	// the original *http.Transport, makes their calls dependencies too. The
+	// exporters above were built before this and keep their own transports.
+	http.DefaultTransport = Transport(http.DefaultTransport)
+
 	t.events = newEventExporter(logsEP, resourceForLogs(res), logger)
+	t.events.health = &t.health
 	global.Store(t)
 	go t.events.run(ctx)
 	go func() {
@@ -159,11 +170,53 @@ func (c *countingExporter) ExportSpans(ctx context.Context, spans []sdktrace.Rea
 	err := c.SpanExporter.ExportSpans(ctx, spans)
 	if err != nil {
 		c.t.dropped.Add(int64(len(spans)))
-		c.t.logger.Debug("telemetry: export failed", "err", err, "spans", len(spans))
+		c.t.health.fail(c.t.logger, "traces", err)
 	} else {
 		c.t.sent.Add(int64(len(spans)))
+		c.t.health.ok(c.t.logger, "traces")
 	}
 	return err
+}
+
+// exportHealth logs the first failure (and then one per 5 minutes while it
+// lasts) at WARN, and the recovery at INFO, so a wrong endpoint is visible in
+// the server log without debug logging.
+type exportHealth struct {
+	mu      sync.Mutex
+	failing map[string]time.Time // signal -> last warning
+	seen    map[string]bool      // signals that have been accepted once
+}
+
+func (h *exportHealth) fail(l *slog.Logger, signal string, err error) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.failing == nil {
+		h.failing = map[string]time.Time{}
+	}
+	if last, ok := h.failing[signal]; ok && time.Since(last) < 5*time.Minute {
+		return
+	}
+	h.failing[signal] = time.Now()
+	l.Warn("telemetry: export failing; check OTEL_EXPORTER_OTLP_ENDPOINT and that the agent's OTLP receiver (or socket) is reachable from this process", "signal", signal, "err", err)
+}
+
+func (h *exportHealth) ok(l *slog.Logger, signal string) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.failing == nil {
+		h.failing = map[string]time.Time{}
+	}
+	if h.seen == nil {
+		h.seen = map[string]bool{}
+	}
+	if _, was := h.failing[signal]; was {
+		delete(h.failing, signal)
+		l.Info("telemetry: export recovered", "signal", signal)
+	}
+	if !h.seen[signal] {
+		h.seen[signal] = true
+		l.Info("telemetry: first export accepted by the receiver", "signal", signal)
+	}
 }
 
 func redactEndpoint(ep string) string {
@@ -362,15 +415,17 @@ func (s *Span) TraceParent() string {
 	return "00-" + sc.TraceID().String() + "-" + sc.SpanID().String() + "-" + sc.TraceFlags().String()
 }
 
-// Transport wraps an outbound transport so each call made under a traced
-// request or job becomes a client span (dependencies such as api.github.com).
-// It may be called before Init: the SDK's global provider forwards to the real
-// one once Init sets it. No trace headers are sent to third parties.
+// Transport wraps an outbound transport so every call becomes a client span:
+// inside a traced request or job it joins that trace, otherwise it is a trace
+// of its own. Either way the agent records the target as a dependency
+// (api.github.com, services.nvd.nist.gov, an AI provider ...). It may be
+// called before Init: the SDK's global provider forwards to the real one once
+// Init sets it. No trace headers are sent to third parties.
 func Transport(rt http.RoundTripper) http.RoundTripper {
-	return otelhttp.NewTransport(rt,
-		otelhttp.WithPropagators(propagation.NewCompositeTextMapPropagator()),
-		otelhttp.WithFilter(func(r *http.Request) bool { return FromContext(r.Context()) != nil }),
-	)
+	if _, done := rt.(*otelhttp.Transport); done {
+		return rt
+	}
+	return otelhttp.NewTransport(rt, otelhttp.WithPropagators(propagation.NewCompositeTextMapPropagator()))
 }
 
 // Stats returns spans sent and dropped since start.

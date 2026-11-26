@@ -4,7 +4,7 @@ package api
 // button.
 //
 //   - On push to a repository's default branch (webhook), when enabled.
-//   - On a schedule (daily or weekly, at a chosen UTC hour), when enabled.
+//   - On a schedule (every 5 days by default, all repositories and branches; or daily or weekly), at a chosen UTC hour.
 //   - On every pull/merge request update (webhook): the PR head is scanned,
 //     only findings on lines the PR changes (or in dependency/IaC files it
 //     changes and that are new compared with the base) are kept, and the
@@ -43,20 +43,25 @@ import (
 // codeScanPolicy is a connector's automation settings (setting
 // code.policy.<connector id>).
 type codeScanPolicy struct {
-	PRChecks     bool     `json:"pr_checks"`     // scan pull/merge requests
-	PRComments   bool     `json:"pr_comments"`   // post summary + inline comments
-	BlockOn      string   `json:"block_on"`      // none | critical | high | medium | low
-	ScanOnPush   bool     `json:"scan_on_push"`  // scan the default branch on push
-	Schedule     string   `json:"schedule"`      // off | daily | weekly
-	ScheduleHour int      `json:"schedule_hour"` // UTC hour 0-23
-	PRCodeQL     bool     `json:"pr_codeql"`     // CodeQL on PRs (slow)
-	PRAIFixes    bool     `json:"pr_ai_fixes"`   // AI fix suggestions in PR comments (step 5)
-	Repos        []string `json:"repos"`         // limit scheduled scans; empty = all known
-	MaxComments  int      `json:"max_comments"`  // inline comments per update
+	PRChecks   bool   `json:"pr_checks"`    // scan pull/merge requests
+	PRComments bool   `json:"pr_comments"`  // post summary + inline comments
+	BlockOn    string `json:"block_on"`     // none | critical | high | medium | low
+	ScanOnPush bool   `json:"scan_on_push"` // scan the default branch on push
+	Schedule   string `json:"schedule"`     // off | daily | weekly | every5d
+	// ScheduleBranches is which branches a scheduled run scans: "all" (every
+	// branch the provider lists, up to 2,000 per repository) or "default".
+	ScheduleBranches string   `json:"schedule_branches"`
+	ScheduleHour     int      `json:"schedule_hour"` // UTC hour 0-23
+	PRCodeQL         bool     `json:"pr_codeql"`     // CodeQL on PRs (slow)
+	PRAIFixes        bool     `json:"pr_ai_fixes"`   // AI fix suggestions in PR comments (step 5)
+	Repos            []string `json:"repos"`         // limit scheduled scans; empty = all known
+	MaxComments      int      `json:"max_comments"`  // inline comments per update
 }
 
 func defaultCodeScanPolicy() codeScanPolicy {
-	return codeScanPolicy{PRComments: true, BlockOn: "critical", Schedule: "off", ScheduleHour: 2, MaxComments: 20}
+	// Rescanning is how a fixed issue is noticed, so every connector rescans
+	// all repositories and branches every 5 days unless turned off.
+	return codeScanPolicy{PRComments: true, BlockOn: "critical", Schedule: "every5d", ScheduleBranches: "all", ScheduleHour: 2, MaxComments: 20}
 }
 
 func codePolicyKey(id int64) string { return "code.policy." + strconv.FormatInt(id, 10) }
@@ -65,6 +70,11 @@ func loadCodeScanPolicy(ctx context.Context, db *store.DB, connID int64) codeSca
 	p := defaultCodeScanPolicy()
 	if v, err := db.GetSetting(ctx, codePolicyKey(connID)); err == nil && v != "" {
 		_ = json.Unmarshal([]byte(v), &p)
+		// A policy saved before the 5-day default existed has no
+		// schedule_branches; its "off" was the old default, not a choice.
+		if !strings.Contains(v, `"schedule_branches"`) && p.Schedule == "off" {
+			p.Schedule, p.ScheduleBranches = "every5d", "all"
+		}
 	}
 	return p.normalised()
 }
@@ -76,9 +86,12 @@ func (p codeScanPolicy) normalised() codeScanPolicy {
 		p.BlockOn = "critical"
 	}
 	switch p.Schedule {
-	case "off", "daily", "weekly":
+	case "off", "daily", "weekly", "every5d":
 	default:
 		p.Schedule = "off"
+	}
+	if p.ScheduleBranches != "default" {
+		p.ScheduleBranches = "all"
 	}
 	if p.ScheduleHour < 0 || p.ScheduleHour > 23 {
 		p.ScheduleHour = 2
@@ -264,6 +277,9 @@ func scheduleDue(p codeScanPolicy, now, last time.Time) bool {
 	if p.Schedule == "weekly" && now.Weekday() != time.Monday {
 		return false
 	}
+	if p.Schedule == "every5d" {
+		return now.Sub(last) > 5*24*time.Hour-4*time.Hour
+	}
 	return now.Sub(last) > 20*time.Hour
 }
 
@@ -291,11 +307,28 @@ func (a *CodeAutomation) runSchedule(ctx context.Context, now time.Time) {
 			repos = knownRepos(ctx, a.db, c.ID)
 		}
 		day := now.Format("2006-01-02")
-		for _, r := range repos {
-			// head_sha carries the date so one schedule run per day is queued.
-			enqueueCodeJob(ctx, a.db, store.CodeScanJob{ConnectorID: c.ID, Kind: "branch", Trigger: "schedule",
-				Repo: r, Ref: "HEAD", HeadSHA: "schedule:" + day}, a.logger)
+		queued := 0
+		var raw *store.DevOpsConnector // with credentials, for listing branches
+		if p.ScheduleBranches == "all" {
+			raw, _ = a.db.GetDevOpsConnectorRaw(ctx, c.ID)
 		}
+		for _, r := range repos {
+			refs := []string{"HEAD"}
+			if raw != nil {
+				if bs, err := providerBranches(ctx, raw, r); err == nil && len(bs) > 0 {
+					refs = bs
+				} else if err != nil {
+					a.logger.Warn("code automation: branch list failed, scanning the default branch", "repo", r, "err", err)
+				}
+			}
+			for _, ref := range refs {
+				// head_sha carries the date so one schedule run per day is queued.
+				enqueueCodeJob(ctx, a.db, store.CodeScanJob{ConnectorID: c.ID, Kind: "branch", Trigger: "schedule",
+					Repo: r, Ref: ref, HeadSHA: "schedule:" + day}, nil)
+				queued++
+			}
+		}
+		a.logger.Info("code automation: scheduled scans queued", "connector", c.ID, "repos", len(repos), "jobs", queued, "branches", p.ScheduleBranches)
 	}
 }
 

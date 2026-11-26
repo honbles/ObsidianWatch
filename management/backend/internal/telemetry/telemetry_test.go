@@ -217,3 +217,78 @@ func TestOffWithoutEndpoint(t *testing.T) {
 }
 
 func mustJSON(v any) []byte { b, _ := json.Marshal(v); return b }
+
+func TestRequestFields(t *testing.T) {
+	srv, c := collector(t)
+	defer srv.Close()
+	t.Setenv("OTEL_EXPORTER_OTLP_ENDPOINT", srv.URL)
+	tr := Init(context.Background(), "1", nil)
+	defer global.Store(nil)
+	var got string
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /api/items", func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		got = string(b)
+	})
+	mux.HandleFunc("POST /auth/login", func(w http.ResponseWriter, r *http.Request) {})
+	route := func(r *http.Request) string { _, p := mux.Handler(r); return RouteOf(p) }
+	h := Middleware(route)(mux)
+	body := `{"name":"x","address":{"zip":"1"}}`
+	req := httptest.NewRequest("POST", "/api/items?page=2", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	h.ServeHTTP(httptest.NewRecorder(), req)
+	lr := httptest.NewRequest("POST", "/auth/login", strings.NewReader(`{"password":"p"}`))
+	lr.Header.Set("Content-Type", "application/json")
+	h.ServeHTTP(httptest.NewRecorder(), lr)
+	tr.Flush(context.Background())
+	if got != body {
+		t.Fatalf("handler body %q", got)
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for _, s := range c.spans {
+		switch s["name"] {
+		case "POST /api/items":
+			if attrOf(s, "url.query") != `{"stringValue":"page=2"}` || !strings.Contains(attrOf(s, "ow.request.body"), "zip") {
+				t.Fatalf("items span %+v", s)
+			}
+		case "POST /auth/login":
+			if attrOf(s, "ow.request.body") != "" {
+				t.Fatal("login body must not be reported")
+			}
+		}
+	}
+	if len(c.spans) < 2 {
+		t.Fatalf("spans %d", len(c.spans))
+	}
+}
+
+func TestDefaultTransportTraced(t *testing.T) {
+	srv, c := collector(t)
+	defer srv.Close()
+	t.Setenv("OTEL_EXPORTER_OTLP_ENDPOINT", srv.URL)
+	orig := http.DefaultTransport
+	defer func() { http.DefaultTransport = orig }()
+	tr := Init(context.Background(), "1", nil)
+	defer global.Store(nil)
+	dep := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("traceparent") != "" {
+			t.Error("trace headers must not go to third parties")
+		}
+	}))
+	defer dep.Close()
+	resp, err := (&http.Client{}).Get(dep.URL + "/x") // no transport of its own, no traced context
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	tr.Flush(context.Background())
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for _, s := range c.spans {
+		if s["kind"] == "SPAN_KIND_CLIENT" && strings.Contains(attrOf(s, "server.address"), "127.0.0.1") {
+			return
+		}
+	}
+	t.Fatalf("no client span for the outgoing call: %v", c.spans)
+}

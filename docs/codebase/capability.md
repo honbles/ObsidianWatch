@@ -676,7 +676,7 @@ Set per connector on the **Automation** tab (`GET/PUT /api/v1/devops-connectors/
 | AI fix suggestions in comments | Off by default. Up to 5 per update (section 4.13). Needs an AI provider and the source-sharing opt-in. |
 | Inline comments per update | 1-100, default 20; the rest are listed in the summary |
 | Scan on push | A push to the repository's **default branch** queues a full branch scan |
-| Scheduled scan | Daily, or weekly on Monday, at a UTC hour; all repositories seen for the connector, or a listed set |
+| Scheduled scan | Every 5 days by default (all repositories and all branches), or daily, or weekly on Monday, at a UTC hour; all repositories seen for the connector, or a listed set; all branches (up to 2,000 per repository, one job each, stored per branch) or the default branch only. A rescan is how a fixed finding is noticed: each branch's new result replaces its old one. If listing branches fails, the default branch is scanned |
 
 **Jobs** are rows in `code_scan_jobs` (migration `076`): queued, running, done or failed, with the trigger, target, finding count, whether it blocked, what was posted, and the findings. The same target and commit is never queued twice while one is pending. One worker runs them in order (`OW_CODE_SCAN_WORKERS`, up to 4); a restart fails jobs that were running. **Scan all repositories now** queues a manual branch scan of every known repository. A branch scan stores its result as the repository's SAST result (the Code pages show it).
 

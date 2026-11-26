@@ -87,6 +87,14 @@ func deterministicID(ev *schema.Event) string {
 	binary.LittleEndian.PutUint64(ts, uint64(ev.Time.UnixNano()))
 	h.Write(ts)
 	fmt.Fprintf(h, "%s|%s|%s|%d|%d", ev.AgentID, ev.Source, ev.EventType, ev.EventID, ev.RecordID)
+	// Events with no source record number (app helper events, which carry
+	// millisecond times) also hash the collector's own id: two of the same type
+	// in the same tick must not share an id, or the backend keeps only the
+	// first. Records with a RecordID keep the old id, so a re-read source record
+	// is still deduplicated. Events are enriched once, before the queue.
+	if ev.RecordID == 0 && ev.ID != "" {
+		fmt.Fprintf(h, "|%s", ev.ID)
+	}
 	sum := h.Sum(nil)
 	return hex.EncodeToString(sum[:16])
 }

@@ -46,7 +46,7 @@ Notes:
 | Query-string field names, injection signatures | `url.query` (agent 2.x) or `http.target`/`http.url` (1.x) | names only leave the host; values only for reviewed routes |
 | Dependencies | client spans: JDBC (`db.system`, `server.address`), HTTP clients, Kafka/JMS/RabbitMQ producers | |
 | Database query groups and N+1 | JDBC spans: `db.operation`, `db.sql.table`; `db.statement` read only for fingerprints | see defect D1 in [capability.md](capability.md): not delivered by the current agent |
-| Error groups | `exception` span events with Java stack traces (`at pkg.Cls.m(File.java:N)`) | frames from `java.`, `javax.`, `jdk.`, `sun.`, `kotlin.` count as library frames. Stack text over 4 KiB is cut (defect D2); the top frames are still parsed |
+| Error groups | `exception` span events with Java stack traces (`at pkg.Cls.m(File.java:N)`) | frames from `java.`, `javax.`, `jdk.`, `sun.`, `kotlin.` count as library frames. Stack text over 16 KiB is cut; the top frames are still parsed |
 | Message consumers | CONSUMER spans from Kafka, JMS, RabbitMQ, SQS instrumentation | Jobs and queues tab (defect D1) |
 | Client address | `client.address`, `network.peer.address` (or older `net.sock.peer.addr`) | behind a proxy set Trusted proxies in the service settings |
 | Instance identity | the JVM process | verified with the `java` executable |
@@ -54,7 +54,7 @@ Notes:
 ## What needs manual work
 
 - **Exception types for injection detection.** APP-A09 counts failures whose exception type contains `injection`, `ognl`, `spelevaluation`, `spelparse`, or `sql` with `syntax`, `grammar` or `parse`. JDBC drivers usually throw `java.sql.SQLSyntaxErrorException`, which matches. Wrapped exceptions (for example Spring's `BadSqlGrammarException`) also match. Custom wrappers may need a matching name. The agent's own parameter-value signatures work regardless.
-- **Request body fields.** There is no Java helper in the repository. To report body field names, set the span attribute `ow.request.body` on the server span to the JSON of the parsed body (object only, at most 4 KiB in practice):
+- **Request body fields.** There is no Java helper in the repository. To report body field names, set the span attribute `ow.request.body` on the server span to the JSON of the parsed body (object only, at most 32 KiB):
   ```java
   Span.current().setAttribute("ow.request.body", objectMapper.writeValueAsString(bodyMap));
   ```
@@ -75,10 +75,10 @@ OwSecurity.login("failure", user, request.getRemoteAddr(), "/login");
 OwSecurity.authzDenied("invoice", "read", user, "/invoices/{id}", request.getRemoteAddr());
 OwSecurity.inputRejected("sqli", "/search", "q", request.getRemoteAddr());
 OwSecurity.rateLimited("login", "/login", request.getRemoteAddr());
-OwSecurity.emit("data.export", "rows", "1200", "format", "csv", "route", "/export");
+OwSecurity.dataExport("orders", user, "csv", "1200", "/export", request.getRemoteAddr());
 ```
 
-Pass route templates, not raw paths. User ids are hashed by the agent. The events appear on the service's Security tab and make the service Tier 2. No detection rule reads them today: APP-A01 counts 401/403 responses, not `auth.login` events. Return 401 or 403 on a failed login so A01 can count it.
+`OwSecurity` (helper version `java-2`) has one method per event name; see the table in [capability.md](capability.md) section 4.3. It compiles against the OpenTelemetry API signatures; it was not run against the receiver here (no Maven access in the test environment). Pass route templates, not raw paths. User ids are hashed by the agent. The events appear on the service's Security tab and make the service Tier 2. No detection rule reads them today: APP-A01 counts 401/403 responses, not `auth.login` events. Return 401 or 403 on a failed login so A01 can count it.
 
 ## Verify
 

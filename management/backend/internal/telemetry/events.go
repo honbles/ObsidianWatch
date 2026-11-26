@@ -48,6 +48,7 @@ type eventExporter struct {
 	sent     atomic.Int64
 	dropped  atomic.Int64
 	logger   *slog.Logger
+	health   *exportHealth
 }
 
 func newEventExporter(ep string, resource []attr, logger *slog.Logger) *eventExporter {
@@ -154,10 +155,15 @@ func (e *eventExporter) flush() {
 	}
 	if err := e.post(batch); err != nil {
 		e.dropped.Add(int64(len(batch)))
-		e.logger.Debug("telemetry: event export failed", "err", err, "events", len(batch))
+		if e.health != nil {
+			e.health.fail(e.logger, "logs", err)
+		}
 		return
 	}
 	e.sent.Add(int64(len(batch)))
+	if e.health != nil {
+		e.health.ok(e.logger, "logs")
+	}
 }
 
 func (e *eventExporter) post(batch []eventRec) error {
