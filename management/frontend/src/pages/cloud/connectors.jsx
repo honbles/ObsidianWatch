@@ -28,8 +28,10 @@ export function ConnectorForm({ provider, onSaved, onCancel }) {
   const testConn = async () => {
     setTesting(true); setTestResult(null)
     try {
-      await api.post('/api/v1/cloud-connectors/test', { provider, credentials: values })
-      setTestResult({ ok: true, msg: 'Connection successful!' })
+      const { data } = await api.post('/api/v1/cloud-connectors/test', { provider, credentials: values })
+      // AWS: fill the account ID from the identity the keys belong to (or the assumed role's account).
+      if (provider === 'aws' && data?.account_id && !values.account_id) setValues(v => ({ ...v, account_id: data.account_id }))
+      setTestResult({ ok: true, msg: provider === 'aws' && data?.account_id ? `Connection successful: account ${data.account_id}` : 'Connection successful!' })
     } catch (e) { setTestResult({ ok: false, msg: e.response?.data?.error || 'Connection failed' }) }
     finally { setTesting(false) }
   }

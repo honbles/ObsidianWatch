@@ -48,8 +48,10 @@ management/backend/            management API and engines
 management/frontend/           React console
 management/docker/             management image, server.yaml, scanner install
 cert-init/                     certificate generator
-samples/app/                   instrumented sample apps (Node, Python, Java, .NET, Go) and verify.sh
-tools/                         helper scripts (OpenTelemetry Go SDK refresh)
+samples/app/                   minimal instrumented samples per language, verify.sh, and sample-apps.sh
+                               (fetches five real apps, instruments them, runs and attacks them)
+tools/                         helper scripts (OpenTelemetry Go SDK refresh, detection self-tests,
+                               aws-verify.sh: provision and check an AWS test account end to end)
 docs/                          documentation (start at docs/README.md)
 ```
 
@@ -236,7 +238,7 @@ cd management/backend && go test ./...
 
 Development agents without an embedded config read `agent.yaml` from disk: copy `agents/<os>/configs/agent.yaml` and set `backend_url`, `enroll_token` (Platform settings → Agent enrollment) and `ca_file`.
 
-Application monitoring samples and an end-to-end check against the real agent receiver: `samples/app` (`verify.sh`).
+Application monitoring samples and an end-to-end check against the real agent receiver: `samples/app` (`verify.sh`). Five real applications (Juice Shop, FastAPI, PetClinic, eShopOnWeb, a Go order service) instrumented to Tier 2, with traffic and attacks: `samples/app/sample-apps.sh` (it clones each upstream at a fixed commit and applies the instrumentation patch stored in the script; `./sample-apps.sh` then `./sample-apps.sh attack`).
 
 Contributing: keep each platform's signatures limited to fields its collectors fill, register new signature sets in `sig_registry.go`, and add a new migration for schema changes (never edit an applied one). UI conventions: [docs/development/design-language.md](docs/development/design-language.md) (brand: [docs/development/brand.md](docs/development/brand.md)); the console build fails on hard-coded colours.
 

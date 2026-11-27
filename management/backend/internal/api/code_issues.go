@@ -14,8 +14,9 @@ package api
 //     issue covers. Clicking again creates issues only for new problems and
 //     adds new locations of known problems as a comment on the existing
 //     issue. Whether an issue is open or closed is not tracked.
-//   - Public repositories are skipped: an issue there would publish the
-//     vulnerability before it is fixed. Secret values are never included.
+//   - Public repositories need confirm_public "proceed": an issue there
+//     publishes the vulnerability before it is fixed. Secret values are never
+//     included.
 //   - Preview first (dry_run), then create; at most 50 new issues per click.
 
 import (
@@ -385,6 +386,9 @@ func handleCreateIssues(db *store.DB) http.HandlerFunc {
 			Branch      string `json:"branch"`
 			MinSeverity string `json:"min_severity"`
 			DryRun      bool   `json:"dry_run"`
+			// ConfirmPublic must be "proceed" to create issues on a public
+			// repository (they disclose the vulnerabilities).
+			ConfirmPublic string `json:"confirm_public"`
 		}
 		if json.NewDecoder(io.LimitReader(r.Body, 16<<10)).Decode(&body) != nil || body.Repo == "" {
 			writeJSON(w, 400, map[string]string{"error": "repo is required (issues are created per repository)"})
@@ -443,14 +447,18 @@ func handleCreateIssues(db *store.DB) http.HandlerFunc {
 		plan := map[string]interface{}{"repo": body.Repo, "branch": branchLabel(branch), "min_severity": body.MinSeverity,
 			"groups": groups, "new_issues": newIssues, "comments": comments, "public_repo": public,
 			"limit": maxIssuesPerClick}
+		confirmed := strings.EqualFold(strings.TrimSpace(body.ConfirmPublic), "proceed")
 		if public {
-			reason := "the repository is public: an issue would disclose the vulnerability before it is fixed"
+			reason := "the repository is public: anyone can read these issues, so they disclose the vulnerabilities before they are fixed"
 			if visErr != nil {
-				reason = "the repository's visibility could not be read (" + visErr.Error() + "), so it is treated as public"
+				reason = "the repository's visibility could not be read (" + visErr.Error() + "), so it is treated as public: the issues may be readable by anyone"
 			}
-			plan["blocked"] = reason
+			plan["public_warning"] = reason
+			if !confirmed && !body.DryRun {
+				plan["blocked"] = reason + `; type "proceed" to create them anyway`
+			}
 		}
-		if body.DryRun || public {
+		if body.DryRun || (public && !confirmed) {
 			writeJSON(w, 200, plan)
 			return
 		}

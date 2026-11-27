@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { X, ExternalLink } from 'lucide-react'
 import api from '../../api/client'
+import { ProceedInput, proceedTyped } from './ConfirmPublic'
 
 const SEV = ['critical', 'high', 'medium', 'low']
 const TRACKER = { github: 'GitHub issues', gitlab: 'GitLab issues (confidential)', azuredevops: 'Azure DevOps work items (Bug)' }
@@ -13,6 +14,7 @@ export default function CreateIssuesDialog({ conn, repo, branch, onClose, onDone
   const [result, setResult] = useState(null)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
+  const [proceed, setProceed] = useState('')
 
   useEffect(() => {
     setPlan(null); setErr('')
@@ -23,7 +25,8 @@ export default function CreateIssuesDialog({ conn, repo, branch, onClose, onDone
   const create = async () => {
     setBusy(true); setErr('')
     try {
-      const { data } = await api.post(`/api/v1/devops-connectors/${conn.id}/sast/issues`, { repo, branch, min_severity: minSev }, { timeout: 180000 })
+      const { data } = await api.post(`/api/v1/devops-connectors/${conn.id}/sast/issues`,
+        { repo, branch, min_severity: minSev, confirm_public: plan?.public_warning ? proceed.trim() : undefined }, { timeout: 180000 })
       setResult(data); onDone && onDone()
     } catch (e) { setErr(e.response?.data?.error || 'Creating issues failed') }
     finally { setBusy(false) }
@@ -53,6 +56,12 @@ export default function CreateIssuesDialog({ conn, repo, branch, onClose, onDone
           {err && <div className="text-xs text-red-400">{err}</div>}
           {!plan && !err && <div className="text-xs text-siem-muted">Preparing…</div>}
           {plan?.blocked && <div className="text-xs text-amber-300 bg-amber-950/30 border border-amber-800/40 rounded-lg p-3">Not created: {plan.blocked}.</div>}
+          {plan?.public_warning && !result && (
+            <div className="text-xs text-red-300 bg-red-950/30 border border-red-800/40 rounded-lg p-3 space-y-2">
+              <div><b>Public repository:</b> {plan.public_warning}. Attackers can read the issues before the fixes are deployed.</div>
+              <ProceedInput value={proceed} onChange={setProceed} />
+            </div>
+          )}
           {plan && !result && !plan.blocked && (
             <>
               <div className="text-xs text-siem-text">
@@ -89,7 +98,7 @@ export default function CreateIssuesDialog({ conn, repo, branch, onClose, onDone
         </div>
         <div className="flex justify-end gap-2 px-5 py-3 border-t border-siem-border">
           <button onClick={onClose} className="px-4 py-2 text-xs rounded-xl border border-siem-border text-siem-muted">{result ? 'Close' : 'Cancel'}</button>
-          {!result && <button onClick={create} disabled={!plan || plan.blocked || work === 0 || busy}
+          {!result && <button onClick={create} disabled={!plan || plan.blocked || work === 0 || busy || (plan.public_warning && !proceedTyped(proceed))}
             className="px-4 py-2 text-xs font-semibold rounded-xl bg-siem-accent text-white disabled:opacity-40">{busy ? 'Creating…' : 'Create'}</button>}
         </div>
       </div>

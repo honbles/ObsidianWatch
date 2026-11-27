@@ -116,7 +116,8 @@ var cloudSignaturesExtended = []ThreatSig{
 			return ev.EventType == "cloud.cloudtrail" &&
 				awsActionHas(ev, "assumerole") &&
 				containsAny(strings.ToLower(rawStr(ev)), "rolearn") &&
-				!containsAny(strings.ToLower(rawStr(ev)), "errorcode")
+				!containsAny(strings.ToLower(rawStr(ev)), "errorcode") &&
+				awsAssumeRoleCrossAccount(ev)
 		},
 	},
 
@@ -870,7 +871,7 @@ var cloudReconSignatures = []ThreatSig{
 		Description: "Rapid succession of AWS list/describe API calls - consistent with automated enumeration (prowler, ScoutSuite, Pacu, CloudMapper).",
 		Severity: 3, MITRE: "T1526", Category: "Discovery",
 		Match: func(ev store.Event) bool {
-			return ev.EventType == "cloud.cloudtrail" &&
+			return ev.EventType == "cloud.cloudtrail" && !awsSelfActivity(ev) &&
 				containsAny(strings.ToLower(rawStr(ev)),
 					"listbuckets", "describeinstances", "listusers", "listgroups",
 					"listpolicies", "describedbinstances", "listfunctions",
@@ -882,7 +883,7 @@ var cloudReconSignatures = []ThreatSig{
 		Description: "IAM credential report generated - maps all users, password ages, access keys, MFA status. Commonly used by attackers to identify weak accounts.",
 		Severity: 3, MITRE: "T1087.004", Category: "Discovery",
 		Match: func(ev store.Event) bool {
-			return ev.EventType == "cloud.cloudtrail" &&
+			return ev.EventType == "cloud.cloudtrail" && !awsSelfActivity(ev) &&
 				awsActionHas(ev, "generatecredentialreport", "getcredentialreport")
 		},
 	},
@@ -891,7 +892,7 @@ var cloudReconSignatures = []ThreatSig{
 		Description: "Cloud account or organization structure enumerated - consistent with attacker mapping the environment.",
 		Severity: 2, MITRE: "T1526", Category: "Discovery",
 		Match: func(ev store.Event) bool {
-			return isCloudEvent(ev) &&
+			return isCloudEvent(ev) && !awsSelfActivity(ev) &&
 				containsAny(strings.ToLower(rawStr(ev)),
 					"getaccountsummary", "listaccounts", "describeorganization",
 					"tenants/read", "subscriptions/list", "projects.list",

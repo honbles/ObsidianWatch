@@ -39,7 +39,7 @@ func TestSASTCoverage(t *testing.T) {
 	ctx := context.Background()
 	// Only the migrations of the two tables used here (the full set needs the ingest backend's tables).
 	for _, f := range []string{"015_devops_connectors.sql", "018_code_scan.sql", "020_sast_per_repo.sql",
-		"075_sast_engines.sql", "081_sast_commit.sql"} {
+		"075_sast_engines.sql", "081_sast_commit.sql", "085_sast_correlation.sql"} {
 		b, err := os.ReadFile("../store/migrations/" + f)
 		if err != nil {
 			t.Fatal(err)

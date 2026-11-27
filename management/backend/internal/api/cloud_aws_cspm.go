@@ -338,8 +338,9 @@ func RunAWSCSPM(ctx context.Context, creds awsCreds, accountID string) (*CSPMRes
 			go func(i int, b string) {
 				defer wg.Done()
 				defer func() { <-sem }()
-				pb, pc, perr := awsS3Get(ctx, iamCreds, b+".s3.amazonaws.com", "/?publicAccessBlock")
+				pb, pc, perr := awsBucketGet(ctx, iamCreds, b, "?publicAccessBlock")
 				if perr != nil {
+					results[i] = pabRes{nil, false}
 					return
 				}
 				f, ok := awsS3PABFinding(b, pc, pb)
@@ -347,12 +348,24 @@ func RunAWSCSPM(ctx context.Context, creds awsCreds, accountID string) (*CSPMRes
 			}(i, b)
 		}
 		wg.Wait()
+		// Account-level Block Public Access overrides the bucket settings:
+		// when all four flags are on, a bucket without its own BPA is not exposed.
+		accountPAB := awsAccountPABOn(ctx, iamCreds, accountID)
+		unreadable := 0
 		for _, r := range results {
-			if r.f != nil {
-				add([]CSPMFinding{*r.f})
-			} else if r.ok {
+			switch {
+			case r.f != nil && accountPAB:
 				res.Passed++
+			case r.f != nil:
+				add([]CSPMFinding{*r.f})
+			case r.ok:
+				res.Passed++
+			default:
+				unreadable++
 			}
+		}
+		if unreadable > 0 {
+			skip("s3_public_access", fmt.Sprintf("Block Public Access of %d bucket(s) could not be read - grant s3:GetBucketPublicAccessBlock and s3:GetBucketLocation (SecurityAudit)", unreadable))
 		}
 		runAWSS3Hardening(ctx, iamCreds, buckets.Names, add, skip, &res.Passed)
 	}

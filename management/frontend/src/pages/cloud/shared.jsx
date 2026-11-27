@@ -12,9 +12,9 @@ export const PROVIDERS = {
       { key: 'region',            label: 'Region',            placeholder: 'us-east-1', secret: false },
       { key: 'role_arn',          label: 'Role ARN to assume (optional, recommended)', placeholder: 'arn:aws:iam::123456789012:role/ObsidianWatchReadOnly', secret: false },
       { key: 'external_id',       label: 'External ID (optional)', placeholder: 'shared secret from the role trust policy', secret: true },
-      { key: 'account_id',        label: 'Account ID (optional)', placeholder: '123456789012', secret: false },
+      { key: 'account_id',        label: 'Account ID (filled by Test Connection)', placeholder: '123456789012', secret: false },
     ],
-    pulls: ['CloudTrail (LookupEvents API)', 'IAM activity', 'GuardDuty findings'],
+    pulls: ['CloudTrail (LookupEvents API, home region + us-east-1 for IAM/sign-in)', 'IAM activity', 'GuardDuty findings', 'Security Hub findings'],
   },
   azure: {
     label: 'Microsoft Azure', color: 'text-blue-400',

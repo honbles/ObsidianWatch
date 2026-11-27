@@ -52,6 +52,6 @@ Fixed since: the console's proxy now passes the client address on every location
 
 ## Codebase
 
-- The **Code Scan** tab still reads the redacted and truncated stored patches. The SAST scan now covers secrets over the full history of a cloned branch, so prefer it; the Code Scan tab is kept for connectors where cloning is not possible.
+- The **Commit Scan** tab (formerly Code Scan) still reads the redacted and truncated stored patches. The SAST scan now covers secrets over the full history of a cloned branch, so prefer it; the Commit Scan tab is kept for connectors where cloning is not possible.
 - Runtime reachability comes from Linux agents only; Windows and macOS agents do not report runtime inventories yet. Pure Python and JavaScript modules can only be shown as deployed, not loaded, and APM stack traces are not yet used as evidence of execution.
 - SAST runs scanners in the management container, as the same user, with its network access (no separate sandbox).

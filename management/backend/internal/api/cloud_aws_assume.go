@@ -114,7 +114,7 @@ func resolveAWSCreds(ctx context.Context, c map[string]string) (awsCreds, error)
 	defer resp.Body.Close()
 	data, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if resp.StatusCode != http.StatusOK {
-		return base, fmt.Errorf("AssumeRole denied (HTTP %d): check the role trust policy and ExternalId", resp.StatusCode)
+		return base, fmt.Errorf("AssumeRole denied (HTTP %d, %s): check the role trust policy, ExternalId and the base user's sts:AssumeRole permission", resp.StatusCode, awsErrorText(data))
 	}
 	var r stsAssumeRoleResp
 	if err := xml.Unmarshal(data, &r); err != nil || r.Credentials.AccessKeyID == "" {

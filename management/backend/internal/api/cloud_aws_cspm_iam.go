@@ -218,10 +218,12 @@ func runAWSCSPMIAM(ctx context.Context, iamCreds awsCreds, policyBody []byte, po
 	}
 	// Credential report: request generation, poll until complete.
 	var report []byte
+	noted := false
 	for i := 0; i < 8 && report == nil; i++ {
 		gb, gc, err := awsQueryCall(ctx, iamCreds, "iam", "iam.amazonaws.com", "Action=GenerateCredentialReport&Version=2010-05-08")
 		if err != nil || gc != 200 {
 			skip("iam_credential_report", "GenerateCredentialReport denied or failed - grant iam:GenerateCredentialReport / SecurityAudit")
+			noted = true
 			break
 		}
 		var st struct {
@@ -232,6 +234,7 @@ func runAWSCSPMIAM(ctx context.Context, iamCreds awsCreds, policyBody []byte, po
 			rb, rc, rerr := awsQueryCall(ctx, iamCreds, "iam", "iam.amazonaws.com", "Action=GetCredentialReport&Version=2010-05-08")
 			if rerr != nil || rc != 200 {
 				skip("iam_credential_report", "GetCredentialReport denied or failed")
+				noted = true
 				break
 			}
 			var c struct {
@@ -254,6 +257,8 @@ func runAWSCSPMIAM(ctx context.Context, iamCreds awsCreds, policyBody []byte, po
 		f, p := awsCredReportFindings(parseAWSCredentialReport(report), time.Now())
 		add(f)
 		*passed += p
+	} else if !noted && ctx.Err() == nil {
+		skip("iam_credential_report", "the credential report was not ready after 12 seconds; the next scan reads it (AWS keeps it for 4 hours)")
 	}
 	runAWSRoleTrust(ctx, iamCreds, add, skip, passed)
 	// Over-permissive customer-managed policies (paged).

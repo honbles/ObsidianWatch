@@ -253,7 +253,7 @@ app.post('/signup', (req, res) => { /* your routes, unchanged */ })
 
 If the helper is placed before the parsers, `req.body` is still empty when it runs and nothing is reported. If your project keeps source under `src/`, save `ow-payload.js` there and adjust the `require` path (for example `require('./ow-payload')` from `src/app.js`), but keep `instrumentation.js` or `ow-instrument.js` where your start command points.
 
-If you cannot edit the app, `samples/app/juice-kit/ow-juice-preload.js` shows how to do step 3 from a preload by wrapping Express's `app.use`; it is written for Juice Shop's parser names and needs adapting to yours.
+If you cannot edit much of the app, load the instrumentation as a preload (`node --require ./ow/instrumentation.js app.js`) and keep the app changes to the few lines that report security events; the Juice Shop sample in `samples/app/sample-apps.sh` is built that way (its `ow/` folder and `git diff` after fetching).
 
 **How fields are reported.** Nested names are flattened (`address.zip`), an array contributes the shape of its first element (`items[].sku`), at most 4 levels, 50 names per request, 32 KB per body. Multipart and binary bodies are skipped. Query-string and body fields are merged per route.
 
@@ -519,7 +519,7 @@ OW_ALLOW_VULN_DEMO=1 node app.js
 python3 ../attack_sim.py --base http://127.0.0.1:5002
 ```
 
-Or run Juice Shop with the kit in `samples/app/juice-kit` (README there): `setup`, `start`, `attack`, then `python3 ow-juice-requests.py bodies`. Expect, within a few minutes: the service with a verified instance; routes as templates; `POST /rest/user/login` with a high 401/403 count and its body fields; APP-A01 and APP-A09 alerts at Info; request samples after you review a route and the agent pulls the policy.
+Or run the instrumented Juice Shop: `APPS=juice-shop ./sample-apps.sh` in `samples/app`, then `./sample-apps.sh attack juice-shop`. Expect, within a few minutes: the service with a verified instance; routes as templates; `POST /rest/user/login` with a high 401/403 count and its body fields; APP-A01 and APP-A09 alerts at Info; request samples after you review a route and the agent pulls the policy.
 
 ## 13. Troubleshooting
 

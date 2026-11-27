@@ -35,7 +35,7 @@ app_monitoring:
   enabled: true
   otlp:
     listen: "127.0.0.1:4318"
-    socket: "/run/obsidianwatch/otlp.sock"
+    socket: "/run/obsidianwatch/otlp/otlp.sock"
   user_hash_key: "<64 hex characters>"
   client_ip_default: full
   ebpf:
@@ -159,7 +159,7 @@ The management server (Go) is instrumented with the official OpenTelemetry Go SD
 
 | Variable | Meaning |
 |---|---|
-| `OTEL_EXPORTER_OTLP_ENDPOINT` | Base URL of the agent's receiver, e.g. `http://127.0.0.1:4318` (traces go to `/v1/traces`), or `unix:///run/obsidianwatch/otlp.sock` |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | Base URL of the agent's receiver, e.g. `http://127.0.0.1:4318` (traces go to `/v1/traces`), or `unix:///run/obsidianwatch/otlp/otlp.sock` on the host (`unix:///run/ow-otlp/otlp.sock` inside the management container) |
 | `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` | Full traces URL, used as given (overrides the above) |
 | `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT` | Full URL for the security events (default: the base URL + `/v1/logs`, or the traces URL with `/v1/traces` replaced) |
 | `OTEL_SERVICE_NAME` | Default `obsidianwatch-management` |

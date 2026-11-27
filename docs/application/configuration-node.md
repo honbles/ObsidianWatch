@@ -98,7 +98,7 @@ OW_ALLOW_VULN_DEMO=1 node app.js                        # port 5002
 python3 ../attack_sim.py --base http://127.0.0.1:5002
 ```
 
-Then **Applications → Services**, the **Endpoints** tab (templates such as `/orders/:id`), and **Instances** (verified). The sample is intentionally vulnerable and must never be deployed. Juice Shop: see `samples/app/juice-kit/README.md`.
+Then **Applications → Services**, the **Endpoints** tab (templates such as `/orders/:id`), and **Instances** (verified). The sample is intentionally vulnerable and must never be deployed. A real application: `samples/app/sample-apps.sh` instruments OWASP Juice Shop (`APPS=juice-shop ./sample-apps.sh`; its `OBSIDIANWATCH.md` and `git diff` list the changes).
 
 ## Troubleshooting
 

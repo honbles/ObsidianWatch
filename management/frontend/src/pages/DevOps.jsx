@@ -5,6 +5,7 @@ import AutomationPanel from './code/AutomationPanel'
 import ReachBadge, { REACH_ORDER, reachTitle } from './code/ReachBadge'
 import FindingActions, { TriageBadge } from './code/FindingActions'
 import CreateIssuesDialog from './code/CreateIssuesDialog'
+import EnginePicker from './code/EnginePicker'
 import { GitBranch, GitCommit, Code, Bell, Activity, Search,
          RefreshCw, Plus, Trash2, ChevronRight, AlertTriangle,
          CheckCircle, XCircle, Eye, EyeOff, Clock, User,
@@ -389,6 +390,8 @@ function ConnectorDetail({ conn, onSync, onDisconnect, syncing }) {
   const navigate = useNavigate()
   const [sastResult, setSastResult] = useState(null)
   const [sasting, setSasting]       = useState(false)
+  const [sastEngines, setSastEngines] = useState([])
+  const [scanPolicy, setScanPolicy] = useState(null)
   const [sastError, setSastError]   = useState(null)
   const [aiSast, setAiSast]         = useState(null)
   const [aiSastLoading, setAiSastLoading] = useState(false)
@@ -406,6 +409,54 @@ function ConnectorDetail({ conn, onSync, onDisconnect, syncing }) {
     const p = new URLSearchParams({ repo }); if (def) p.set('default', def)
     api.get(`/api/v1/devops-connectors/${conn.id}/sast/branches?${p}`).then(r => setSastBranches(r.data.branches || [])).catch(() => {})
   }, [conn.id])
+  // A protected branch (Automation) is scanned with its own engines by default.
+  useEffect(() => {
+    if (tab !== 'sast') return
+    api.get(`/api/v1/devops-connectors/${conn.id}/scan-policy`).then(r => setScanPolicy(r.data)).catch(() => {})
+  }, [tab, conn.id])
+  const protectedProfile = (scanPolicy?.protected || []).find(b =>
+    sastSelRepo && b.repo.toLowerCase() === sastSelRepo.toLowerCase() && b.branch === sastSelBranch)
+  const profileKey = protectedProfile ? `${protectedProfile.repo} ${protectedProfile.branch} ${(protectedProfile.engines || []).join(',')}` : ''
+  useEffect(() => { setSastEngines(protectedProfile?.engines || []) }, [profileKey, sastSelRepo, sastSelBranch]) // eslint-disable-line react-hooks/exhaustive-deps
+  // Selectable engines that ran in a stored result (correlation needs two).
+  const ranEngines = (eng) => {
+    const map = { builtin: 'builtin', semgrep: 'semgrep', codeql: 'codeql', 'secrets-history': 'secrets', gitleaks: 'secrets', history: 'secrets',
+      trivy: 'dependencies', osv: 'dependencies', 'business-logic': 'business_logic' }
+    return [...new Set(Object.entries(eng || {}).filter(([, v]) => v === 'ran').map(([k]) => map[k]).filter(Boolean))]
+  }
+  const [correlating, setCorrelating] = useState(false)
+  const correlate = async (undo) => {
+    const repo = sastResult?.repo || sastSelRepo, branch = sastResult?.branch || sastSelBranch
+    if (!repo) return
+    setCorrelating(true); setSastError(null)
+    try {
+      const p = new URLSearchParams({ repo, branch: branch || 'HEAD' }); if (undo) p.set('undo', '1')
+      await runScan(`/api/v1/devops-connectors/${conn.id}/sast/correlate?${p}`, { maxWaitMs: 30 * 60 * 1000 })
+      await loadSASTForRepo(repo, branch)
+    } catch (e) { setSastError(e.response?.data?.error || 'Correlation failed') }
+    finally { setCorrelating(false) }
+  }
+  const showRawFindings = async (raw) => {
+    const repo = sastResult?.repo || sastSelRepo
+    if (!repo) return
+    const params = new URLSearchParams({ repo }); if (sastResult?.branch) params.set('branch', sastResult.branch); if (raw) params.set('raw', '1')
+    try { const { data } = await api.get(`/api/v1/devops-connectors/${conn.id}/sast?${params}`); if (data?.scan) setSastResult(data.scan) } catch { /* keep */ }
+  }
+  const runSast = async (engines) => {
+    setSasting(true); setSastError(null)
+    try {
+      const params = new URLSearchParams()
+      if (sastSelRepo) params.set('repo', sastSelRepo)
+      if (sastSelBranch) params.set('branch', sastSelBranch)
+      if (engines && engines.length) params.set('engines', engines.join(','))
+      const url = `/api/v1/devops-connectors/${conn.id}/sast${params.toString() ? '?' + params.toString() : ''}`
+      const { data } = await runScan(url, { maxWaitMs: 42 * 60 * 1000 })
+      setSastResult(data); setAiSast(null); if (data.warning) setSastError(data.warning)
+      // A partial scan merges with the stored result: show the stored, merged result.
+      if (sastSelRepo && engines && engines.length) loadSASTForRepo(sastSelRepo, sastSelBranch)
+    } catch (e) { setSastError(e.response?.data?.error || 'SAST scan failed') }
+    finally { setSasting(false) }
+  }
   const [search, setSearch]     = useState('')
   const [repoFilter, setRepoFilter] = useState('')
   const [repos, setRepos]       = useState([])
@@ -551,7 +602,7 @@ function ConnectorDetail({ conn, onSync, onDisconnect, syncing }) {
 
   const tabs = [
     { id: 'commits',   label: 'Code Changes', icon: GitCommit },
-    { id: 'code-scan', label: 'Code Scan',     icon: Shield    },
+    { id: 'code-scan', label: 'Commit Scan',   icon: Shield    },
     { id: 'sast',      label: 'SAST',          icon: Code      },
     { id: 'events',    label: 'Events',        icon: Activity  },
     { id: 'alerts',    label: 'Alerts',        icon: Bell      },
@@ -743,24 +794,37 @@ function ConnectorDetail({ conn, onSync, onDisconnect, syncing }) {
               </div>
             )}
 
+            {/* Engines */}
+            <div className="bg-siem-surface border border-siem-border rounded-xl p-3">
+              <div className="text-2xs uppercase tracking-wider text-siem-muted font-semibold mb-2">
+                Scan engines{protectedProfile ? ' · protected branch: its engines are preselected' : ''}
+              </div>
+              <EnginePicker connId={conn.id} value={sastEngines} onChange={setSastEngines} allowAI={!!protectedProfile} compact />
+              {!protectedProfile && <div className="text-2xs text-siem-muted mt-2">The AI business-logic engine runs only on protected branches (Automation → Protected branches).</div>}
+              {sastSelRepo && <div className="text-2xs text-siem-muted mt-1">Engines left out keep their last findings for this branch.</div>}
+            </div>
+
             {/* Actions */}
             <div className="flex items-center gap-3 flex-wrap">
-              <button onClick={async () => {
-                setSasting(true); setSastError(null)
-                try {
-                  const params = new URLSearchParams()
-                  if (sastSelRepo) params.set('repo', sastSelRepo)
-                  if (sastSelBranch) params.set('branch', sastSelBranch)
-                  const url = `/api/v1/devops-connectors/${conn.id}/sast${params.toString() ? '?' + params.toString() : ''}`
-                  const { data } = await runScan(url, { maxWaitMs: 42 * 60 * 1000 })
-                  setSastResult(data); setAiSast(null); if (data.warning) setSastError(data.warning)
-                } catch (e) { setSastError(e.response?.data?.error || 'SAST scan failed') }
-                finally { setSasting(false) }
-              }} disabled={sasting}
+              <button onClick={() => runSast(sastEngines)} disabled={sasting}
                 className="flex items-center gap-2 px-4 py-2 text-xs font-semibold bg-siem-accent hover:bg-siem-accent/90 text-white rounded-xl disabled:opacity-40 transition-colors">
                 <Code size={13} className={sasting ? 'animate-pulse' : ''}/>
                 {sasting ? 'Scanning source code…' : 'Run SAST Scan'}
               </button>
+              {sastResult?.repo && !sasting && !sastResult.correlation && ranEngines(sastResult.engines).length >= 2 && (
+                <button onClick={() => correlate(false)} disabled={correlating}
+                  title="Group the findings of the engines that report the same weakness, with the code model; the raw engine findings are kept"
+                  className="flex items-center gap-2 px-4 py-2 text-xs font-semibold border border-violet-500/60 text-violet-300 hover:bg-violet-950/30 rounded-xl disabled:opacity-40 transition-colors">
+                  <Zap size={13}/>{correlating ? 'Correlating…' : 'Correlate findings'}
+                </button>
+              )}
+              {protectedProfile && !sasting && (
+                <button onClick={() => runSast(['business_logic'])}
+                  title="Run only the AI business-logic engine on this protected branch; the other engines' findings are kept"
+                  className="flex items-center gap-2 px-4 py-2 text-xs font-semibold bg-violet-600 hover:bg-violet-500 text-white rounded-xl transition-colors">
+                  <Zap size={13}/>Run business-logic analysis
+                </button>
+              )}
               {sasting && <span className="text-mini text-siem-muted">Large repositories can take 10–30 minutes.</span>}
               {!sasting && sastResult?.scanned_at && (
                 <span className="text-mini text-siem-muted/60 flex items-center gap-1">
@@ -797,6 +861,25 @@ function ConnectorDetail({ conn, onSync, onDisconnect, syncing }) {
 
             {sastError && (
               <div className="bg-red-950/20 border border-red-800/30 rounded-xl p-3 text-xs text-red-400">{sastError}</div>
+            )}
+
+            {sastResult?.correlation && (
+              <div className="bg-violet-950/20 border border-violet-800/30 rounded-xl p-3 text-xs text-siem-text flex items-center gap-3 flex-wrap">
+                <Zap size={13} className="text-violet-400"/>
+                <span>
+                  {sastResult.raw ? 'Showing the raw engine findings. ' : ''}
+                  Correlated by <span className="font-mono">{sastResult.correlation.model}</span>{sastResult.correlation.automation ? ' (automation)' : ''}:
+                  {' '}{sastResult.correlation.raw} engine findings → {sastResult.correlation.findings} findings
+                  {' '}({sastResult.correlation.merged} merged{sastResult.correlation.false_positive ? `, ${sastResult.correlation.false_positive} judged false positive` : ''}
+                  {sastResult.correlation.over_limit ? `, ${sastResult.correlation.over_limit} over the limit and not reviewed` : ''}
+                  {sastResult.correlation.failed ? `, ${sastResult.correlation.failed} batch(es) failed` : ''}).
+                </span>
+                <span className="ml-auto flex gap-3">
+                  <button onClick={() => showRawFindings(!sastResult.raw)} className="text-violet-300 hover:underline">{sastResult.raw ? 'Show correlated findings' : 'Show raw engine findings'}</button>
+                  <button onClick={() => correlate(false)} disabled={correlating} className="text-violet-300 hover:underline disabled:opacity-40">{correlating ? 'Correlating…' : 'Correlate again'}</button>
+                  <button onClick={() => correlate(true)} disabled={correlating} className="text-siem-muted hover:underline disabled:opacity-40">Undo</button>
+                </span>
+              </div>
             )}
 
             {!sastResult && !sasting && (
@@ -846,11 +929,12 @@ function ConnectorDetail({ conn, onSync, onDisconnect, syncing }) {
                 {/* Engines and SBOM */}
                 {(sastResult.engines || sastResult.sbom_available) && (
                   <div className="flex items-center gap-2 flex-wrap">
-                    {Object.entries(sastResult.engines || {}).filter(([k]) => k !== 'codeql-languages').map(([name, status]) => {
+                    {Object.entries(sastResult.engines || {}).filter(([k]) => k !== 'codeql-languages' && k !== 'business-logic-files').map(([name, status]) => {
                       const ok = status === 'ran' || name === 'source'
                       const label = name === 'source' ? `source: ${status === 'git' ? 'git clone' : 'API download'}` : name
+                      const detail = name === 'business-logic' && sastResult.engines?.['business-logic-files'] ? `${status} · ${sastResult.engines['business-logic-files']}` : status
                       return (
-                        <span key={name} title={status}
+                        <span key={name} title={detail}
                           className={`text-mini px-2 py-0.5 rounded-full border ${ok ? 'border-emerald-800/50 text-emerald-400/90' : 'border-siem-border text-siem-muted/60 line-through'}`}>
                           {label}{name === 'codeql' && sastResult.engines?.['codeql-languages'] ? ` (${sastResult.engines['codeql-languages']})` : ''}
                         </span>
@@ -1002,6 +1086,7 @@ function ConnectorDetail({ conn, onSync, onDisconnect, syncing }) {
                                     <ReachBadge reach={f.reachability} />
                                     <TriageBadge f={f} />
                                     {f.issue_url && <a href={f.issue_url} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()} className="text-2xs px-1.5 py-0.5 rounded border border-siem-accent/40 text-siem-accent shrink-0">issue</a>}
+                                    {f.correlation && <CorrelationBadge c={f.correlation} />}
                                     {f.engine && f.engine !== 'semgrep' && (
                                       <span className={`text-2xs px-1 rounded shrink-0 ${
                                         f.engine === 'codeql' ? 'bg-blue-950/40 text-blue-400' :
@@ -1060,6 +1145,25 @@ function ConnectorDetail({ conn, onSync, onDisconnect, syncing }) {
                                     </div>
                                   </div>
 
+                                  {f.correlation?.members?.length > 1 && (
+                                    <div>
+                                      <div className="text-2xs uppercase tracking-wider text-siem-muted/40 mb-1">Correlated from {f.correlation.members.length} engine findings</div>
+                                      <ul className="space-y-0.5">
+                                        {f.correlation.members.map((m, k) => (
+                                          <li key={k} className="text-mini flex gap-2">
+                                            <span className="text-siem-muted/60 w-24 shrink-0">{m.engine}</span>
+                                            <code className="font-mono text-siem-muted">{m.rule_id}</code>
+                                            <span className="text-siem-text/80">{m.title}</span>
+                                            <span className="ml-auto text-siem-muted/50">{m.severity}{m.line ? ` · line ${m.line}` : ''}</span>
+                                          </li>
+                                        ))}
+                                      </ul>
+                                    </div>
+                                  )}
+                                  {f.correlation?.reason && (
+                                    <div className="text-mini text-siem-muted"><span className="text-siem-muted/50">AI verdict: </span>{f.correlation.verdict.replace('_', ' ')}{f.correlation.confidence ? ` (${f.correlation.confidence}%)` : ''} – {f.correlation.reason}</div>
+                                  )}
+
                                   {/* Code snippet - full, not truncated */}
                                   {f.snippet && (
                                     <div>
@@ -1105,7 +1209,7 @@ function ConnectorDetail({ conn, onSync, onDisconnect, syncing }) {
           </div>
         )}
 
-        {/* Code Scan */}
+        {/* Commit Scan */}
         {tab === 'code-scan' && (
           <div className="p-5 space-y-4">
 
@@ -1122,7 +1226,7 @@ function ConnectorDetail({ conn, onSync, onDisconnect, syncing }) {
               }} disabled={scanning}
                 className="flex items-center gap-2 px-4 py-2 text-xs font-semibold bg-siem-accent hover:bg-siem-accent/90 text-white rounded-xl disabled:opacity-40 transition-colors">
                 <Shield size={13} className={scanning ? 'animate-pulse' : ''}/>
-                {scanning ? 'Scanning…' : 'Run Code Scan'}
+                {scanning ? 'Scanning…' : 'Run Commit Scan'}
               </button>
               {scanResult && !aiScan && (
                 <button onClick={async () => {
@@ -1515,4 +1619,22 @@ function DevOpsConnectors() {
 // Code section: org-wide repositories and findings, with the per-connector workspace as a tab.
 export default function DevOps() {
   return <CodeOverview connectorsView={<DevOpsConnectors/>}/>
+}
+
+const VERDICT = {
+  confirmed: ['confirmed', 'border-emerald-700/50 text-emerald-400', 'The code model confirmed it; engines agree or the code shows it'],
+  likely: ['likely', 'border-sky-700/50 text-sky-400', 'One engine reports it and the code does not contradict it'],
+  false_positive: ['AI: false positive?', 'border-amber-700/50 text-amber-400', 'The code model judged it a false positive. It is still listed and still blocks; dismiss it with triage if you agree'],
+  single_engine: ['1 engine', 'border-siem-border text-siem-muted', 'Only one engine reported in this file: not sent to the model'],
+  not_reviewed: ['not reviewed', 'border-siem-border text-siem-muted', 'Over the correlation limit, or the AI request failed'],
+}
+
+function CorrelationBadge({ c }) {
+  const [label, cls, title] = VERDICT[c.verdict] || [c.verdict, 'border-siem-border text-siem-muted', '']
+  const n = c.members?.length || 1
+  return (
+    <span className={`text-2xs px-1.5 py-0.5 rounded border shrink-0 ${cls}`} title={c.reason ? `${title}. ${c.reason}` : title}>
+      {label}{n > 1 ? ` · ${n} findings` : ''}
+    </span>
+  )
 }

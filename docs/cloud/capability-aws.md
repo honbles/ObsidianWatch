@@ -8,9 +8,9 @@ All sources are pulled by the 5-minute connector sync.
 
 | Source | API | Region | Window and cursor | Event type | `agent_id` |
 |---|---|---|---|---|---|
-| CloudTrail (default) | `LookupEvents` (50 per page, 300 ms between pages, all pages) | Home region | From `sync_cursor` (newest `EventTime` ingested) − 2 min. First run: last 24 h. | `cloud.cloudtrail` | `aws-cloudtrail-<id>` |
+| CloudTrail (default) | `LookupEvents` (50 per page, 550 ms between pages: the API allows 2 per second per region, all pages) | Home region, and `us-east-1` for global-service events (IAM, STS, sign-in) when the home region is another; source states `cloudtrail` and `cloudtrail_global` | Per region, from the newest `EventTime` ingested − 2 min (`sync_cursor` is a JSON map of region → time; a plain timestamp from older versions is the home region's). First run: last 24 h. Events come newest first, so a region whose read stops partway (throttling, error, timeout) keeps its previous cursor and is read again; events already stored are skipped by ID. `EventTime` is read as epoch seconds, as the API sends it. | `cloud.cloudtrail` | `aws-cloudtrail-<id>` |
 | CloudTrail (S3 mode, `s3_bucket` set) | `ListObjectsV2` + `GetObject` (`.json` / `.json.gz`) | `s3_regions` × `s3_account_ids` | Prefixes for today and the two previous days. A per-prefix "last key" cursor (`start-after`) is kept as JSON in `sync_cursor`. An object that fails 3 times is skipped. | `cloud.cloudtrail` | `aws-cloudtrail-<id>` |
-| GuardDuty | `ListDetectors`, `ListFindings` (updatedAt ≥ since, 50 per page, at most 20 pages), `GetFindings` | Home region | Since `last_sync` − 2 min (first run: 24 h) | `cloud.guardduty` | `aws-guardduty-<id>` |
+| GuardDuty | `ListDetectors`, `ListFindings` (`findingCriteria.criterion.updatedAt.greaterThanOrEqual` since, sorted by updatedAt, 50 per page, at most 20 pages), `GetFindings` (`findingIds`). GuardDuty's API takes lowerCamelCase members. | Home region | Since `last_sync` − 2 min (first run: 24 h) | `cloud.guardduty` | `aws-guardduty-<id>` |
 | Security Hub | `GetFindings` with filter: severity CRITICAL or HIGH, record ACTIVE, workflow NEW or NOTIFIED, product ≠ GuardDuty, UpdatedAt in window. 100 per page, at most 10 pages. | Home region | Since `last_sync` − 2 min | `cloud.securityhub` | `aws-securityhub-<id>` |
 
 GuardDuty and Security Hub are pulled on every sync in both CloudTrail modes. In LookupEvents mode, if the CloudTrail pull fails, the whole sync fails and the GuardDuty and Security Hub pulls are skipped for that run.
@@ -26,7 +26,7 @@ GuardDuty and Security Hub are pulled on every sync in both CloudTrail modes. In
 | `id` | CloudTrail `eventID` |
 | `time` | `eventTime` |
 | `host` | `awsRegion` (LookupEvents: the region from the embedded record, else `aws`) |
-| `user_name` | S3 mode: `userIdentity.userName`, else the identity ARN. LookupEvents: the `Username` field. |
+| `user_name` | Both modes: the IAM user name for IAM users, else the identity ARN (an assumed role's session ARN, which baselines and sequence rules fold into the role), else LookupEvents' `Username`. |
 | `src_ip` | `sourceIPAddress` |
 | `raw` | `event_name`, `event_source`, `event_type`, `aws_region`, `source_ip`, `user_agent`, `error_code`, `error_message`, full `user_identity`, `request_parameters`, `response_elements`, `additional_event_data`, `read_only`, `recipient_account_id`, `resources`, `management_event`, `vpc_endpoint_id`. LookupEvents also stores `username` and the original record string as `_full`. |
 
@@ -85,13 +85,17 @@ Finding IDs are `aws-` + hash(account, title, resource). AWS suppression rules a
 | `kms_rotation` | KMS key K has rotation disabled (R) | low | encryption / kms_key | Enabled, customer-managed, symmetric, not external-origin key without rotation. At most 50 keys checked per region. | STO-08 |
 | `cloudtrail` | CloudTrail 'T' has log file validation disabled | low | logging / cloudtrail | `DescribeTrails` in the home region | LOG-02 |
 | `cloudtrail` | No multi-region CloudTrail trail | high | logging / cloudtrail | No trail with `IsMultiRegionTrail` | LOG-01 |
-| `s3_public_access` | S3 bucket 'B' has no Block Public Access configuration | medium | storage / s3_bucket | No bucket-level PAB (404). The account-level setting is not read. At most 500 buckets. | STO-01 |
+| `s3_public_access` | S3 bucket 'B' has no Block Public Access configuration | medium | storage / s3_bucket | No bucket-level PAB (404), and account-level Block Public Access (`s3-control` `GetPublicAccessBlock`) does not have all four settings on; when it does, the bucket passes. At most 500 buckets. Buckets whose PAB cannot be read are counted in `not_assessed`. | STO-01 |
 | `s3_public_access` | S3 bucket 'B' has Block Public Access partly disabled | medium | storage / s3_bucket | Any of the four flags off | STO-01 |
 | `s3_hardening` | S3 bucket 'B' does not have versioning enabled | low | storage / s3_bucket | Status ≠ Enabled. At most 200 buckets. | STO-04 |
 | `s3_hardening` | S3 bucket 'B' has no server access logging | low | storage / s3_bucket | No `LoggingEnabled` | LOG-07 |
 | `s3_hardening` | S3 bucket 'B' has a bucket policy that allows public access | high | storage / s3_bucket | `Allow` with principal `*` and no condition | STO-02 |
 | `s3_hardening` | S3 bucket 'B' policy does not require TLS | low | storage / s3_bucket | No `Deny` on `aws:SecureTransport=false`, or no policy | STO-03 |
 | `s3_hardening` | S3 bucket 'B' ACL grants access to everyone | high | storage / s3_bucket | Grant to the `AllUsers` group | STO-02 |
+
+**Per-bucket requests** go to the bucket's own region (`<bucket>.s3.<region>.amazonaws.com`, path-style for names with dots) and are signed for it. The region comes from `GetBucketLocation` on the global endpoint, else the `x-amz-bucket-region` header, and is cached.
+
+**The credential report** is polled 8 times, 1.5 s apart; if it is not ready, `iam_credential_report` is recorded as not assessed with that reason, and the next scan reads it.
 
 **How `passed` is counted.** One pass per check group that ran. For the credential report, one per user with no finding. For S3 PAB and hardening, one per clean bucket. For KMS, one per rotating key. Flow logs, snapshots and EBS count one per region when clean.
 
@@ -210,7 +214,7 @@ Rules with an AWS-specific trigger:
 | C-AWS-017 | IAM User Added to Admin Group | 4 | T1078.004 | `AddUserToGroup` + raw text admin, administrator or poweruser |
 | C-AWS-018 | IAM Password Policy Weakened | 3 | T1556 | `UpdateAccountPasswordPolicy`, `DeleteAccountPasswordPolicy` |
 | C-AWS-019 | MFA Device Deregistered | 4 | T1556.006 | `DeactivateMFADevice`, `DeleteVirtualMFADevice` |
-| C-AWS-020 | STS AssumeRole Cross-Account | 3 | T1199 | Any successful `AssumeRole` with a role ARN (not only cross-account) |
+| C-AWS-020 | STS AssumeRole Cross-Account | 3 | T1199 | Successful `AssumeRole` into a role of another account than the caller's (when either account cannot be read, it fires) |
 | C-AWS-021 | EC2 Instance Created with Public IP | 2 | T1583.003 | `RunInstances` + public IP fields |
 | C-AWS-022 | EC2 Snapshot Made Public | 4 | T1530 | `ModifySnapshotAttribute` + raw text "group" or "all" |
 | C-AWS-023 | EC2 AMI Made Public | 4 | T1530 | `ModifyImageAttribute` + launchPermission or "all" |
@@ -240,9 +244,11 @@ Rules with an AWS-specific trigger:
 | C-AWS-047 | AWS PassRole Privilege Escalation Pattern | 4 | T1548 | `CreatePolicyVersion` set as default, or `CreateFunction`/`RunInstances`/`CreateStack` mentioning admin or poweruser roles |
 | C-AWS-048 | Security Hub Critical Finding | 5 | T1190 | `cloud.securityhub` with label CRITICAL |
 | C-AWS-049 | Security Hub High Finding | 4 | T1190 | `cloud.securityhub` with label HIGH |
-| C-RECON-001 | AWS Cloud Enumeration – ListBuckets/DescribeInstances Burst | 3 | T1526 | Any single CloudTrail event whose raw text contains ListBuckets, DescribeInstances, ListUsers, ListGroups, ListPolicies, DescribeDBInstances, ListFunctions, GetAccountAuthorizationDetails or ListAttachedUserPolicies. There is no burst threshold, and it also fires on ObsidianWatch's own scans. |
-| C-RECON-002 | AWS IAM Credential Report Generated | 3 | T1087.004 | `GenerateCredentialReport`, `GetCredentialReport` (ObsidianWatch's own CSPM scan calls these) |
+| C-RECON-001 | AWS Cloud Enumeration – ListBuckets/DescribeInstances Burst | 3 | T1526 | Any single CloudTrail event whose raw text contains ListBuckets, DescribeInstances, ListUsers, ListGroups, ListPolicies, DescribeDBInstances, ListFunctions, GetAccountAuthorizationDetails or ListAttachedUserPolicies. There is no burst threshold. |
+| C-RECON-002 | AWS IAM Credential Report Generated | 3 | T1087.004 | `GenerateCredentialReport`, `GetCredentialReport` |
 | C-RECON-003 | Cloud Account Metadata Enumeration | 2 | T1526 | Raw text GetAccountSummary, ListAccounts, DescribeOrganization, … (also any provider) |
+
+ObsidianWatch sends `User-Agent: ObsidianWatch-connector/1.0` on every AWS call, and CloudTrail records it. The three recon rules skip events with that user agent, so the connector's own scans do not raise them. A user agent can be copied, so only these low-severity discovery rules use it.
 | C-NET-001 | Cloud Security Group Opens SSH/RDP to Internet | 5 | T1190 | `AuthorizeSecurityGroupIngress` + 0.0.0.0/0 or ::/0 + port 22/3389, ssh or rdp |
 | C-NET-002 | AWS Security Group Opens All Ports to Internet | 5 | T1562.007 | `AuthorizeSecurityGroupIngress` + world CIDR + all-ports markers |
 | C-NET-003 | Cloud VPN Tunnel Deleted | 4 | T1562.007 | `DeleteVpnConnection`, `DeleteCustomerGateway` (and other providers) |
@@ -318,8 +324,8 @@ How it works:
 ## 9. What the user sees (AWS specifics)
 
 - **Cloud → Posture**: AWS findings appear under provider "AWS" with the connector label or account ID.
-- **Accounts and scans → (AWS connector)**: **Import org accounts** button. **Event Timeline** queries `aws-cloudtrail-<id>`, `aws-guardduty-<id>` and `aws-securityhub-<id>`. The **Overview** tab needs the Account ID to show results. The Compliance Posture mini-bars are labelled with GCP names. The **CIS Benchmark** tab header reads "CIS AWS-style Foundations Benchmark (subset – N controls assessed, not the full benchmark)".
-- Connector-form "What will be pulled": "CloudTrail (LookupEvents API)", "IAM activity", "GuardDuty findings". It does not mention Security Hub or S3 mode.
+- **Accounts and scans → (AWS connector)**: **Import org accounts** button. **Event Timeline** queries `aws-cloudtrail-<id>`, `aws-guardduty-<id>` and `aws-securityhub-<id>`. The Account ID is filled from AWS by **Test Connection** or on save, so the **Overview** tab shows results. The Compliance Posture mini-bars are labelled with GCP names. The **CIS Benchmark** tab header reads "CIS AWS-style Foundations Benchmark (subset – N controls assessed, not the full benchmark)".
+- Connector-form "What will be pulled": CloudTrail (LookupEvents, home region + us-east-1 for IAM/sign-in), IAM activity, GuardDuty and Security Hub findings. S3 mode is not mentioned (API-only fields).
 
 ## 10. Limits
 
@@ -337,10 +343,7 @@ How it works:
 
 ## 11. Known gaps
 
-- LookupEvents returns management events only, for the home region. Data events (S3 `GetObject`, Secrets Manager reads, ECR layer uploads) need S3 mode with a trail that records them. C-AWS-014, C-AWS-026 and C-AWS-028 depend on this.
+- LookupEvents returns management events only. Data events (S3 `GetObject`, ECR layer uploads) need S3 mode with a trail that records them. C-AWS-014 depends on this.
 - C-AWS-014 can never match. `GetObject` is not in the severity table, so its severity is 1 unless an error code raises it (S3 mode). Errored events are then blocked by the outcome gate.
-- `awsPrincipal` folds assumed-role sessions only when `user_name` is an ARN. In LookupEvents mode `user_name` is the session name, so each session may be a separate principal for the baselines and sequence rules.
-- Per-bucket S3 checks are signed for `us-east-1` against `<bucket>.s3.amazonaws.com`. Buckets in other regions may answer with a redirect or error. They are then silently treated as unreadable ("could not be read" for hardening; nothing at all for the PAB check). This is suspected, not verified.
-- `testAWSConnection` signs the global STS call with the connector region (see [configuration-aws.md](configuration-aws.md)).
-- The credential report is polled 8 times, 1.5 s apart. If it is not ready by then, the check is silently skipped.
 - GuardDuty and Security Hub use `last_sync` − 2 min as their window. `last_sync` also advances on failed syncs, so a failure longer than one interval can skip findings in that gap.
+- GuardDuty and Security Hub are read in the home region only.

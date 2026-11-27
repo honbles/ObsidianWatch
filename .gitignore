@@ -84,20 +84,20 @@ tmp/
 *.sqlite3
 *.db
 pgdata/
-# Database dumps and backups
+# Database dumps and backups (reset-data.sh writes to backups/)
+backups/
 *.dump
 *.sql.gz
 *.bak
 *.backup
-# State the sample apps' run.sh / run-all.sh create
+# State the sample apps' run.sh / sample-apps.sh create
 .ow-run/
 ow-sample-apps/
-# Archives (the sample bundles in samples/app/bundles are the only ones tracked)
+# Archives
 *.zip
 *.tar
 *.tar.gz
 *.tgz
-!samples/app/bundles/*.zip
 # Terraform state, if any infrastructure code is added
 *.tfstate
 *.tfstate.*

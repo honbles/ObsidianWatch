@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"obsidianwatch/management/internal/config"
@@ -36,12 +37,35 @@ func handleSaveCloudConnector(db *store.DB) http.HandlerFunc {
 			writeJSON(w, 400, map[string]string{"error": "provider and credentials required"})
 			return
 		}
+		// The AWS account ID keys the connector, labels its scans and builds
+		// S3-mode prefixes. When the form leaves it empty, read it from STS
+		// instead of saving a connector that silently half-works (a second
+		// account-less connector used to overwrite the first).
+		var note string
+		if req.Provider == "aws" && req.Credentials != nil && strings.TrimSpace(req.Credentials["account_id"]) == "" {
+			if creds, cerr := resolveAWSCreds(r.Context(), req.Credentials); cerr == nil {
+				if acct, aerr := testAWSConnection(r.Context(), creds); aerr == nil {
+					req.Credentials["account_id"] = acct
+					note = "account ID " + acct + " read from AWS"
+				} else {
+					writeJSON(w, 400, map[string]string{"error": "Account ID is empty and could not be read from AWS (" + aerr.Error() + "): enter it, or fix the credentials"})
+					return
+				}
+			} else {
+				writeJSON(w, 400, map[string]string{"error": cerr.Error()})
+				return
+			}
+		}
 		id, err := db.UpsertCloudConnector(r.Context(), req.Provider, req.Credentials)
 		if err != nil {
 			writeJSON(w, 500, map[string]string{"error": err.Error()})
 			return
 		}
-		writeJSON(w, 200, map[string]interface{}{"id": id, "status": "saved"})
+		resp := map[string]interface{}{"id": id, "status": "saved"}
+		if note != "" {
+			resp["note"], resp["account_id"] = note, req.Credentials["account_id"]
+		}
+		writeJSON(w, 200, resp)
 	}
 }
 

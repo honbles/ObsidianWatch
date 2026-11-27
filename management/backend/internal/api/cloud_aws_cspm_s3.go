@@ -7,6 +7,8 @@ import (
 	"encoding/json"
 	"encoding/xml"
 	"fmt"
+	"io"
+	"net/http"
 	"strings"
 	"sync"
 )
@@ -151,21 +153,20 @@ func runAWSS3Hardening(ctx context.Context, creds awsCreds, buckets []string, ad
 			defer wg.Done()
 			defer func() { <-sem }()
 			var p awsS3Probe
-			host := b + ".s3.amazonaws.com"
-			if body, c, err := awsS3Get(ctx, creds, host, "/?versioning"); err == nil && c == 200 {
+			if body, c, err := awsBucketGet(ctx, creds, b, "?versioning"); err == nil && c == 200 {
 				p.versioningXML, p.versioningOK = body, true
 			}
-			if body, c, err := awsS3Get(ctx, creds, host, "/?logging"); err == nil && c == 200 {
+			if body, c, err := awsBucketGet(ctx, creds, b, "?logging"); err == nil && c == 200 {
 				p.loggingXML, p.loggingOK = body, true
 			}
-			if body, c, err := awsS3Get(ctx, creds, host, "/?policy"); err == nil {
+			if body, c, err := awsBucketGet(ctx, creds, b, "?policy"); err == nil {
 				if c == 200 {
 					p.policy, p.policyOK = string(body), true
 				} else if c == 404 {
 					p.policyOK = true // NoSuchBucketPolicy
 				}
 			}
-			if body, c, err := awsS3Get(ctx, creds, host, "/?acl"); err == nil && c == 200 {
+			if body, c, err := awsBucketGet(ctx, creds, b, "?acl"); err == nil && c == 200 {
 				p.aclXML, p.aclOK = body, true
 			}
 			f, ok := awsS3BucketFindings(b, p)
@@ -187,4 +188,110 @@ func runAWSS3Hardening(ctx context.Context, creds awsCreds, buckets []string, ad
 	if denied > 0 {
 		skip("s3_hardening", fmt.Sprintf("%d bucket(s) could not be read - grant s3:GetBucketVersioning/Logging/Policy/Acl (SecurityAudit)", denied))
 	}
+}
+
+// ── Bucket regions ───────────────────────────────────────────────────────────
+
+// Per-bucket S3 requests must go to the bucket's own region and be signed
+// for it. They used to go to <bucket>.s3.amazonaws.com signed for us-east-1,
+// which S3 refuses for buckets in any other region (AuthorizationHeaderMalformed
+// / redirect), so those buckets were silently reported as unreadable.
+var awsBucketRegions sync.Map // bucket name -> region
+
+// awsBucketRegion finds a bucket's region: GetBucketLocation on the global
+// endpoint, else the x-amz-bucket-region header S3 sends even on errors.
+func awsBucketRegion(ctx context.Context, creds awsCreds, bucket string) (string, error) {
+	if v, ok := awsBucketRegions.Load(bucket); ok {
+		return v.(string), nil
+	}
+	if !awsBucketRe.MatchString(bucket) {
+		return "", fmt.Errorf("unexpected bucket name %q", bucket)
+	}
+	g := creds
+	g.Region = "us-east-1"
+	region := ""
+	if body, code, err := awsS3Get(ctx, g, "s3.amazonaws.com", "/"+bucket+"?location"); err == nil && code == 200 {
+		var lc struct {
+			Value string `xml:",chardata"`
+		}
+		if xml.Unmarshal(body, &lc) == nil {
+			region = strings.TrimSpace(lc.Value)
+			switch region {
+			case "":
+				region = "us-east-1"
+			case "EU":
+				region = "eu-west-1"
+			}
+		}
+	}
+	if region == "" {
+		if req, err := http.NewRequestWithContext(ctx, http.MethodHead, "https://s3.amazonaws.com/"+bucket, nil); err == nil {
+			awsSign(req, g, "s3", nil)
+			if resp, err := awsClient.Do(req); err == nil {
+				region = resp.Header.Get("X-Amz-Bucket-Region")
+				resp.Body.Close()
+			}
+		}
+	}
+	if !awsRegionRe.MatchString(region) {
+		return "", fmt.Errorf("could not determine the region of bucket %s", bucket)
+	}
+	awsBucketRegions.Store(bucket, region)
+	return region, nil
+}
+
+// awsBucketGet reads a bucket subresource (for example "?versioning") from
+// the bucket's own regional endpoint, signed for that region.
+func awsBucketGet(ctx context.Context, creds awsCreds, bucket, sub string) ([]byte, int, error) {
+	region, err := awsBucketRegion(ctx, creds, bucket)
+	if err != nil {
+		return nil, 0, err
+	}
+	rc := creds
+	rc.Region = region
+	host, path := bucket+".s3."+region+".amazonaws.com", "/"+sub
+	if strings.Contains(bucket, ".") { // dotted names break TLS on virtual-hosted endpoints
+		host, path = "s3."+region+".amazonaws.com", "/"+bucket+sub
+	}
+	return awsS3Get(ctx, rc, host, path)
+}
+
+// awsAccountPABOn reports whether account-level S3 Block Public Access has all
+// four settings on (S3 Control GetPublicAccessBlock). Unknown counts as off.
+func awsAccountPABOn(ctx context.Context, creds awsCreds, accountID string) bool {
+	if len(accountID) != 12 {
+		return false
+	}
+	for _, c := range accountID {
+		if c < '0' || c > '9' {
+			return false
+		}
+	}
+	rc := creds
+	if rc.Region == "" || !awsRegionRe.MatchString(rc.Region) {
+		rc.Region = "us-east-1"
+	}
+	host := accountID + ".s3-control." + rc.Region + ".amazonaws.com"
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://"+host+"/v20180820/configuration/publicAccessBlock", nil)
+	if err != nil {
+		return false
+	}
+	req.Header.Set("x-amz-account-id", accountID)
+	awsSign(req, rc, "s3", nil)
+	resp, err := awsClient.Do(req)
+	if err != nil {
+		return false
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		return false
+	}
+	var c struct {
+		A bool `xml:"BlockPublicAcls"`
+		B bool `xml:"IgnorePublicAcls"`
+		C bool `xml:"BlockPublicPolicy"`
+		D bool `xml:"RestrictPublicBuckets"`
+	}
+	b, _ := io.ReadAll(io.LimitReader(resp.Body, 64<<10))
+	return xml.Unmarshal(b, &c) == nil && c.A && c.B && c.C && c.D
 }

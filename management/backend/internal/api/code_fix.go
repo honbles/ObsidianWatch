@@ -205,34 +205,17 @@ func clampInt(v, lo, hi int) int {
 	return v
 }
 
-// aiCredentials returns the configured provider key and model.
-func aiCredentials(ctx context.Context, cfg *config.Config, db *store.DB) (key, model string) {
-	groqKey, anthropicKey := cfg.Groq.APIKey, cfg.Anthropic.APIKey
-	if s, err := db.GetSettingsPrefix(ctx, "ai"); err == nil {
-		if v := s["groq_api_key"]; v != "" {
-			groqKey = v
-		}
-		if v := s["anthropic_api_key"]; v != "" {
-			anthropicKey = v
-		}
-	}
-	if groqKey != "" {
-		return groqKey, groqModelName()
-	}
-	if anthropicKey != "" {
-		return anthropicKey, anthropicModelName()
-	}
-	return "", ""
-}
-
 var errNoAI = fmt.Errorf("no AI provider is configured (Settings → AI)")
+var errNoCodeAI = fmt.Errorf("code fixes need an Anthropic API key (Settings → AI); they use the code model, Claude Opus 5.5 or newer")
 var errNoSource = fmt.Errorf("sending source code to the AI provider is off (setting ai.send_source_snippets); a fix needs the code")
 
 // suggestCodeFix asks the model for a fix of one code finding, given the file content.
 func suggestCodeFix(ctx context.Context, cfg *config.Config, db *store.DB, f SASTFinding, content string) (fixSuggestion, error) {
-	key, model := aiCredentials(ctx, cfg, db)
+	// Code is written only by the code model (Claude Opus 5.5 or newer, or
+	// Claude Fable / Mythos), never by the general alert-analysis model.
+	key, model := anthropicKey(ctx, cfg, db), codeModelName(ctx, db)
 	if key == "" {
-		return fixSuggestion{}, errNoAI
+		return fixSuggestion{}, errNoCodeAI
 	}
 	if !aiSourceSnippetsAllowed(ctx, db) {
 		return fixSuggestion{}, errNoSource
@@ -276,10 +259,11 @@ Code (%s, lines %d-%d):
 %s`, fenceUntrusted("finding", string(meta)), f.File, from, to, fenceUntrusted("source", window))
 	actx, cancel := context.WithTimeout(ctx, 60*time.Second)
 	defer cancel()
-	text, err := callVulnAI(actx, key, model, prompt)
+	text, err := callClaude(actx, key, model, "You are a senior application security engineer. Respond with valid JSON only.", prompt, 4096)
 	if err != nil {
 		return fixSuggestion{}, fmt.Errorf("AI request failed: %w", err)
 	}
+	text = extractJSONObject(strings.TrimSpace(text))
 	s, err := parseAIFix(text, f, lines, from, to)
 	if err != nil {
 		return s, err
@@ -346,8 +330,8 @@ func handleSuggestFix(cfg *config.Config, db *store.DB) http.HandlerFunc {
 			return
 		}
 		// Check the AI prerequisites before reading anything from the provider.
-		if key, _ := aiCredentials(r.Context(), cfg, db); key == "" {
-			writeJSON(w, 412, map[string]string{"error": errNoAI.Error()})
+		if anthropicKey(r.Context(), cfg, db) == "" {
+			writeJSON(w, 412, map[string]string{"error": errNoCodeAI.Error()})
 			return
 		}
 		if !aiSourceSnippetsAllowed(r.Context(), db) {
@@ -370,7 +354,7 @@ func handleSuggestFix(cfg *config.Config, db *store.DB) http.HandlerFunc {
 		}
 		s, err := suggestCodeFix(r.Context(), cfg, db, f, content)
 		switch {
-		case err == errNoAI || err == errNoSource:
+		case err == errNoAI || err == errNoCodeAI || err == errNoSource:
 			writeJSON(w, 412, map[string]string{"error": err.Error()})
 		case err != nil:
 			writeJSON(w, 503, map[string]string{"error": err.Error()})

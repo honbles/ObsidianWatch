@@ -1064,13 +1064,21 @@ type scanOpts struct {
 	LogRange string // limit the history scan to a commit range (base..head); "" = all
 	Semgrep  bool
 	CodeQL   bool
+	// Engines is the chosen engine set; nil runs every installed non-AI
+	// engine. Semgrep/CodeQL above still say whether those are installed.
+	Engines engineSet
+	// BL is needed when the business-logic engine is chosen.
+	BL *blContext
 }
 
 // scanCheckout runs every installed engine over one checked-out repository.
 // It is shared by manual SAST scans, scheduled and on-push scans, and PR checks.
 func scanCheckout(ctx context.Context, conn *store.DevOpsConnector, repo, repoDir string, opts scanOpts, engines engineReport, logger *slog.Logger) (out []SASTFinding, sbom []byte) {
+	on := opts.Engines.on
 	// Secrets across the branch history (only with a full clone).
-	if opts.History {
+	if !on(engSecrets) {
+		// not chosen: no status, so a merged result keeps the stored one
+	} else if opts.History {
 		_, auth, _ := gitRemote(conn, repo)
 		if f, eng, err := runHistorySecrets(ctx, repo, repoDir, auth, opts.LogRange, logger); err != nil {
 			engines.set("secrets-history", "failed: "+err.Error())
@@ -1083,7 +1091,8 @@ func scanCheckout(ctx context.Context, conn *store.DevOpsConnector, repo, repoDi
 	}
 
 	// Semgrep-compatible engine with bundled rules.
-	if opts.Semgrep {
+	if !on(engSemgrep) {
+	} else if opts.Semgrep {
 		release, werr := heavySlot(ctx)
 		var results []semgrepResult
 		var err error
@@ -1109,8 +1118,13 @@ func scanCheckout(ctx context.Context, conn *store.DevOpsConnector, repo, repoDi
 	}
 
 	// Trivy: dependencies (transitive), IaC, Dockerfiles, licences, SBOM.
-	trivyOut, trivyErr := runTrivy(ctx, repo, repoDir)
+	var trivyOut trivyResult
+	var trivyErr error
+	if on(engDependencies) {
+		trivyOut, trivyErr = runTrivy(ctx, repo, repoDir)
+	}
 	switch {
+	case !on(engDependencies):
 	case trivyErr == errToolMissing:
 		engines.set("trivy", "missing")
 	case trivyErr != nil:
@@ -1127,7 +1141,7 @@ func scanCheckout(ctx context.Context, conn *store.DevOpsConnector, repo, repoDi
 
 	// OSV lookup of the built-in manifest parser, unless Trivy already
 	// checked dependency vulnerabilities.
-	if !trivyOut.VulnRan || trivyErr != nil {
+	if on(engDependencies) && (!trivyOut.VulnRan || trivyErr != nil) {
 		if scaFindingsList, scaErr := runSCAOnDir(ctx, repo, repoDir); scaErr != nil {
 			engines.set("osv", "failed: "+scaErr.Error())
 		} else {
@@ -1136,12 +1150,26 @@ func scanCheckout(ctx context.Context, conn *store.DevOpsConnector, repo, repoDi
 		}
 	}
 
-	// Built-in rules always run.
-	out = append(out, runBuiltinRulesOnDir(repo, repoDir)...)
-	engines.set("builtin", "ran")
+	if on(engBuiltin) {
+		out = append(out, runBuiltinRulesOnDir(repo, repoDir)...)
+		engines.set("builtin", "ran")
+	}
+
+	// AI business logic: only when chosen (never part of the default set).
+	if on(engBusinessLogic) {
+		if opts.BL == nil {
+			engines.set("business-logic", "skipped: only on protected branches")
+		} else if f, err := runBusinessLogic(ctx, opts.BL, repo, repoDir, engines, logger); err != nil {
+			engines.set("business-logic", "failed: "+err.Error())
+		} else {
+			engines.set("business-logic", "ran")
+			out = append(out, f...)
+		}
+	}
 
 	// CodeQL: every supported language in the repository.
-	if opts.CodeQL {
+	if !on(engCodeQL) {
+	} else if opts.CodeQL {
 		var codeqlFindings []SASTFinding
 		var langs []string
 		release, codeqlErr := heavySlot(ctx)
@@ -1200,7 +1228,9 @@ func saveSASTResult(ctx context.Context, db *store.DB, connID int64, repo, branc
 			sbom          = EXCLUDED.sbom,
 			commit_sha    = EXCLUDED.commit_sha,
 			ai_summary    = NULL,
-			ai_analysed_at= NULL`,
+			ai_analysed_at= NULL,
+			raw_findings  = NULL,
+			correlation   = NULL`,
 		connID, repo, branch, engines.names(), repos, files, len(findings),
 		counts["critical"], counts["high"], counts["medium"],
 		findingsJSON, enginesJSON, nullJSON(sbom), commitSHA)

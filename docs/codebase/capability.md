@@ -235,7 +235,7 @@ With a delivery ID, webhook events get the ID `gh-wh:{delivery}:{n}`, `gl-wh:{uu
 | Layer | Input | Trigger | Stored in | Engine label |
 |---|---|---|---|---|
 | 4.1 Commit secret scanner | Added lines of polled diffs | Every sync | `devops.secret_push` events | – |
-| 4.2 Code scan | Stored, redacted commit diffs (last 500 commits) | **Code Scan** tab | `code_scan_results` | – |
+| 4.2 Commit scan | Stored, redacted commit diffs (last 500 commits) | **Commit Scan** tab | `code_scan_results` | – |
 | 4.3a History secrets | Every commit of the cloned branch | **SAST** tab | `sast_results` | `gitleaks`, or `history` (built-in patterns) |
 | 4.4 Built-in SAST rules | The checkout (4.3) | **SAST** tab | `sast_results` | `builtin` |
 | 4.5 Pattern rules / CodeQL | The checkout | **SAST** tab | `sast_results` | `semgrep` (opengrep or semgrep engine), `codeql`, `semgrep+codeql` |
@@ -275,7 +275,9 @@ Generic rules apply the placeholder and entropy filter (configuration.md section
 
 `.env`, `.env.local`, `.env.production`, `.env.staging`, `id_rsa`, `id_ed25519`, `id_ecdsa`, `id_dsa`, `*.pem`, `*.key`, `*.p12`, `*.pfx`, `credentials.json`, `service-account.json`, `.aws/credentials`, `secrets.yaml`, `secrets.yml`, `terraform.tfvars`, `*.tfvars`. Matching is on the exact base name (or path suffix for `.aws/credentials`), case-insensitive. `*.ext` matches the extension. Files ending `.pub`, `.example`, `.sample`, `.template` or `.dist` never match.
 
-### 4.2 Code scan (stored diffs)
+### 4.2 Commit scan (stored diffs)
+
+Named **Commit scan** in the console (it was "Code scan"; the API path `/code-scan` and the `code_scan` source name are unchanged). It is not part of Automation, which runs SAST engines only.
 
 `POST /api/v1/devops-connectors/{id}/code-scan` reads the connector's last 500 stored commits and scans each stored file diff. Findings are deduplicated by `repository + category + title + file`. Every run inserts a new row in `code_scan_results`.
 
@@ -636,6 +638,57 @@ Up to 2 000 unique packages go to `POST https://api.osv.dev/v1/querybatch` (batc
 
 Implemented in: `sast_engines.go` (`runTrivy`, `parseTrivy`, `buildCycloneDX`, `sbomFromManifests`), `sast_sca.go`.
 
+### 4.6.1 Choosing the scan engines
+
+A SAST scan runs a chosen set of engines. `GET /api/v1/devops-connectors/{id}/sast/engines` lists them, with whether each is available on this server and why not:
+
+| ID | Engine | In the default set |
+|---|---|---|
+| `builtin` | Built-in rules (4.4), including secrets in files and IaC checks | yes |
+| `semgrep` | Opengrep / Semgrep CE with the bundled rules (4.5); `opengrep` is accepted as a name | yes |
+| `codeql` | CodeQL (4.5) | yes |
+| `secrets` | Secrets in the branch history: gitleaks, or the built-in history scan | yes |
+| `dependencies` | Trivy, or the built-in parser and OSV: dependencies, IaC, licences, SBOM (4.6) | yes |
+| `business_logic` | AI business logic (4.6.2) | no; only on protected branches |
+
+The set comes from, in order: `?engines=a,b` on `POST .../sast`; else the scan profile of the protected branch being scanned (4.10); else the default set. Scheduled, on-push and manual Automation scans of a protected branch, and PR checks into one, use that branch's profile. The **SAST** tab shows one checkbox per engine; on a protected branch its engines are preselected. Without `secrets` the clone is shallow.
+
+A scan that leaves out a default engine keeps the stored findings and engine status of the engines it did not run for that repository and branch, and the stored SBOM when `dependencies` did not run, so running one engine never wipes the others' results. A scan of the full default set replaces the stored result.
+
+### 4.6.2 AI business-logic engine
+
+Pattern and data-flow engines find dangerous calls. They cannot tell that a handler lets one user read another user's order, trusts a price sent by the client, or lets a checkout step be skipped. This engine sends route handlers to Claude and asks for those flaws.
+
+| Aspect | Behaviour |
+|---|---|
+| Where it runs | Only on protected branches (4.10). A manual scan with it on another branch answers 400. On a PR into a protected branch it reads only the files the PR changes. **Run business-logic analysis** in the SAST tab runs it alone on the selected protected branch. |
+| Requirements | An Anthropic API key and the source-sharing opt-in (`ai.send_source_snippets = true`). The model is the **code model** (`ai.code_model`, default `claude-opus-5-5`): Claude Opus 5.5 or newer, or Claude Fable / Mythos. Other models are refused. |
+| Files read | Source files (`.js .jsx .ts .tsx .mjs .cjs .py .go .java .kt .cs .php .rb`) that declare routes or handlers (Express/Fastify/Koa, NestJS, Flask/FastAPI, Django `path()`, Go routers and `http.ResponseWriter`/gin/echo/fiber handlers, Spring/JAX-RS, ASP.NET, Laravel, Sinatra/Rails routes). Files with the most route declarations first. Test code and `node_modules`, `vendor`, `dist`, `build`, `target` and similar folders are skipped. Files over 64 KB are skipped and counted. At most `OW_AI_BL_MAX_FILES` files per scan (default 40); the rest are counted. |
+| Prompt | One file per request, with line numbers, fenced as untrusted input. The model is told to report authorization, authentication logic, mass assignment, workflow, race condition, trust-boundary, rate-limit and data-exposure flaws only, and not injection, XSS, crypto, secrets or dependencies. Three requests run at a time, 3 minutes each. |
+| Findings | Rule `BL-<CATEGORY>` (for example `BL-ACCESS-CONTROL`), engine `business-logic`, the model's severity, CWE, line range, route, detail, fix and confidence. Answers below 60% confidence, with a line outside the file or without a title are dropped; at most 10 per file. OWASP: access control and data exposure A01, authentication A07, mass assignment A08, the rest A04. |
+| Cost control | Each file's answer is cached for 90 days by model, prompt version, path and file content (`code_fix_cache`), so a rescan pays only for files that changed. The engine report line `business-logic-files` gives route files found, analysed, from cache, failed, too large and over the limit. |
+| Failure | When every request fails the engine is reported as failed with the provider's error and the scan answers with a warning; other engines' results are unaffected. |
+
+Implemented in: `sast_engine_select.go`, `sast_business_logic.go`.
+
+### 4.6.3 AI correlation of multi-engine findings
+
+When a branch's stored result comes from two or more engines, the same weakness is often reported several times: CodeQL's data flow, an opengrep rule and a built-in rule on the same lines; a pattern finding and a business-logic finding in the same handler. Correlation is optional. **Correlate findings** in the SAST tab (shown when two or more engines ran) or the protected branch's **Correlate** option (after each automated scan) asks the code model to group the findings that describe the same weakness. `POST /api/v1/devops-connectors/{id}/sast/correlate?repo=&branch=` (async job); `&undo=1` restores the raw findings.
+
+| Aspect | Behaviour |
+|---|---|
+| Outcome | The correlated findings become the branch's findings (`sast_results.findings`, the counts, the Code pages, Insights, issues, fix PRs). The engines' own findings are kept in `sast_results.raw_findings`; `GET .../sast?repo=&branch=&raw=1` shows them, and **Show raw engine findings** switches the view. A new scan of the branch replaces both and clears the correlation. |
+| What goes to the model | Only files where two or more engines reported something. Findings in other files pass through as their own finding (verdict `single_engine`) without AI. Per finding: an id, file, engine, rule, severity, CWE and CWE family, lines, package, title, 240 characters of detail and 300 of snippet (credentials masked), fenced as untrusted input. Up to 60 findings per request, whole files kept together where they fit, 3 requests at a time; at most `OW_AI_CORR_MAX_BATCHES` requests (default 25), the rest are kept as `not_reviewed`. |
+| Answer | Groups of finding ids, each with a merged title and detail, a verdict (`confirmed`, `likely`, `false_positive`), a confidence and a reason. |
+| Guardrails | Every raw finding ends up in exactly one correlated finding: unknown ids, ids used twice and groups across files are ignored, and findings the model leaves out stay as their own finding (`likely`, "left out by the model"). A failed request keeps its findings as `not_reviewed`. The model never sets severity: a correlated finding has its members' highest severity, so a `false_positive` verdict is shown but changes neither counts nor PR blocking; dismissing it stays a triage decision. |
+| Identity | A correlated finding keeps the rule, file, line and snippet of its primary member (highest severity, then CodeQL, opengrep, business logic, dependencies/secrets, built-in), so its fingerprint, triage decisions and issue links are that member's. Engine reads as the members' engines joined with `+`. |
+| Shown | Verdict badge (and "· N findings" when merged) on each finding; the expanded finding lists its members (engine, rule, title, severity, line) and the AI verdict with its reason. A banner gives the model and the counts (raw → correlated, merged, judged false positive, not reviewed). |
+| Cost | Each request's answer is cached for 90 days by model, prompt version and its findings (fingerprint, lines, severity, engine), so correlating an unchanged result again costs nothing. Requirements as for the business-logic engine: an Anthropic key, the source-sharing opt-in and the code model. |
+| Pull requests | When the target protected branch has **Correlate** on, a PR check correlates the findings it kept (no storage) before reporting. |
+| Rescans | A scan of only some engines (4.6.1) merges with the stored raw findings, never with the correlated ones; correlate again afterwards. |
+
+Implemented in: `sast_correlate.go`, migration `085_sast_correlation.sql`.
+
 ### 4.7 SAST result deduplication
 
 `deduplicateSASTFindings` (`sast_engine.go`):
@@ -672,31 +725,34 @@ Container images are not pulled or scanned; Dockerfiles are checked as configura
 
 ### 4.10 Automation: on push, on a schedule, and pull/merge request checks
 
-Set per connector on the **Automation** tab (`GET/PUT /api/v1/devops-connectors/{id}/scan-policy`, admin to change; stored in setting `code.policy.{id}`). Everything is off by default.
+Set per connector on the **Automation** tab (`GET/PUT /api/v1/devops-connectors/{id}/scan-policy`, admin to change; stored in setting `code.policy.{id}`). Everything except the 5-day schedule is off by default.
+
+**Protected branches.** Automation works on the protected branches listed in the policy (`protected`: up to 500 entries of `{repo, branch, engines, correlate}`). Each is a repository, a branch name and its **scan profile**: the engines its scans run (4.6.1; empty means the default set) and whether each automated scan is followed by AI correlation (4.6.3; turned off when only one engine is chosen). Fix pull requests correlate first in any case (4.10.2). A correlation failure leaves the raw result and is written in the job notes. Repository and branch can be typed or picked from the connector's repositories and the provider's branch list. Duplicates, `HEAD` and empty names are dropped; an unknown engine ID answers 400.
 
 | Setting | Effect |
 |---|---|
 | Scan every pull request | A `pull_request` (opened, synchronize, reopened, ready for review; drafts skipped), GitLab `merge_request` (open, reopen, update with new commits) or Azure DevOps `git.pullrequest.created/updated` webhook queues a PR check |
 | Post comments | On a **public** repository (or when the visibility cannot be read): one summary with the outcome and counts by severity only, no titles, files or lines, posted when the outcome or the count changes, and no AI fixes; the details are in the console. Otherwise: summary comment plus inline comments on changed lines; each finding is commented once per PR (keyed on rule, file and the text of the line, so it survives lines moving) |
 | Fail the check on | `critical` (default), `high`, `medium`, `low` or never |
-| Run CodeQL on pull requests | Off by default (it adds minutes per update) |
+| Engines on pull requests | A PR into a protected branch is scanned with that branch's engines (the AI engine reads only the changed files); a PR into any other branch with the default set |
+| Run CodeQL on pull requests | Off by default (it adds minutes per update). CodeQL runs on a PR only when this is on and the branch's engines include it |
 | AI fix suggestions in comments | Off by default. Up to 5 per update (section 4.13). Needs an AI provider and the source-sharing opt-in. |
 | Inline comments per update | 1-100, default 20; the rest are listed in the summary |
-| Scan on push | A push to the repository's **default branch** queues a full branch scan |
-| Scheduled scan | Every 5 days by default (all repositories and all branches), or daily, or weekly on Monday, at a UTC hour; all repositories seen for the connector, or a listed set; all branches (up to 2,000 per repository, one job each, stored per branch) or the default branch only. A rescan is how a fixed finding is noticed: each branch's new result replaces its old one. If listing branches fails, the default branch is scanned |
+| Scan on push | A push to a **protected branch** queues a scan of it with its engines. With no protected branch set, a push to the repository's default branch is scanned with the default set |
+| Scheduled scan | Every 5 days by default, or daily, or weekly on Monday, at a UTC hour. Only protected branches are scanned, each with its own engines, one job per branch; with no protected branch nothing is scheduled. A rescan is how a fixed finding is noticed: the branch's new result replaces the old one (engines left out of the profile keep their stored findings, 4.6.1) |
 
-**Jobs** are rows in `code_scan_jobs` (migration `076`): queued, running, done or failed, with the trigger, target, finding count, whether it blocked, what was posted, and the findings. The same target and commit is never queued twice while one is pending. One worker runs them in order (`OW_CODE_SCAN_WORKERS`, up to 4); a restart fails jobs that were running. **Scan all repositories now** queues a manual branch scan of every known repository. A branch scan stores its result as the repository's SAST result (the Code pages show it).
+**Jobs** are rows in `code_scan_jobs` (migration `076`): queued, running, done or failed, with the trigger, target, finding count, whether it blocked, what was posted, and the findings. The same target and commit is never queued twice while one is pending. One worker runs them in order (`OW_CODE_SCAN_WORKERS`, up to 4); a restart fails jobs that were running. **Scan protected branches now** queues a manual scan of every protected branch; with none set the button reads **Scan all repositories now** and queues each known repository's default branch. A branch scan stores its result as the repository's SAST result (the Code pages show it).
 
 **A PR check:**
 
 1. Sets the commit status to pending.
 2. Fetches the base branch and the PR head (`refs/pull/N/head` on GitHub, `refs/merge-requests/N/head` on GitLab, the source branch on Azure DevOps; fork PRs work on GitHub and GitLab) into an empty hardened repository, checks out the head and finds the merge base (deepening the shallow fetch once if needed).
-3. Runs every engine on the head; secrets are searched only in the PR's own commits (`merge-base..HEAD`).
+3. Runs the engines (see "Engines on pull requests") on the head; secrets are searched only in the PR's own commits (`merge-base..HEAD`).
 4. Keeps what the PR introduces: findings on lines it changed (a multi-line finding counts if it overlaps a change), secrets from its commits, and dependency, licence or IaC findings without a line in files it changed that the merge base does not already have (the base is scanned only when needed). Findings dismissed by triage (section 4.12) are dropped and counted in the job notes. Dependency findings carry their runtime reachability (section 4.11), shown in the comment as a count of services and hosts only: a pull request can be public, so the names stay on the finding page in the console.
 5. Sets the status: failure when a kept finding is at or above the blocking level, otherwise success.
 6. Posts the summary and inline comments (GitHub: one review; GitLab: MR note and line discussions; Azure DevOps: PR threads). If GitHub refuses a review because a line is outside its diff, the findings are posted as a list in one comment instead. A summary is posted only when new findings appear or the outcome changes.
 
-**Blocking a merge** is done by the provider: make the status required.
+**Blocking a merge** is done by the provider: make the status required. **Repository setup** (4.10.1) does this for protected branches.
 
 | Provider | Status name | Where to require it |
 |---|---|---|
@@ -704,9 +760,52 @@ Set per connector on the **Automation** tab (`GET/PUT /api/v1/devops-connectors/
 | GitLab | `ObsidianWatch code scan` (external commit status, part of the pipeline) | Settings → Merge requests → Pipelines must succeed |
 | Azure DevOps | genre `obsidianwatch`, name `code-scan` | Branch policies → Status checks → required |
 
-Set `OW_PUBLIC_URL` to the management UI's address to make the status link back to it.
+Set `OW_PUBLIC_URL` to the management UI's address to make the status link back to it; repository setup also needs it for the webhook address.
 
 Implemented in: `code_automation.go`, `code_reporters.go`, `store/code_jobs.go`.
+
+### 4.10.1 Repository setup
+
+When a protected branch is saved (unless **Set up repositories automatically** is off, policy `manual_setup`), or when **set up** / **again** is clicked (`POST /api/v1/devops-connectors/{id}/protected/setup {repo, branch}`, admin), a `setup` job configures the repository through the provider's API. `GET .../protected/setup` lists each branch's last result. Existing settings are merged, not replaced. Each step is reported as done, unchanged, skipped or failed with the provider's message and, on 401/403/404, the token rights it needs.
+
+| Provider | Webhook | Branch |
+|---|---|---|
+| GitHub | Repository webhook to `OW_PUBLIC_URL/api/v1/devops/webhook/{id}` with the connector's secret, for `push`, `pull_request`, `issue_comment`, `pull_request_review_comment`; an existing hook to the same address is updated | Branch protection: required status `ObsidianWatch / code scan` added to the existing checks (strictness kept), pull requests required (existing review rules kept, otherwise 0 approvals), administrators included, force push and deletion off; push restrictions, linear history and conversation resolution kept. Token: Administration and Webhooks, write. Private repositories need GitHub Pro, Team or Enterprise for branch protection. |
+| GitLab | Project hook to `.../webhook-gitlab/{id}` with the secret as token, push, merge request and note events, TLS verified | Protected branch with no one allowed to push (merge requests only; developers and maintainers merge) and no force push; on an existing protected branch push access is removed and merge rules kept. Project setting "Pipelines must succeed" on (the status is part of the pipeline). Token: `api` scope, Maintainer. |
+| Azure DevOps | Service hooks for `git.push`, `git.pullrequest.created`, `git.pullrequest.updated` and pull request comments to `.../webhook-azuredevops/{id}` with basic auth (password = secret), scoped to the repository | Required, blocking **Status** policy for genre `obsidianwatch`, name `code-scan` on the branch; a branch with a required policy accepts changes only through pull requests. PAT: Code (read, write & manage), Service Hooks (read & write), project administrator for policies. |
+
+A connector without a webhook secret gets one. Without `OW_PUBLIC_URL` the webhook step is skipped and the result is "incomplete"; branch protection is still applied. The Automation tab warns when `OW_PUBLIC_URL` is not set.
+
+Pull requests into a protected branch are always checked, whether or not **Scan every pull request** is on (that option adds PRs into every other branch).
+
+Implemented in: `code_repo_setup.go`.
+
+### 4.10.2 Fix pull requests and the remediation agent
+
+**Triggers.** With **Fix PRs** ticked on a protected branch (profile `remediate`), a scheduled or manual scan of the branch with findings queues a `fix` job; so does a manual SAST scan of the branch from the SAST tab, and **fix now** (`POST .../protected/remediate {repo, branch}`, admin). Pull requests into the branch are checked as before (4.10) and, when the branch is protected, the summary tells the developer they can reply `@obsidianwatch apply`.
+
+**A fix job:**
+
+1. On a public repository (or when the visibility cannot be read) waits for confirmation: a fix PR discloses the vulnerabilities to anyone. An admin confirms per protected branch by typing `proceed` in the Automation tab (**public · confirm** next to the branch, or the dialog **fix now** opens): `POST .../protected/public-ack {repo, branch, confirm: "proceed"}`, stored with who and when in the branch's profile (`public_ack`, which a policy save cannot set); `{revoke: true}` or **revoke** withdraws it. `GET .../protected/visibility?repo=&branch=` reports visibility and confirmation. Until then the job ends with a note and **fix now** answers 409.
+2. Correlates first when the stored result comes from two or more engines and is not correlated yet (4.6.3), whether or not the profile's **Correlate** is on: raw multi-engine findings would give duplicate PRs on the same code and no false-positive verdicts. If correlation fails, the raw findings are used and the failure is in the job notes.
+3. Refreshes the state of the branch's open fix PRs, then takes the stored findings of the branch: not dismissed by triage, not test code, at or above **Fix pull requests cover** (policy `fix_min_severity`, default high), not judged a false positive by correlation, and not covered by an open fix PR or by one closed without merging in the last 30 days.
+4. Groups them: one PR for dependency upgrades, one for IaC, one per business-logic category, one per weakness family (injection, XSS, path traversal, SSRF, deserialization, crypto, access control, authentication, open redirect, XXE, CSRF; otherwise per rule). Secrets (they need rotating) and licences are left out and counted in the job notes. Most severe groups first; at most 10 fix PRs open per branch and 15 findings per PR.
+5. For each group, on a shallow clone of the branch: gives the code model (4.6.2) the findings and the files they are in (for dependencies, the manifests next to them), up to 150 KB, fenced as untrusted input. The model answers with exact search-and-replace edits, a summary, how to test, and the findings it skipped.
+6. Applies the edits only when each one matches exactly once, in a file it was given; lockfiles and CI configuration (`.github/workflows/`, `.gitlab-ci.yml`, `azure-pipelines*.yml`, `.circleci/`, `Jenkinsfile`, `.buildkite/`) are never changed unless the finding is in that file. Nothing from the repository is run.
+7. Commits as "ObsidianWatch" on a new branch `obsidianwatch/fix-<kind>-<date>-<hash>`, pushes it and opens a pull/merge request into the protected branch with the findings table, what changed, how to test, what was not fixed, and how to mention the agent. **It never merges.** The PR is recorded in `code_fix_prs`; the Automation tab lists fix PRs with their state (open, merged, closed) and agent replies (`GET .../fix-prs`).
+
+**Mentions.** A comment containing `@obsidianwatch` (GitHub issue and review comments, GitLab merge request notes, Azure DevOps pull request comments) queues an `agent` job, when the commenter has write access (GitHub author association owner, member or collaborator; GitLab developer or above, checked through the API; Azure DevOps comments come from organisation members). The agent's own comments carry a hidden marker and never trigger it; at most 30 requests per pull request per day. The job:
+
+| Pull request | What the agent does |
+|---|---|
+| One of its fix PRs | Answers in a comment; when the comment reports a problem or asks for a change, edits the files with the same rules and pushes a new commit to the fix branch |
+| A developer's PR into a protected branch, `@obsidianwatch apply` | Fixes the findings of the PR's last check and pushes a commit to the PR branch (not to forks) |
+| A developer's PR into a protected branch, anything else | Answers the question about the PR's findings; no push |
+| Any other PR | Ignored |
+
+On a public repository the agent answers only on branches confirmed as above; otherwise it replies once that an admin must confirm first.
+
+Implemented in: `code_remediation.go`, `code_agent.go`, migration `086_code_remediation.sql`.
 
 ### 4.11 Runtime reachability of dependency vulnerabilities
 
@@ -777,7 +876,7 @@ Implemented in: `code_triage.go`; UI `pages/code/FindingActions.jsx`, `Automatio
 | Code finding with a line | AI. The server reads the file from the provider at the scanned branch, sends the finding and up to 30 lines around it (fenced as untrusted input, with the prompt-injection guard), and asks for an explanation, a confidence, whether it looks like a false positive, and a replacement for a line range. The server accepts the range only if it lies inside what the model was shown and is at most 40 lines, and builds the unified diff itself. Nothing is applied to the repository. |
 | No line (history secret, configuration) | No AI; the finding's own fix text applies. |
 
-AI suggestions need an AI provider (Settings → AI, Groq or Anthropic) **and** the operator opt-in to send source (`ai.send_source_snippets = true`); otherwise the request answers 412 with the reason. They are cached for 30 days per finding, file content around it and model (`code_fix_cache`) and share the source-AI rate limit (6 requests per 10 minutes).
+AI suggestions are written only by the **code model** (`ai.code_model`, default `claude-opus-5-5`; only Claude Opus 5.5 or newer, or Claude Fable / Mythos, is accepted) with the Anthropic key, never by Groq or the general Anthropic model. They need an Anthropic API key **and** the operator opt-in to send source (`ai.send_source_snippets = true`); otherwise the request answers 412 with the reason. They are cached for 30 days per finding, file content around it and model (`code_fix_cache`) and share the source-AI rate limit (6 requests per 10 minutes).
 
 **In PR comments** (policy "AI fix suggestions in comments"): for up to 5 inline findings per update the suggestion is built from the PR checkout. A one-line replacement of the commented line becomes a one-click suggestion block on GitHub (```` ```suggestion ````) and GitLab (```` ```suggestion:-0+0 ````); anything else is shown as a diff; dependency findings get the upgrade command; an AI "may be a false positive" verdict is shown too.
 
@@ -787,7 +886,7 @@ Implemented in: `code_fix.go`, `code_reporters.go` (`fixBlock`), `sast_engine.go
 
 ### 4.14 Creating issues from findings
 
-**Create issues** (button next to **Run SAST Scan** and **AI Triage** in the SAST tab, shown once a repository's result is loaded) turns that repository's latest result for the branch into issues on its platform: GitHub issues, GitLab issues (created confidential), or Azure DevOps "Bug" work items. `POST /api/v1/devops-connectors/{id}/sast/issues {repo, branch, min_severity, dry_run}`; analysts and admins.
+**Create issues** (button next to **Run SAST Scan** and **AI Triage** in the SAST tab, shown once a repository's result is loaded) turns that repository's latest result for the branch into issues on its platform: GitHub issues, GitLab issues (created confidential), or Azure DevOps "Bug" work items. `POST /api/v1/devops-connectors/{id}/sast/issues {repo, branch, min_severity, dry_run, confirm_public}`; analysts and admins.
 
 | Aspect | Behaviour |
 |---|---|
@@ -796,7 +895,7 @@ Implemented in: `code_fix.go`, `code_reporters.go` (`fixBlock`), `sast_engine.go
 | Preview | The dialog first shows what would be created (a dry run): each problem, its count, and whether an issue already exists. Nothing is written until **Create**. |
 | Repeat clicks | ObsidianWatch records which findings each issue covers (`code_finding_issues`, migration `079`). A new problem gets a new issue; new locations of a known problem are added as a comment on its issue; nothing already sent is sent again. |
 | Open / closed | Not tracked. Closing an issue does not dismiss the finding, and fixing the code does not close the issue. The SAST results stay the source of truth. Each finding with an issue shows an **issue** link. |
-| Public repositories | Skipped: an issue would disclose the vulnerability before it is fixed. If the visibility cannot be read, the repository is treated as public. |
+| Public repositories | Allowed after a warning: the preview says the issues will be readable by anyone, and **Create** stays disabled until the user types `proceed` (API: `confirm_public: "proceed"`; without it the answer is the plan with `blocked`). If the visibility cannot be read, the repository is treated as public. |
 | Content | Severity, repository, branch, description, CWE/OWASP, runtime status when the package is running, fix, locations; secrets never include the value. Labels/tags `security`, `obsidianwatch`, `severity:<level>`. |
 | Limit | 50 new issues per click; click again for the rest. |
 | Token | Needs permission to create issues: GitHub Issues (read and write), GitLab `api`, Azure DevOps Work Items (read and write). |
@@ -1048,8 +1147,8 @@ The left sidebar lists connectors (organisation, provider, status, items synced)
 | Tab | Content |
 |---|---|
 | **Code Changes** | Last 100 stored commits (search box, repository filter). A commit opens its detail with the file list and redacted patches. |
-| **Code Scan** | Run the code scan, see counts and findings of the latest run, and request an AI summary (risk score, label, executive summary, top issues, immediate actions). |
-| **SAST** | Repository selector (live list from the provider, GitHub paged up to 2 000 repositories) and Branch dropdown (`GET .../sast/branches?repo=`: the repository's branches from the provider, default first, then scanned branches, marked "scanned"); choosing a repository or branch shows the latest stored result of exactly that branch (from a manual, scheduled, on-push or "scan all" run); **Run SAST Scan** (async job, polled every 2 seconds for up to 42 minutes); engine chips (what ran, what was missing or failed, source git clone or API, CodeQL languages); **Download SBOM (CycloneDX)**; summary counts; severity filter; **Show dismissed**; findings with snippet, CWE, OWASP, engine, runtime badge, triage badge or hint, and fix; per finding **Suggest fix** / **Show fix**, **False positive**, **Accept risk**, **Confirm**, **Clear decision**, and a one-click triage rule from a hint; **AI Triage** summary of the repository on screen. Selecting a repository loads its last stored result. |
+| **Commit Scan** | Run the commit scan, see counts and findings of the latest run, and request an AI summary (risk score, label, executive summary, top issues, immediate actions). |
+| **SAST** | Repository selector (live list from the provider, GitHub paged up to 2 000 repositories) and Branch dropdown (`GET .../sast/branches?repo=`: the repository's branches from the provider, default first, then scanned branches, marked "scanned"); choosing a repository or branch shows the latest stored result of exactly that branch (from a manual, scheduled, on-push or "scan all" run); **Scan engines** checkboxes (4.6.1; a protected branch's engines are preselected; the AI engine only on protected branches); **Run SAST Scan** (async job, polled every 2 seconds for up to 42 minutes); **Run business-logic analysis** on a protected branch (the AI engine alone, merged with the stored result); **Correlate findings** when two or more engines ran, then a banner with **Show raw engine findings** / **Correlate again** / **Undo** (4.6.3); engine chips (what ran, what was missing or failed, source git clone or API, CodeQL languages); **Download SBOM (CycloneDX)**; summary counts; severity filter; **Show dismissed**; findings with snippet, CWE, OWASP, engine, runtime badge, triage badge or hint, and fix; per finding **Suggest fix** / **Show fix**, **False positive**, **Accept risk**, **Confirm**, **Clear decision**, and a one-click triage rule from a hint; **AI Triage** summary of the repository on screen. Selecting a repository loads its last stored result. |
 | **Automation** | Policy (PR checks, comments, CodeQL on PRs, AI fixes in comments, blocking level, comments per update, scan on push, schedule and hour, repositories for scheduled scans), **Scan all repositories now**, the status name to require for merge blocking with the provider-specific steps, the **Triage rules** list (delete), and the **Automated scans** list (trigger, repository, target, result, findings; a row shows what was posted, notes and the findings). Refreshes every 10 seconds. |
 | **Events** | Up to 500 events whose host equals the organisation name (all time). Events whose host is a repository (GitHub audit entries with a repository) are not listed here. |
 | **Alerts** | Up to 100 alerts whose host equals the organisation name. |
@@ -1072,7 +1171,9 @@ Implemented in: `management/frontend/src/pages/code/CodeOverview.jsx`, `RepoPage
 | Code scan | Last 500 commits |
 | SAST | Whole repository from git (2 048 MB on disk, 5 min clone); API fallback 1 000 files, 300 KB per file (lockfiles 5 MiB); history secrets 5 min; pattern rules 10 min; Trivy 9 min; one pattern-rule or CodeQL run at a time across all scans; CodeQL 12 min for up to 4 languages; 40 min per job; one job per connector and repository/branch at a time |
 | SCA (OSV fallback) | 50 lockfiles, 2 000 packages, 150 advisory look-ups, 60 s |
-| Automation | 1 worker (up to 4 with `OW_CODE_SCAN_WORKERS`); 40 min per job; schedule checked every 10 min; scheduled scans up to 200 known repositories per connector |
+| Automation | 1 worker (up to 4 with `OW_CODE_SCAN_WORKERS`); 40 min per job; schedule checked every 10 min; up to 500 protected branches per connector |
+| AI correlation | 60 findings per request, 25 requests per correlation (`OW_AI_CORR_MAX_BATCHES`, up to 500); answers cached 90 days |
+| AI business-logic engine | 40 route files per scan (`OW_AI_BL_MAX_FILES`, up to 500); files over 64 KB skipped; 3 requests at a time; answers cached 90 days |
 | Concurrent repository scans | `OW_SAST_MAX_CONCURRENT` (default 2): manual, "scan all", push, schedule and pull-request scans share the slots |
 | PR checks | Shallow fetch of 300 commits (deepened once to 3 000); inline comments 1-100 per update (default 20); AI fixes 5 per update; 2 000 commented-finding keys remembered per PR |
 | Runtime inventory | Every 15 min per service process (re-sent every 6 h when unchanged); 5 000 packages per process; "running" = seen in 24 h; index rows kept 14 days |

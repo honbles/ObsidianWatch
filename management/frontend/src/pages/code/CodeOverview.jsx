@@ -1,5 +1,5 @@
 // Code: repositories and findings across every connected Git source.
-// Each connector contributes its latest secret/code scan, its latest SAST scan and its last posture check.
+// Each connector contributes its latest commit scan, its latest SAST scan and its last posture check.
 // They are joined on the short repository name, since posture reports "org/repo@branch" and scans "repo" or "org/repo".
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
@@ -19,7 +19,7 @@ const SEV_N = { critical: 5, high: 4, medium: 3, low: 2, info: 1 }
 const N_SEV = { 5: 'critical', 4: 'high', 3: 'medium', 2: 'low', 1: 'info' }
 const SEV_LABEL = { critical: 'Critical', high: 'High', medium: 'Medium', low: 'Low', info: 'Info', clean: 'Clean' }
 const TYPE_LABEL = { secret: 'Secrets', dependency: 'Dependencies', dangerous_code: 'Dangerous code', sensitive_file: 'Sensitive files', config: 'Configuration', sast: 'Code weaknesses (SAST)', posture: 'Branch and access rules' }
-const SOURCE_LABEL = { scan: 'Secret and code scan', sast: 'SAST', posture: 'Posture check' }
+const SOURCE_LABEL = { scan: 'Commit scan', sast: 'SAST', posture: 'Posture check' }
 const PROVIDER_LABEL = { github: 'GitHub', gitlab: 'GitLab', azuredevops: 'Azure DevOps' }
 
 const repoKey = (s) => (s || '').split('@')[0].split('/').filter(Boolean).pop()?.toLowerCase() || ''

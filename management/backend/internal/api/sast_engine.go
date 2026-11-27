@@ -68,6 +68,8 @@ type SASTFinding struct {
 	Triage      *findingTriage `json:"triage,omitempty"`
 	TriageHint  *triageHint    `json:"triage_hint,omitempty"`
 	IssueURL    string         `json:"issue_url,omitempty"` // issue created from it on the platform
+	// Correlation: set on the findings of a correlated result (sast_correlate.go).
+	Correlation *corrInfo `json:"correlation,omitempty"`
 }
 
 // ── Semgrep JSON output types ─────────────────────────────────────────────────
@@ -599,6 +601,39 @@ func handleSAST(cfg *config.Config, db *store.DB, logger *slog.Logger) http.Hand
 			return
 		}
 
+		// Engines: ?engines=a,b; else a protected branch's profile; else the
+		// default set. The AI business-logic engine runs only on protected
+		// branches.
+		saveBranch := filterBranch
+		if saveBranch == "" { saveBranch = "HEAD" }
+		var set engineSet
+		var bl *blContext
+		protSet, isProtected := engineSet(nil), false
+		if filterRepo != "" {
+			protSet, isProtected = loadCodeScanPolicy(ctx, db, connID).engineSetFor(filterRepo, filterBranch)
+		}
+		if q := strings.TrimSpace(r.URL.Query().Get("engines")); q != "" {
+			ids, perr := parseEngineIDs(strings.Split(q, ","))
+			if perr != nil {
+				writeJSON(w, 400, map[string]string{"error": perr.Error()})
+				return
+			}
+			set = newEngineSet(ids)
+		} else if isProtected {
+			set = protSet
+		}
+		if set.on(engBusinessLogic) {
+			if !isProtected {
+				writeJSON(w, 400, map[string]string{"error": "AI business logic runs only on protected branches: add " + filterRepo + " " + saveBranch + " under Automation → Protected branches first"})
+				return
+			}
+			if rerr := businessLogicReady(ctx, cfg, db); rerr != nil {
+				writeJSON(w, 400, map[string]string{"error": "AI business logic: " + rerr.Error()})
+				return
+			}
+			bl = &blContext{cfg: cfg, db: db}
+		}
+
 		useSemgrep := semgrepAvailable()
 		useCodeQL  := codeqlAvailable()
 		engines := engineReport{}
@@ -650,7 +685,7 @@ func handleSAST(cfg *config.Config, db *store.DB, logger *slog.Logger) http.Hand
 			// secrets scan); the provider API is the fallback.
 			source, historyOK := "git", false
 			depth := 0
-			if !sastHistoryEnabled() {
+			if !sastHistoryEnabled() || !set.on(engSecrets) {
 				depth = 1
 			}
 			cloneErr := cloneRepo(ctx, conn, repo, branch, repoDir, depth)
@@ -685,16 +720,22 @@ func handleSAST(cfg *config.Config, db *store.DB, logger *slog.Logger) http.Hand
 			engines.set("source", source)
 			scannedRepos++
 
-			repoFindings, repoSBOM := scanCheckout(ctx, conn, repo, repoDir, scanOpts{History: historyOK, CodeQL: useCodeQL, Semgrep: useSemgrep}, engines, logger)
+			repoFindings, repoSBOM := scanCheckout(ctx, conn, repo, repoDir, scanOpts{History: historyOK, CodeQL: useCodeQL, Semgrep: useSemgrep, Engines: set, BL: bl}, engines, logger)
 			if filterRepo == "" {
 				// "Scan all" also stores each repository's own result, so the repository page shows it and the
 				// coverage counts the repository as scanned even when it has no findings.
-				own := deduplicateSASTFindings(append([]SASTFinding(nil), repoFindings...))
+				ownEngines := engineReport{}
+				for k, v := range engines {
+					ownEngines[k] = v
+				}
+				ownF, ownSBOM := mergeStoredEngines(ctx, db, connID, repo, branch, set, ownEngines, append([]SASTFinding(nil), repoFindings...), repoSBOM)
+				own := deduplicateSASTFindings(ownF)
+				repoSBOM = ownSBOM
 				sha := ""
 				if source == "git" {
 					sha = gitHeadSHA(ctx, repoDir)
 				}
-				if err := saveSASTResult(ctx, db, connID, repo, branch, sha, engines, own, repoSBOM, 1, countSourceFiles(repoDir)); err != nil {
+				if err := saveSASTResult(ctx, db, connID, repo, branch, sha, ownEngines, own, repoSBOM, 1, countSourceFiles(repoDir)); err != nil {
 					logger.Warn("sast: failed to save repository result", "repo", repo, "err", err)
 				}
 			}
@@ -707,6 +748,10 @@ func handleSAST(cfg *config.Config, db *store.DB, logger *slog.Logger) http.Hand
 		}
 
 	done:
+		if filterRepo != "" && scannedRepos > 0 {
+			// Keep the stored findings of the engines this scan did not run.
+			allFindings, sbom = mergeStoredEngines(ctx, db, connID, filterRepo, saveBranch, set, engines, allFindings, sbom)
+		}
 		allFindings = deduplicateSASTFindings(allFindings)
 		engine = engines.names()
 		if filterRepo == "" {
@@ -716,11 +761,15 @@ func handleSAST(cfg *config.Config, db *store.DB, logger *slog.Logger) http.Hand
 		counts := map[string]int{}
 		for _, f := range allFindings { counts[f.Severity]++ }
 
-		saveBranch := filterBranch
-		if saveBranch == "" { saveBranch = "HEAD" }
 		dbErr := saveSASTResult(ctx, db, connID, filterRepo, saveBranch, commitSHA, engines, allFindings, sbom, scannedRepos, scannedFiles)
 		if dbErr != nil {
 			logger.Warn("sast: failed to save", "err", dbErr)
+		} else if isProtected && len(allFindings) > 0 {
+			// A manual scan of a protected branch with remediation on opens
+			// fix pull requests for new findings.
+			if prof, _ := loadCodeScanPolicy(ctx, db, connID).profileFor(filterRepo, filterBranch); prof.Remediate {
+				queueFixJob(context.WithoutCancel(ctx), db, connID, filterRepo, saveBranch, "manual", logger)
+			}
 		}
 
 		logger.Info("sast: scan complete",
@@ -734,7 +783,8 @@ func handleSAST(cfg *config.Config, db *store.DB, logger *slog.Logger) http.Hand
 			"engine":        engine,
 			"engines":       engines,
 			"sbom_available": sbom != nil,
-			"warning":       joinWarnings(sastSourceWarning(scannedRepos, lastSourceErr), scanEngineWarning(scannedRepos, engines)),
+			"warning":       joinWarnings(sastSourceWarning(scannedRepos, lastSourceErr), chosenEngineWarning(scannedRepos, set, engines)),
+			"engines_run":   set.ids(),
 			"scanned_repos": scannedRepos,
 			"scanned_files": scannedFiles,
 			"finding_count": len(allFindings),
@@ -1041,7 +1091,12 @@ func handleGetSASTResults(db *store.DB) http.HandlerFunc {
 			AISummary     *string         `json:"ai_summary,omitempty"`
 			Engines       json.RawMessage `json:"engines,omitempty"`
 			HasSBOM       bool            `json:"sbom_available"`
+			// Correlation: the correlation summary when the findings are
+			// correlated (null otherwise); Raw: the raw engine findings are shown.
+			Correlation   json.RawMessage `json:"correlation"`
+			Raw           bool            `json:"raw,omitempty"`
 		}
+		showRaw := r.URL.Query().Get("raw") == "1"
 
 		var queryErr error
 		if filterRepo != "" {
@@ -1051,19 +1106,20 @@ func handleGetSASTResults(db *store.DB) http.HandlerFunc {
 			queryErr = db.QueryRowContext(r.Context(), `
 				SELECT id, connector_id, COALESCE(repo,''), COALESCE(branch,''), COALESCE(engine,'semgrep'),
 				       scanned_at, repo_count, file_count, finding_count,
-				       critical_count, high_count, medium_count, findings, ai_summary,
-				       COALESCE(engines, '{}'::jsonb), sbom IS NOT NULL
+				       critical_count, high_count, medium_count,
+				       CASE WHEN $5 AND raw_findings IS NOT NULL THEN raw_findings ELSE findings END, ai_summary,
+				       COALESCE(engines, '{}'::jsonb), sbom IS NOT NULL, COALESCE(correlation, 'null'::jsonb), $5 AND raw_findings IS NOT NULL
 				FROM sast_results
 				WHERE connector_id = $1 AND repo = $2
 				  AND ($3 = '' OR branch = $3 OR ($4 AND branch IN ('', 'HEAD')))
 				  AND (branch NOT LIKE '@%' OR branch = $3)
 				ORDER BY scanned_at DESC LIMIT 1`, connID, filterRepo, filterBranch,
 				// The default branch is stored as "HEAD" when it was scanned without a name.
-				filterBranch == "HEAD" || (filterBranch != "" && filterBranch == r.URL.Query().Get("default")),
+				filterBranch == "HEAD" || (filterBranch != "" && filterBranch == r.URL.Query().Get("default")), showRaw,
 			).Scan(&result.ID, &result.ConnectorID, &result.Repo, &result.Branch, &result.Engine,
 				&result.ScannedAt, &result.RepoCount, &result.FileCount, &result.FindingCount,
 				&result.CriticalCount, &result.HighCount, &result.MediumCount,
-				&result.Findings, &result.AISummary, &result.Engines, &result.HasSBOM)
+				&result.Findings, &result.AISummary, &result.Engines, &result.HasSBOM, &result.Correlation, &result.Raw)
 			_ = branch
 		} else {
 			// No repo filter - fetch most recent scan for this connector
@@ -1071,13 +1127,13 @@ func handleGetSASTResults(db *store.DB) http.HandlerFunc {
 				SELECT id, connector_id, COALESCE(repo,''), COALESCE(branch,''), COALESCE(engine,'semgrep'),
 				       scanned_at, repo_count, file_count, finding_count,
 				       critical_count, high_count, medium_count, findings, ai_summary,
-				       COALESCE(engines, '{}'::jsonb), sbom IS NOT NULL
+				       COALESCE(engines, '{}'::jsonb), sbom IS NOT NULL, COALESCE(correlation, 'null'::jsonb)
 				FROM sast_results WHERE connector_id = $1 AND branch NOT LIKE '@%'
 				ORDER BY scanned_at DESC LIMIT 1`, connID,
 			).Scan(&result.ID, &result.ConnectorID, &result.Repo, &result.Branch, &result.Engine,
 				&result.ScannedAt, &result.RepoCount, &result.FileCount, &result.FindingCount,
 				&result.CriticalCount, &result.HighCount, &result.MediumCount,
-				&result.Findings, &result.AISummary, &result.Engines, &result.HasSBOM)
+				&result.Findings, &result.AISummary, &result.Engines, &result.HasSBOM, &result.Correlation)
 		}
 		if queryErr != nil {
 			writeJSON(w, 200, map[string]interface{}{"scan": nil, "scans": []interface{}{}})
@@ -1482,6 +1538,21 @@ func sastSizeLimit(path string) int {
 		return 5 << 20
 	}
 	return maxFileBytes
+}
+
+// chosenEngineWarning warns about the engines that were chosen but did not run.
+func chosenEngineWarning(scanned int, set engineSet, e engineReport) string {
+	if scanned == 0 {
+		return ""
+	}
+	var ws []string
+	if set.on(engSemgrep) || set.on(engCodeQL) {
+		ws = append(ws, sastEngineWarning(e))
+	}
+	if v := e["business-logic"]; strings.HasPrefix(v, "failed") {
+		ws = append(ws, "AI business logic "+v+".")
+	}
+	return joinWarnings(ws...)
 }
 
 func scanEngineWarning(scanned int, e engineReport) string {

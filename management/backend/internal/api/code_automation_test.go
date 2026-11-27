@@ -239,7 +239,7 @@ func pemCert(srv *httptest.Server) []byte {
 
 func TestEvery5dSchedule(t *testing.T) {
 	p := defaultCodeScanPolicy().normalised()
-	if p.Schedule != "every5d" || p.ScheduleBranches != "all" {
+	if p.Schedule != "every5d" || len(p.Protected) != 0 {
 		t.Fatalf("default %+v", p)
 	}
 	at := time.Date(2026, 11, 26, p.ScheduleHour, 0, 0, 0, time.UTC)
@@ -254,8 +254,5 @@ func TestEvery5dSchedule(t *testing.T) {
 	}
 	if scheduleDue(p, at.Add(time.Hour), time.Time{}) {
 		t.Fatal("only at the schedule hour")
-	}
-	if (codeScanPolicy{ScheduleBranches: "default"}).normalised().ScheduleBranches != "default" {
-		t.Fatal("default branch choice kept")
 	}
 }

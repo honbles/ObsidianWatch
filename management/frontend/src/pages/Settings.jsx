@@ -74,6 +74,15 @@ const API_KEY_GROUPS = [
         badgeColor: 'text-orange-400 bg-orange-950/30 border-orange-800/40',
       },
       {
+        key: 'code_model',
+        plain: true,
+        label: 'Code model',
+        placeholder: 'claude-opus-5-5',
+        desc: 'Writes code fixes and runs the AI business-logic engine. Only Claude Opus 5.5 or newer, or Claude Fable / Mythos, is accepted. Uses the Anthropic key above. Empty restores claude-opus-5-5.',
+        badge: 'Code',
+        badgeColor: 'text-orange-400 bg-orange-950/30 border-orange-800/40',
+      },
+      {
         key: 'local_llm_url',
         plain: true,
         label: 'Local model URL',

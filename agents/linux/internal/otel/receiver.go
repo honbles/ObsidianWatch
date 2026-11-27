@@ -15,6 +15,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -177,6 +178,9 @@ func (r *Receiver) Start(ctx context.Context) error {
 		if fi, err := os.Lstat(r.opt.Socket); err == nil && fi.Mode()&os.ModeSocket != 0 {
 			_ = os.Remove(r.opt.Socket) // stale socket from a previous run
 		}
+		// /run is empty after a reboot: create the socket's directory (the agent may start before Docker,
+		// which would otherwise create it for the bind mount).
+		_ = os.MkdirAll(filepath.Dir(r.opt.Socket), 0o755)
 		ln, err := net.Listen("unix", r.opt.Socket)
 		if err != nil {
 			r.closeAll()

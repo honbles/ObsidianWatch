@@ -19,8 +19,8 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/xml"
 	"encoding/json"
+	"encoding/xml"
 	"fmt"
 	"io"
 	"log/slog"
@@ -89,7 +89,15 @@ func sha256Hex(data []byte) string {
 	return hex.EncodeToString(h[:])
 }
 
+// awsUserAgent marks ObsidianWatch's own AWS calls. CloudTrail records it
+// (userAgent), so the recon rules can tell the connector's scans apart from
+// someone else enumerating the account.
+const awsUserAgent = "ObsidianWatch-connector/1.0"
+
 func awsSign(req *http.Request, creds awsCreds, service string, body []byte) {
+	if req.Header.Get("User-Agent") == "" {
+		req.Header.Set("User-Agent", awsUserAgent)
+	}
 	now := awsNow() // AW-09: corrected for learned clock skew
 	date := now.Format("20060102")
 	datetime := now.Format("20060102T150405Z")
@@ -144,7 +152,7 @@ func awsSign(req *http.Request, creds awsCreds, service string, body []byte) {
 		if i > 0 {
 			canonQuery.WriteString("&")
 		}
-		canonQuery.WriteString(url.QueryEscape(k) + "=" + url.QueryEscape(q.Get(k)))
+		canonQuery.WriteString(awsURIEncode(k) + "=" + awsURIEncode(q.Get(k)))
 	}
 
 	canonRequest := strings.Join([]string{
@@ -165,34 +173,75 @@ func awsSign(req *http.Request, creds awsCreds, service string, body []byte) {
 		creds.AccessKeyID, credScope, signedHeaders, sig))
 }
 
+// awsURIEncode encodes a query name or value the way SigV4 requires
+// (RFC 3986 unreserved characters kept, everything else %XX, space as %20).
+// url.QueryEscape writes a space as "+", which AWS rejects in the signature.
+func awsURIEncode(s string) string {
+	return strings.ReplaceAll(url.QueryEscape(s), "+", "%20")
+}
+
+// awsErrorText extracts Code and Message from an AWS XML or JSON error body.
+func awsErrorText(body []byte) string {
+	var x struct {
+		Code    string `xml:"Error>Code"`
+		Message string `xml:"Error>Message"`
+	}
+	if xml.Unmarshal(body, &x) == nil && x.Code != "" {
+		return x.Code + ": " + x.Message
+	}
+	var j struct {
+		Type    string `json:"__type"`
+		Message string `json:"message"`
+		Msg     string `json:"Message"`
+	}
+	if json.Unmarshal(body, &j) == nil && (j.Type != "" || j.Message != "" || j.Msg != "") {
+		if j.Message == "" {
+			j.Message = j.Msg
+		}
+		return strings.TrimSpace(j.Type + ": " + j.Message)
+	}
+	return strings.TrimSpace(string(body[:minInt(200, len(body))]))
+}
+
 // ── Test connection ────────────────────────────────────────────────────────────
 
+// testAWSConnection calls GetCallerIdentity and returns the account ID.
+// The global STS endpoint only accepts signatures for us-east-1, whatever
+// the connector's home region (signing with the home region made the test
+// fail for every other region).
 func testAWSConnection(ctx context.Context, creds awsCreds) (string, error) {
+	acct, _, err := awsCallerIdentity(ctx, creds)
+	return acct, err
+}
+
+func awsCallerIdentity(ctx context.Context, creds awsCreds) (account, arn string, err error) {
 	body := []byte("Action=GetCallerIdentity&Version=2011-06-15")
 	req, err := http.NewRequestWithContext(ctx, "POST", "https://sts.amazonaws.com/", strings.NewReader(string(body)))
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	awsSign(req, creds, "sts", body)
+	sc := creds
+	sc.Region = "us-east-1"
+	awsSign(req, sc, "sts", body)
 
 	resp, err := awsClient.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("STS request failed: %w", err)
+		return "", "", fmt.Errorf("STS request failed: %w", err)
 	}
 	defer resp.Body.Close()
-	respBody, _ := io.ReadAll(resp.Body)
-
+	respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if resp.StatusCode != 200 {
-		return "", fmt.Errorf("invalid credentials - STS returned %d", resp.StatusCode)
+		return "", "", fmt.Errorf("STS GetCallerIdentity returned %d (%s)", resp.StatusCode, awsErrorText(respBody))
 	}
-	for _, line := range strings.Split(string(respBody), "\n") {
-		line = strings.TrimSpace(line)
-		if strings.HasPrefix(line, "<Account>") {
-			return strings.TrimSuffix(strings.TrimPrefix(line, "<Account>"), "</Account>"), nil
-		}
+	var r struct {
+		Account string `xml:"GetCallerIdentityResult>Account"`
+		Arn     string `xml:"GetCallerIdentityResult>Arn"`
 	}
-	return "unknown", nil
+	if err := xml.Unmarshal(respBody, &r); err != nil || r.Account == "" {
+		return "", "", fmt.Errorf("unexpected GetCallerIdentity response")
+	}
+	return r.Account, r.Arn, nil
 }
 
 // ── LookupEvents API ──────────────────────────────────────────────────────────
@@ -205,6 +254,51 @@ type lookupEvent struct {
 	Username        string    `json:"Username"`
 	SourceIPAddress string    `json:"SourceIPAddress"`
 	CloudTrailEvent string    `json:"CloudTrailEvent"`
+}
+
+// UnmarshalJSON reads EventTime as AWS JSON 1.1 sends it: epoch seconds
+// (a number such as 1.7327e9). Decoding it straight into time.Time, which
+// only accepts RFC 3339 text, failed every real LookupEvents response with
+// "cloudtrail parse", so the default CloudTrail mode ingested nothing.
+// RFC 3339 text is still accepted.
+func (e *lookupEvent) UnmarshalJSON(b []byte) error {
+	type plain lookupEvent
+	var aux struct {
+		plain
+		EventTime json.RawMessage `json:"EventTime"`
+	}
+	if err := json.Unmarshal(b, &aux); err != nil {
+		return err
+	}
+	*e = lookupEvent(aux.plain)
+	t, err := awsJSONTime(aux.EventTime)
+	if err != nil {
+		return fmt.Errorf("EventTime: %w", err)
+	}
+	e.EventTime = t
+	return nil
+}
+
+// awsJSONTime parses an AWS JSON timestamp: epoch seconds (with fraction)
+// or RFC 3339 text. Empty or null is the zero time.
+func awsJSONTime(raw json.RawMessage) (time.Time, error) {
+	s := strings.TrimSpace(string(raw))
+	if s == "" || s == "null" {
+		return time.Time{}, nil
+	}
+	if s[0] == '"' {
+		var str string
+		if err := json.Unmarshal(raw, &str); err != nil {
+			return time.Time{}, err
+		}
+		return time.Parse(time.RFC3339Nano, str)
+	}
+	var f float64
+	if err := json.Unmarshal(raw, &f); err != nil {
+		return time.Time{}, err
+	}
+	sec := int64(f)
+	return time.Unix(sec, int64((f-float64(sec))*1e9)).UTC(), nil
 }
 
 func lookupCloudTrailEvents(ctx context.Context, creds awsCreds, startTime time.Time, nextToken string) ([]lookupEvent, string, error) {
@@ -405,8 +499,8 @@ func cloudTrailRecordToCloudEvent(r cloudTrailRecord, connectorID int64) CloudEv
 		"aws_region": r.AWSRegion, "source_ip": r.SourceIPAddress,
 		"user_agent": r.UserAgent, "error_code": r.ErrorCode,
 		"error_message": r.ErrorMessage, "user_identity": r.UserIdentity,
-		"request_parameters": r.RequestParameters,
-		"response_elements":  r.ResponseElements,
+		"request_parameters":    r.RequestParameters,
+		"response_elements":     r.ResponseElements,
 		"additional_event_data": r.AdditionalEventData, "read_only": r.ReadOnly,
 		"recipient_account_id": r.RecipientAccountID, "resources": r.Resources,
 		"management_event": r.ManagementEvent, "vpc_endpoint_id": r.VPCEndpointID,
@@ -425,6 +519,25 @@ func cloudTrailRecordToCloudEvent(r cloudTrailRecord, connectorID int64) CloudEv
 		SrcIP:     r.SourceIPAddress,
 		Raw:       raw,
 	}
+}
+
+// lookupEventUser names the principal the way S3 mode does: the IAM user
+// name, else the identity ARN (an assumed role's session ARN, which the
+// baselines fold into the role), else LookupEvents' Username. LookupEvents'
+// Username is only the session name for assumed roles, so each session
+// looked like a new principal.
+func lookupEventUser(e lookupEvent, inner map[string]interface{}) string {
+	if ui, ok := inner["userIdentity"].(map[string]interface{}); ok {
+		if u, _ := ui["userName"].(string); u != "" {
+			if t, _ := ui["type"].(string); t == "IAMUser" {
+				return u
+			}
+		}
+		if a, _ := ui["arn"].(string); a != "" {
+			return a
+		}
+	}
+	return e.Username
 }
 
 func lookupEventToCloudEvent(e lookupEvent, connectorID int64) CloudEvent {
@@ -450,13 +563,13 @@ func lookupEventToCloudEvent(e lookupEvent, connectorID int64) CloudEvent {
 		"source_ip":    e.SourceIPAddress,
 		"username":     e.Username,
 		// Include full event detail from embedded CloudTrailEvent JSON
-		"request_parameters": inner["requestParameters"],
-		"response_elements":  inner["responseElements"],
-		"user_identity":      inner["userIdentity"],
-		"error_code":         inner["errorCode"],
-		"error_message":      inner["errorMessage"],
-		"user_agent":         inner["userAgent"],
-		"aws_region":         inner["awsRegion"],
+		"request_parameters":    inner["requestParameters"],
+		"response_elements":     inner["responseElements"],
+		"user_identity":         inner["userIdentity"],
+		"error_code":            inner["errorCode"],
+		"error_message":         inner["errorMessage"],
+		"user_agent":            inner["userAgent"],
+		"aws_region":            inner["awsRegion"],
 		"additional_event_data": inner["additionalEventData"],
 		"read_only":             inner["readOnly"],
 		"recipient_account_id":  inner["recipientAccountId"],
@@ -481,7 +594,7 @@ func lookupEventToCloudEvent(e lookupEvent, connectorID int64) CloudEvent {
 		EventType: "cloud.cloudtrail",
 		Severity:  sev,
 		Source:    "cloudtrail",
-		Username:  e.Username,
+		Username:  lookupEventUser(e, inner),
 		SrcIP:     e.SourceIPAddress,
 		Raw:       raw,
 	}
@@ -553,60 +666,54 @@ func syncAWS(ctx context.Context, conn *store.CloudConnector, db *store.DB, even
 			newCursor = string(b)
 		}
 	} else {
-		// LookupEvents mode.
+		// LookupEvents mode. LookupEvents is regional, and AWS records the
+		// events of global services (IAM, STS, console sign-in, Organizations)
+		// only in us-east-1, so a home region elsewhere also reads us-east-1;
+		// otherwise every identity detection (CreateUser, CreateAccessKey,
+		// AttachUserPolicy, ConsoleLogin…) would never see an event.
 		//
-		// AW-01/G-01: this used to watermark on conn.LastSync, which
-		// UpdateCloudConnectorStatus bumps to NOW() on every run including
-		// a failed one - so a throttle error partway through a sync still
-		// advanced the window past whatever pages hadn't been read yet,
-		// permanently losing them. Now it watermarks on conn.SyncCursor
-		// (max CloudTrail EventTime actually ingested, like the GCP/Azure
-		// cursors), which only ever advances to what was truly ingested -
-		// including on a partial failure, never past it.
-		startTime := time.Now().UTC().Add(-24 * time.Hour)
-		if conn.SyncCursor != "" {
-			if t, err := time.Parse(time.RFC3339Nano, conn.SyncCursor); err == nil {
+		// The cursor is the newest EventTime ingested per region (JSON map; a
+		// plain timestamp from older versions is the home region's). Events
+		// come newest first, so a run that stops partway (throttling, timeout)
+		// keeps the previous cursor: the unread older pages are read again
+		// next time, and already-ingested events are skipped by their ID.
+		cursors := awsLookupCursors(conn.SyncCursor, creds.Region)
+		var firstErr error
+		for _, region := range awsLookupRegions(creds.Region) {
+			rc := creds
+			rc.Region = region
+			startTime := time.Now().UTC().Add(-24 * time.Hour)
+			if t, ok := cursors[region]; ok {
 				startTime = t.Add(-2 * time.Minute)
+			} else if region == creds.Region && conn.LastSync != nil {
+				startTime = conn.LastSync.Add(-2 * time.Minute)
 			}
-		} else if conn.LastSync != nil {
-			startTime = conn.LastSync.Add(-2 * time.Minute)
-		}
-		cursorFloor := startTime
-		maxSeen := cursorFloor
-
-		var nextToken string
-		for {
-			events, token, err := lookupCloudTrailEvents(ctx, creds, startTime, nextToken)
+			maxSeen, n, err := awsLookupRegion(ctx, rc, conn.ID, startTime, eventDB)
+			totalIngested += n
+			source := "cloudtrail"
+			if region != creds.Region {
+				source = "cloudtrail_global" // us-east-1, for global-service events
+			}
 			if err != nil {
 				st := "error"
 				if strings.Contains(err.Error(), "403") || strings.Contains(strings.ToLower(err.Error()), "accessdenied") {
 					st = "permission_missing"
 				}
-				recordSourceStatus(conn.ID, "cloudtrail", st, err.Error())
-				return totalIngested, awsCursorString(maxSeen, cursorFloor), err
-			}
-			recordSourceStatus(conn.ID, "cloudtrail", "ok", "")
-			cloudEvents := make([]CloudEvent, 0, len(events))
-			for _, e := range events {
-				cloudEvents = append(cloudEvents, lookupEventToCloudEvent(e, conn.ID))
-				if e.EventTime.After(maxSeen) {
-					maxSeen = e.EventTime
+				recordSourceStatus(conn.ID, source, st, err.Error())
+				if firstErr == nil {
+					firstErr = err
 				}
+				continue // keep this region's cursor
 			}
-			n, _ := ingestCloudEvents(ctx, eventDB, cloudEvents)
-			totalIngested += n
-
-			if token == "" {
-				break
-			}
-			nextToken = token
-			select {
-			case <-ctx.Done():
-				return totalIngested, awsCursorString(maxSeen, cursorFloor), ctx.Err()
-			case <-time.After(300 * time.Millisecond):
+			recordSourceStatus(conn.ID, source, "ok", "")
+			if maxSeen.After(cursors[region]) {
+				cursors[region] = maxSeen
 			}
 		}
-		newCursor = awsCursorString(maxSeen, cursorFloor)
+		newCursor = awsLookupCursorString(cursors)
+		if firstErr != nil {
+			return totalIngested, newCursor, firstErr
+		}
 	}
 
 	// Always pull GuardDuty findings regardless of S3/LookupEvents mode
@@ -615,6 +722,79 @@ func syncAWS(ctx context.Context, conn *store.CloudConnector, db *store.DB, even
 	totalIngested += pullSecurityHub(ctx, creds, conn, eventDB, logger)
 
 	return totalIngested, newCursor, nil
+}
+
+// awsLookupRegions: the home region, plus us-east-1 for global-service events.
+func awsLookupRegions(home string) []string {
+	if home == "us-east-1" {
+		return []string{home}
+	}
+	return []string{home, "us-east-1"}
+}
+
+// awsLookupCursors reads the per-region LookupEvents cursor.
+func awsLookupCursors(raw, home string) map[string]time.Time {
+	out := map[string]time.Time{}
+	if strings.HasPrefix(raw, "{") {
+		var m map[string]string
+		if json.Unmarshal([]byte(raw), &m) == nil {
+			for r, v := range m {
+				if t, err := time.Parse(time.RFC3339Nano, v); err == nil {
+					out[r] = t
+				}
+			}
+		}
+		return out
+	}
+	if t, err := time.Parse(time.RFC3339Nano, raw); err == nil {
+		out[home] = t
+	}
+	return out
+}
+
+func awsLookupCursorString(c map[string]time.Time) string {
+	if len(c) == 0 {
+		return ""
+	}
+	m := map[string]string{}
+	for r, t := range c {
+		m[r] = t.UTC().Format(time.RFC3339Nano)
+	}
+	b, _ := json.Marshal(m)
+	return string(b)
+}
+
+// awsLookupRegion reads every page of one region since startTime. It returns
+// the newest EventTime seen only when every page was read; on an error the
+// zero time, so the caller keeps the previous cursor.
+func awsLookupRegion(ctx context.Context, creds awsCreds, connID int64, startTime time.Time, eventDB *store.DB) (time.Time, int, error) {
+	var maxSeen time.Time
+	total := 0
+	var nextToken string
+	for {
+		events, token, err := lookupCloudTrailEvents(ctx, creds, startTime, nextToken)
+		if err != nil {
+			return time.Time{}, total, err
+		}
+		cloudEvents := make([]CloudEvent, 0, len(events))
+		for _, e := range events {
+			cloudEvents = append(cloudEvents, lookupEventToCloudEvent(e, connID))
+			if e.EventTime.After(maxSeen) {
+				maxSeen = e.EventTime
+			}
+		}
+		n, _ := ingestCloudEvents(ctx, eventDB, cloudEvents)
+		total += n
+		if token == "" {
+			return maxSeen, total, nil
+		}
+		nextToken = token
+		select {
+		case <-ctx.Done():
+			return time.Time{}, total, ctx.Err()
+		case <-time.After(550 * time.Millisecond): // LookupEvents allows 2 requests per second per region
+		}
+	}
 }
 
 // awsCursorString returns the new LookupEvents watermark to persist, or ""
@@ -694,16 +874,21 @@ func listGuardDutyFindings(ctx context.Context, creds awsCreds, detectorID strin
 	listEndpoint := fmt.Sprintf("https://guardduty.%s.amazonaws.com/detector/%s/findings", creds.Region, detectorID)
 	getEndpoint := fmt.Sprintf("https://guardduty.%s.amazonaws.com/detector/%s/findings/get", creds.Region, detectorID)
 	for page := 0; page < maxPages; page++ {
+		// GuardDuty's REST API reads lowerCamelCase request members
+		// (findingCriteria, maxResults, nextToken, findingIds). PascalCase
+		// names were ignored: no time filter, no paging, and GetFindings
+		// failed for lack of findingIds as soon as a finding existed.
 		payload := map[string]interface{}{
-			"MaxResults": 50,
-			"FindingCriteria": map[string]interface{}{
-				"Criterion": map[string]interface{}{
-					"updatedAt": map[string]interface{}{"Gte": updatedAt.UnixMilli()},
+			"maxResults": 50,
+			"findingCriteria": map[string]interface{}{
+				"criterion": map[string]interface{}{
+					"updatedAt": map[string]interface{}{"greaterThanOrEqual": updatedAt.UnixMilli()},
 				},
 			},
+			"sortCriteria": map[string]string{"attributeName": "updatedAt", "orderBy": "ASC"},
 		}
 		if nextToken != "" {
-			payload["NextToken"] = nextToken
+			payload["nextToken"] = nextToken
 		}
 		body, _ := json.Marshal(payload)
 		req, err := http.NewRequestWithContext(ctx, "POST", listEndpoint, strings.NewReader(string(body)))
@@ -729,7 +914,7 @@ func listGuardDutyFindings(ctx context.Context, creds awsCreds, detectorID strin
 			return all, err
 		}
 		if len(lr.FindingIDs) > 0 {
-			getBody, _ := json.Marshal(map[string]interface{}{"FindingIds": lr.FindingIDs})
+			getBody, _ := json.Marshal(map[string]interface{}{"findingIds": lr.FindingIDs})
 			getReq, err := http.NewRequestWithContext(ctx, "POST", getEndpoint, strings.NewReader(string(getBody)))
 			if err != nil {
 				return all, err

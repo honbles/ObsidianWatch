@@ -1,6 +1,7 @@
 package api
 
 import (
+	"encoding/json"
 	"regexp"
 	"strings"
 
@@ -147,3 +148,41 @@ func fieldHas(ev store.Event, re *regexp.Regexp, tokens []string) bool {
 // name instead of substring-searching the whole raw JSON.
 func azureOpHas(ev store.Event, tokens ...string) bool   { return fieldHas(ev, azureOpRe, tokens) }
 func gcpMethodHas(ev store.Event, tokens ...string) bool { return fieldHas(ev, gcpMethodRe, tokens) }
+
+// awsSelfActivity reports a CloudTrail event made by ObsidianWatch's own AWS
+// connector (its user agent), so its scheduled scans do not raise the recon
+// rules. Only those low-severity discovery rules use it: a user agent can be
+// copied, so nothing that matters is skipped on it.
+func awsSelfActivity(ev store.Event) bool {
+	if ev.EventType != "cloud.cloudtrail" {
+		return false
+	}
+	var r struct {
+		UA string `json:"user_agent"`
+	}
+	_ = json.Unmarshal(ev.Raw, &r)
+	return strings.Contains(r.UA, awsUserAgent) // S3 records wrap it in brackets
+}
+
+// awsAssumeRoleCrossAccount reports an AssumeRole into a role of another
+// account than the caller's (C-AWS-020). It fired on every AssumeRole,
+// including the connector's own hourly one in the same account. When either
+// account cannot be read the event still counts, so nothing is missed.
+func awsAssumeRoleCrossAccount(ev store.Event) bool {
+	var r struct {
+		UI struct {
+			AccountID string `json:"accountId"`
+		} `json:"user_identity"`
+		RP struct {
+			RoleArn string `json:"roleArn"`
+		} `json:"request_parameters"`
+	}
+	if json.Unmarshal(ev.Raw, &r) != nil {
+		return true
+	}
+	parts := strings.Split(r.RP.RoleArn, ":")
+	if len(parts) < 5 || parts[4] == "" || r.UI.AccountID == "" {
+		return true
+	}
+	return parts[4] != r.UI.AccountID
+}

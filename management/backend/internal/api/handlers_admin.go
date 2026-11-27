@@ -325,6 +325,7 @@ func handleGetAPIKeys(db *store.DB) http.HandlerFunc {
 		// Model names are not secrets; show the effective value.
 		refreshAIModels(ctx, db)
 		result["groq_model"], result["anthropic_model"] = groqModelName(), anthropicModelName()
+		result["code_model"] = codeModelName(ctx, db)
 
 		// ThreatFox + OTX from threat_intel_sources table
 		if sources, err := db.ListThreatIntelSources(ctx); err == nil {
@@ -411,6 +412,15 @@ func handleSaveAPIKeys(db *store.DB) http.HandlerFunc {
 			}
 		}
 		refreshAIModels(ctx, db)
+		if v, ok := body["code_model"]; ok {
+			v = strings.TrimSpace(v)
+			if v != "" && !codeModelAllowed(v) {
+				writeJSON(w, 400, map[string]string{"error": "code_model: code fixes and the business-logic engine need Claude Opus 5.5 or newer, or Claude Fable / Mythos (for example claude-opus-5-5)"})
+				return
+			}
+			_ = db.SetSetting(ctx, settingCodeModel, v)
+			saved = append(saved, "code_model")
+		}
 
 		if v, ok := body["sigma_pinned_version"]; ok {
 			v = strings.TrimSpace(v)

@@ -16,8 +16,8 @@ Follow these steps once per deployment, then once per platform organisation. Eac
 2. **Build the image with the scanners** (section 6.1): `docker build -f management/docker/Dockerfile` from the repository root, passing `GITLEAKS_SHA256`, `TRIVY_SHA256`, `OPENGREP_SHA256` and `CODEQL_SHA256` with known-good hashes. Without the scanners, SAST runs only the built-in rules and the OSV lookup.
 3. **Outbound access** from the management container to the provider hosts and, if wanted, the Trivy database registry and AI provider (section 8). For a fully offline scanner set, also set `OW_SCANNER_DB_UPDATE=false`.
 4. **Inbound access** for webhooks: the platforms must reach `https://<management-host>/api/v1/devops/webhook*/{id}`. Without webhooks you get polling (5-minute delay) but no PR checks and no on-push scans.
-5. **Public URL** (optional): `OW_PUBLIC_URL=https://<management-host>` so PR statuses link back to the console.
-6. **AI** (optional, for AI triage and code fix suggestions): add a Groq or Anthropic key in Settings → AI and, to allow sending code, set `ai.send_source_snippets` to `true` (section 6c).
+5. **Public URL**: `OW_PUBLIC_URL=https://<management-host>`, the address GitHub, GitLab or Azure DevOps can reach. Repository setup uses it for webhooks, and PR statuses link back to the console.
+6. **AI** (optional, for AI triage, code fix suggestions and the business-logic engine): add a Groq or Anthropic key in Settings → AI (fixes and the business-logic engine need Anthropic) and, to allow sending code, set `ai.send_source_snippets` to `true` (section 6c).
 7. **Runtime reachability** (optional): Linux agents on the application servers with the host sensor on (section 6a).
 
 **Once per platform organisation**
@@ -241,7 +241,7 @@ Implemented in: `devops_engine.go`, `sync_guard.go`, `detection_engine.go` (`run
 
 | Scan | Trigger | Runs where |
 |---|---|---|
-| Code scan | **Code Scan** tab → `POST .../code-scan` | In process, over stored commit diffs. No source is downloaded. |
+| Commit scan | **Commit Scan** tab → `POST .../code-scan` | In process, over stored commit diffs. No source is downloaded. |
 | SAST + SCA | **SAST** tab → `POST .../sast?async=1`; or an automated job (on push, schedule, PR, **Scan all repositories now**; section 6b) | Clones the repository to a temporary directory (provider API download as the fallback), then runs history secrets, pattern rules, Trivy (or OSV), the built-in rules and CodeQL |
 | Posture | **Posture** tab → `POST .../posture?async=1` | In process, API calls only |
 
@@ -294,9 +294,10 @@ To see what a host reports, search the events for `event_type: runtime_inventory
 
 ## 6b. Automation and pull-request checks
 
+0. **Repository setup does steps 1 and 4 for protected branches** (capability.md 4.10.1): set `OW_PUBLIC_URL`, give the token admin rights on the repositories, add the branches under **Protected branches** and save. Do the steps below by hand only for other branches or when automatic setup is off.
 1. **Webhook events.** Add pull request events to the webhook: GitHub `pull_request` (and `push`); GitLab Merge request events (and Push events); Azure DevOps service hooks "Pull request created" and "Pull request updated" (and "Code pushed"). Section 4 has the full lists.
-2. **Token write access** (section 4.5). Without it the scan still runs but the status and comments fail; the job in the Automation tab shows the provider's error.
-3. **Policy.** In Code → Repositories → Connectors and scans → *connector* → **Automation** (admin): tick **Scan every pull request**, **Post comments**, optionally **Run CodeQL on pull requests** and **AI fix suggestions in comments**; choose **Fail the check on**; tick **Scan on every push to the default branch**; choose a **Scheduled scan** (every 5 days by default), its branches (all, or the default branch) and hour (UTC); optionally list repositories for scheduled scans. Save.
+2. **Token write access** (section 4.5). Without it the scan still runs but the status and comments fail; the job in the Automation tab shows the provider's error. Fix pull requests and `@obsidianwatch` replies also push branches and open pull requests: GitHub Contents and Pull requests (write); GitLab `api` with Developer or above; Azure DevOps Code (read & write) and Pull request threads. Repository setup needs admin rights as listed in capability.md 4.10.1.
+3. **Policy.** In Code → Repositories → Connectors and scans → *connector* → **Automation** (admin): under **Protected branches**, add each branch Automation should look after (repository, branch, and its scan engines; tick **AI business logic** for the AI engine and **Correlate** to have each automated scan's findings correlated). Tick **Scan every pull request**, **Post comments**, optionally **Run CodeQL on pull requests** and **AI fix suggestions in comments**; choose **Fail the check on**; tick **Scan on every push to a protected branch**; choose a **Scheduled scan** (every 5 days by default) and hour (UTC). Scheduled scans run only on protected branches. Save.
 4. **Block merges** by making the status required at the platform:
 
 | Provider | Status | Where |
@@ -313,11 +314,15 @@ Jobs survive restarts (a job running during a restart is marked failed). `OW_COD
 
 | Feature | Needs |
 |---|---|
-| AI Triage summary (SAST, Code Scan tabs) | An AI key in Settings → AI (Groq or Anthropic). Snippets are only sent when `ai.send_source_snippets` is `true`. |
-| AI fix suggestions for code findings (SAST tab, PR comments) | An AI key **and** `ai.send_source_snippets = true` (a fix needs the code). Otherwise the button answers with the missing setting. |
+| AI Triage summary (SAST, Commit Scan tabs) | An AI key in Settings → AI (Groq or Anthropic). Snippets are only sent when `ai.send_source_snippets` is `true`. |
+| AI fix suggestions for code findings (SAST tab, PR comments) | An **Anthropic** key **and** `ai.send_source_snippets = true` (a fix needs the code). Written by the code model. Otherwise the button answers with the missing setting. |
+| AI business-logic engine (SAST, protected branches) | An **Anthropic** key **and** `ai.send_source_snippets = true`, and a protected branch whose engines include it (Automation → Protected branches). Uses the code model. |
+| AI correlation of multi-engine findings (SAST, protected branch option) | Same as the business-logic engine; a result from two or more engines. |
 | Dependency fix suggestions | Nothing (no AI) |
 
-Code sent to the model is at most 30 lines around a finding, fenced as untrusted input. Requests share a rate limit of 6 per 10 minutes. Suggestions are cached for 30 days and never applied to a repository.
+**Code model.** Settings → AI → **Code model** (`ai.code_model`, default `claude-opus-5-5`) writes code fixes and runs the business-logic engine. Only Claude Opus 5.5 or newer, or Claude Fable / Mythos, is accepted; any other value is refused when saved. It uses the Anthropic key, whatever the alert-analysis model is.
+
+For a fix, the code sent to the model is at most 30 lines around a finding, fenced as untrusted input. Fix requests share a rate limit of 6 per 10 minutes, are cached for 30 days and are never applied to a repository. The business-logic engine sends whole route files (at most `OW_AI_BL_MAX_FILES` per scan, 64 KB each) and caches each answer for 90 days by file content.
 
 ## 7. Credential storage
 
@@ -343,7 +348,7 @@ Implemented in: `management/backend/internal/store/secrets.go`, `store/credmask.
 |---|---|---|
 | `OW_SECRET_KEY` / `OW_SECRET_KEY_FILE` | – (required) | Encryption key for tokens and webhook secrets |
 | `OW_ALLOW_PRIVATE_DEVOPS` | `false` | Allow provider URLs on private (RFC 1918) addresses, for self-managed GitLab or Azure DevOps Server |
-| `OW_PUBLIC_URL` | – | Console URL used as the link of PR statuses |
+| `OW_PUBLIC_URL` | – | Console address the code providers can reach: webhook address for repository setup, link of PR statuses |
 | `OW_SAST_SECRET_HISTORY` | `true` | `false`: shallow clone, no history secrets |
 | `OW_SAST_MAX_REPO_MB` | `2048` | Largest checkout scanned |
 | `OW_SEMGREP_RULES` | – | Directory of pattern rules to use instead of the bundled opengrep-rules |
@@ -351,6 +356,8 @@ Implemented in: `management/backend/internal/store/secrets.go`, `store/credmask.
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | – (off) | Self-monitoring of the management server (OpenTelemetry Go SDK, Tier 2 with security events). `http://127.0.0.1:4318` or `unix:///run/ow-otlp/otlp.sock` (Docker). Details and the other `OTEL_*` variables: [application/deployment.md](../application/deployment.md) section 7a |
 | `OW_SCANNER_DB_UPDATE` | `true` | `false`: never refresh the Trivy databases (fully offline) |
 | `OW_CODE_SCAN_WORKERS` | `1` | Automated scan jobs run in parallel (1-4) |
+| `OW_AI_BL_MAX_FILES` | `40` | Route files the AI business-logic engine reads per scan (1-500) |
+| `OW_AI_CORR_MAX_BATCHES` | `25` | Model requests per AI correlation, 60 findings each (1-500) |
 | `OW_SAST_HEAVY_SLOTS` | `1` | Pattern-rule and CodeQL runs allowed at the same time across all scans (1-8). Each needs 1-2 GB of memory; other scans wait. Raise only with memory to match. |
 | `OW_SEMGREP_TIMEOUT_MIN` | `10` | Time limit of the pattern-rule engine per repository (1-60 minutes) |
 | `CODEQL_JAVA_HOME` | system JDK (set in the image) | Makes CodeQL use the system Java; its bundled Java does not run on Alpine |

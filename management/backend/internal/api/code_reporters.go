@@ -285,7 +285,7 @@ func findingComment(f SASTFinding, provider string, fix *fixSuggestion) string {
 func prSummary(policy codeScanPolicy, findings []SASTFinding, blocked bool, unposted []SASTFinding) string {
 	c := countBySeverity(findings)
 	var b strings.Builder
-	b.WriteString("### ObsidianWatch code scan\n\n")
+	b.WriteString(botMarker + "\n### ObsidianWatch code scan\n\n")
 	switch {
 	case len(findings) == 0:
 		b.WriteString("No new issues in the lines and files this change touches. ✅\n")
@@ -311,6 +311,9 @@ func prSummary(policy codeScanPolicy, findings []SASTFinding, blocked bool, unpo
 			}
 			fmt.Fprintf(&b, "- **%s** %s — `%s`\n", sevLabel(f.Severity), truncate(f.Title, 120), where)
 		}
+	}
+	if len(findings) > 0 && policy.agentHint {
+		fmt.Fprintf(&b, "\nReply `@%s apply` to have ObsidianWatch commit fixes to this branch, or mention `@%s` with a question.\n", botName, botName)
 	}
 	return b.String()
 }
@@ -379,6 +382,7 @@ func reportPR(ctx context.Context, db *store.DB, rep prReporter, conn *store.Dev
 		st.Commented[key] = true
 	}
 	if newOnes > 0 || st.LastState != state {
+		_, policy.agentHint = policy.profileFor(job.Repo, job.BaseBranch)
 		summary := prSummary(policy, findings, blocked, unposted)
 		var err error
 		if len(inline) > 0 {
@@ -456,7 +460,7 @@ func githubCodeTriggers(ctx context.Context, db *store.DB, conn *store.DevOpsCon
 	switch event {
 	case "pull_request":
 		action := str(p, "action")
-		if !policy.PRChecks || (action != "opened" && action != "synchronize" && action != "reopened" && action != "ready_for_review") {
+		if !policy.prScanned(str(p, "repository", "full_name"), str(p, "pull_request", "base", "ref")) || (action != "opened" && action != "synchronize" && action != "reopened" && action != "ready_for_review") {
 			return
 		}
 		if boolAt(p, "pull_request", "draft") {
@@ -466,6 +470,26 @@ func githubCodeTriggers(ctx context.Context, db *store.DB, conn *store.DevOpsCon
 			Repo: str(p, "repository", "full_name"), Ref: str(p, "number"),
 			BaseBranch: str(p, "pull_request", "base", "ref"), HeadRef: str(p, "pull_request", "head", "ref"),
 			HeadSHA: str(p, "pull_request", "head", "sha")}, logger)
+	case "issue_comment", "pull_request_review_comment":
+		if str(p, "action") != "created" {
+			return
+		}
+		body := str(p, "comment", "body")
+		assoc := str(p, "comment", "author_association")
+		if !mentionsBot(body) || str(p, "comment", "user", "type") == "Bot" ||
+			(assoc != "OWNER" && assoc != "MEMBER" && assoc != "COLLABORATOR") {
+			return
+		}
+		pr := str(p, "pull_request", "number")
+		if event == "issue_comment" {
+			issue, _ := p["issue"].(map[string]interface{})
+			if _, isPR := issue["pull_request"]; !isPR {
+				return
+			}
+			pr = str(p, "issue", "number")
+		}
+		queueAgentJob(ctx, db, conn, str(p, "repository", "full_name"), pr,
+			agentPayload{CommentID: str(p, "comment", "id"), Body: body, Author: str(p, "comment", "user", "login")}, logger)
 	case "push":
 		if !policy.ScanOnPush {
 			return
@@ -473,12 +497,11 @@ func githubCodeTriggers(ctx context.Context, db *store.DB, conn *store.DevOpsCon
 		if deleted, _ := p["deleted"].(bool); deleted {
 			return
 		}
-		def := str(p, "repository", "default_branch")
-		if def == "" || str(p, "ref") != "refs/heads/"+def {
-			return
+		repo, ref := str(p, "repository", "full_name"), str(p, "ref")
+		if b, ok := policy.pushScanBranch(repo, ref, str(p, "repository", "default_branch")); ok {
+			enqueueCodeJob(ctx, db, store.CodeScanJob{ConnectorID: conn.ID, Kind: "branch", Trigger: "push",
+				Repo: repo, Ref: b, HeadSHA: str(p, "after")}, logger)
 		}
-		enqueueCodeJob(ctx, db, store.CodeScanJob{ConnectorID: conn.ID, Kind: "branch", Trigger: "push",
-			Repo: str(p, "repository", "full_name"), Ref: def, HeadSHA: str(p, "after")}, logger)
 	}
 }
 
@@ -490,7 +513,7 @@ func gitlabCodeTriggers(ctx context.Context, db *store.DB, conn *store.DevOpsCon
 	case "merge_request":
 		action := str(p, "object_attributes", "action")
 		newCommits := action == "update" && str(p, "object_attributes", "oldrev") != ""
-		if !policy.PRChecks || !(action == "open" || action == "reopen" || newCommits) {
+		if !policy.prScanned(str(p, "project", "path_with_namespace"), str(p, "object_attributes", "target_branch")) || !(action == "open" || action == "reopen" || newCommits) {
 			return
 		}
 		if boolAt(p, "object_attributes", "draft") {
@@ -500,16 +523,22 @@ func gitlabCodeTriggers(ctx context.Context, db *store.DB, conn *store.DevOpsCon
 			Repo: str(p, "project", "path_with_namespace"), Ref: str(p, "object_attributes", "iid"),
 			BaseBranch: str(p, "object_attributes", "target_branch"), HeadRef: str(p, "object_attributes", "source_branch"),
 			HeadSHA: str(p, "object_attributes", "last_commit", "id")}, logger)
+	case "note":
+		body := str(p, "object_attributes", "note")
+		if str(p, "object_attributes", "noteable_type") != "MergeRequest" || !mentionsBot(body) {
+			return
+		}
+		queueAgentJob(ctx, db, conn, str(p, "project", "path_with_namespace"), str(p, "merge_request", "iid"),
+			agentPayload{CommentID: str(p, "object_attributes", "id"), Body: body, Author: str(p, "user", "username"), AuthorID: str(p, "user", "id")}, logger)
 	case "push":
 		if !policy.ScanOnPush || str(p, "after") == gitlabZeroSHA {
 			return
 		}
-		def := str(p, "project", "default_branch")
-		if def == "" || str(p, "ref") != "refs/heads/"+def {
-			return
+		repo, ref := str(p, "project", "path_with_namespace"), str(p, "ref")
+		if b, ok := policy.pushScanBranch(repo, ref, str(p, "project", "default_branch")); ok {
+			enqueueCodeJob(ctx, db, store.CodeScanJob{ConnectorID: conn.ID, Kind: "branch", Trigger: "push",
+				Repo: repo, Ref: b, HeadSHA: str(p, "after")}, logger)
 		}
-		enqueueCodeJob(ctx, db, store.CodeScanJob{ConnectorID: conn.ID, Kind: "branch", Trigger: "push",
-			Repo: str(p, "project", "path_with_namespace"), Ref: def, HeadSHA: str(p, "after")}, logger)
 	}
 }
 
@@ -517,6 +546,16 @@ func gitlabCodeTriggers(ctx context.Context, db *store.DB, conn *store.DevOpsCon
 func adoCodeTriggers(ctx context.Context, db *store.DB, conn *store.DevOpsConnector, p map[string]interface{}, logger *slog.Logger) {
 	policy := loadCodeScanPolicy(ctx, db, conn.ID)
 	res, _ := p["resource"].(map[string]interface{})
+	if str(p, "eventType") == "ms.vss-code.git-pullrequest-comment-event" {
+		body := str(res, "comment", "content")
+		proj, name := str(res, "pullRequest", "repository", "project", "name"), str(res, "pullRequest", "repository", "name")
+		if mentionsBot(body) && proj != "" && name != "" {
+			queueAgentJob(ctx, db, conn, conn.Org+"/"+proj+"/"+name, str(res, "pullRequest", "pullRequestId"),
+				agentPayload{CommentID: str(res, "comment", "id") + "-" + str(res, "comment", "lastUpdatedDate"), Body: body,
+					Author: str(res, "comment", "author", "displayName")}, logger)
+		}
+		return
+	}
 	project := str(res, "repository", "project", "name")
 	repoName := str(res, "repository", "name")
 	if project == "" || repoName == "" {
@@ -525,7 +564,7 @@ func adoCodeTriggers(ctx context.Context, db *store.DB, conn *store.DevOpsConnec
 	repo := conn.Org + "/" + project + "/" + repoName
 	switch str(p, "eventType") {
 	case "git.pullrequest.created", "git.pullrequest.updated":
-		if !policy.PRChecks || str(res, "status") != "active" {
+		if !policy.prScanned(repo, strings.TrimPrefix(str(res, "targetRefName"), "refs/heads/")) || str(res, "status") != "active" {
 			return
 		}
 		if draft, _ := res["isDraft"].(bool); draft {
@@ -539,13 +578,16 @@ func adoCodeTriggers(ctx context.Context, db *store.DB, conn *store.DevOpsConnec
 		if !policy.ScanOnPush {
 			return
 		}
-		def := str(res, "repository", "defaultBranch")
+		def := strings.TrimPrefix(str(res, "repository", "defaultBranch"), "refs/heads/")
 		updates, _ := res["refUpdates"].([]interface{})
 		for _, u := range updates {
 			ru, _ := u.(map[string]interface{})
-			if def != "" && str(ru, "name") == def && str(ru, "newObjectId") != adoZeroSHA {
+			if str(ru, "newObjectId") == adoZeroSHA {
+				continue
+			}
+			if b, ok := policy.pushScanBranch(repo, str(ru, "name"), def); ok {
 				enqueueCodeJob(ctx, db, store.CodeScanJob{ConnectorID: conn.ID, Kind: "branch", Trigger: "push",
-					Repo: repo, Ref: strings.TrimPrefix(def, "refs/heads/"), HeadSHA: str(ru, "newObjectId")}, logger)
+					Repo: repo, Ref: b, HeadSHA: str(ru, "newObjectId")}, logger)
 			}
 		}
 	}
@@ -594,7 +636,7 @@ func plural(n int, word string) string {
 func publicPRSummary(policy codeScanPolicy, findings []SASTFinding, blocked bool) string {
 	c := countBySeverity(findings)
 	var b strings.Builder
-	b.WriteString("### ObsidianWatch code scan\n\n")
+	b.WriteString(botMarker + "\n### ObsidianWatch code scan\n\n")
 	switch {
 	case len(findings) == 0:
 		b.WriteString("No new issues in the lines and files this change touches. ✅\n")

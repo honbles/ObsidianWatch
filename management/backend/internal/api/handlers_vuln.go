@@ -277,6 +277,11 @@ func callVulnAI(ctx context.Context, apiKey, model, prompt string) (string, erro
 		apiURL = "https://api.groq.com/openai/v1/chat/completions"
 	} else {
 		apiURL = "https://api.anthropic.com/v1/messages"
+		// The Messages API takes the system prompt as a top-level field; a
+		// "system" role inside messages is rejected.
+		msgs := body["messages"].([]map[string]interface{})
+		body["system"] = msgs[0]["content"]
+		body["messages"] = msgs[1:]
 	}
 
 	bodyBytes, _ := json.Marshal(body)
@@ -323,6 +328,11 @@ func callVulnAI(ctx context.Context, apiKey, model, prompt string) (string, erro
 	}
 
 	if text == "" {
+		if e, ok := result["error"].(map[string]interface{}); ok {
+			if m, _ := e["message"].(string); m != "" {
+				return "", fmt.Errorf("AI provider: %s", m)
+			}
+		}
 		return "", fmt.Errorf("empty AI response")
 	}
 

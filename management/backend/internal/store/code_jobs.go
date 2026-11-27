@@ -26,6 +26,8 @@ type CodeScanJob struct {
 	CreatedAt    time.Time       `json:"created_at"`
 	StartedAt    *time.Time      `json:"started_at,omitempty"`
 	FinishedAt   *time.Time      `json:"finished_at,omitempty"`
+	// Payload: job-specific input (the PR comment for kind "agent").
+	Payload json.RawMessage `json:"payload,omitempty"`
 }
 
 // EnqueueCodeScanJob queues a job unless the same target and commit is
@@ -33,11 +35,11 @@ type CodeScanJob struct {
 func (db *DB) EnqueueCodeScanJob(ctx context.Context, j CodeScanJob) (int64, error) {
 	var id int64
 	err := db.QueryRowContext(ctx, `
-		INSERT INTO code_scan_jobs (connector_id, kind, trigger, repo, ref, base_branch, head_ref, head_sha)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+		INSERT INTO code_scan_jobs (connector_id, kind, trigger, repo, ref, base_branch, head_ref, head_sha, payload)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
 		ON CONFLICT (connector_id, kind, repo, ref, head_sha) WHERE status IN ('queued','running') DO NOTHING
 		RETURNING id`,
-		j.ConnectorID, j.Kind, j.Trigger, j.Repo, j.Ref, j.BaseBranch, j.HeadRef, j.HeadSHA).Scan(&id)
+		j.ConnectorID, j.Kind, j.Trigger, j.Repo, j.Ref, j.BaseBranch, j.HeadRef, j.HeadSHA, nullRaw(j.Payload)).Scan(&id)
 	if err == sql.ErrNoRows {
 		return 0, nil
 	}
@@ -105,9 +107,9 @@ func (db *DB) GetCodeScanJob(ctx context.Context, id int64) (*CodeScanJob, error
 }
 
 const codeJobColsNoResult = `id, connector_id, kind, trigger, repo, ref, base_branch, head_ref, head_sha, status, blocked,
-	finding_count, error, NULL::jsonb, created_at, started_at, finished_at`
+	finding_count, error, NULL::jsonb, created_at, started_at, finished_at, payload`
 const codeJobCols = `id, connector_id, kind, trigger, repo, ref, base_branch, head_ref, head_sha, status, blocked,
-	finding_count, error, result, created_at, started_at, finished_at`
+	finding_count, error, result, created_at, started_at, finished_at, payload`
 
 type rowScanner interface {
 	Scan(dest ...interface{}) error
@@ -115,15 +117,38 @@ type rowScanner interface {
 
 func scanCodeJob(r rowScanner) (*CodeScanJob, error) {
 	var j CodeScanJob
-	var result []byte
+	var result, payload []byte
 	if err := r.Scan(&j.ID, &j.ConnectorID, &j.Kind, &j.Trigger, &j.Repo, &j.Ref, &j.BaseBranch, &j.HeadRef, &j.HeadSHA,
-		&j.Status, &j.Blocked, &j.FindingCount, &j.Error, &result, &j.CreatedAt, &j.StartedAt, &j.FinishedAt); err != nil {
+		&j.Status, &j.Blocked, &j.FindingCount, &j.Error, &result, &j.CreatedAt, &j.StartedAt, &j.FinishedAt, &payload); err != nil {
 		return nil, err
+	}
+	if len(payload) > 0 {
+		j.Payload = payload
 	}
 	if len(result) > 0 {
 		j.Result = result
 	}
 	return &j, nil
+}
+
+func nullRaw(b json.RawMessage) interface{} {
+	if len(b) == 0 {
+		return nil
+	}
+	return []byte(b)
+}
+
+// EnsureDevOpsWebhookSecret sets a connector's webhook secret when it has
+// none and returns the effective (opened) secret.
+func (db *DB) EnsureDevOpsWebhookSecret(ctx context.Context, id int64, candidate string) (string, error) {
+	var stored string
+	err := db.QueryRowContext(ctx, `UPDATE devops_connectors SET webhook_secret =
+		CASE WHEN COALESCE(webhook_secret,'') = '' THEN $2 ELSE webhook_secret END
+		WHERE id=$1 RETURNING COALESCE(webhook_secret,'')`, id, sealString(candidate)).Scan(&stored)
+	if err != nil {
+		return "", err
+	}
+	return openString(stored), nil
 }
 
 // PRCheckState is what was last reported on a pull/merge request.

@@ -152,7 +152,7 @@ sudo journalctl -u obsidianwatch-agent -f
 7. `systemctl daemon-reload` and `systemctl enable --now`.
 8. `chattr +i` on the binary, the unit file and the install-key file.
 
-Unit settings: `User=root`, `Restart=always`, `NoNewPrivileges=true`, `ProtectSystem=strict`, `ReadWritePaths=/var/lib/obsidianwatch /etc/obsidianwatch`, `PrivateTmp=true`, `ProtectHome=read-only`, `MemoryMax=512M` with `GOMEMLIMIT=384MiB` (the Go runtime collects before the limit; 256M crash-looped a busy Docker host), `CPUQuota=25%`.
+Unit settings: `User=root`, `Restart=always`, `NoNewPrivileges=true`, `RestrictSUIDSGID=true`, `LockPersonality=true`, `LimitNOFILE=65536`, `MemoryMax=512M` with `GOMEMLIMIT=384MiB` (the Go runtime collects before the limit; 256M crash-looped a busy Docker host), `CPUQuota=25%`. There is no `ProtectSystem`, `ProtectHome` or `PrivateTmp`: the agent must see the host's real `/tmp` and home directories (file monitoring, quarantine, delete), write system files for response actions and the live-response shell, and create its OTLP socket under `/run`.
 
 If a busy host needs more memory (`systemctl status obsidianwatch-agent` shows `oom-kill` and the restart counter climbs), raise the limit with a drop-in, which survives agent upgrades:
 

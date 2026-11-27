@@ -81,14 +81,7 @@ Fields shown in the **Amazon Web Services** form:
 | Region | `region` | No (default `us-east-1`) | The **home region**. Used for CloudTrail LookupEvents, GuardDuty and Security Hub ingestion, `DescribeRegions`, and the Security Hub-enabled check. Validated against `^[a-z]{2}(-[a-z]+)+-[0-9]{1,2}$`. |
 | Role ARN to assume (optional, recommended) | `role_arn` | No | If set, every call uses AssumeRole credentials. Must match `arn:aws…:iam::<12 digits>:role/<name>`. |
 | External ID (optional) | `external_id` | No | Sent with AssumeRole. Encrypted at rest, but shown in clear text in the connector list (its name ends in `_id`). |
-| Account ID (optional) | `account_id` | **Fill it in** | The connector key (see below), CSPM scope label, S3 prefix default, finding IDs and alert scope. |
-
-**Why Account ID matters.** The code never fills in the AWS account ID by itself. The test result's account ID is not saved. If you leave the field empty:
-
-- a second AWS connector without an account ID overwrites the first one's credentials (unique key `(aws, "")`);
-- the scan result's `project_id` is empty, so the connector's **Overview** tab shows "No scan results yet" even after a scan. The findings still appear on **Cloud → Posture**;
-- S3 mode builds prefixes like `AWSLogs//CloudTrail/…` and finds nothing;
-- the org import cannot skip the management account.
+| Account ID (filled by Test Connection) | `account_id` | Filled automatically | The connector key, CSPM scope label, S3 prefix default, finding IDs and alert scope. **Test Connection** fills it from `GetCallerIdentity` (the assumed role's account when a role is set). Saving with it empty reads it the same way; if that call fails, the save is refused with the reason. |
 
 Fields accepted by the API but **not shown in the form**. To use them, set them with `POST /api/v1/cloud-connectors` using the same provider and account ID. That updates the stored credentials, and you must re-send every field.
 
@@ -105,7 +98,7 @@ Fields accepted by the API but **not shown in the form**. To use them, set them 
 
 | Feature | Regions covered |
 |---|---|
-| CloudTrail LookupEvents | Home region only. LookupEvents is regional. Global-service events (IAM, STS sign-in) are recorded in `us-east-1`. Set the home region to `us-east-1`, or use S3 mode with a multi-region trail, for full coverage. |
+| CloudTrail LookupEvents | The home region, plus `us-east-1` when the home region is another one: AWS records the events of global services (IAM, STS, console sign-in, Organizations) only in `us-east-1`. Each region has its own cursor; `us-east-1` reports as source `cloudtrail_global`. |
 | CloudTrail S3 mode | Every `s3_accounts × s3_regions` combination, for today and the two previous days |
 | GuardDuty, Security Hub ingestion | Home region only (Security Hub's aggregation region if you use cross-region aggregation) |
 | CSPM regional checks, inventory, blast radius | Every region returned by `DescribeRegions`, at most **20**. Falls back to the home region if `DescribeRegions` is denied. |
@@ -133,15 +126,28 @@ A dry run lists the accounts first. After you confirm, one AWS connector is crea
 
 | Symptom | Likely cause | Fix |
 |---|---|---|
-| Test fails "invalid credentials – STS returned 403" | Wrong key, or (suspected, see below) a home region other than `us-east-1` | Check the key. Try Region `us-east-1` for the test. |
-| "AssumeRole denied (HTTP 403): check the role trust policy and ExternalId" | Trust policy or External ID mismatch | Fix the trust policy principal and condition |
+| Test fails "STS GetCallerIdentity returned 403 (InvalidClientTokenId: …)" | Wrong or deactivated key | Check the key. The AWS error code and message are shown. |
+| "AssumeRole denied (HTTP 403, AccessDenied: …)" | Trust policy, External ID, or the base user lacks `sts:AssumeRole` on the role | Fix the trust policy principal and condition, and the user's policy |
 | "role_arn is not a valid IAM role ARN" / "invalid AWS region" / "invalid s3_bucket name" | Input validation | Correct the value |
 | Status `error`, last error contains `cloudtrail API 400 … AccessDenied` | Missing `cloudtrail:LookupEvents` | Add the permission |
 | Status `connected` but no GuardDuty events | No detector in the home region. Recorded as `not_enabled`. A 403 on list detectors is also treated as "not enabled". | Enable GuardDuty, or check the permission |
 | No Security Hub events | Hub not enabled (`not_enabled`) or no new or notified HIGH/CRITICAL findings | Expected behaviour; see capability page |
 | Scan result shows `not_assessed` for `iam_credential_report`, `s3_hardening`, … | Missing SecurityAudit-level permission. The reason text names the API. | Attach `SecurityAudit` |
-| Overview tab says "No scan results yet" after a scan | `account_id` empty | Re-save with Account ID |
+| `s3_public_access` not assessed: "Block Public Access of N bucket(s) could not be read" | Missing `s3:GetBucketPublicAccessBlock` or `s3:GetBucketLocation` | Attach `SecurityAudit` |
 | Manual **Run Scan** fails with a context timeout on large accounts | Manual AWS scans have a 3-minute limit. The scheduled scan allows 30 minutes. | Wait for the 6-hour scheduled scan, or reduce scope |
 | Signature errors in the log | Server clock skew beyond what the retry logic can learn | Sync the server clock (NTP) |
 
-**Known issue:** `testAWSConnection` signs the call to the global STS endpoint with the connector's region instead of `us-east-1`. AWS may reject this for non-`us-east-1` regions. AssumeRole and IAM calls explicitly use `us-east-1`. If **Test Connection** fails only in another region, save anyway and check that **Sync now** succeeds.
+## 6. End-to-end verification on a test account
+
+`tools/aws-verify.sh` provisions everything needed to check the connector against a real AWS account, generates the activity the detections must alert on, asks ObsidianWatch what it saw, and removes everything again. Run it in **AWS CloudShell** (the `>_` icon in the console), signed in as an administrator of a test account:
+
+```
+bash aws-verify.sh up          # connector user + read-only role, a trail, deliberately weak but unexposed settings
+bash aws-verify.sh attack      # CloudTrail activity: IAM, security groups, secrets, S3, logging tampering, recon
+bash aws-verify.sh check       # PASS / NOT YET per expected finding and alert (15 minutes after attack)
+bash aws-verify.sh down        # delete everything, restore the password policy
+```
+
+With `OW_URL` and `OW_USER`/`OW_PASS` (or `OW_TOKEN`) set, `up` also creates the connector in ObsidianWatch and starts a sync and a scan, and `check` reads the sources, the scan result and the alerts through the API; without them `up` prints the connector values to paste and `check` prints the checklist. `OW_INSECURE=1` accepts a self-signed certificate. Options for `up`: `--guardduty` (GuardDuty with sample findings, 30-day trial), `--ebs` (a public snapshot of an empty 1 GB volume), `--kms` (a key without rotation), `--no-trail`.
+
+Everything is named `ow-verify-*` and tagged `owner=obsidianwatch-verify`; nothing it creates is reachable or holds data (security groups attached to nothing, an empty bucket, a user with a console password but no permissions, an open-trust role with a deny-all policy). The default run costs nothing or a few cents. `up` weakens the account password policy until `down` restores it, so use a test account. The console sign-in without MFA (C-AWS-041) and root activity (C-AWS-042) cannot be scripted: `attack` prints how to trigger the first by hand.

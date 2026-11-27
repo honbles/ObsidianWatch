@@ -43,25 +43,109 @@ import (
 // codeScanPolicy is a connector's automation settings (setting
 // code.policy.<connector id>).
 type codeScanPolicy struct {
-	PRChecks   bool   `json:"pr_checks"`    // scan pull/merge requests
-	PRComments bool   `json:"pr_comments"`  // post summary + inline comments
-	BlockOn    string `json:"block_on"`     // none | critical | high | medium | low
-	ScanOnPush bool   `json:"scan_on_push"` // scan the default branch on push
-	Schedule   string `json:"schedule"`     // off | daily | weekly | every5d
-	// ScheduleBranches is which branches a scheduled run scans: "all" (every
-	// branch the provider lists, up to 2,000 per repository) or "default".
-	ScheduleBranches string   `json:"schedule_branches"`
-	ScheduleHour     int      `json:"schedule_hour"` // UTC hour 0-23
-	PRCodeQL         bool     `json:"pr_codeql"`     // CodeQL on PRs (slow)
-	PRAIFixes        bool     `json:"pr_ai_fixes"`   // AI fix suggestions in PR comments (step 5)
-	Repos            []string `json:"repos"`         // limit scheduled scans; empty = all known
-	MaxComments      int      `json:"max_comments"`  // inline comments per update
+	PRChecks     bool   `json:"pr_checks"`     // scan pull/merge requests
+	PRComments   bool   `json:"pr_comments"`   // post summary + inline comments
+	BlockOn      string `json:"block_on"`      // none | critical | high | medium | low
+	ScanOnPush   bool   `json:"scan_on_push"`  // scan a protected branch on push
+	Schedule     string `json:"schedule"`      // off | daily | weekly | every5d (protected branches)
+	ScheduleHour int    `json:"schedule_hour"` // UTC hour 0-23
+	PRCodeQL     bool   `json:"pr_codeql"`     // CodeQL on PRs (slow), when the branch's engines include it
+	PRAIFixes    bool   `json:"pr_ai_fixes"`   // AI fix suggestions in PR comments (step 5)
+	MaxComments  int    `json:"max_comments"`  // inline comments per update
+	// Protected is the protected branches of this connector's repositories,
+	// each with its scan profile. Scheduled scans, push scans and the
+	// business-logic engine work only on these.
+	Protected []branchProfile `json:"protected"`
+	// FixMinSeverity: the lowest severity fix pull requests cover (default high).
+	FixMinSeverity string `json:"fix_min_severity"`
+	// ManualSetup: do not configure the repository (webhook, branch
+	// protection) when a protected branch is added; use "Set up" instead.
+	ManualSetup bool `json:"manual_setup"`
+
+	agentHint bool // set while reporting a PR into a protected branch (not stored)
 }
 
+// fixes reports whether fix pull requests cover a finding of this severity.
+func (p codeScanPolicy) fixes(sev string) bool {
+	return sevRank(strings.ToLower(sev)) >= sevRank(p.FixMinSeverity)
+}
+
+// prScanned reports whether a PR into base is checked: PRs into a protected
+// branch always are; others when "Scan every pull request" is on.
+func (p codeScanPolicy) prScanned(repo, base string) bool {
+	if p.PRChecks {
+		return true
+	}
+	_, ok := p.profileFor(repo, base)
+	return ok
+}
+
+// branchProfile is one protected branch and how it is scanned.
+type branchProfile struct {
+	Repo    string   `json:"repo"`
+	Branch  string   `json:"branch"`
+	Engines []string `json:"engines"` // empty = the default (non-AI) engines
+	// Correlate: after each automated scan of the branch, correlate the
+	// engines' findings with the code model (needs two or more engines).
+	Correlate bool `json:"correlate"`
+	// Remediate: after a scheduled or manual scan, open fix pull requests for
+	// new findings (code_remediation.go). The agent never merges.
+	Remediate bool `json:"remediate"`
+	// PublicAck: an admin typed "proceed" to allow fix pull requests and agent
+	// replies on this public repository. Set only by POST .../protected/public-ack.
+	PublicAck *publicAck `json:"public_ack,omitempty"`
+}
+
+type publicAck struct {
+	By string    `json:"by"`
+	At time.Time `json:"at"`
+}
+
+const maxProtectedBranches = 500
+
 func defaultCodeScanPolicy() codeScanPolicy {
-	// Rescanning is how a fixed issue is noticed, so every connector rescans
-	// all repositories and branches every 5 days unless turned off.
-	return codeScanPolicy{PRComments: true, BlockOn: "critical", Schedule: "every5d", ScheduleBranches: "all", ScheduleHour: 2, MaxComments: 20}
+	// Rescanning is how a fixed issue is noticed, so protected branches are
+	// rescanned every 5 days unless turned off.
+	return codeScanPolicy{PRComments: true, BlockOn: "critical", Schedule: "every5d", ScheduleHour: 2, MaxComments: 20}
+}
+
+// profileFor returns the scan profile of a protected branch.
+func (p codeScanPolicy) profileFor(repo, branch string) (branchProfile, bool) {
+	branch = strings.TrimPrefix(branch, "refs/heads/")
+	for _, b := range p.Protected {
+		if strings.EqualFold(b.Repo, repo) && b.Branch == branch {
+			return b, true
+		}
+	}
+	return branchProfile{}, false
+}
+
+// pushScanBranch decides whether a push to ref is scanned: pushes to a
+// protected branch are; with no protected branches configured, pushes to the
+// default branch are (the behaviour before protected branches existed).
+func (p codeScanPolicy) pushScanBranch(repo, ref, defaultBranch string) (string, bool) {
+	if !strings.HasPrefix(ref, "refs/heads/") {
+		return "", false
+	}
+	b := strings.TrimPrefix(ref, "refs/heads/")
+	if _, ok := p.profileFor(repo, b); ok {
+		return b, true
+	}
+	def := strings.TrimPrefix(defaultBranch, "refs/heads/")
+	if len(p.Protected) == 0 && def != "" && b == def {
+		return b, true
+	}
+	return "", false
+}
+
+// engineSetFor is the engine set of a protected branch (nil: not protected,
+// or protected with the default engines).
+func (p codeScanPolicy) engineSetFor(repo, branch string) (engineSet, bool) {
+	b, ok := p.profileFor(repo, branch)
+	if !ok {
+		return nil, false
+	}
+	return newEngineSet(b.Engines), true
 }
 
 func codePolicyKey(id int64) string { return "code.policy." + strconv.FormatInt(id, 10) }
@@ -72,8 +156,8 @@ func loadCodeScanPolicy(ctx context.Context, db *store.DB, connID int64) codeSca
 		_ = json.Unmarshal([]byte(v), &p)
 		// A policy saved before the 5-day default existed has no
 		// schedule_branches; its "off" was the old default, not a choice.
-		if !strings.Contains(v, `"schedule_branches"`) && p.Schedule == "off" {
-			p.Schedule, p.ScheduleBranches = "every5d", "all"
+		if !strings.Contains(v, `"schedule_branches"`) && !strings.Contains(v, `"protected"`) && p.Schedule == "off" {
+			p.Schedule = "every5d"
 		}
 	}
 	return p.normalised()
@@ -90,8 +174,29 @@ func (p codeScanPolicy) normalised() codeScanPolicy {
 	default:
 		p.Schedule = "off"
 	}
-	if p.ScheduleBranches != "default" {
-		p.ScheduleBranches = "all"
+	seen := map[string]bool{}
+	var prot []branchProfile
+	for _, b := range p.Protected {
+		b.Repo, b.Branch = strings.TrimSpace(b.Repo), strings.TrimPrefix(strings.TrimSpace(b.Branch), "refs/heads/")
+		if b.Repo == "" || b.Branch == "" || b.Branch == "HEAD" || len(b.Repo) > 300 || len(b.Branch) > 250 {
+			continue
+		}
+		k := strings.ToLower(b.Repo) + "\x00" + b.Branch
+		if seen[k] || len(prot) >= maxProtectedBranches {
+			continue
+		}
+		seen[k] = true
+		b.Engines, _ = parseEngineIDs(b.Engines) // invalid IDs are answered with 400 before this
+		if len(b.Engines) == 1 {
+			b.Correlate = false // one engine: nothing to correlate
+		}
+		prot = append(prot, b)
+	}
+	p.Protected = prot
+	switch p.FixMinSeverity {
+	case "critical", "high", "medium", "low":
+	default:
+		p.FixMinSeverity = "high"
 	}
 	if p.ScheduleHour < 0 || p.ScheduleHour > 23 {
 		p.ScheduleHour = 2
@@ -209,10 +314,24 @@ func (a *CodeAutomation) runJob(ctx context.Context, job *store.CodeScanJob) {
 	}
 	var res codeJobResult
 	var blocked bool
-	if job.Kind == "pr" {
+	switch job.Kind {
+	case "pr":
 		res, blocked, err = runPRScan(jctx, a.cfg, a.db, conn, job, a.logger)
-	} else {
-		res, err = runBranchScan(jctx, a.db, conn, job, a.logger)
+	case "fix":
+		res, err = runFixJob(jctx, a.cfg, a.db, conn, job, a.logger)
+	case "agent":
+		res, err = runAgentJob(jctx, a.cfg, a.db, conn, job, a.logger)
+	case "setup":
+		s := setupRepository(jctx, a.db, conn, job.Repo, job.Ref)
+		res = codeJobResult{Engines: engineReport{}}
+		for _, st := range s.Steps {
+			res.Reported = append(res.Reported, st.Step+": "+st.Status+" "+st.Detail)
+		}
+		if !s.OK {
+			err = fmt.Errorf("setup incomplete; see the steps")
+		}
+	default:
+		res, err = runBranchScan(jctx, a.cfg, a.db, conn, job, a.logger)
 	}
 	status, msg := "done", ""
 	if err != nil {
@@ -235,8 +354,20 @@ func countBySeverity(f []SASTFinding) map[string]int {
 
 // ── Branch scans (push, schedule, manual) ─────────────────────────────────────
 
-func runBranchScan(ctx context.Context, db *store.DB, conn *store.DevOpsConnector, job *store.CodeScanJob, logger *slog.Logger) (codeJobResult, error) {
+func runBranchScan(ctx context.Context, cfg *config.Config, db *store.DB, conn *store.DevOpsConnector, job *store.CodeScanJob, logger *slog.Logger) (codeJobResult, error) {
 	res := codeJobResult{Engines: engineReport{}}
+	// A protected branch is scanned with its profile's engines.
+	var set engineSet
+	var bl *blContext
+	correlate, remediate := false, false
+	if job.Kind != "commit" {
+		policy := loadCodeScanPolicy(ctx, db, conn.ID)
+		if s, ok := policy.engineSetFor(job.Repo, job.Ref); ok {
+			set, bl = s, &blContext{cfg: cfg, db: db}
+			prof, _ := policy.profileFor(job.Repo, job.Ref)
+			correlate, remediate = prof.Correlate, prof.Remediate
+		}
+	}
 	tmp, err := os.MkdirTemp("", fmt.Sprintf("codejob-%d-", job.ID))
 	if err != nil {
 		return res, err
@@ -261,12 +392,28 @@ func runBranchScan(ctx context.Context, db *store.DB, conn *store.DevOpsConnecto
 	}
 	sha := gitHeadSHA(ctx, dir)
 	res.Engines.set("source", "git")
-	findings, sbom := scanCheckout(ctx, conn, job.Repo, dir, scanOpts{History: history, Semgrep: semgrepAvailable(), CodeQL: codeqlAvailable()}, res.Engines, logger)
+	findings, sbom := scanCheckout(ctx, conn, job.Repo, dir, scanOpts{History: history, Semgrep: semgrepAvailable(), CodeQL: codeqlAvailable(),
+		Engines: set, BL: bl}, res.Engines, logger)
+	findings, sbom = mergeStoredEngines(ctx, db, conn.ID, job.Repo, branch, set, res.Engines, findings, sbom)
 	findings = deduplicateSASTFindings(findings)
 	res.Findings, res.Counts = findings, countBySeverity(findings)
 	// The stored result is what the Code pages show for this repository.
 	if err := saveSASTResult(ctx, db, conn.ID, job.Repo, branch, sha, res.Engines, findings, sbom, 1, countSourceFiles(dir)); err != nil {
 		res.Notes = append(res.Notes, "could not store the result: "+err.Error())
+	} else if correlate {
+		// The protected branch's profile asks for correlation: the
+		// correlated findings become the branch's findings.
+		if meta, err := correlateStored(ctx, cfg, db, conn.ID, job.Repo, branch, true); err != nil {
+			res.Notes = append(res.Notes, "correlation: "+err.Error())
+		} else {
+			res.Notes = append(res.Notes, fmt.Sprintf("correlated %d engine findings into %d (%d merged, %d marked false positive)", meta.Raw, meta.Findings, meta.Merged, meta.FalsePos))
+		}
+	}
+	// Scheduled and manual scans of a protected branch with remediation on
+	// open fix pull requests for new findings.
+	if remediate && (job.Trigger == "schedule" || job.Trigger == "manual") && len(findings) > 0 {
+		queueFixJob(ctx, db, conn.ID, job.Repo, branch, job.Trigger, logger)
+		res.Notes = append(res.Notes, "remediation queued")
 	}
 	return res, nil
 }
@@ -295,7 +442,7 @@ func (a *CodeAutomation) runSchedule(ctx context.Context, now time.Time) {
 	}
 	for _, c := range conns {
 		p := loadCodeScanPolicy(ctx, a.db, c.ID)
-		if p.Schedule == "off" {
+		if p.Schedule == "off" || len(p.Protected) == 0 {
 			continue
 		}
 		key := "code.schedule.last." + strconv.FormatInt(c.ID, 10)
@@ -307,33 +454,14 @@ func (a *CodeAutomation) runSchedule(ctx context.Context, now time.Time) {
 			continue
 		}
 		_ = a.db.SetSetting(ctx, key, now.Format(time.RFC3339))
-		repos := p.Repos
-		if len(repos) == 0 {
-			repos = knownRepos(ctx, a.db, c.ID)
-		}
+		// Only protected branches are scanned on a schedule.
 		day := now.Format("2006-01-02")
-		queued := 0
-		var raw *store.DevOpsConnector // with credentials, for listing branches
-		if p.ScheduleBranches == "all" {
-			raw, _ = a.db.GetDevOpsConnectorRaw(ctx, c.ID)
+		for _, b := range p.Protected {
+			// head_sha carries the date so one schedule run per day is queued.
+			enqueueCodeJob(ctx, a.db, store.CodeScanJob{ConnectorID: c.ID, Kind: "branch", Trigger: "schedule",
+				Repo: b.Repo, Ref: b.Branch, HeadSHA: "schedule:" + day}, nil)
 		}
-		for _, r := range repos {
-			refs := []string{"HEAD"}
-			if raw != nil {
-				if bs, err := providerBranches(ctx, raw, r); err == nil && len(bs) > 0 {
-					refs = bs
-				} else if err != nil {
-					a.logger.Warn("code automation: branch list failed, scanning the default branch", "repo", r, "err", err)
-				}
-			}
-			for _, ref := range refs {
-				// head_sha carries the date so one schedule run per day is queued.
-				enqueueCodeJob(ctx, a.db, store.CodeScanJob{ConnectorID: c.ID, Kind: "branch", Trigger: "schedule",
-					Repo: r, Ref: ref, HeadSHA: "schedule:" + day}, nil)
-				queued++
-			}
-		}
-		a.logger.Info("code automation: scheduled scans queued", "connector", c.ID, "repos", len(repos), "jobs", queued, "branches", p.ScheduleBranches)
+		a.logger.Info("code automation: scheduled scans queued", "connector", c.ID, "protected_branches", len(p.Protected))
 	}
 }
 
@@ -541,10 +669,18 @@ func runPRScan(ctx context.Context, cfg *config.Config, db *store.DB, conn *stor
 	}
 	changed := parseChangedLines(strings.NewReader(string(diff)))
 
-	findings, _ := scanCheckout(ctx, conn, job.Repo, dir,
-		scanOpts{History: true, LogRange: mb + "..HEAD", Semgrep: semgrepAvailable(), CodeQL: policy.PRCodeQL && codeqlAvailable()},
-		res.Engines, logger)
-	if !policy.PRCodeQL {
+	// A PR into a protected branch is scanned with that branch's engines; the
+	// business-logic engine reads only the files the PR changes.
+	opts := scanOpts{History: true, LogRange: mb + "..HEAD", Semgrep: semgrepAvailable(), CodeQL: policy.PRCodeQL && codeqlAvailable()}
+	if set, ok := policy.engineSetFor(job.Repo, job.BaseBranch); ok {
+		only := map[string]bool{}
+		for f := range changed {
+			only[f] = true
+		}
+		opts.Engines, opts.BL = set, &blContext{cfg: cfg, db: db, OnlyFiles: only}
+	}
+	findings, _ := scanCheckout(ctx, conn, job.Repo, dir, opts, res.Engines, logger)
+	if !policy.PRCodeQL && opts.Engines.on(engCodeQL) {
 		res.Engines.set("codeql", "skipped: off for pull requests (policy)")
 	}
 	findings = deduplicateSASTFindings(findings)
@@ -574,6 +710,17 @@ func runPRScan(ctx context.Context, cfg *config.Config, db *store.DB, conn *stor
 	kept, hidden := withoutDismissed(enrichFindings(ctx, db, conn.ID, gatePRFindings(findings, changed, baseline)))
 	if hidden > 0 {
 		res.Notes = append(res.Notes, fmt.Sprintf("%d finding(s) dismissed by triage were not reported", hidden))
+	}
+	// Correlate the PR's findings when the target branch's profile asks for
+	// it. Severity is the highest of each group's members, so blocking is
+	// unchanged by the model.
+	if prof, ok := policy.profileFor(job.Repo, job.BaseBranch); ok && prof.Correlate && correlationAllowed(res.Engines) && len(kept) > 1 {
+		if c, meta, err := correlateFindings(ctx, cfg, db, kept); err != nil {
+			res.Notes = append(res.Notes, "correlation: "+err.Error())
+		} else {
+			kept = enrichFindings(ctx, db, conn.ID, c)
+			res.Notes = append(res.Notes, fmt.Sprintf("correlated %d findings into %d", meta.Raw, meta.Findings))
+		}
 	}
 	res.Findings, res.Counts = kept, countBySeverity(kept)
 
@@ -652,15 +799,41 @@ func handlePutCodeScanPolicy(db *store.DB) http.HandlerFunc {
 			return
 		}
 		var p codeScanPolicy
-		if err := json.NewDecoder(io.LimitReader(r.Body, 64<<10)).Decode(&p); err != nil {
+		if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&p); err != nil {
 			writeJSON(w, 400, map[string]string{"error": "invalid body"})
 			return
 		}
+		for _, b := range p.Protected {
+			if _, err := parseEngineIDs(b.Engines); err != nil {
+				writeJSON(w, 400, map[string]string{"error": b.Repo + " " + b.Branch + ": " + err.Error()})
+				return
+			}
+		}
 		p = p.normalised()
+		before := loadCodeScanPolicy(r.Context(), db, id)
+		// The public-repository confirmation is kept from the stored policy;
+		// a client cannot set it here.
+		for i := range p.Protected {
+			p.Protected[i].PublicAck = nil
+			if old, ok := before.profileFor(p.Protected[i].Repo, p.Protected[i].Branch); ok {
+				p.Protected[i].PublicAck = old.PublicAck
+			}
+		}
 		b, _ := json.Marshal(p)
 		if err := db.SetSetting(r.Context(), codePolicyKey(id), string(b)); err != nil {
 			writeJSON(w, 500, map[string]string{"error": err.Error()})
 			return
+		}
+		// A newly protected branch is set up (webhook, branch protection)
+		// unless the policy says to do it by hand.
+		if !p.ManualSetup {
+			stamp := "setup:" + time.Now().UTC().Format(time.RFC3339)
+			for _, bp := range p.Protected {
+				if _, had := before.profileFor(bp.Repo, bp.Branch); !had {
+					enqueueCodeJob(r.Context(), db, store.CodeScanJob{ConnectorID: id, Kind: "setup", Trigger: "protected",
+						Repo: bp.Repo, Ref: bp.Branch, HeadSHA: stamp}, nil)
+				}
+			}
 		}
 		writeJSON(w, 200, p)
 	}
@@ -712,18 +885,32 @@ func handleEnqueueCodeScan(db *store.DB, logger *slog.Logger) http.HandlerFunc {
 			Branch string `json:"branch"`
 		}
 		_ = json.NewDecoder(io.LimitReader(r.Body, 4096)).Decode(&body)
-		repos := []string{body.Repo}
-		if body.Repo == "" {
-			repos = knownRepos(r.Context(), db, id)
-		}
-		if body.Branch == "" {
-			body.Branch = "HEAD"
-		}
 		stamp := "manual:" + time.Now().UTC().Format(time.RFC3339)
-		for _, repo := range repos {
-			enqueueCodeJob(r.Context(), db, store.CodeScanJob{ConnectorID: id, Kind: "branch", Trigger: "manual",
-				Repo: repo, Ref: body.Branch, HeadSHA: stamp}, logger)
+		type target struct{ repo, ref string }
+		var targets []target
+		switch {
+		case body.Repo != "":
+			if body.Branch == "" {
+				body.Branch = "HEAD"
+			}
+			targets = append(targets, target{body.Repo, body.Branch})
+		default:
+			// "Scan now": every protected branch; with none, each known
+			// repository's default branch.
+			policy := loadCodeScanPolicy(r.Context(), db, id)
+			for _, b := range policy.Protected {
+				targets = append(targets, target{b.Repo, b.Branch})
+			}
+			if len(targets) == 0 {
+				for _, repo := range knownRepos(r.Context(), db, id) {
+					targets = append(targets, target{repo, "HEAD"})
+				}
+			}
 		}
-		writeJSON(w, 202, map[string]interface{}{"queued": len(repos)})
+		for _, t := range targets {
+			enqueueCodeJob(r.Context(), db, store.CodeScanJob{ConnectorID: id, Kind: "branch", Trigger: "manual",
+				Repo: t.repo, Ref: t.ref, HeadSHA: stamp}, logger)
+		}
+		writeJSON(w, 202, map[string]interface{}{"queued": len(targets)})
 	}
 }

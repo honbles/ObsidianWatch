@@ -21,4 +21,10 @@ Also:
 - [development/](development/): brand ([brand.md](development/brand.md)), UI design language and themes ([design-language.md](development/design-language.md)), and the device-management design notes.
 - [known-issues.md](known-issues.md): defects found while writing these docs, not yet fixed.
 
+## Starting again with clean data
+
+`./reset-data.sh` (repository root, next to `deploy.sh`) clears everything the platform has collected and keeps everything you configured: events, alerts, agents, discovered services and their data, findings, scans and caches go; users, settings, rules and tuning, suppressions, connectors, threat-intel sources, saved queries, triage decisions, issue links and agent enrollment stay. Agents re-register on their next report (no re-enrollment), services are rediscovered from traffic, and connectors pull again from the start. Kept as configuration: agents with a tamper lock or a network isolation, and services with settings, reviewed routes, code links, merges or an uploaded API spec (their collected data is cleared).
+
+It backs the database up to `backups/` first (`--no-backup` skips it), asks you to type RESET (`--yes` skips it), stops the backend and management API while it clears, and refuses to run if the database has a table it does not know. The restore steps are at the top of the script.
+
 The docs describe the code as it is.
