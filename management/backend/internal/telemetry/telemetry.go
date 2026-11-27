@@ -275,7 +275,7 @@ func resourceAttrs(version string) []attr {
 	}
 	rev, dirty := buildRevision()
 	if rev == "" {
-		rev = archiveCommit() // a build from a source archive (git archive) has no VCS stamp
+		rev = archiveCommit() // build_commit.txt, when a packager wrote one
 	}
 	if v := os.Getenv("OW_BUILD_COMMIT"); v != "" {
 		rev, dirty = v, false
@@ -297,8 +297,9 @@ func resourceAttrs(version string) []attr {
 //go:embed build_commit.txt
 var buildCommitFile string
 
-// archiveCommit is the commit a source archive was made from: git archive fills build_commit.txt
-// (export-subst in .gitattributes). In a git checkout the file still holds the placeholder.
+// archiveCommit is a commit written into build_commit.txt by whoever packages a build without git metadata
+// (for example `git rev-parse HEAD > build_commit.txt`). The file normally holds a placeholder; deploy.sh sets
+// OW_BUILD_COMMIT instead, which takes precedence.
 func archiveCommit() string {
 	c := strings.TrimSpace(buildCommitFile)
 	if len(c) != 40 || strings.Trim(c, "0123456789abcdef") != "" {

@@ -7,7 +7,7 @@ Check your setup with `samples/app/verify.sh` (it runs the sample against the ag
 ## Prerequisites
 
 - An ObsidianWatch agent built with the app-server profile on the same host ([deployment.md](deployment.md)), listening on `127.0.0.1:4318`, OTLP over HTTP.
-- .NET 6 or later. The sample uses the OpenTelemetry packages 1.9.0.
+- .NET 8 or later for current OpenTelemetry packages (1.9.0 and later target `net8.0`; 1.14 targets `net8.0` and `net10.0`). The sample uses 1.9.0. If your solution pins `Microsoft.Extensions.*` 8.0 packages centrally, stay on a 1.9 to 1.11 release, or newer OpenTelemetry versions can fail restore with a package downgrade error (NU1605).
 
 ## Steps
 
@@ -56,7 +56,7 @@ Notes:
 | Routes, RED, status classes | ASP.NET Core server spans with `http.route` | minimal APIs report the template with constraints, for example `/orders/{orderId:int}` |
 | Query-string field names, injection signatures | `url.query` | names only leave the host |
 | Dependencies | HttpClient and database client spans | |
-| Error groups | `exception` events when `RecordException = true` | .NET frames are parsed only when they carry `in <file>:line <n>` (PDB files deployed). Without line information the group is keyed on exception type and route only. `System.` and `Microsoft.` frames count as library frames. Defect D1: not delivered by the current agent |
+| Error groups | `exception` events when `RecordException = true` | .NET frames are parsed only when they carry `in <file>:line <n>` (PDB files deployed). Without line information the group is keyed on exception type and route only. `System.` and `Microsoft.` frames count as library frames |
 | Client address | `client.address` / `network.peer.address` (older SDKs `net.sock.peer.addr`) | the sample also sets `client.address` explicitly from `HttpContext.Connection.RemoteIpAddress` |
 | Instance identity | the `dotnet` process (or the app host executable) | verified |
 
@@ -64,8 +64,11 @@ Notes:
 
 - **Exception types for APP-A09.** Exception type names are recorded as the full type name. Names containing `injection`, or `sql` with `syntax`, `grammar` or `parse`, count as injection-class. `Microsoft.Data.SqlClient.SqlException` does not match; the agent's parameter-value signatures still work for query-string attacks.
 - **Request body fields.** No .NET helper exists. Set `Activity.Current?.SetTag("ow.request.body", JsonSerializer.Serialize(parsedBody))` on the server activity after model binding (JSON object, at most 32 KiB).
+- **Database statements.** `OpenTelemetry.Instrumentation.SqlClient` (beta) with `SetDbStatementForText = true` (versions up to 1.9; later versions record the text by default) gives `db.statement`, which the agent fingerprints. Entity Framework Core on SQL Server goes through SqlClient; the EF in-memory provider produces no database spans.
+- **Cookie authentication.** ASP.NET Core Identity answers unauthenticated and forbidden requests with a redirect (302) to the login or access-denied page, not 401/403, so a status-code middleware sees no denials. Override `RedirectToLogin` and `RedirectToAccessDenied` in your `CookieAuthenticationEvents` and call `AuthzDenied` there. Failed logins in the default Identity UI return 200, so APP-A01 does not count them; the helper's `Login("failure", ...)` events still fill the Security tab.
+- **Request context.** The route template of the current request is `(HttpContext.GetEndpoint() as RouteEndpoint)?.RoutePattern.RawText`; resolve the helper with `HttpContext.RequestServices.GetService<OwSecurity>()` when you do not want to change constructors.
 - **Scheduled jobs.** Start a root activity per run with the tag `ow.job.name` set to a stable name; set its status to error on failure.
-- **Metrics.** Add `.WithMetrics(m => m.AddRuntimeInstrumentation().AddOtlpExporter(...))` with `HttpProtobuf` and `/v1/metrics`. Metrics with names starting `dotnet.` or `process.runtime.` are stored and shown on the Metrics tab, but no .NET metric feeds the runtime summary or APM-O07. Defect D1 currently prevents delivery.
+- **Metrics.** Add `.WithMetrics(m => m.AddRuntimeInstrumentation().AddOtlpExporter(...))` with `HttpProtobuf` and `/v1/metrics`. Metrics with names starting `dotnet.` or `process.runtime.` are stored and shown on the Metrics tab, but no .NET metric feeds the runtime summary or APM-O07.
 
 ## Security helper (optional, Tier 2)
 

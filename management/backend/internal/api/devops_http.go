@@ -9,7 +9,10 @@ package api
 // actually dialled, after DNS resolution and on every redirect hop.
 
 import (
+	"errors"
 	"fmt"
+	"io"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/netip"
@@ -78,3 +81,26 @@ func newDevOpsHTTPClient() *http.Client {
 		},
 	}
 }
+
+// maxWebhookBody is the largest webhook payload read before the signature check (DO-01: unauthenticated input
+// stays small).
+const maxWebhookBody = 1 << 20
+
+// readWebhookBody reads a webhook payload. A body over the limit is refused with 413 and logged as such: it used
+// to be cut off silently, fail its signature check and be logged as "invalid signature", which looked like an
+// attack and hid the real cause (a large push).
+func readWebhookBody(w http.ResponseWriter, r *http.Request, logger *slog.Logger, connector string) ([]byte, error) {
+	body, err := io.ReadAll(io.LimitReader(r.Body, maxWebhookBody+1))
+	if err != nil {
+		http.Error(w, "read error", http.StatusBadRequest)
+		return nil, err
+	}
+	if len(body) > maxWebhookBody {
+		logger.Warn("devops webhook: payload over the size limit, not processed", "connector", connector, "limit_bytes", maxWebhookBody)
+		http.Error(w, "payload too large", http.StatusRequestEntityTooLarge)
+		return nil, errWebhookTooLarge
+	}
+	return body, nil
+}
+
+var errWebhookTooLarge = errors.New("webhook payload too large")

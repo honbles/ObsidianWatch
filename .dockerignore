@@ -1,0 +1,2 @@
+# Docker build context for backend/ and management/ (context: .). Sample app bundles are not part of any image.
+samples/app/bundles/

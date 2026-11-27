@@ -4,11 +4,13 @@ Connect a Java application (Spring Boot, Servlet containers, Quarkus, Micronaut 
 
 Check your setup with `samples/app/verify.sh` (it runs the sample against the agent's receiver and prints what was recorded).
 
+Verified: OpenTelemetry Java agent 2.34.0 on Java 21 with the settings below sent traces and JVM metrics through the ObsidianWatch agent to the server (routes, verified `java` instance, version, metrics).
+
 ## Prerequisites
 
 - The host runs an ObsidianWatch agent built with the app-server profile ([deployment.md](deployment.md)). It listens on `127.0.0.1:4318`, OTLP over HTTP.
-- Java 8 or later (the sample targets Java 17, Spring Boot 3.3).
-- The OpenTelemetry Java agent jar, `opentelemetry-javaagent.jar`, from the OpenTelemetry Java instrumentation releases.
+- Java 8 or later for the Java agent (the sample targets Java 17, Spring Boot 3.3; Spring Boot 3 and 4 need Java 17).
+- The OpenTelemetry Java agent jar, `opentelemetry-javaagent.jar`, from the OpenTelemetry Java instrumentation releases on GitHub (for example `https://github.com/open-telemetry/opentelemetry-java-instrumentation/releases/download/v2.34.0/opentelemetry-javaagent.jar`).
 
 ## Steps
 
@@ -45,9 +47,9 @@ Notes:
 | Routes, RED, status classes | server spans with `http.route` | Spring MVC/WebFlux, JAX-RS and Servlet frameworks set `http.route` templates. A request without one is counted as `(unmatched)` |
 | Query-string field names, injection signatures | `url.query` (agent 2.x) or `http.target`/`http.url` (1.x) | names only leave the host; values only for reviewed routes |
 | Dependencies | client spans: JDBC (`db.system`, `server.address`), HTTP clients, Kafka/JMS/RabbitMQ producers | |
-| Database query groups and N+1 | JDBC spans: `db.operation`, `db.sql.table`; `db.statement` read only for fingerprints | see defect D1 in [capability.md](capability.md): not delivered by the current agent |
+| Database query groups and N+1 | JDBC spans: `db.operation`, `db.sql.table`; `db.statement` read only for fingerprints | statements are fingerprinted (literals become `?`) when the service's statement setting is `fingerprint`, the default |
 | Error groups | `exception` span events with Java stack traces (`at pkg.Cls.m(File.java:N)`) | frames from `java.`, `javax.`, `jdk.`, `sun.`, `kotlin.` count as library frames. Stack text over 16 KiB is cut; the top frames are still parsed |
-| Message consumers | CONSUMER spans from Kafka, JMS, RabbitMQ, SQS instrumentation | Jobs and queues tab (defect D1) |
+| Message consumers | CONSUMER spans from Kafka, JMS, RabbitMQ, SQS instrumentation | Jobs and queues tab |
 | Client address | `client.address`, `network.peer.address` (or older `net.sock.peer.addr`) | behind a proxy set Trusted proxies in the service settings |
 | Instance identity | the JVM process | verified with the `java` executable |
 
@@ -61,10 +63,11 @@ Notes:
   Do this in a filter or controller advice after the body is parsed.
 - **Scheduled jobs.** Wrap each run in a root span with the attribute `ow.job.name` (a stable name without ids). Spans with an error status count as failed runs.
 - **Security events (Tier 2).** Optional; see below.
+- **Request context for the helper.** Helper calls deep in a controller need the route template and client address. A servlet filter can keep the request in a `ThreadLocal`; Spring MVC puts the matched template in the request attribute `org.springframework.web.servlet.HandlerMapping.bestMatchingPattern`. The same filter can set `ow.request.body` from `request.getParameterMap()` for form posts.
 
 ## Metrics
 
-Set `OTEL_METRICS_EXPORTER=otlp`. The Java agent's JVM metrics (`jvm.memory.used`, `jvm.memory.limit`, `jvm.cpu.recent_utilization`, `jvm.gc.*`, `jvm.thread.*`) and HikariCP pool metrics (`db.client.connections.*` or `db.client.connection.*`) are on the allowlist. CPU, heap and pool use feed the runtime summary and APM-O07. Use explicit-bucket histograms (the default); exponential histograms are rejected. Defect D1 currently prevents metrics from reaching the server.
+Set `OTEL_METRICS_EXPORTER=otlp`. The Java agent's JVM metrics (`jvm.memory.used`, `jvm.memory.limit`, `jvm.cpu.recent_utilization`, `jvm.gc.*`, `jvm.thread.*`) and HikariCP pool metrics (`db.client.connections.*` or `db.client.connection.*`) are on the allowlist. CPU, heap and pool use feed the runtime summary and APM-O07. Use explicit-bucket histograms (the default); exponential histograms are rejected.
 
 ## Security helper (optional, Tier 2)
 
@@ -107,4 +110,4 @@ The sample is intentionally vulnerable, refuses to start without `OW_ALLOW_VULN_
 | All requests under `(unmatched)` | the framework is not instrumented by the Java agent, or instrumentation is disabled |
 | Many routes, then `other` | a framework reports raw paths as `http.route` (custom servlets); fix the route attribute; the 500-route set resets only when the ObsidianWatch agent restarts |
 | A01 never fires | no login route configured or recognised; login failures not returned as 401/403; proxy not in Trusted proxies; rule still in observe mode (fires at Info) |
-| Error tab empty | defect D1 (agent does not deliver error groups); also, exceptions must be recorded as span events, which the Java agent does for uncaught exceptions |
+| Error tab empty | exceptions must be recorded as span events, which the Java agent does for uncaught exceptions; an exception a Spring `@ExceptionHandler` or error page turns into a normal response is not recorded unless you call `Span.current().recordException(e)` |

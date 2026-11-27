@@ -193,6 +193,11 @@ type codeJobResult struct {
 }
 
 func (a *CodeAutomation) runJob(ctx context.Context, job *store.CodeScanJob) {
+	release, err := acquireScanSlot(ctx) // before the job's own time limit starts
+	defer release()
+	if err != nil {
+		return
+	}
 	jctx, cancel := context.WithTimeout(ctx, 40*time.Minute)
 	defer cancel()
 	jctx, span := telemetry.StartJob(jctx, "code-scan."+job.Kind)
@@ -584,7 +589,14 @@ func runPRScan(ctx context.Context, cfg *config.Config, db *store.DB, conn *stor
 		if policy.PRAIFixes {
 			fixer = func(f SASTFinding) *fixSuggestion { return prFixSuggestion(ctx, cfg, db, f, dir) }
 		}
-		res.Reported = reportPR(ctx, db, rep, conn, job, policy, kept, blocked, dir, fixer)
+		public, visErr := repoIsPublic(ctx, conn, job.Repo)
+		if visErr != nil {
+			res.Notes = append(res.Notes, "visibility unknown, reported as public: "+visErr.Error())
+		}
+		if public {
+			fixer = nil
+		}
+		res.Reported = reportPR(ctx, db, rep, conn, job, policy, kept, blocked, public, dir, fixer)
 	}
 	return res, blocked, nil
 }

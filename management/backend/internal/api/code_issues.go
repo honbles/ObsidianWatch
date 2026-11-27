@@ -30,6 +30,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 
 	"obsidianwatch/management/internal/store"
 )
@@ -397,6 +398,10 @@ func handleCreateIssues(db *store.DB) http.HandlerFunc {
 			writeJSON(w, 404, map[string]string{"error": "connector not found"})
 			return
 		}
+		// One run per repository at a time: two clicks (or two users) would both see "no issue yet" for a group
+		// and create it twice on the code platform.
+		unlock := lockIssueRepo(connID, body.Repo)
+		defer unlock()
 		// The latest stored result of that repository and branch.
 		var raw []byte
 		var branch string
@@ -508,4 +513,13 @@ func handleCreateIssues(db *store.DB) http.HandlerFunc {
 		}
 		writeJSON(w, 200, plan)
 	}
+}
+
+var issueRepoLocks sync.Map // "connector/repo" -> *sync.Mutex
+
+func lockIssueRepo(connID int64, repo string) func() {
+	m, _ := issueRepoLocks.LoadOrStore(fmt.Sprintf("%d/%s", connID, repo), &sync.Mutex{})
+	mu := m.(*sync.Mutex)
+	mu.Lock()
+	return mu.Unlock
 }

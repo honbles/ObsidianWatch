@@ -102,7 +102,7 @@ function Deployments({ link }) {
   const deps = link.deployments || []
   if (!deps.length) {
     return <div className="t3" style={{ padding: '8px 14px', fontSize: 13.5 }}>
-      <span className="mono">{link.repo}</span>: no instance reports the commit it runs, so findings are from the latest scan of <span className="mono">{link.branch || 'the default branch'}</span>. Add the commit as an OpenTelemetry resource attribute (<span className="mono">vcs.ref.head.revision</span>) or an image label (<span className="mono">org.opencontainers.image.revision</span>) to see exactly what runs.
+      Commit not reported yet: findings are from the latest scan of <span className="mono">{link.branch || 'the default branch'}</span>.
     </div>
   }
   return (

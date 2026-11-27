@@ -18,7 +18,7 @@ export default function AppTabDatabase({ service, range }) {
     { key: 'table', label: 'Table', render: q => <span className="font-mono text-xs">{q.table || '-'}</span> },
     { key: 'text', label: 'Statement', render: q => q.text
       ? <span className="font-mono text-xs break-all" title={`fingerprint ${q.fingerprint}`}>{q.text}</span>
-      : fp ? <span className="text-siem-muted text-xs">waiting for the next report</span>
+      : fp ? <span className="text-siem-muted text-xs" title="Calls recorded before statements were sent; newer calls appear as their own rows with the statement">recorded before statements were on</span>
         : <Link className="text-xs c-acc" to={{ search: '?tab=settings' }} title="Statement fingerprints are off for this service">Show statements</Link> },
     { key: 'calls', label: 'Calls', align: 'right', render: q => appInt(q.calls) },
     { key: 'err', label: 'Errors', align: 'right', render: q => <span className={q.errors > 0 ? 'text-red-300' : ''}>{appInt(q.errors)}</span> },

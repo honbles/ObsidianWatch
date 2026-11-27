@@ -75,7 +75,7 @@ Each instance reports the commit it was built from when it is known, in this ord
 
 ---
 
-When an instance reports its repository (`vcs.repository.url.full` or `git.repository_url`, or the OCI source label) and that repository belongs to a connected code platform, the service is linked to it automatically the first time its Code tab is opened. The link shows "reported by the service". An analyst's links are never changed. The ObsidianWatch console reports its own commit without configuration when it is built from a source archive: `git archive` writes the commit into `management/backend/internal/telemetry/build_commit.txt` (`export-subst` in `.gitattributes`). Set `OW_SOURCE_REPO` (for example `https://github.com/acme/obsidianwatch`) to link it automatically too.
+When an instance reports its repository (`vcs.repository.url.full` or `git.repository_url`, or the OCI source label) and that repository belongs to a connected code platform, the service is linked to it automatically the first time its Code tab is opened. The link shows "reported by the service". An analyst's links are never changed. Once an instance reports a commit, the Code tab replaces "Commit not reported yet" with the running commit and its scan, and findings come from that commit. A commit that is not in the linked repository shows *scan failed*, and findings stay on the branch head. The ObsidianWatch console reports its own commit from `OW_BUILD_COMMIT`. Deploy with `./deploy.sh` from your git clone: it runs `git pull`, sets `OW_BUILD_COMMIT` to `git rev-parse HEAD`, and builds and starts the services (`./deploy.sh mgmt-api` for one). The commit then matches your repository, and the Code tab shows the findings of exactly that commit. The Docker build cannot read `.git` itself. Set `OW_SOURCE_REPO` (for example `https://github.com/acme/obsidianwatch`) to link the console's service to its repository automatically.
 
 ## 2. Receiving OTLP on the host
 
@@ -319,11 +319,14 @@ Implemented in: `otel/aggregate.go` (`bufferSpan`, `closeTraces`, `finishTrace`)
 
 ### 5.7 Trace diagnosis: self time, slow children, queries, N+1
 
+A database span is one with `db.system` or `db.system.name`. Its operation and table come from `db.operation.name` / `db.operation` and `db.collection.name` / `db.sql.table`. Without them, they are read from the statement (`db.statement` or `db.query.text`): the keyword and the first table after FROM, INTO, UPDATE, JOIN or TABLE (skipping `IF [NOT] EXISTS` and `ONLY`), never a value. When `db.operation` holds several words (SQLAlchemy puts its span name, `SELECT <database>`, there), only the first is the operation. The span name is the last resort for the operation.
+
+
 Run on every completed trace, before the sampling decision, so it covers all buffered traffic, not only kept traces. It uses the minute in which the trace completed.
 
 - **Self time** per span = duration − sum of the durations of its direct children present in the trace, never below 0.
 - **Slow downstream calls** ("top children"): for each CLIENT or PRODUCER span whose nearest ancestor is a SERVER span with a route, add calls and total time to `(route, minute, kind, target, name)`. Kind is `db` (has `db.system`), `queue` (PRODUCER), `http` (has `peer.service` or `server.address`) or `client`. The name is the span name with UUIDs, long hex strings and digits replaced by `?` (80 characters max). At most 20 keys per route and 5 000 in total per flush; more collapse into `(other)`.
-- **Database calls**: for every span with `db.system`, group by `(system, operation, table, fingerprint)` per minute with calls, errors, total time and the 12-bucket histogram. Operation = `db.operation.name`/`db.operation`, else the first word of the span name, upper-cased. At most 200 groups per service per flush; more collapse into `(other)`.
+- **Database calls**: for every span with `db.system`, group by `(system, operation, table, fingerprint)` per minute with calls, errors, total time and the 12-bucket histogram. Operation and table as described above. Driver lifecycle spans (a name starting with `sql.`, such as Go otelsql's `sql.rows` or `sql.connector.connect`, with no statement and no operation) are not counted. At most 200 groups per service per flush; more collapse into `(other)`.
 - **Statement fingerprint**: when the service's `db_statement_mode` is `fingerprint`, the default since November 2026 (migration 084 switched existing services; a service can be set back to names only). Comments are removed, string literals, hex literals, numbers and `$1`/`@p` placeholders become `?`, `IN (?, ?, ...)` and `VALUES (...)` lists collapse to `(?)`, whitespace is normalised and the text is lower-cased. The id is the first 8 bytes of SHA-256 of that text (16 hex characters). The text is cut to 512 bytes.
 - **N+1**: within one trace, when 10 or more database spans with the same group (fingerprint, or `operation|table` without one) share the same parent span and sit under a routed server span, every one of them is flagged and the route's N+1 count goes up by one.
 
@@ -369,7 +372,7 @@ Every `app_monitoring.flush_interval` (default 30 s) the agent builds one batch.
 ## 6. Sending to the backend
 
 - `POST <backend_url>/api/v1/app/batch`, JSON, over HTTPS, TLS 1.3 minimum, with the CA from the build and the agent's **enrolled client certificate**. No API key is sent.
-- A batch is first split into pieces that respect the backend caps (section 12). See defect D1: the split drops several sections.
+- A batch is first split into pieces that respect the backend caps (section 12). Each piece carries its share of queries, errors, metrics and operations (`splitInto`).
 - Queue of 100 batches. When full, the oldest is dropped and its statistics are merged back into memory for the next flush.
 - Up to 3 attempts with backoff 1 s then 3 s, honouring `Retry-After` under 120 s. HTTP 429 and 5xx and network errors are retried; other 4xx are dropped and logged ("app batch rejected, dropping"). After the last attempt the batch is handed back: route statistics, parameter names, payload samples, client counters, edges and notes are merged into the next flush. Traces, instances (re-sent as heartbeats), errors, queries, metrics and operations are not requeued.
 - 30 s HTTP timeout. At shutdown queued batches are posted with a 5 s timeout each.
@@ -556,7 +559,7 @@ Statements show with their values removed, which is the default. A service set t
 
 API: `GET /services/{id}/queries?sort=total_ms|p95|calls|errors`. Rows by system, operation, table and fingerprint with calls, errors, average, p95 (from the histogram) and total time; the fingerprint text when the service sends fingerprints. At most 200 rows.
 
-Implemented in: `app_diagnosis.go`. See defect D1.
+Implemented in: `app_diagnosis.go`.
 
 ### 10.5 Errors tab and error page
 
@@ -564,7 +567,7 @@ API: `GET /services/{id}/errors?status=open|resolved|ignored`, `GET /errors/{id}
 
 A group shows type, route, top frame, frames, masked message (when enabled), first/last seen, total and in-range counts (hourly resolution), first and last version, status, assignee, regression flag and sample traces. Resolving stores the group's last version; a later failure in another version reopens it as regressed (7.2). Admins and analysts can change status and assignee; viewers cannot. Error page: `/applications/services/<service>/errors/<id>`.
 
-Implemented in: `app_errors.go`. See defect D1.
+Implemented in: `app_errors.go`.
 
 ### 10.6 Dependencies and the estate map
 
@@ -598,7 +601,7 @@ API: `GET /services/{id}/metrics` (catalogue with latest, average, min, max), `G
 
 Other kept metrics (for example `dotnet.*`, `process.runtime.cpython.*`) appear in the catalogue but feed no summary and no rule.
 
-Implemented in: `app_metrics.go`. See defect D1.
+Implemented in: `app_metrics.go`.
 
 ### 10.9 Payload review and masking
 
@@ -641,7 +644,7 @@ Implemented in: `app_slo.go`.
 
 ### 10.12 Jobs and queues tab
 
-API: `GET /services/{id}/operations`. Runs, failures, p50 and p95, last run, and for jobs the learned interval (median gap between run minutes, needs 5 runs). See defect D1.
+API: `GET /services/{id}/operations`. Runs, failures, p50 and p95, last run, and for jobs the learned interval (median gap between run minutes, needs 5 runs).
 
 Implemented in: `app_operations.go`.
 
@@ -774,8 +777,6 @@ Host rules are degraded (−1) when the sensor gave no ancestry and the event is
 | APM-O12 | Post-deploy regression | 5–30 min after a new version first appeared, with ≥ 100 calls before and after: error rate ≥ 2 points and ≥ 1.5 × the 24 h before, or p95 ≥ 1.5 × and ≥ 50 ms more | High | `window_min` 30, `min_wait_min` 5, `min_calls` 100, `error_delta_pct` 2, `error_factor` 1.5, `p95_factor` 1.5, `p95_delta_ms` 50 | service, version |
 | APM-O13 | Error budget burning fast | after 24 h of learning, for availability and (if set) latency: burn rate ≥ 14.4 over both 1 h and 5 min (High), else ≥ 6 over both 6 h and 30 min (Medium); ≥ 100 requests in the long window | High / Medium | `fast_factor` 14.4, `slow_factor` 6, `min_calls` 100 | service, objective, fast/slow |
 | APM-O14 | Error rate / Latency unusual for this time of week; Traffic spike for this time of week | with ≥ 100 requests in the last 10 min and ≥ 3 of the last 4 weeks having ≥ 100 requests in the same 10 minutes (needs 22 days of learning): error rate ≥ 3 × the weekly median and ≥ 2 points higher; or p95 ≥ 2 × and ≥ 100 ms higher; or requests ≥ 4 × the median (median ≥ 100) | Medium | `window_min` 10, `min_calls` 100, `error_factor` 3, `error_delta_pct` 2, `p95_factor` 2, `p95_delta_ms` 100, `spike_factor` 4, `min_baseline` 100 | service, kind, hour |
-
-O06, O07, O08, O09, O10 and O11 depend on data that the current agent does not deliver (defect D1).
 
 Rules named in the specification but **not built**: H09, H10, H12–H14, A02–A07, A10–A12, A14, A15, X01, X03–X05, O02, O04.
 
@@ -923,7 +924,7 @@ The ingest writes every application record it stores individually to the platfor
 
 The existing `app.security`, `app.service_change` and `app.dependency_new` events stay as they are.
 
-How many requests are recorded is the service's **Baseline sample** setting. The default is 1%; errors, slow and security-relevant requests are always kept. At 100%, every request is recorded, up to 5,000 per agent flush (30 seconds).
+How many requests are recorded is the service's **Ordinary traces kept (%)** setting (Settings → Trace sampling). The default is 1%; errors, slow and security-relevant requests are always kept. At 100%, every request is recorded, up to **Traces per flush** (500 by default, at most 5,000) per 30-second flush. Configuration-platform.md has the trade-off.
 
 **Searching.**
 - On **Detect → Events**, choose the application in the picker next to the search box, or write `app:<service>` (also `service:`, `route:`, `trace:`, `status:`).

@@ -32,6 +32,8 @@ Settings are stored in `service_settings` in the management database. A service 
 | Ordinary traces kept (%) | `sampling.baseline_pct` | 0–100 | agent default (1) | agent baseline sampling (pulled) |
 | Error traces per minute (max) | `sampling.error_max_per_min` | 0–100 000 (0 = no cap) | 0 | agent (pulled) |
 | Traces per flush (max) | `sampling.max_per_flush` | 0–5 000 (0 = 500) | 0 | agent (pulled) |
+
+**Recording every request.** Set **Ordinary traces kept (%)** to 100. Each request then becomes an `app.request` event with its spans, searchable on Events with the application chosen (capability.md section 11). The default stays at 1% because every request is one event: a service at 1,000 requests a minute adds about 1.4 million events a day. Errors, slow and security-relevant traces are kept whatever the percentage. A flush is every 30 seconds, so the default cap of 500 traces per flush records up to about 1,000 requests a minute; raise **Traces per flush** (up to 5,000) for busier services. A good pattern: 100% on low-traffic or sensitive services, or for a while on any service you are investigating.
 | Availability target (%) | `slo.availability_target_pct` | > 0 and < 100 | 100 − error budget, else 99.9 | SLO tab, APM-O13 |
 | Latency target share (%) | `slo.latency_target_pct` | > 0 and < 100 | 95 | SLO tab, APM-O13 (needs a latency target) |
 | Window | `slo.window_days` | 7 or 28 | 28 | SLO tab, APM-O13 |
@@ -49,11 +51,13 @@ Agents pull `GET /api/v1/app/agent-config` from the ingest backend 2 s after sta
 
 Pulled per service: `store_client_ip`, `cleartext_users`, `latency_target_ms`, `db_statement_mode`, `error_message_mode`, `sampling`, and the reviewed routes with their allowed field names.
 
+A service the platform has not seen at the agent's last pull has no pulled settings yet, so the agent applies its privacy-first fallbacks (no statement fingerprints, no error messages) until the next pull. The first minutes of a brand-new service therefore show queries without statements; from the next pull, at most 5 minutes later, the platform defaults apply.
+
 Rules applied by the agent:
 
 - Client address: the stricter of the build value (`client_ip_default` or `client_ip_by_service`) and the pulled value. You can make it stricter from the console, never looser than the build.
 - Cleartext user ids: the pulled value decides when the service has saved settings; otherwise the build list `cleartext_services`.
-- Statement fingerprints, error messages and sampling are applied only for services with saved settings. A service that has a reviewed route but no saved settings gets its reviewed routes and nothing else.
+- Every known service gets its settings, saved or not: a service whose settings were never saved gets the defaults (statement fingerprints on, error messages off, agent sampling defaults). Before November 2026 only services with saved settings got anything, so the fingerprint default never reached the agent. Query statistics recorded before statements were on stay as rows without a statement until they leave the time range. A service that has a reviewed route but no saved settings gets its reviewed routes and nothing else.
 - Allowed field names are filtered again through the always-masked list.
 
 Until the first successful pull, and whenever pulling fails, the build configuration alone applies (no fingerprints, no messages, default sampling, no payload values).

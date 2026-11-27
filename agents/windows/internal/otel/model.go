@@ -134,7 +134,7 @@ var spanAllow = map[string]bool{
 	"client.address": true, "network.peer.address": true,
 	// older semantic conventions, still sent by many SDK versions (Node 0.5x, Java agent 1.x, .NET opt-out)
 	"http.client_ip": true, "net.peer.ip": true, "net.sock.peer.addr": true, "client.socket.address": true,
-	"db.system": true, "server.address": true, "server.port": true, "peer.service": true,
+	"db.system": true, "db.system.name": true, "server.address": true, "server.port": true, "peer.service": true,
 	"messaging.system": true, "messaging.destination.name": true, "messaging.operation": true, "messaging.operation.type": true,
 	"code.function": true, "code.function.name": true, "ow.job.name": true, "enduser.id": true, "exception.type": true,
 	// Names only (APM spec item 2). The statement attributes are read to fingerprint, never forwarded raw.
@@ -278,7 +278,7 @@ func (s *Span) set(k string, v attrValue) {
 		if s.PeerAddr == "" || k == "network.peer.address" {
 			s.PeerAddr = v.str()
 		}
-	case "db.system":
+	case "db.system", "db.system.name": // db.system.name: stable database conventions (semconv 1.33+)
 		s.DBSystem = v.str()
 	case "db.operation.name", "db.operation":
 		s.DBOp = clipN(v.str(), 64)

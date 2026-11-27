@@ -251,19 +251,16 @@ func (a *Aggregator) diagnoseTrace(t *openTrace, now time.Time) (self map[string
 			v.calls++
 			v.totalMs += s.DurationMs()
 		}
-		if s.DBSystem == "" {
+		if s.DBSystem == "" || driverLifecycleSpan(s) {
 			continue
 		}
 		sv := svcKey{s.Res.Service, envOf(s.Res.Environment)}
-		op := strings.ToUpper(s.DBOp)
-		if op == "" {
-			op = strings.ToUpper(firstWord(s.Name))
-		}
+		op, table := dbOpTable(s)
 		fp, text := "", ""
 		if s.DBStmt != "" && a.opt.DBStmtFn != nil && a.opt.DBStmtFn(sv.name, sv.env) == "fingerprint" {
 			fp, text = fingerprintSQL(s.DBStmt)
 		}
-		qk := queryKey{sv, minute, s.DBSystem, clipN(op, 32), clipN(s.DBTable, 64), fp}
+		qk := queryKey{sv, minute, s.DBSystem, clipN(op, 32), clipN(table, 64), fp}
 		if _, ok := d.q[qk]; !ok && d.qN[sv] >= maxQueryKeys {
 			qk = queryKey{sv, minute, s.DBSystem, otherName, "", ""}
 			text = ""

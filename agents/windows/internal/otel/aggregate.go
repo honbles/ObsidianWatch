@@ -776,6 +776,9 @@ func (a *Aggregator) finishTrace(t *openTrace) {
 			StartMs: float64(s.StartNano-minStart) / 1e6, DurMs: s.DurationMs(), Route: s.Route, Method: s.Method,
 			Code: s.HTTPStatus, DB: s.DBSystem, Peer: s.PeerService, Exc: s.ExcType,
 			SelfMs: round1(self[s.SpanID]), DBOp: s.DBOp, DBTable: s.DBTable, N1: n1[s.SpanID]}
+		if s.DBSystem != "" && (o.DBOp == "" || o.DBTable == "") {
+			o.DBOp, o.DBTable = dbOpTable(&s)
+		}
 		if s.IsError() {
 			o.Status = "error"
 		}

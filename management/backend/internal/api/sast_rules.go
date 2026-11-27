@@ -15,6 +15,7 @@ type SASTRule struct {
 	Lang     string // python|javascript|typescript|go|java|php|c|cpp|any
 	FilePat  *regexp.Regexp // which files this rule applies to
 	Pattern  *regexp.Regexp // pattern to match in source code
+	Exclude  *regexp.Regexp // optional: a matching line that also matches this is not reported
 	Severity string         // critical|high|medium|low|info
 	CWE      string
 	OWASP    string
@@ -125,7 +126,7 @@ var SASTRules = []SASTRule{
 	{
 		ID: "JS001", Lang: "javascript",
 		FilePat:  regexp.MustCompile(`\.(js|jsx|ts|tsx|mjs|cjs)$`),
-		Pattern:  regexp.MustCompile(`(?m)\.innerHTML\s*=|\.outerHTML\s*=|document\.write\s*\(|insertAdjacentHTML\s*\(`),
+		Pattern:  regexp.MustCompile(`(?m)\.innerHTML\s*(?:=[^=]|\+=)|\.outerHTML\s*(?:=[^=]|\+=)|document\.write\s*\(|insertAdjacentHTML\s*\(`),
 		Severity: "high", CWE: "CWE-79", OWASP: "A03",
 		Title:  "Cross-Site Scripting (XSS) - DOM Sink",
 		Detail: "Direct assignment to innerHTML/outerHTML or document.write() allows XSS if user-controlled data is used.",
@@ -461,6 +462,7 @@ var SASTRules = []SASTRule{
 		ID: "ANY001", Lang: "any",
 		FilePat:  regexp.MustCompile(`\.(py|js|ts|go|java|kt|php|c|cpp|rb|cs|rs)$`),
 		Pattern:  regexp.MustCompile(`(?i)(password|passwd|secret|api_key|apikey|private_key|access_token|auth_token)\s*=\s*["'][^"']{8,}["']`),
+		Exclude:  regexp.MustCompile(`["']\$\{|(?i)\b(?:select|insert\s+into|update|delete\s+from)\b.*\bwhere\b`),
 		Severity: "high", CWE: "CWE-798", OWASP: "A02",
 		Title:  "Hardcoded Credential",
 		Detail: "Hardcoded secret or credential in source code. Anyone with repo access can use it.",
@@ -657,6 +659,38 @@ var extendedSASTRules = []SASTRule{
 		Title: "Prototype Pollution via Object.assign/merge",
 		Detail: "Merging user-controlled objects into existing objects can pollute Object.prototype.",
 		Fix:   "Use a deep merge that skips __proto__, constructor, prototype keys. Consider using lodash.mergeWith with custom logic.",
+	},
+	{
+		ID: "JS021", Lang: "javascript", FilePat: regexp.MustCompile(`\.(js|jsx|ts|tsx|mjs|cjs)$`),
+		Pattern:  regexp.MustCompile("(?i)\\.(?:query|raw|execute|exec|unsafe|literal|\\$queryRawUnsafe|\\$executeRawUnsafe)\\s*\\(\\s*(?:`[^`]*\\b(?:select|insert|update|delete|where)\\b[^`]*\\$\\{|[\"'][^\"']*\\b(?:select|insert|update|delete|where)\\b[^\"']*[\"']\\s*\\+)"),
+		Severity: "critical", CWE: "CWE-89", OWASP: "A03",
+		Title: "SQL Injection",
+		Detail: "A SQL statement is built with a template literal or string concatenation and passed to a query function (mysql, pg, sequelize, knex.raw, Prisma $queryRawUnsafe, TypeORM).",
+		Fix:   "Pass values as bound parameters: query('... WHERE id = ?', [id]), sequelize.query(sql, { replacements }), knex.raw(sql, [id]), or Prisma's tagged $queryRaw`...`.",
+	},
+	{
+		ID: "JS022", Lang: "javascript", FilePat: regexp.MustCompile(`\.(ts|js)$`),
+		Pattern:  regexp.MustCompile(`(?m)\.bypassSecurityTrust(?:Html|Script|Url|ResourceUrl|Style)\s*\(`),
+		Severity: "high", CWE: "CWE-79", OWASP: "A03",
+		Title: "Cross-Site Scripting (XSS) - Angular Sanitizer Bypass",
+		Detail: "DomSanitizer.bypassSecurityTrust* turns off Angular's built-in escaping for the value; user-controlled content becomes script.",
+		Fix:   "Bind the value as text, or sanitize it with DomSanitizer.sanitize(SecurityContext.HTML, value) before trusting it.",
+	},
+	{
+		ID: "JS023", Lang: "javascript", FilePat: regexp.MustCompile(`\.(js|jsx|ts|tsx|mjs|cjs)$`),
+		Pattern:  regexp.MustCompile(`(?m)\bnoent\s*:\s*true|processEntities\s*:\s*true|resolveExternalEntities\s*:\s*true`),
+		Severity: "high", CWE: "CWE-611", OWASP: "A05",
+		Title: "XML External Entity (XXE) Processing Enabled",
+		Detail: "The XML parser is told to substitute entities (libxmljs noent: true and similar), so a document can read local files or reach internal URLs.",
+		Fix:   "Leave entity substitution off (noent: false, the default) and reject documents with a DOCTYPE.",
+	},
+	{
+		ID: "JS024", Lang: "javascript", FilePat: regexp.MustCompile(`\.(js|jsx|ts|tsx|mjs|cjs)$`),
+		Pattern:  regexp.MustCompile(`(?m)\bres\.redirect\s*\(\s*(?:\d{3}\s*,\s*)?req\.(?:query|body|params)\b|\bctx\.redirect\s*\(\s*ctx\.(?:query|request\.body|params)\b`),
+		Severity: "medium", CWE: "CWE-601", OWASP: "A01",
+		Title: "Open Redirect",
+		Detail: "The redirect target comes straight from the request, so a link to this site can send users to any other site (phishing).",
+		Fix:   "Redirect only to relative paths or to an allow-list of hosts; reject values with a scheme or starting with //.",
 	},
 
 	// ── GO extended ───────────────────────────────────────────────────────────
@@ -948,7 +982,8 @@ var extendedSASTRules = []SASTRule{
 	// ── Infrastructure as Code ────────────────────────────────────────────────
 	{
 		ID: "IAC001", Lang: "any", FilePat: regexp.MustCompile(`\.(tf|tfvars)$`),
-		Pattern:  regexp.MustCompile(`(?i)(password|secret|key|token)\s*=\s*["'][^"']{4,}["']`),
+		Pattern:  regexp.MustCompile(`(?i)\b(?:password|passwd|secret|secret_key|access_key|private_key|api_key|token|auth_token|client_secret)\s*=\s*"[^"]{4,}"`),
+		Exclude:  regexp.MustCompile(`=\s*"[^"]*\$\{`),
 		Severity: "critical", CWE: "CWE-798", OWASP: "A02",
 		Title: "Hardcoded Secret in Terraform",
 		Detail: "Secrets in .tf files are committed to source control and exposed in state files.",
@@ -1024,10 +1059,10 @@ var owaspExtendedRules = []SASTRule{
 		Detail:"Role checks in client-side code can be bypassed by attackers.",
 		Fix:"Always enforce role checks server-side."},
 	{ID:"A01-JS003", Lang:"javascript", FilePat:regexp.MustCompile(`\.[jt]sx?$`),
-		Pattern:regexp.MustCompile(`(?i)localStorage\.getItem.*token|sessionStorage\.getItem.*token`),
+		Pattern:regexp.MustCompile(`(?i)sessionStorage\.setItem\s*\([^)]*(?:token|jwt|auth)`),
 		Severity:"medium", CWE:"CWE-922", OWASP:"A01",
 		Title:"Token Stored in Browser Storage",
-		Detail:"Tokens in localStorage/sessionStorage are accessible to XSS attacks.",
+		Detail:"A token written to sessionStorage is readable by any script on the page, so one XSS steals it (localStorage is rule JS012).",
 		Fix:"Use HttpOnly cookies for storing authentication tokens."},
 
 	// Go
@@ -1111,7 +1146,7 @@ var owaspExtendedRules = []SASTRule{
 		Fix:"Use crypto.randomBytes() or crypto.randomUUID() for security tokens."},
 	{ID:"A02-JS003", Lang:"javascript", FilePat:regexp.MustCompile(`\.[jt]sx?$`),
 		Pattern:regexp.MustCompile(`(?i)btoa\(|atob\(`),
-		Severity:"medium", CWE:"CWE-311", OWASP:"A02",
+		Severity:"low", CWE:"CWE-311", OWASP:"A02",
 		Title:"Base64 Is Not Encryption",
 		Detail:"Base64 encoding provides no security - it's trivially reversible.",
 		Fix:"Use proper encryption (AES-GCM) for sensitive data, not encoding."},
@@ -1418,7 +1453,7 @@ var owaspExtendedRules = []SASTRule{
 		Detail:"Allowing all origins via CORS enables cross-origin attacks.",
 		Fix:"Restrict CORS to specific trusted origins."},
 	{ID:"A05-JS001", Lang:"javascript", FilePat:regexp.MustCompile(`\.[jt]sx?$`),
-		Pattern:regexp.MustCompile(`(?i)helmet|cors\(\{.*origin.*["']\*["']`),
+		Pattern:regexp.MustCompile(`(?i)cors\(\s*\{[^}]*origin\s*:\s*["']\*["']|Access-Control-Allow-Origin["']?\s*,\s*["']\*["']`),
 		Severity:"high", CWE:"CWE-16", OWASP:"A05",
 		Title:"CORS Wildcard in Express",
 		Detail:"cors({origin: '*'}) allows any website to make requests to your API.",
@@ -1547,10 +1582,10 @@ var owaspExtendedRules = []SASTRule{
 		Detail:"marshal and shelve modules can execute arbitrary code.",
 		Fix:"Use JSON for data serialization."},
 	{ID:"A08-JS001", Lang:"javascript", FilePat:regexp.MustCompile(`\.[jt]sx?$`),
-		Pattern:regexp.MustCompile(`(?i)JSON\.parse.*req\.|JSON\.parse.*body\.|deserialize.*req\.`),
+		Pattern:regexp.MustCompile(`(?i)\b(?:un)?serialize\s*\([^)]*req\.|require\s*\(\s*["'](?:node-serialize|serialize-to-js|funcster)["']\)`),
 		Severity:"medium", CWE:"CWE-502", OWASP:"A08",
-		Title:"Unvalidated Deserialization",
-		Detail:"Deserializing user-controlled JSON without schema validation is dangerous.",
+		Title:"Unsafe Deserialization",
+		Detail:"A serializer that restores functions or classes (node-serialize, serialize-to-js, funcster) runs code from a crafted payload; JSON.parse does not and is not reported.",
 		Fix:"Validate deserialized data against a strict schema (e.g., Zod, Joi)."},
 	{ID:"A08-GO001", Lang:"go", FilePat:regexp.MustCompile(`\.go$`),
 		Pattern:regexp.MustCompile(`(?i)encoding/gob.*Decode|gob\.NewDecoder.*r\.Body`),
@@ -1695,6 +1730,10 @@ func init() {
 
 // runSASTRules runs all applicable SAST rules against a single file's content.
 // Returns one finding per rule per file (deduplicated at rule level).
+// maxRuleHitsPerFile caps the findings one rule reports in one file. Reporting only the first match hid the
+// later ones: a dismissed first match left a real one further down the file unreported.
+const maxRuleHitsPerFile = 10
+
 func runSASTRules(repo, filePath, content string) []SASTFinding {
 	var findings []SASTFinding
 	lines := strings.Split(content, "\n")
@@ -1703,8 +1742,9 @@ func runSASTRules(repo, filePath, content string) []SASTFinding {
 		if !rule.FilePat.MatchString(filePath) {
 			continue
 		}
+		hits := 0
 		for lineNo, line := range lines {
-			if rule.Pattern.MatchString(line) {
+			if rule.Pattern.MatchString(line) && (rule.Exclude == nil || !rule.Exclude.MatchString(line)) {
 				snippet := strings.TrimSpace(line)
 				if len(snippet) > 120 {
 					snippet = snippet[:120] + "…"
@@ -1723,7 +1763,9 @@ func runSASTRules(repo, filePath, content string) []SASTFinding {
 					Snippet:  snippet,
 					Engine:   "builtin",
 				})
-				break // one finding per rule per file
+				if hits++; hits == maxRuleHitsPerFile {
+					break
+				}
 			}
 		}
 	}

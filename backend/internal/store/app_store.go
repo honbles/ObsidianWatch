@@ -860,16 +860,19 @@ func appPayloadAllow(reviewedJSON, maskedJSON []byte) map[string]bool {
 }
 
 // AppRemoteConfig reads service_settings (created by the management migration; the two backends
-// share one database). A missing table means no settings yet, not an error.
+// share one database). A missing table means no settings yet, not an error. Every known service is sent:
+// one whose settings were never saved gets the defaults (the console's appDefaultSettings), so a default
+// such as statement fingerprints reaches the agent without anyone saving the settings page.
 func (db *DB) AppRemoteConfig(ctx context.Context) ([]AppRemoteService, error) {
 	const q = `
-		SELECT s.name, s.environment, st.store_client_ip, st.cleartext_users, COALESCE(st.latency_target_ms, 0), %s
-		FROM service_settings st JOIN services s ON s.id = st.service_id
+		SELECT s.name, s.environment, COALESCE(st.store_client_ip, 'full'), COALESCE(st.cleartext_users, false),
+		       COALESCE(st.latency_target_ms, 0), %s
+		FROM services s LEFT JOIN service_settings st ON s.id = st.service_id
 		ORDER BY s.name, s.environment LIMIT 5000`
 	// Newest column set first; an older management schema falls back to fewer columns.
 	variants := []string{
-		"COALESCE(st.db_statement_mode, 'off'), COALESCE(st.error_message_mode, 'off'), COALESCE(st.sampling, '{}'::jsonb)",
-		"COALESCE(st.db_statement_mode, 'off'), COALESCE(st.error_message_mode, 'off'), '{}'::jsonb",
+		"COALESCE(st.db_statement_mode, '" + AppDefaultDBStatementMode + "'), COALESCE(st.error_message_mode, 'off'), COALESCE(st.sampling, '{}'::jsonb)",
+		"COALESCE(st.db_statement_mode, '" + AppDefaultDBStatementMode + "'), COALESCE(st.error_message_mode, 'off'), '{}'::jsonb",
 		"'off', 'off', '{}'::jsonb",
 	}
 	var rows *sql.Rows
@@ -906,6 +909,10 @@ func (db *DB) AppRemoteConfig(ctx context.Context) ([]AppRemoteService, error) {
 	}
 	return db.appAddPayloadRoutes(ctx, out)
 }
+
+// AppDefaultDBStatementMode is the statement mode of a service whose settings were never saved (management
+// migration 084 made fingerprints the default).
+const AppDefaultDBStatementMode = "fingerprint"
 
 // appAddPayloadRoutes attaches each service's reviewed routes. A service with a policy but no saved settings
 // gets a PolicyOnly entry. A missing policy table means no route has been reviewed.

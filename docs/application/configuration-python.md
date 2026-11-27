@@ -2,12 +2,12 @@
 
 Connect a Python web application (Flask, Django, FastAPI and others with an `opentelemetry-instrumentation-*` package) to the local ObsidianWatch agent.
 
-Verified: the Flask sample ran against the agent's real Linux receiver with `opentelemetry-sdk 1.45.2`: service and environment decoded, identity verified, route templates, 25 failed logins counted on `/login`, 6 injection-class exceptions on `/search`, 32 helper events. That test exercised the receiver and aggregator, not the sending path to the server. Django and FastAPI were not run.
+Verified: the Flask sample ran against the agent's real Linux receiver with `opentelemetry-sdk 1.45.2`: service and environment decoded, identity verified, route templates, 25 failed logins counted on `/login`, 6 injection-class exceptions on `/search`, 32 helper events. The Full Stack FastAPI Template (FastAPI 0.14x on Python 3.14, `opentelemetry-sdk 1.45.2`, instrumentations 0.66b2, SQLAlchemy on PostgreSQL) ran end to end through the server at Tier 2: route templates such as `/api/v1/users/{user_id}`, fingerprinted queries with operation and table, the commit, verified identity, and the login, authz.deny, input.rejected, admin.action and data.export events.
 
 ## Prerequisites
 
 - An ObsidianWatch agent built with the app-server profile on the same host ([deployment.md](deployment.md)), listening on `127.0.0.1:4318`.
-- Python 3.8 or later.
+- Python 3.10 or later (`opentelemetry-sdk` 1.40 and later).
 
 ## Steps
 
@@ -58,14 +58,26 @@ def tag_client():
 
 Behind a proxy, set `client.address` from the forwarded header and add the proxy to the service's Trusted proxies.
 
+### FastAPI
+
+```python
+from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor
+
+FastAPIInstrumentor.instrument_app(app, exclude_spans=["receive", "send"])
+SQLAlchemyInstrumentor().instrument(engine=engine)      # the engine your sessions use
+```
+
+`exclude_spans` drops the per-message ASGI spans, which are noise for the agent. Set the client address from a router dependency (`app.include_router(api_router, dependencies=[Depends(capture)])`, where `capture(request: Request)` sets `client.address` from `request.client.host` on `trace.get_current_span()`); the same dependency can call `ow_payload.set_body(await request.json())` for JSON bodies or `dict((await request.form()).items())` for forms. For `authz.deny` and `input.rejected` without touching every route, register exception handlers for `HTTPException` (401 and 403) and `RequestValidationError` that call the helper and then FastAPI's default handlers (`fastapi.exception_handlers`).
+
 ## What is captured automatically
 
 | Data | Source | Notes |
 |---|---|---|
 | Routes, RED, status classes | server spans with `http.route` | Flask reports `/orders/<int:order_id>`; Django and FastAPI report their templates |
 | Query-string field names, injection signatures | `url.query` or `http.target` | |
-| Dependencies and queries | client spans from `requests`, `httpx`, `psycopg2`, `sqlalchemy` and similar instrumentations (install them) | queries: defect D1 |
-| Error groups | `exception` events; Python tracebacks (`File "...", line N, in f`) | frames under `site-packages/`, `dist-packages/`, `/lib/python` count as library frames. Defect D1 |
+| Dependencies and queries | client spans from `requests`, `httpx`, `psycopg2`, `sqlalchemy` and similar instrumentations (install them) | install the instrumentation for your driver or ORM. Statements are fingerprinted (literals become `?`) when the service's statement setting is `fingerprint`, the default; the agent reads operation and table from the statement |
+| Error groups | `exception` events; Python tracebacks (`File "...", line N, in f`) | frames under `site-packages/`, `dist-packages/`, `/lib/python` count as library frames |
 | Instance identity | the Python process (gunicorn and uvicorn workers that share the executable are verified too) | |
 
 ## What needs manual work
@@ -77,7 +89,7 @@ Behind a proxy, set `client.address` from the forwarded header and add the proxy
   with tracer.start_as_current_span("nightly-report", context=Context(), attributes={"ow.job.name": "nightly-report"}):
       run()
   ```
-- **Metrics.** Python runtime metrics are stored when their names start with `process.runtime.` or `process.cpu.`/`process.memory.`, but none feeds the runtime summary or APM-O07. Pool metrics (`db.client.connection*`) from SQLAlchemy instrumentation are summarised. Defect D1 currently prevents delivery.
+- **Metrics.** Python runtime metrics are stored when their names start with `process.runtime.` or `process.cpu.`/`process.memory.`, but none feeds the runtime summary or APM-O07. Pool metrics (`db.client.connection*`) from SQLAlchemy instrumentation are summarised.
 
 ## Security helper (optional, Tier 2)
 
@@ -117,3 +129,5 @@ The sample is intentionally vulnerable and must never be deployed.
 | Instance **asserted** | container with its own network namespace; use the Unix socket ([deployment.md](deployment.md)) |
 | POST routes show no fields | `ow_payload` not installed, body not a JSON object or form, body over 32 KiB |
 | Security tab empty | `ow_security.init` not called, or wrong logs URL |
+| A new service's Queries tab lists operations but no statements | the agent pulls service settings every 5 minutes; until the first pull after the service appears it sends no statement text. Statements appear within 5 minutes |
+| Queries show the operation `SELECT APP` (operation plus database name) | SQLAlchemy instrumentation puts the span name in `db.operation`; agents from this release take the first word. Update the agent |

@@ -10,7 +10,6 @@ import (
 	"crypto/subtle"
 	"encoding/json"
 	"fmt"
-	"io"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -121,9 +120,8 @@ func handleADOWebhook(db *store.DB, eventDB *store.DB, logger *slog.Logger) http
 			http.Error(w, "rate limited", 429)
 			return
 		}
-		body, err := io.ReadAll(io.LimitReader(r.Body, 1<<20))
+		body, err := readWebhookBody(w, r, logger, idStr)
 		if err != nil {
-			http.Error(w, "read error", 400)
 			return
 		}
 		id, err := strconv.ParseInt(idStr, 10, 64)

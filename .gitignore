@@ -1,25 +1,118 @@
-# Dependencies (restore with `npm ci` / `go mod download`; Dockerfiles do this)
-node_modules
-vendor/
+# ObsidianWatch: what must never be committed. Patterns without a leading "/" apply in every directory.
 
-# Build output
+# ── Secrets and key material ────────────────────────────────────────────────────
+# Environment files (keep .env.example as the template)
+.env
+.env.*
+!.env.example
+*.env
+!*.env.example
+# Private keys, keystores and certificates (generated per deployment by cert-init / the agent builder)
+*.key
+*.pem
+*.crt
+*.csr
+*.p12
+*.pfx
+*.jks
+*.keystore
+*.kdbx
+id_rsa*
+id_ed25519*
+agent-ca/
+certs/
+secrets/
+# Local copies of configuration with real values
+*.local.yaml
+*.local.yml
+*.local.json
+docker-compose.override.yml
+docker-compose.override.yaml
+.htpasswd
+
+# ── Dependencies (restored by npm ci / go mod download; the Dockerfiles do this) ─
+node_modules/
+vendor/
+.venv/
+venv/
+__pycache__/
+*.pyc
+.pnpm-store/
+.npm/
+.gocache/
+
+# ── Build output ──────────────────────────────────────────────────────────────────
 management/frontend/dist/
 *.timestamp-*.mjs
-*.test
-*.out
-coverage.*
 /backend/server
 /management/backend/server
+/management/backend/management-server
+/backend/backend-server
+# Agent binaries and packages
+agents/*/build/obsidianwatch-*
+agents/*/obsidianwatch-*
+agents/*/dist/
+*.exe
+*.dll
+*.so
+*.dylib
+*.msi
+*.dmg
+*.pkg
+*.deb
+*.rpm
+*.syso
+# Go test binaries and profiles
+*.test
+*.out
+*.prof
+coverage.*
+coverage/
+# Java / .NET / misc build directories (sample apps unpacked or built locally)
+target/
+obj/
+.gradle/
+*.class
 
-# Local secrets and generated key material
-.env
-!.env.example
-agent-ca/
-*.key
+# ── Runtime data, logs and scratch ──────────────────────────────────────────────
+*.log
+logs/
+tmp/
+.tmp/
+*.pid
+*.sqlite
+*.sqlite3
+*.db
+pgdata/
+# Database dumps and backups
+*.dump
+*.sql.gz
+*.bak
+*.backup
+# State the sample apps' run.sh / run-all.sh create
+.ow-run/
+ow-sample-apps/
+# Archives (the sample bundles in samples/app/bundles are the only ones tracked)
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+!samples/app/bundles/*.zip
+# Terraform state, if any infrastructure code is added
+*.tfstate
+*.tfstate.*
+.terraform/
 
-# Editor / OS noise
+# ── Local tooling ───────────────────────────────────────────────────────────────
+# Screenshot preview config used during UI work
+vite.shot.config.mjs
+# Editors and OS
 .DS_Store
 Thumbs.db
+desktop.ini
 .idea/
 .vscode/
 *.swp
+*.swo
+*~
+.claude/settings.local.json

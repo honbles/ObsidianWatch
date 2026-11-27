@@ -109,7 +109,9 @@ There are no per-scanner switches in the UI or the settings table. What runs is 
 | OSV | Trivy missing or its vulnerability scan unavailable | Online lookup at `api.osv.dev` |
 | CodeQL | `codeql` on `PATH` | Every supported language with 3+ files (up to 4), `security-extended` suite |
 
-To disable an engine, remove its binary from the image. The SAST tab and the stored `engines` report show which engines ran.
+To disable an engine, remove its binary from the image. The SAST tab and the stored `engines` report show which engines ran. When neither opengrep/semgrep nor CodeQL ran, the scan response carries a warning that only the built-in line rules ran (flaws spread over several lines are then missed).
+
+**Concurrent scans.** Every repository scan (manual, "scan all", push, schedule, pull request) takes one of `OW_SAST_MAX_CONCURRENT` slots (default 2, at most 16) before it clones; the others wait in order. Raise it only with the memory for it: CodeQL alone uses several GB per scan.
 
 Built-in SAST rules cannot be turned off one by one. `GET /api/v1/sast-rules` lists them, read-only. The platform detection rules (`DEV-001` … `DEV-031`, `CODE-RT-001`) follow the general detection toggles, severity overrides and allow-lists. See capability.md section 6.
 

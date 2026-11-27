@@ -12,6 +12,8 @@ package api
 //  7. Store results in DB
 
 import (
+	"regexp"
+	"io/fs"
 	"context"
 	"encoding/base64"
 	"encoding/json"
@@ -54,6 +56,8 @@ type SASTFinding struct {
 	EndLine  int    `json:"end_line,omitempty"`
 	Snippet  string `json:"snippet,omitempty"`
 	Engine   string `json:"engine"` // "semgrep" | "builtin"
+	// TestCode: the file is test, fixture or example code; the severity was lowered one level (see testcode.go).
+	TestCode bool `json:"test_code,omitempty"`
 	// Dependency findings: the package, for runtime reachability (step 4).
 	Ecosystem    string        `json:"ecosystem,omitempty"`
 	Package      string        `json:"package,omitempty"`
@@ -559,6 +563,10 @@ func handleSAST(cfg *config.Config, db *store.DB, logger *slog.Logger) http.Hand
 		repoSet := map[string]bool{}
 		defaultBranch := map[string]string{}
 
+		if filterRepo != "" && !repoInConnectorScope(conn, filterRepo) {
+			writeJSON(w, http.StatusForbidden, map[string]string{"error": "repository is outside this connector's organization"})
+			return
+		}
 		if filterRepo != "" {
 			// Explicit repo selected - use it directly, no DB lookup needed
 			// This allows scanning repos with no recent commits (no sync history)
@@ -630,6 +638,11 @@ func handleSAST(cfg *config.Config, db *store.DB, logger *slog.Logger) http.Hand
 			// HEAD always resolves to the repo's default branch (main/master/etc)
 			if branch == "" || branch == "unknown" { branch = "HEAD" }
 
+			release, slotErr := acquireScanSlot(ctx)
+			if slotErr != nil {
+				release()
+				goto done
+			}
 			repoSlug := strings.ReplaceAll(repo, "/", "-")
 			repoDir := filepath.Join(tmpDir, repoSlug)
 
@@ -660,9 +673,11 @@ func handleSAST(cfg *config.Config, db *store.DB, logger *slog.Logger) http.Hand
 				source = "api"
 				n, ok := fetchRepoViaAPI(ctx, conn, token, repo, owner, repoName, branch, repoDir, logger)
 				if !ok && ctx.Err() != nil {
+					release()
 					goto done
 				}
 				if !ok {
+					release()
 					continue
 				}
 				scannedFiles += n
@@ -671,11 +686,24 @@ func handleSAST(cfg *config.Config, db *store.DB, logger *slog.Logger) http.Hand
 			scannedRepos++
 
 			repoFindings, repoSBOM := scanCheckout(ctx, conn, repo, repoDir, scanOpts{History: historyOK, CodeQL: useCodeQL, Semgrep: useSemgrep}, engines, logger)
+			if filterRepo == "" {
+				// "Scan all" also stores each repository's own result, so the repository page shows it and the
+				// coverage counts the repository as scanned even when it has no findings.
+				own := deduplicateSASTFindings(append([]SASTFinding(nil), repoFindings...))
+				sha := ""
+				if source == "git" {
+					sha = gitHeadSHA(ctx, repoDir)
+				}
+				if err := saveSASTResult(ctx, db, connID, repo, branch, sha, engines, own, repoSBOM, 1, countSourceFiles(repoDir)); err != nil {
+					logger.Warn("sast: failed to save repository result", "repo", repo, "err", err)
+				}
+			}
 			allFindings = append(allFindings, repoFindings...)
 			if repoSBOM != nil {
 				sbom = repoSBOM
 			}
 			_ = os.RemoveAll(repoDir)
+			release()
 		}
 
 	done:
@@ -706,7 +734,7 @@ func handleSAST(cfg *config.Config, db *store.DB, logger *slog.Logger) http.Hand
 			"engine":        engine,
 			"engines":       engines,
 			"sbom_available": sbom != nil,
-			"warning":       sastSourceWarning(scannedRepos, lastSourceErr),
+			"warning":       joinWarnings(sastSourceWarning(scannedRepos, lastSourceErr), scanEngineWarning(scannedRepos, engines)),
 			"scanned_repos": scannedRepos,
 			"scanned_files": scannedFiles,
 			"finding_count": len(allFindings),
@@ -820,16 +848,34 @@ func fetchRepoViaAPI(ctx context.Context, conn *store.DevOpsConnector, token, re
 }
 
 // runBuiltinRulesOnDir runs our regex-based SAST rules on files in a directory
+//
+// It reads only source files under the size cap the API download uses: a clone holds every file (images,
+// archives, generated data, up to OW_SAST_MAX_REPO_MB), and reading each whole into memory cost time and RAM
+// for files no rule applies to. .git and dependency directories are skipped without being walked.
 func runBuiltinRulesOnDir(repo, dir string) []SASTFinding {
 	var findings []SASTFinding
-	filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
-		if err != nil || info.IsDir() { return nil }
-		relPath := strings.TrimPrefix(path, dir+"/")
-		if isVendorPath(relPath) { return nil }
+	_ = filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return nil
+		}
+		relPath := strings.TrimPrefix(filepath.ToSlash(strings.TrimPrefix(path, dir)), "/")
+		if d.IsDir() {
+			if relPath != "" && isVendorPath(relPath+"/") {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if !d.Type().IsRegular() || isVendorPath(relPath) || !isSourceFile(relPath) {
+			return nil
+		}
+		if info, ierr := d.Info(); ierr != nil || info.Size() > int64(sastSizeLimit(relPath)) {
+			return nil
+		}
 		content, err := os.ReadFile(path)
-		if err != nil { return nil }
-		f := runSASTRules(repo, relPath, string(content))
-		findings = append(findings, f...)
+		if err != nil {
+			return nil
+		}
+		findings = append(findings, runSASTRules(repo, relPath, string(content))...)
 		return nil
 	})
 	return findings
@@ -845,122 +891,126 @@ func handleListSASTRepos(db *store.DB, logger *slog.Logger) http.HandlerFunc {
 			writeJSON(w, 400, map[string]string{"error": "invalid id"})
 			return
 		}
-		ctx := r.Context()
-
-		conn, err := db.GetDevOpsConnectorRaw(ctx, connID)
+		conn, err := db.GetDevOpsConnectorRaw(r.Context(), connID)
 		if err != nil {
 			writeJSON(w, 404, map[string]string{"error": "connector not found"})
 			return
 		}
-		token := conn.Credentials["token"]
-
-		type repoInfo struct {
-			Repo   string `json:"repo"`
-			Branch string `json:"branch"`
-		}
-
-		var out []repoInfo
-
-		if conn.Provider == "azuredevops" {
-			// Azure DevOps: list repos across all projects
-			org := conn.Org
-			token := conn.Credentials["token"]
-			_ = token
-			client := adoClientFor(conn)
-			if projects, err := adoProjects(ctx, client, conn); err == nil {
-				for _, projName := range projects {
-					var reposResp struct {
-						Value []struct {
-							Name          string `json:"name"`
-							DefaultBranch string `json:"defaultBranch"`
-						} `json:"value"`
-					}
-					repoURL := fmt.Sprintf("%s/%s/_apis/git/repositories?api-version=7.0", client.baseURL, neturl.PathEscape(projName))
-					if err2 := client.getJSON(ctx, repoURL, &reposResp); err2 == nil {
-						for _, rp := range reposResp.Value {
-							branch := strings.TrimPrefix(rp.DefaultBranch, "refs/heads/")
-							if branch == "" { branch = "main" }
-							out = append(out, repoInfo{Repo: fmt.Sprintf("%s/%s/%s", org, projName, rp.Name), Branch: branch})
-						}
-					}
-				}
-			}
-		} else if conn.Provider == "gitlab" {
-			baseURL := conn.Credentials["base_url"]
-			if baseURL == "" { baseURL = "https://gitlab.com" }
-			// The connector's own group/namespace, paged. membership=true used
-			// to list every project the token could see, outside the group too.
-			glc := &gitlabClient{token: token, baseURL: baseURL, group: conn.Org}
-			if projects, err := gitlabProjects(ctx, glc, conn.Org); err == nil {
-				for _, p := range projects {
-					if p.EmptyRepo || p.Archived {
-						continue
-					}
-					branch := p.DefaultBranch
-					if branch == "" { branch = "HEAD" }
-					out = append(out, repoInfo{Repo: p.PathWithNamespace, Branch: branch})
-				}
-			}
-		} else {
-			// GitHub - try org repos first, fall back to user repos
-			var repos []struct {
-				FullName      string `json:"full_name"`
-				DefaultBranch string `json:"default_branch"`
-			}
-			// Fetch from BOTH org endpoint AND authenticated user endpoint then merge+deduplicate
-			// so we get org repos + personal public + personal private all in one list
-			seen := map[string]bool{}
-			for _, apiURL := range githubRepoListURLs(conn.Org) {
-				var batch []struct {
-					FullName      string `json:"full_name"`
-					DefaultBranch string `json:"default_branch"`
-				}
-				req, _ := http.NewRequestWithContext(ctx, "GET", apiURL, nil)
-				req.Header.Set("Authorization", "Bearer "+token)
-				req.Header.Set("Accept", "application/vnd.github+json")
-				if resp, err := devopsHTTP.Do(req); err == nil {
-					json.NewDecoder(resp.Body).Decode(&batch)
-					resp.Body.Close()
-					// Log what each endpoint returned for debugging
-					var names []string
-					for _, r := range batch { names = append(names, r.FullName) }
-					logger.Info("sast: repo list endpoint", "url", apiURL, "status", resp.StatusCode, "count", len(batch), "repos", names)
-					if resp.StatusCode == 200 {
-						for _, r := range batch {
-							// Only the connector's own org/account (the token
-							// owner's other repos used to be scanned too).
-							if !githubRepoBelongs(r.FullName, conn.Org) { continue }
-							if !seen[r.FullName] {
-								seen[r.FullName] = true
-								repos = append(repos, r)
-							}
-						}
-					}
-				}
-			}
-			for _, rp := range repos {
-				branch := rp.DefaultBranch
-				if branch == "" { branch = "HEAD" }
-				out = append(out, repoInfo{Repo: rp.FullName, Branch: branch})
-			}
-		}
-
-		// Fallback: repos from DB commits if API call failed
-		if len(out) == 0 {
-			dbRepos, _ := db.ListDevOpsRepos(ctx, connID)
-			for _, rp := range dbRepos {
-				branch := rp.Branch
-				if branch == "" || branch == "unknown" { branch = "HEAD" }
-				out = append(out, repoInfo{Repo: rp.Repo, Branch: branch})
-			}
-		}
-
+		out := listConnectorRepos(r.Context(), db, conn, logger)
 		writeJSON(w, 200, map[string]interface{}{
 			"repos":  out,
 			"count":  len(out),
 			"source": "github_api",
 		})
 	}
+}
+
+// sastRepoInfo is one repository of a connector with its default branch.
+type sastRepoInfo struct {
+	Repo   string `json:"repo"`
+	Branch string `json:"branch"`
+}
+
+// listConnectorRepos lists the connector's repositories from the provider (the stored commits when that fails).
+// GitHub is paged (100 per page, up to 2 000 repositories): only the first page used to be read, so an
+// organization with more than 100 repositories showed only the 100 most recently pushed.
+func listConnectorRepos(ctx context.Context, db *store.DB, conn *store.DevOpsConnector, logger *slog.Logger) []sastRepoInfo {
+	token := conn.Credentials["token"]
+	var out []sastRepoInfo
+	switch conn.Provider {
+	case "azuredevops":
+		client := adoClientFor(conn)
+		if projects, err := adoProjects(ctx, client, conn); err == nil {
+			for _, projName := range projects {
+				var reposResp struct {
+					Value []struct {
+						Name          string `json:"name"`
+						DefaultBranch string `json:"defaultBranch"`
+					} `json:"value"`
+				}
+				repoURL := fmt.Sprintf("%s/%s/_apis/git/repositories?api-version=7.0", client.baseURL, neturl.PathEscape(projName))
+				if err2 := client.getJSON(ctx, repoURL, &reposResp); err2 == nil {
+					for _, rp := range reposResp.Value {
+						branch := strings.TrimPrefix(rp.DefaultBranch, "refs/heads/")
+						if branch == "" {
+							branch = "main"
+						}
+						out = append(out, sastRepoInfo{Repo: fmt.Sprintf("%s/%s/%s", conn.Org, projName, rp.Name), Branch: branch})
+					}
+				}
+			}
+		}
+	case "gitlab":
+		baseURL := conn.Credentials["base_url"]
+		if baseURL == "" {
+			baseURL = "https://gitlab.com"
+		}
+		// The connector's own group/namespace, paged.
+		glc := &gitlabClient{token: token, baseURL: baseURL, group: conn.Org}
+		if projects, err := gitlabProjects(ctx, glc, conn.Org); err == nil {
+			for _, p := range projects {
+				if p.EmptyRepo || p.Archived {
+					continue
+				}
+				branch := p.DefaultBranch
+				if branch == "" {
+					branch = "HEAD"
+				}
+				out = append(out, sastRepoInfo{Repo: p.PathWithNamespace, Branch: branch})
+			}
+		}
+	default:
+		// GitHub: the org endpoint and the authenticated user's own repositories, merged, only the connector's
+		// own org/account.
+		seen := map[string]bool{}
+		for _, apiURL := range githubRepoListURLs(conn.Org) {
+			for page := 1; page <= 20; page++ {
+				var batch []struct {
+					FullName      string `json:"full_name"`
+					DefaultBranch string `json:"default_branch"`
+				}
+				req, _ := http.NewRequestWithContext(ctx, "GET", fmt.Sprintf("%s&page=%d", apiURL, page), nil)
+				req.Header.Set("Authorization", "Bearer "+token)
+				req.Header.Set("Accept", "application/vnd.github+json")
+				resp, err := devopsHTTP.Do(req)
+				if err != nil {
+					break
+				}
+				_ = json.NewDecoder(io.LimitReader(resp.Body, 16<<20)).Decode(&batch)
+				resp.Body.Close()
+				if resp.StatusCode != 200 {
+					break
+				}
+				for _, rp := range batch {
+					if !githubRepoBelongs(rp.FullName, conn.Org) || seen[rp.FullName] {
+						continue
+					}
+					seen[rp.FullName] = true
+					branch := rp.DefaultBranch
+					if branch == "" {
+						branch = "HEAD"
+					}
+					out = append(out, sastRepoInfo{Repo: rp.FullName, Branch: branch})
+				}
+				if len(batch) < 100 {
+					break
+				}
+			}
+		}
+		logger.Info("sast: repo list", "connector", conn.ID, "count", len(out))
+	}
+	// Fallback: repos from stored commits if the provider call failed.
+	if len(out) == 0 {
+		dbRepos, _ := db.ListDevOpsRepos(ctx, conn.ID)
+		for _, rp := range dbRepos {
+			branch := rp.Branch
+			if branch == "" || branch == "unknown" {
+				branch = "HEAD"
+			}
+			out = append(out, sastRepoInfo{Repo: rp.Repo, Branch: branch})
+		}
+	}
+	return out
 }
 
 func handleGetSASTResults(db *store.DB) http.HandlerFunc {
@@ -1302,6 +1352,10 @@ func sastFilePriority(path string) int {
 }
 
 func deduplicateSASTFindings(findings []SASTFinding) []SASTFinding {
+	// Every scan path passes here before results are saved, posted or sent to AI: mask credential snippets and
+	// lower findings in test code.
+	maskFindingSnippets(findings)
+	markTestCode(findings)
 	// Phase 1: exact duplicates within one engine (repo+rule+file+line).
 	exactSeen := map[string]bool{}
 	var deduped []SASTFinding
@@ -1312,6 +1366,28 @@ func deduplicateSASTFindings(findings []SASTFinding) []SASTFinding {
 			deduped = append(deduped, f)
 		}
 	}
+
+	// Phase 1b: two built-in rules on the same line with the same CWE report one issue (for example JS002 and
+	// A03-JS003 both match eval): keep the more severe one.
+	sevRank := map[string]int{"critical": 4, "high": 3, "medium": 2, "low": 1, "info": 0}
+	builtinAt := map[string]int{}
+	kept := deduped[:0:0]
+	for _, f := range deduped {
+		if f.Engine != "builtin" || f.CWE == "" {
+			kept = append(kept, f)
+			continue
+		}
+		key := f.Repo + "\x00" + f.File + "\x00" + strconv.Itoa(f.Line) + "\x00" + f.CWE
+		if i, ok := builtinAt[key]; ok {
+			if sevRank[f.Severity] > sevRank[kept[i].Severity] {
+				kept[i] = f
+			}
+			continue
+		}
+		builtinAt[key] = len(kept)
+		kept = append(kept, f)
+	}
+	deduped = kept
 
 	// Phase 2: a CodeQL finding within two lines of a Semgrep finding in the
 	// same file of the same repository is the same issue: tag the Semgrep
@@ -1346,8 +1422,50 @@ func deduplicateSASTFindings(findings []SASTFinding) []SASTFinding {
 			out = append(out, f)
 		}
 	}
-	return out
+
+	// Phase 3: the built-in rules always run next to opengrep/semgrep and CodeQL. A built-in finding with the
+	// same CWE within two lines of an engine finding in the same file is the same issue: keep the engine's,
+	// which has the better message and data flow.
+	engineAt := map[loc][]string{}
+	for _, f := range out {
+		if f.Engine != "builtin" && f.Package == "" {
+			if id := cweID(f.CWE); id != "" {
+				k := loc{f.Repo, f.File, f.Line}
+				engineAt[k] = append(engineAt[k], id)
+			}
+		}
+	}
+	if len(engineAt) == 0 {
+		return out
+	}
+	covered := func(f SASTFinding, id string) bool {
+		for dl := -2; dl <= 2; dl++ {
+			for _, e := range engineAt[loc{f.Repo, f.File, f.Line + dl}] {
+				if e == id {
+					return true
+				}
+			}
+		}
+		return false
+	}
+	final := out[:0:0]
+	for _, f := range out {
+		if f.Engine == "builtin" {
+			if id := cweID(f.CWE); id != "" && covered(f, id) {
+				continue
+			}
+		}
+		final = append(final, f)
+	}
+	return final
 }
+
+var cweIDRe = regexp.MustCompile(`(?i)CWE-\d+`)
+
+// cweID is the bare "CWE-89" of a CWE field ("CWE-89: Improper Neutralization ..." from engine metadata).
+func cweID(s string) string { return strings.ToUpper(cweIDRe.FindString(s)) }
+
+
 
 // escapePathSegments URL-escapes each segment of a slash-separated path.
 func escapePathSegments(p string) string {
@@ -1364,4 +1482,21 @@ func sastSizeLimit(path string) int {
 		return 5 << 20
 	}
 	return maxFileBytes
+}
+
+func scanEngineWarning(scanned int, e engineReport) string {
+	if scanned == 0 {
+		return ""
+	}
+	return sastEngineWarning(e)
+}
+
+func joinWarnings(ws ...string) string {
+	var out []string
+	for _, w := range ws {
+		if w != "" {
+			out = append(out, w)
+		}
+	}
+	return strings.Join(out, " ")
 }

@@ -151,7 +151,7 @@ func TestPRCheckoutScanAndReport(t *testing.T) {
 		calls = append(calls, apiCall{r.Method, r.URL.EscapedPath(), r.URL.RawQuery, body})
 		mu.Unlock()
 		if r.Method == "GET" {
-			_, _ = w.Write([]byte(`{"diff_refs":{"base_sha":"b","head_sha":"h","start_sha":"s"}}`))
+			_, _ = w.Write([]byte(`{"visibility":"private","diff_refs":{"base_sha":"b","head_sha":"h","start_sha":"s"}}`))
 			return
 		}
 		w.WriteHeader(201)

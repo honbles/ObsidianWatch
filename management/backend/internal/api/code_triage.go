@@ -93,7 +93,11 @@ func findingFingerprint(f SASTFinding) string {
 	case f.Package != "":
 		parts = append(parts, f.Package, f.Version)
 	case snippetCode(f.Snippet) != "":
-		parts = append(parts, snippetCode(f.Snippet))
+		snip := f.Snippet
+		if isCredentialFinding(f) {
+			snip = maskCredentialSnippet(snip) // same fingerprint before and after snippets were masked
+		}
+		parts = append(parts, snippetCode(snip))
 	default:
 		parts = append(parts, f.Title)
 	}

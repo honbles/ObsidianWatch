@@ -78,6 +78,18 @@ func toolPath(names ...string) string {
 // credentials git should send. The token travels in an http.extraHeader set
 // through GIT_CONFIG_* environment variables, never in the URL or argv.
 func gitRemote(conn *store.DevOpsConnector, repo string) (cloneURL, authHeader string, err error) {
+	cloneURL, authHeader, err = gitRemoteUnscoped(conn, repo)
+	if err == nil && authHeader != "" {
+		if u, perr := neturl.Parse(cloneURL); perr == nil && u.Scheme != "" && u.Host != "" {
+			// Scope the header to the provider's origin (see gitEnv): git then sends it only to URLs under it,
+			// not to another host that an initial redirect points to.
+			authHeader += "\x00" + u.Scheme + "://" + u.Host + "/"
+		}
+	}
+	return cloneURL, authHeader, err
+}
+
+func gitRemoteUnscoped(conn *store.DevOpsConnector, repo string) (cloneURL, authHeader string, err error) {
 	token := conn.Credentials["token"]
 	basic := func(user string) string {
 		return "Authorization: Basic " + base64.StdEncoding.EncodeToString([]byte(user+":"+token))
@@ -118,7 +130,11 @@ func gitEnv(authHeader string) []string {
 		"GIT_LFS_SKIP_SMUDGE=1", "GIT_ASKPASS=/bin/false",
 	)
 	if authHeader != "" {
-		env = append(env, "GIT_CONFIG_COUNT=1", "GIT_CONFIG_KEY_0=http.extraHeader", "GIT_CONFIG_VALUE_0="+authHeader)
+		key := "http.extraHeader"
+		if header, origin, ok := strings.Cut(authHeader, "\x00"); ok {
+			authHeader, key = header, "http."+origin+".extraHeader" // http.<url>.* applies only to URLs under it
+		}
+		env = append(env, "GIT_CONFIG_COUNT=1", "GIT_CONFIG_KEY_0="+key, "GIT_CONFIG_VALUE_0="+authHeader)
 	}
 	return env
 }
@@ -952,8 +968,16 @@ func runCodeQLLang(ctx context.Context, repoDir, repoName string, l codeqlLang, 
 		"--overwrite", "--threads=2"}
 	if l.BuildMode == "manual" {
 		// An explicit command rather than autobuild, so no Makefile or build
-		// script from the repository is ever run.
-		args = append(args, "--command=go build ./...")
+		// script from the repository is ever run. One build per Go module: a
+		// repository whose go.mod files are in subdirectories (a monorepo) has
+		// nothing to build at the root.
+		for _, dir := range goModuleDirs(repoDir) {
+			if dir == "." {
+				args = append(args, "--command=go build ./...")
+			} else {
+				args = append(args, "--command=go build -C "+dir+" ./...")
+			}
+		}
 	}
 	create := exec.CommandContext(ctx, "codeql", args...)
 	create.Env = env
@@ -1012,6 +1036,21 @@ func nullJSON(b []byte) interface{} {
 
 // sastSourceWarning explains an empty scan: the repository could not be
 // downloaded either way (usually the token's permissions).
+// sastEngineWarning is set when neither data-flow engine ran: only the built-in rules, which match one line at a
+// time, looked at the code, so flaws that span lines (input read on one line, used in a query on another) are
+// missed.
+func sastEngineWarning(e engineReport) string {
+	if e["semgrep"] == "ran" || e["opengrep"] == "ran" || e["codeql"] == "ran" {
+		return ""
+	}
+	for k, v := range e {
+		if (strings.HasPrefix(k, "semgrep") || strings.HasPrefix(k, "opengrep") || strings.HasPrefix(k, "codeql")) && v == "ran" {
+			return ""
+		}
+	}
+	return "Only the built-in line rules ran (opengrep/semgrep and CodeQL are missing or failed): flaws that span several lines are not detected. Check the engine list."
+}
+
 func sastSourceWarning(scanned int, lastErr string) string {
 	if scanned > 0 || lastErr == "" {
 		return ""
@@ -1306,4 +1345,37 @@ func explainKill(err error, ctx context.Context, limit time.Duration, envVar str
 		return fmt.Errorf("killed by the system, most likely out of memory: give the management container more memory or keep OW_SAST_HEAVY_SLOTS at 1 (%v)", err)
 	}
 	return err
+}
+
+// maxGoModules caps the Go modules built for CodeQL in one repository.
+const maxGoModules = 20
+
+// goModuleDirs lists the directories holding a go.mod, relative to repoDir ("." for the root), skipping vendored,
+// test-data and hidden directories. A repository without any go.mod still gets "." (GOPATH-style code).
+func goModuleDirs(repoDir string) []string {
+	var dirs []string
+	_ = filepath.WalkDir(repoDir, func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return nil
+		}
+		if d.IsDir() {
+			n := d.Name()
+			if p != repoDir && (strings.HasPrefix(n, ".") || n == "testdata" || isVendorPath(n+"/")) {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if d.Name() == "go.mod" && len(dirs) < maxGoModules {
+			rel, rerr := filepath.Rel(repoDir, filepath.Dir(p))
+			if rerr == nil && !strings.ContainsAny(rel, " '\"$`\\") { // passed inside a command line
+				dirs = append(dirs, filepath.ToSlash(rel))
+			}
+		}
+		return nil
+	})
+	if len(dirs) == 0 {
+		return []string{"."}
+	}
+	sort.Strings(dirs)
+	return dirs
 }

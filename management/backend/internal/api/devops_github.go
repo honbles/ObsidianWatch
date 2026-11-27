@@ -775,9 +775,8 @@ func handleGitHubWebhook(db *store.DB, eventDB *store.DB, logger *slog.Logger) h
 		// DO-01: 10MB -> 1MB. GitHub webhook payloads are small; a large
 		// cap just gives an attacker more room before the signature check
 		// below ever runs.
-		body, err := io.ReadAll(io.LimitReader(r.Body, 1*1024*1024))
+		body, err := readWebhookBody(w, r, logger, idStr)
 		if err != nil {
-			http.Error(w, "read error", 400)
 			return
 		}
 

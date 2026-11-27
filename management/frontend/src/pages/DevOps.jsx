@@ -998,6 +998,7 @@ function ConnectorDetail({ conn, onSync, onDisconnect, syncing }) {
                                     <span className={`text-2xs font-bold uppercase px-1.5 py-0.5 rounded border shrink-0 ${sevBg} ${sevColor}`}>{f.severity}</span>
                                     <span className="text-xs font-semibold text-siem-text">{f.title}</span>
                                     {f.cwe && <span className="text-2xs text-violet-400/60 shrink-0">{f.cwe}</span>}
+                                    {f.test_code && <span className="text-2xs shrink-0" style={{ color: 'var(--t3)', border: '1px solid var(--line)', borderRadius: 4, padding: '0 4px' }} title="In test, fixture or example code: severity lowered one level">test code</span>}
                                     <ReachBadge reach={f.reachability} />
                                     <TriageBadge f={f} />
                                     {f.issue_url && <a href={f.issue_url} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()} className="text-2xs px-1.5 py-0.5 rounded border border-siem-accent/40 text-siem-accent shrink-0">issue</a>}

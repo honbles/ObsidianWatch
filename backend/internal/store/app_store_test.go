@@ -175,8 +175,24 @@ func TestAppRemoteConfigIntegration(t *testing.T) {
 		t.Fatal(err)
 	}
 	got, err := db.AppRemoteConfig(ctx)
-	if err != nil || len(got) != 1 || got[0].Service != "api" || got[0].StoreClientIP != "truncated" || !got[0].CleartextUsers || got[0].LatencyTargetMs != 300 {
+	if err != nil || len(got) != 2 || got[0].Service != "api" || got[0].StoreClientIP != "truncated" || !got[0].CleartextUsers || got[0].LatencyTargetMs != 300 {
 		t.Fatalf("%+v %v", got, err)
+	}
+	// A service whose settings were never saved gets the defaults.
+	if got[1].Service != "nosettings" || got[1].StoreClientIP != "full" || got[1].CleartextUsers {
+		t.Fatalf("defaults: %+v", got[1])
+	}
+	// With the statement and sampling columns, an unsaved service gets statement fingerprints by default.
+	for _, m := range []string{"066_app_db_statement_mode.sql", "067_app_error_message_mode.sql", "068_app_sampling.sql"} {
+		if b, err := os.ReadFile("../../../management/backend/internal/store/migrations/" + m); err == nil {
+			if _, err := db.ExecContext(ctx, string(b)); err != nil {
+				t.Fatal(m, err)
+			}
+		}
+	}
+	got, err = db.AppRemoteConfig(ctx)
+	if err != nil || len(got) != 2 || got[1].DBStatementMode != AppDefaultDBStatementMode || got[0].DBStatementMode != "off" {
+		t.Fatalf("statement modes: %+v %v", got, err)
 	}
 	_, _ = db.ExecContext(ctx, `DROP TABLE service_settings`)
 }

@@ -112,6 +112,7 @@ services:
       OTEL_EXPORTER_OTLP_ENDPOINT: "${OTEL_EXPORTER_OTLP_ENDPOINT:-}"
       OTEL_RESOURCE_ATTRIBUTES: "deployment.environment=${OW_ENVIRONMENT:-prod}"
       OW_BUILD_COMMIT: "${OW_BUILD_COMMIT:-}"
+      OW_SOURCE_REPO: "${OW_SOURCE_REPO:-}"
     volumes:
       - ./management/docker/server.yaml:/app/server.yaml
       # The host agent's OTLP socket directory (self-monitoring). Not mounted under

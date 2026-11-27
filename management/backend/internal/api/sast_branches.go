@@ -95,6 +95,10 @@ func handleListSASTBranches(db *store.DB) http.HandlerFunc {
 			writeJSON(w, 404, map[string]string{"error": "connector not found"})
 			return
 		}
+		if !repoInConnectorScope(conn, repo) {
+			writeJSON(w, http.StatusForbidden, map[string]string{"error": "repository is outside this connector's organization"})
+			return
+		}
 		names, perr := providerBranches(r.Context(), conn, repo)
 		// Last scan per branch; "HEAD" is the default branch.
 		scanned := map[string]time.Time{}
@@ -151,4 +155,30 @@ func handleListSASTBranches(db *store.DB) http.HandlerFunc {
 		}
 		writeJSON(w, 200, resp)
 	}
+}
+
+// repoInConnectorScope reports whether a repository named in a request belongs to the connector's organization.
+// The connector's token can often reach more than that organization (a personal token sees every repository of
+// its owner), so a repository chosen in a request is checked before it is cloned and its findings stored where
+// every console user can read them. GitLab connectors configured with a numeric group ID cannot be checked by
+// path and are allowed.
+func repoInConnectorScope(conn *store.DevOpsConnector, repo string) bool {
+	org := strings.Trim(conn.Org, "/")
+	if org == "" {
+		return true
+	}
+	switch conn.Provider {
+	case "github":
+		return githubRepoBelongs(repo, org)
+	case "gitlab":
+		if _, err := strconv.Atoi(org); err == nil {
+			return true
+		}
+		return strings.HasPrefix(strings.ToLower(strings.Trim(repo, "/"))+"/", strings.ToLower(org)+"/") &&
+			!strings.EqualFold(strings.Trim(repo, "/"), org)
+	case "azuredevops":
+		first, _, ok := strings.Cut(repo, "/")
+		return ok && strings.EqualFold(first, org)
+	}
+	return true
 }

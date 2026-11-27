@@ -258,8 +258,20 @@ func findingComment(f SASTFinding, provider string, fix *fixSuggestion) string {
 		b.WriteString("**Fix:** " + truncate(f.Fix, 600) + "\n\n")
 	}
 	if r := f.Reachability; r != nil && (r.Level == "loaded" || r.Level == "deployed") {
-		where := strings.Join(append(append([]string{}, r.Services...), r.Hosts...), ", ")
-		fmt.Fprintf(&b, "**Runtime:** this version is %s now (%s).\n\n", map[string]string{"loaded": "loaded by a running process", "deployed": "installed for a running process"}[r.Level], where)
+		// Counts only: a pull request (and its comments) can be public, and service and host names describe
+		// internal infrastructure. The names are on the finding page in the console.
+		var where []string
+		if n := len(r.Services); n > 0 {
+			where = append(where, plural(n, "service"))
+		}
+		if n := len(r.Hosts); n > 0 {
+			where = append(where, plural(n, "host"))
+		}
+		suffix := ""
+		if len(where) > 0 {
+			suffix = " (" + strings.Join(where, ", ") + ")"
+		}
+		fmt.Fprintf(&b, "**Runtime:** this version is %s now%s.\n\n", map[string]string{"loaded": "loaded by a running process", "deployed": "installed for a running process"}[r.Level], suffix)
 	}
 	b.WriteString(fixBlock(f, provider, fix))
 	meta := []string{"rule `" + f.RuleID + "`", f.Engine}
@@ -307,7 +319,7 @@ func prSummary(policy codeScanPolicy, findings []SASTFinding, blocked bool, unpo
 // posted once per finding (tracked in code_pr_checks); the summary is posted
 // when the outcome changes or new findings appear.
 func reportPR(ctx context.Context, db *store.DB, rep prReporter, conn *store.DevOpsConnector, job *store.CodeScanJob,
-	policy codeScanPolicy, findings []SASTFinding, blocked bool, dir string, fixer func(SASTFinding) *fixSuggestion) []string {
+	policy codeScanPolicy, findings []SASTFinding, blocked bool, public bool, dir string, fixer func(SASTFinding) *fixSuggestion) []string {
 	var done []string
 	state, desc := "success", "No new issues"
 	if len(findings) > 0 {
@@ -326,6 +338,22 @@ func reportPR(ctx context.Context, db *store.DB, rep prReporter, conn *store.Dev
 		return done
 	}
 	st := db.GetPRCheckState(ctx, conn.ID, job.Repo, job.Ref)
+	if public {
+		// A public repository's pull request is readable by anyone: say how many issues and how severe, never
+		// what or where (that would tell the world how to exploit them before they are fixed). The details are
+		// in the console. Posted when the outcome or the count changes.
+		sig := fmt.Sprintf("%s:%d", state, len(findings))
+		if st.LastState != sig {
+			if err := rep.Comment(ctx, publicPRSummary(policy, findings, blocked)); err != nil {
+				done = append(done, "comments failed: "+err.Error())
+			} else {
+				done = append(done, "summary only (public repository)")
+			}
+		}
+		st.LastSHA, st.LastState = job.HeadSHA, sig
+		_ = db.SavePRCheckState(ctx, conn.ID, job.Repo, job.Ref, st)
+		return done
+	}
 	sort.SliceStable(findings, func(i, j int) bool { return sevRank(findings[i].Severity) > sevRank(findings[j].Severity) })
 	var inline []prInline
 	var unposted []SASTFinding
@@ -550,6 +578,39 @@ func fixBlock(f SASTFinding, provider string, fix *fixSuggestion) string {
 		b.WriteString("**Suggested fix** (AI, confidence " + strconv.Itoa(fix.Confidence) + "%; review before applying):\n\n```diff\n" + truncate(fix.Diff, 3000) + "```\n\n")
 		if fix.Explanation != "" {
 			b.WriteString(truncate(fix.Explanation, 600) + "\n\n")
+		}
+	}
+	return b.String()
+}
+
+func plural(n int, word string) string {
+	if n == 1 {
+		return "1 " + word
+	}
+	return fmt.Sprintf("%d %ss", n, word)
+}
+
+// publicPRSummary is the pull-request comment for a public repository: counts and the outcome only.
+func publicPRSummary(policy codeScanPolicy, findings []SASTFinding, blocked bool) string {
+	c := countBySeverity(findings)
+	var b strings.Builder
+	b.WriteString("### ObsidianWatch code scan\n\n")
+	switch {
+	case len(findings) == 0:
+		b.WriteString("No new issues in the lines and files this change touches. ✅\n")
+	case blocked:
+		fmt.Fprintf(&b, "**Failing:** this change adds issues at or above **%s**.\n\n", policy.BlockOn)
+	default:
+		b.WriteString("New issues found; none at the blocking level.\n\n")
+	}
+	if len(findings) > 0 {
+		fmt.Fprintf(&b, "| Critical | High | Medium | Low |\n|---|---|---|---|\n| %d | %d | %d | %d |\n\n",
+			c["critical"], c["high"], c["medium"], c["low"])
+		b.WriteString("This repository is public, so the details are not posted here. ")
+		if u := targetURL(); u != "" {
+			b.WriteString("Maintainers can see them in [ObsidianWatch](" + u + "/devops).\n")
+		} else {
+			b.WriteString("Maintainers can see them in ObsidianWatch.\n")
 		}
 	}
 	return b.String()

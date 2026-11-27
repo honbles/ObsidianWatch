@@ -168,6 +168,8 @@ Severity of the event: 5 when `pull_request_target` comes with a PR-head checkou
 
 Webhook events have `time` = receive time.
 
+A payload is read up to 1 MiB before its signature or token is checked. A larger one is refused with 413 and logged as `devops webhook: payload over the size limit` (not as an invalid signature); polled data (commits, audit events) still arrives with the next poll, but a scan that delivery would have started (3.4) does not run.
+
 ### 3.1 GitHub (`X-GitHub-Event`)
 
 | Event | Event type produced | Severity |
@@ -337,11 +339,11 @@ Implemented in: `codescan.go`.
 
 `POST /api/v1/devops-connectors/{id}/sast[?repo=&branch=]`:
 
-1. **Repositories.** One selected repository, or every repository in the last 500 stored commits.
-2. **Clone.** `git clone --single-branch --no-tags` of the branch (`HEAD` = default branch), with the **whole branch history** unless `OW_SAST_SECRET_HISTORY=false` (then `--depth 1`). If the full clone fails it is retried shallow. The token is sent as an `Authorization: Basic` header through `GIT_CONFIG_*` environment variables (GitHub user `x-access-token`, GitLab `oauth2`, Azure DevOps any user), never in the URL or the command line. The clone is hardened: hooks disabled, symlinks checked out as plain files (no scanner can follow a link out of the checkout), HTTPS only, no submodules, no LFS download, no redirects to another host, no user or system git config. Limit: 5 minutes and `OW_SAST_MAX_REPO_MB` (default 2 048 MB) on disk.
+1. **Repositories.** One selected repository, or every repository in the last 500 stored commits. A selected repository must belong to the connector's organization (GitHub owner, GitLab group path, Azure DevOps organization; a GitLab group given by numeric ID is not checked), or the request is refused with 403: the token often reaches more than that organization, and the findings would be readable by every console user. The same check applies to `GET .../sast/branches`.
+2. **Clone.** `git clone --single-branch --no-tags` of the branch (`HEAD` = default branch), with the **whole branch history** unless `OW_SAST_SECRET_HISTORY=false` (then `--depth 1`). If the full clone fails it is retried shallow. The token is sent as an `Authorization: Basic` header through `GIT_CONFIG_*` environment variables (GitHub user `x-access-token`, GitLab `oauth2`, Azure DevOps any user), never in the URL or the command line, and scoped to the provider's origin (`http.<origin>/.extraHeader`), so git sends it to no other host. The clone is hardened: hooks disabled, symlinks checked out as plain files (no scanner can follow a link out of the checkout), HTTPS only, no submodules, no LFS download, a redirect followed only on the first request (and then without the token when it leads to another host), no user or system git config. Limit: 5 minutes and `OW_SAST_MAX_REPO_MB` (default 2 048 MB) on disk.
 3. **Fallback.** When the clone fails (git missing, network, permissions), the previous API download is used: the provider's file tree, source and configuration files only, capped at 1 000 files ranked by risk (CI files first, tests last), 300 000 bytes per file (5 MiB for lockfiles); GitHub as one tarball, GitLab and Azure DevOps one call per file. History secrets do not run then.
 4. **Run the engines** per repository: history secrets → pattern rules → Trivy (or OSV) → built-in rules → CodeQL. A missing engine is skipped and recorded.
-5. **Deduplicate** (4.7), count, and upsert one row per (connector, repository or `''`, branch), with the engine report and, for a single-repository scan, the SBOM.
+5. **Deduplicate** (4.7), count, and upsert one row per (connector, repository or `''`, branch). A scan of all repositories also stores each repository's own row (its branch, commit, findings and SBOM), so the repository page shows it and the coverage (8.1) counts it, with the engine report and, for a single-repository scan, the SBOM.
 
 If no repository could be downloaded, the response carries a `warning` with the last clone error, shown in the SAST tab.
 
@@ -362,7 +364,7 @@ The secret value is never stored; it is only held in memory to compare with the 
 
 ### 4.4 Built-in SAST rules
 
-208 regex rules (`sast_rules.go`). Each rule applies to files whose path matches its file pattern. It reports the **first** matching line per file (one finding per rule per file). Matching is per line, so patterns cannot span lines. The snippet is the matched line, trimmed to 120 characters. The list is also available from `GET /api/v1/sast-rules`.
+212 regex rules (`sast_rules.go`). Each rule applies to files whose path matches its file pattern. It reports every matching line in a file, up to 10 per rule per file. A rule can carry an exclusion pattern: a matching line that also matches it is not reported (ANY001 skips interpolated values and SQL text; IAC001 skips `${...}` values). Matching is per line, so patterns cannot span lines. The snippet is the matched line, trimmed to 120 characters; for credential findings (CWE-798, 259, 321, 312, 522 and secret rules) every literal value in it is masked to its first two characters before the result is stored, shown, sent to AI or posted. On a clone, only source files (the same file types and size cap as the API download) are read; `.git` and dependency directories are not walked. The list is also available from `GET /api/v1/sast-rules`.
 
 The "Detects" column is the first sentence of the rule's own description. `any` rules apply to the extensions in their file pattern.
 
@@ -436,6 +438,10 @@ The "Detects" column is the first sentence of the rule's own description. `any` 
 | JS018 | javascript | Clickjacking Protection Disabled | X-Frame-Options or frameguard disabled. | CWE-1021 | medium |
 | JS019 | javascript | Unsafe Deserialization (node-serialize) | node-serialize has a known RCE vulnerability (CVE-2017-5941). | CWE-502 | critical |
 | JS020 | javascript | Prototype Pollution via Object.assign/merge | Merging user-controlled objects into existing objects can pollute Object.prototype. | CWE-1321 | high |
+| JS021 | javascript | SQL Injection | A SQL statement is built with a template literal or string concatenation and passed to a query function (mysql, pg, sequelize, knex.raw, Prisma $queryRawUnsafe, TypeORM). | CWE-89 | critical |
+| JS022 | javascript | Cross-Site Scripting (XSS) - Angular Sanitizer Bypass | DomSanitizer.bypassSecurityTrust* turns off Angular's built-in escaping for the value; user-controlled content becomes script. | CWE-79 | high |
+| JS023 | javascript | XML External Entity (XXE) Processing Enabled | The XML parser is told to substitute entities (libxmljs noent: true and similar), so a document can read local files or reach internal URLs. | CWE-611 | high |
+| JS024 | javascript | Open Redirect | The redirect target comes straight from the request, so a link to this site can send users to any other site (phishing). | CWE-601 | medium |
 | GO009 | go | Server-Side Request Forgery (SSRF) | User-controlled URL in outbound HTTP request. | CWE-918 | high |
 | GO010 | go | XXE - XML Parsing (Go) | Go's encoding/xml processes external entities by default in some configurations. | CWE-611 | medium |
 | GO011 | go | SQL Injection via GORM Raw Query | String concatenation in GORM Raw/Exec query bypasses ORM protections. | CWE-89 | critical |
@@ -479,7 +485,7 @@ The "Detects" column is the first sentence of the rule's own description. `any` 
 | A01-PY003 | python | DELETE Endpoint Without Auth Check | DELETE endpoints should verify authorization before allowing deletion. | CWE-284 | medium |
 | A01-JS001 | javascript | Missing Auth Check Before Access | Checking req.user for null without proper middleware may allow bypass. | CWE-284 | high |
 | A01-JS002 | javascript | Client-Side Role Check | Role checks in client-side code can be bypassed by attackers. | CWE-284 | medium |
-| A01-JS003 | javascript | Token Stored in Browser Storage | Tokens in localStorage/sessionStorage are accessible to XSS attacks. | CWE-922 | medium |
+| A01-JS003 | javascript | Token Stored in Browser Storage | A token written to sessionStorage is readable by any script on the page, so one XSS steals it (localStorage is rule JS012). | CWE-922 | medium |
 | A01-GO001 | go | World-Writable File Permission | chmod 0777 grants all users full access to the file. | CWE-732 | high |
 | A01-GO002 | go | Path Traversal via User Input | Building file paths from user input allows directory traversal attacks. | CWE-22 | critical |
 | A01-JAVA001 | java | Permit All Access Configured | @PermitAll removes all access control for the annotated resource. | CWE-284 | high |
@@ -491,7 +497,7 @@ The "Detects" column is the first sentence of the rule's own description. `any` 
 | A02-PY003 | python | Hardcoded Encryption Key | Hardcoded encryption keys can be extracted from source code. | CWE-321 | medium |
 | A02-JS001 | javascript | Weak Hash Algorithm | MD5 and SHA1 are cryptographically broken. | CWE-327 | high |
 | A02-JS002 | javascript | Weak PRNG for Security Token | Math.random() is not cryptographically secure and predictable. | CWE-338 | critical |
-| A02-JS003 | javascript | Base64 Is Not Encryption | Base64 encoding provides no security - it's trivially reversible. | CWE-311 | medium |
+| A02-JS003 | javascript | Base64 Is Not Encryption | Base64 encoding provides no security - it's trivially reversible. | CWE-311 | low |
 | A02-GO001 | go | MD5 Hash Used | MD5 is cryptographically broken and collision-prone. | CWE-327 | high |
 | A02-GO002 | go | SHA1 Hash Used | SHA1 is deprecated for security purposes due to collision attacks. | CWE-327 | high |
 | A02-GO003 | go | Deprecated Cipher | DES, RC4, and Blowfish are cryptographically weak. | CWE-327 | critical |
@@ -555,7 +561,7 @@ The "Detects" column is the first sentence of the rule's own description. `any` 
 | A07-PHP001 | php | Session Fixation Risk | Not regenerating session ID on login allows session fixation attacks. | CWE-384 | high |
 | A08-PY001 | python | Unsafe Pickle Deserialization | pickle.loads() executes arbitrary Python code during deserialization. | CWE-502 | critical |
 | A08-PY002 | python | Unsafe Deserialization | marshal and shelve modules can execute arbitrary code. | CWE-502 | high |
-| A08-JS001 | javascript | Unvalidated Deserialization | Deserializing user-controlled JSON without schema validation is dangerous. | CWE-502 | medium |
+| A08-JS001 | javascript | Unsafe Deserialization | A serializer that restores functions or classes (node-serialize, serialize-to-js, funcster) runs code from a crafted payload; JSON.parse does not and is not reported. | CWE-502 | medium |
 | A08-GO001 | go | Unsafe Gob Deserialization | Decoding gob from untrusted input can cause unexpected behavior. | CWE-502 | high |
 | A09-PY001 | python | Silent Exception Handling | Silently swallowing exceptions prevents security event detection. | CWE-390 | medium |
 | A09-JS001 | javascript | Empty Catch Block | Empty catch blocks hide errors and prevent security monitoring. | CWE-390 | medium |
@@ -597,7 +603,7 @@ Notes on the rule set:
 | `metadata.fix` | fix text |
 | source lines | snippet: 2 lines before to 1 line after the match, at most 500 characters, matched lines marked `>` |
 
-**CodeQL** runs only when the `codeql` CLI is installed. It analyses **every supported language** with at least 3 files (the 4 largest): JavaScript/TypeScript, Python, Java/Kotlin, C#, Ruby, C/C++ and Rust with `--build-mode=none` (no build, no repository code runs), and Go with an explicit `go build ./...` (cgo off, installed toolchain only; no Makefile or build script from the repository is run). Each language runs the `security-extended` suite of its pack (`codeql/<lang>-queries:codeql-suites/<lang>-security-extended.qls`). The languages analysed are listed in the engine report. The title is the rule `name`. Severity: the rule's `security-severity` score when present (≥ 9.0 critical, ≥ 7.0 high, ≥ 4.0 medium, otherwise low, the GitHub code-scanning bands); otherwise the rule's `problem.severity` / `severity` / default level, then the result's SARIF `level` (`error` → high, `warning` → medium, `note` / `recommendation` → low); medium when none is given. PHP and Swift are not analysed by CodeQL here (pattern rules cover PHP).
+**CodeQL** runs only when the `codeql` CLI is installed. It analyses **every supported language** with at least 3 files (the 4 largest): JavaScript/TypeScript, Python, Java/Kotlin, C#, Ruby, C/C++ and Rust with `--build-mode=none` (no build, no repository code runs), and Go with an explicit `go build ./...` per Go module (every directory with a `go.mod`, up to 20, outside vendored, test-data and hidden directories; `go build -C <dir> ./...` for one in a subdirectory), with cgo off and the installed toolchain only; no Makefile or build script from the repository is run. Each language runs the `security-extended` suite of its pack (`codeql/<lang>-queries:codeql-suites/<lang>-security-extended.qls`). The languages analysed are listed in the engine report. The title is the rule `name`. Severity: the rule's `security-severity` score when present (≥ 9.0 critical, ≥ 7.0 high, ≥ 4.0 medium, otherwise low, the GitHub code-scanning bands); otherwise the rule's `problem.severity` / `severity` / default level, then the result's SARIF `level` (`error` → high, `warning` → medium, `note` / `recommendation` → low); medium when none is given. PHP and Swift are not analysed by CodeQL here (pattern rules cover PHP).
 
 ### 4.6 Dependencies, IaC, licences and SBOM
 
@@ -635,7 +641,11 @@ Implemented in: `sast_engines.go` (`runTrivy`, `parseTrivy`, `buildCycloneDX`, `
 `deduplicateSASTFindings` (`sast_engine.go`):
 
 1. Exact duplicates are removed by `engine + repository + rule_id + file + line`.
-2. Every non-CodeQL finding (Semgrep, built-in rules, OSV) is kept. A CodeQL finding within ±2 lines of a Semgrep finding in the same file **of the same repository** marks that Semgrep finding as `semgrep+codeql` and is dropped. Other CodeQL findings are kept.
+2. Two built-in rules on the same line with the same CWE (for example JS002 and A03-JS003 for `eval`) are one finding: the more severe is kept.
+3. Every non-CodeQL finding (Semgrep, built-in rules, OSV) is kept. A CodeQL finding within ±2 lines of a Semgrep finding in the same file **of the same repository** marks that Semgrep finding as `semgrep+codeql` and is dropped. Other CodeQL findings are kept.
+4. A built-in finding within ±2 lines of a Semgrep or CodeQL finding with the same CWE in the same file is dropped: the engine's finding has the better message.
+
+Before these steps, credential snippets are masked (4.4), and findings in test code are marked: a file under a test, fixture, example or sample directory (`test`, `tests`, `__tests__`, `spec`, `e2e`, `cypress`, `testdata`, `fixtures`, `mocks`, `examples`, `samples`, `demo` and similar) or named by a test convention (`*_test.go`, `test_*.py`, `*.test.ts`, `*.spec.js`, `*Test.java`, `*Tests.cs` and similar) gets `test_code: true` and one severity level less (critical → high → medium → low). Secrets and dependency findings keep their severity. A pull request blocks on the lowered severity.
 
 ### 4.8 IaC checks
 
@@ -667,7 +677,7 @@ Set per connector on the **Automation** tab (`GET/PUT /api/v1/devops-connectors/
 | Setting | Effect |
 |---|---|
 | Scan every pull request | A `pull_request` (opened, synchronize, reopened, ready for review; drafts skipped), GitLab `merge_request` (open, reopen, update with new commits) or Azure DevOps `git.pullrequest.created/updated` webhook queues a PR check |
-| Post comments | Summary comment plus inline comments on changed lines; each finding is commented once per PR (keyed on rule, file and the text of the line, so it survives lines moving) |
+| Post comments | On a **public** repository (or when the visibility cannot be read): one summary with the outcome and counts by severity only, no titles, files or lines, posted when the outcome or the count changes, and no AI fixes; the details are in the console. Otherwise: summary comment plus inline comments on changed lines; each finding is commented once per PR (keyed on rule, file and the text of the line, so it survives lines moving) |
 | Fail the check on | `critical` (default), `high`, `medium`, `low` or never |
 | Run CodeQL on pull requests | Off by default (it adds minutes per update) |
 | AI fix suggestions in comments | Off by default. Up to 5 per update (section 4.13). Needs an AI provider and the source-sharing opt-in. |
@@ -682,7 +692,7 @@ Set per connector on the **Automation** tab (`GET/PUT /api/v1/devops-connectors/
 1. Sets the commit status to pending.
 2. Fetches the base branch and the PR head (`refs/pull/N/head` on GitHub, `refs/merge-requests/N/head` on GitLab, the source branch on Azure DevOps; fork PRs work on GitHub and GitLab) into an empty hardened repository, checks out the head and finds the merge base (deepening the shallow fetch once if needed).
 3. Runs every engine on the head; secrets are searched only in the PR's own commits (`merge-base..HEAD`).
-4. Keeps what the PR introduces: findings on lines it changed (a multi-line finding counts if it overlaps a change), secrets from its commits, and dependency, licence or IaC findings without a line in files it changed that the merge base does not already have (the base is scanned only when needed). Findings dismissed by triage (section 4.12) are dropped and counted in the job notes. Dependency findings carry their runtime reachability (section 4.11), shown in the comment.
+4. Keeps what the PR introduces: findings on lines it changed (a multi-line finding counts if it overlaps a change), secrets from its commits, and dependency, licence or IaC findings without a line in files it changed that the merge base does not already have (the base is scanned only when needed). Findings dismissed by triage (section 4.12) are dropped and counted in the job notes. Dependency findings carry their runtime reachability (section 4.11), shown in the comment as a count of services and hosts only: a pull request can be public, so the names stay on the finding page in the console.
 5. Sets the status: failure when a kept finding is at or above the blocking level, otherwise success.
 6. Posts the summary and inline comments (GitHub: one review; GitLab: MR note and line discussions; Azure DevOps: PR threads). If GitHub refuses a review because a line is outside its diff, the findings are posted as a list in one comment instead. A summary is posted only when new findings appear or the outcome changes.
 
@@ -1004,14 +1014,16 @@ The rail section **Code** has one entry, **Repositories** (`/devops`).
 
 ### 8.1 Code → Repositories (`/devops`)
 
-The header shows a state (for example "2 repositories with critical findings"), the number of repositories, providers and sources, and the time of the last scan. Header numbers: **Repositories**, **Open findings**, **Secrets exposed** (findings of type `secret`), **Critical findings**, **Branch and access issues** (posture findings). Buttons: **Reload**, **Export** (CSV: severity, title, organisation, repository, where, type, source, scanned_at), **Connect source**.
+The header shows a state (for example "2 repositories with critical findings"), the number of repositories, providers and sources, and the time of the last scan. Header numbers: **Repositories scanned** (repositories with a stored SAST result / repositories the sources report now), **Branches scanned** (branches with a stored SAST result / all branches of those repositories), **Open findings**, **Secrets exposed** (findings of type `secret`), **Critical findings**, **Branch and access issues** (posture findings). Buttons: **Reload**, **Export** (CSV: severity, title, organisation, repository, where, type, source, scanned_at), **Connect source**.
+
+Coverage comes from `GET /api/v1/devops-connectors/{id}/sast/coverage` per connector, after the repository list: `repos_total`, `repos_scanned`, `branches_total`, `branches_scanned`, `branches_partial`, `repos_partial`, and per repository its default branch, whether it was scanned, the last scan, and branches scanned / total. A branch counts as scanned when a stored result exists for it (`HEAD` = the default branch); results of single commits (`@sha`) and of "scan all" (`''`) are not branches, and branches or repositories that no longer exist are not counted. Branch lists are one provider call per repository: they are fetched four at a time, cached 30 minutes, for the 300 most recently scanned repositories. "partial" is shown next to a number when some branch lists could not be read (or a source has more than 300 repositories), or when a source's repository list could not be read (then its scanned repositories are counted and each one's total is at least its scanned branches).
 
 Tabs:
 
 | Tab | Content |
 |---|---|
-| **Repositories** | One row per repository: Severity, Repository, Top finding, Count, Branch, Scanned. Facets: Severity, Finding type, Provider, Organisation (with more than one connector). Filter syntax: free text, `severity:critical,high`, `type:secret`. Up to 300 rows. Organisation-level posture findings appear as a row `<org> (organisation)`. The repository list comes from the provider (`GET .../sast/repos`) and arrives after the findings, so clean repositories appear a moment later. |
-| **Findings** | One row per finding: Severity, Finding (with runtime and triage badges), Repository, Where, Source, Scanned. Facets: Severity, Finding type, Source, **Triage**, **Runtime (dependencies)**, Repository (top 15). Rows of equal severity sort running dependencies first. Up to 500 rows. A row opens the finding page. |
+| **Repositories** | One row per repository: Severity, Repository, Top finding, Count, Branch, **Branches scanned** (scanned / total), Scanned ("Not scanned" when the repository has no stored SAST result). Facets: Severity, Finding type, Provider, Organisation (with more than one connector), **Scan status** (Scanned, Not scanned). Scanned repositories without findings are listed too. Filter syntax: free text, `severity:critical,high`, `type:secret`. Up to 300 rows. Organisation-level posture findings appear as a row `<org> (organisation)`. The repository list comes from the provider (`GET .../sast/repos`) and arrives after the findings, so clean repositories appear a moment later. |
+| **Findings** | One row per finding: Severity, Finding (with runtime and triage badges), Repository, Where, Source, Scanned. Facets: Severity, Finding type, Source, **Triage**, **Code** (production, or test and example code; SAST findings), **Runtime (dependencies)**, Repository (top 15). Findings in test code carry a "test code" tag. Rows of equal severity sort running dependencies first. Up to 500 rows. A row opens the finding page. |
 | **Connectors and scans** | The per-connector workspaces (8.4) |
 
 ### 8.2 Repository page (`/devops/repos/:connector/:repo`)
@@ -1037,7 +1049,7 @@ The left sidebar lists connectors (organisation, provider, status, items synced)
 |---|---|
 | **Code Changes** | Last 100 stored commits (search box, repository filter). A commit opens its detail with the file list and redacted patches. |
 | **Code Scan** | Run the code scan, see counts and findings of the latest run, and request an AI summary (risk score, label, executive summary, top issues, immediate actions). |
-| **SAST** | Repository selector (live list from the provider) and Branch dropdown (`GET .../sast/branches?repo=`: the repository's branches from the provider, default first, then scanned branches, marked "scanned"); choosing a repository or branch shows the latest stored result of exactly that branch (from a manual, scheduled, on-push or "scan all" run); **Run SAST Scan** (async job, polled every 2 seconds for up to 42 minutes); engine chips (what ran, what was missing or failed, source git clone or API, CodeQL languages); **Download SBOM (CycloneDX)**; summary counts; severity filter; **Show dismissed**; findings with snippet, CWE, OWASP, engine, runtime badge, triage badge or hint, and fix; per finding **Suggest fix** / **Show fix**, **False positive**, **Accept risk**, **Confirm**, **Clear decision**, and a one-click triage rule from a hint; **AI Triage** summary of the repository on screen. Selecting a repository loads its last stored result. |
+| **SAST** | Repository selector (live list from the provider, GitHub paged up to 2 000 repositories) and Branch dropdown (`GET .../sast/branches?repo=`: the repository's branches from the provider, default first, then scanned branches, marked "scanned"); choosing a repository or branch shows the latest stored result of exactly that branch (from a manual, scheduled, on-push or "scan all" run); **Run SAST Scan** (async job, polled every 2 seconds for up to 42 minutes); engine chips (what ran, what was missing or failed, source git clone or API, CodeQL languages); **Download SBOM (CycloneDX)**; summary counts; severity filter; **Show dismissed**; findings with snippet, CWE, OWASP, engine, runtime badge, triage badge or hint, and fix; per finding **Suggest fix** / **Show fix**, **False positive**, **Accept risk**, **Confirm**, **Clear decision**, and a one-click triage rule from a hint; **AI Triage** summary of the repository on screen. Selecting a repository loads its last stored result. |
 | **Automation** | Policy (PR checks, comments, CodeQL on PRs, AI fixes in comments, blocking level, comments per update, scan on push, schedule and hour, repositories for scheduled scans), **Scan all repositories now**, the status name to require for merge blocking with the provider-specific steps, the **Triage rules** list (delete), and the **Automated scans** list (trigger, repository, target, result, findings; a row shows what was posted, notes and the findings). Refreshes every 10 seconds. |
 | **Events** | Up to 500 events whose host equals the organisation name (all time). Events whose host is a repository (GitHub audit entries with a repository) are not listed here. |
 | **Alerts** | Up to 100 alerts whose host equals the organisation name. |
@@ -1061,6 +1073,7 @@ Implemented in: `management/frontend/src/pages/code/CodeOverview.jsx`, `RepoPage
 | SAST | Whole repository from git (2 048 MB on disk, 5 min clone); API fallback 1 000 files, 300 KB per file (lockfiles 5 MiB); history secrets 5 min; pattern rules 10 min; Trivy 9 min; one pattern-rule or CodeQL run at a time across all scans; CodeQL 12 min for up to 4 languages; 40 min per job; one job per connector and repository/branch at a time |
 | SCA (OSV fallback) | 50 lockfiles, 2 000 packages, 150 advisory look-ups, 60 s |
 | Automation | 1 worker (up to 4 with `OW_CODE_SCAN_WORKERS`); 40 min per job; schedule checked every 10 min; scheduled scans up to 200 known repositories per connector |
+| Concurrent repository scans | `OW_SAST_MAX_CONCURRENT` (default 2): manual, "scan all", push, schedule and pull-request scans share the slots |
 | PR checks | Shallow fetch of 300 commits (deepened once to 3 000); inline comments 1-100 per update (default 20); AI fixes 5 per update; 2 000 commented-finding keys remembered per PR |
 | Runtime inventory | Every 15 min per service process (re-sent every 6 h when unchanged); 5 000 packages per process; "running" = seen in 24 h; index rows kept 14 days |
 | AI | Source-AI rate limit 6 requests per 10 minutes (shared by AI triage and fix suggestions); 30 lines of context each side; fixes cached 30 days |

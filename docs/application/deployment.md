@@ -164,7 +164,7 @@ The management server (Go) is instrumented with the official OpenTelemetry Go SD
 | `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT` | Full URL for the security events (default: the base URL + `/v1/logs`, or the traces URL with `/v1/traces` replaced) |
 | `OTEL_SERVICE_NAME` | Default `obsidianwatch-management` |
 | `OTEL_RESOURCE_ATTRIBUTES` | `deployment.environment=prod`; `vcs.*` keys are passed on |
-| `OW_VERSION`, `OW_BUILD_COMMIT` | `service.version` and the commit (`vcs.ref.head.revision`); without `OW_BUILD_COMMIT` the commit Go stamped into the binary is used when the build had git metadata, else the commit `git archive` wrote into the source archive |
+| `OW_VERSION`, `OW_BUILD_COMMIT` | `service.version` and the commit (`vcs.ref.head.revision`); without `OW_BUILD_COMMIT` the commit Go stamped into the binary is used when the build had git metadata, else a commit written into `management/backend/internal/telemetry/build_commit.txt`. `./deploy.sh` sets it from your git clone |
 | `OW_SOURCE_REPO` | the repository URL (`vcs.repository.url.full`), which links the console's service to it on a connected code platform |
 | `OTEL_SDK_DISABLED=true` | Off |
 

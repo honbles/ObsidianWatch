@@ -2,12 +2,12 @@
 
 Connect a Node.js application (Express, Fastify, Koa, NestJS, plain `http`) to the local ObsidianWatch agent. The long step-by-step guide with copy-ready helper files is [node-security-guide.md](node-security-guide.md); this page is the reference and lists where that guide and the code differ.
 
-Verified: the Express sample (Express 4.21, OpenTelemetry SDK 0.57) and OWASP Juice Shop with `samples/app/juice-kit` ran against the agent's real Linux receiver.
+Verified: the Express sample (Express 4.21, OpenTelemetry SDK 0.57), and OWASP Juice Shop 20.4 on Node 22 with OpenTelemetry SDK 0.301 (`@opentelemetry/resources` 3.1, auto-instrumentations 0.83), ran against the agent's real Linux receiver at Tier 2: routes, fingerprinted queries with operation and table, error groups, the commit, and the security events.
 
 ## Prerequisites
 
 - An ObsidianWatch agent built with the app-server profile on the same host ([deployment.md](deployment.md)), listening on `127.0.0.1:4318`.
-- Node.js 18 or later. OpenTelemetry must start before the framework is loaded (`--require`).
+- Node.js 22.15 or later for the current OpenTelemetry packages (SDK 0.300 and later, `@opentelemetry/resources` 3.x). On older Node, pin SDK 0.57 with `@opentelemetry/resources` 1.x. OpenTelemetry must start before the framework is loaded (`--require`).
 
 ## Steps: manual SDK (path A)
 
@@ -23,20 +23,22 @@ const { NodeSDK } = require('@opentelemetry/sdk-node')
 const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-http')
 const { HttpInstrumentation } = require('@opentelemetry/instrumentation-http')
 const { ExpressInstrumentation } = require('@opentelemetry/instrumentation-express')
-const { Resource } = require('@opentelemetry/resources')
+const { resourceFromAttributes } = require('@opentelemetry/resources')
 
 new NodeSDK({
-  resource: new Resource({
+  resource: resourceFromAttributes({
     'service.name': 'orders-api',
     'deployment.environment.name': 'production',
     'service.version': process.env.APP_VERSION || '0',
+    'vcs.repository.url.full': 'https://github.com/acme/orders-api', // optional: links the Code tab
+    'vcs.ref.head.revision': process.env.GIT_COMMIT || '',             // optional: the running commit
   }),
   traceExporter: new OTLPTraceExporter({ url: 'http://127.0.0.1:4318/v1/traces' }),
   instrumentations: [new HttpInstrumentation(), new ExpressInstrumentation()],
 }).start()
 ```
 
-Start: `node --require ./instrumentation.js app.js` (or `NODE_OPTIONS=--require ./instrumentation.js`). With `@opentelemetry/resources` 2.x use `resourceFromAttributes({...})` instead of `new Resource({...})`.
+Start: `node --require ./instrumentation.js app.js` (or `NODE_OPTIONS=--require ./instrumentation.js`). `resourceFromAttributes` is the API from `@opentelemetry/resources` 2.x on; 1.x (SDK 0.57 and older) uses `new Resource({...})` instead.
 
 ## Steps: auto-instrumentation (path B)
 
@@ -65,17 +67,18 @@ ES modules (`"type": "module"`) need the OpenTelemetry ESM loader. Not covered o
 |---|---|---|
 | Routes, RED, status classes | HTTP server span with `http.route` | the Express, Fastify and Koa instrumentations set it; plain `http` and Next.js do not, so their requests are `(unmatched)` unless you set `http.route` yourself |
 | Query-string field names, injection signatures | `url.query` or `http.target` | |
-| Dependencies, queries, N+1 | client spans from `pg`, `mysql2`, `mongodb`, `ioredis`, `undici`/`http` clients and others | queries and N+1 counts: defect D1 |
-| Message consumers | CONSUMER spans from `kafkajs`, `amqplib`, AWS SDK SQS | defect D1 |
-| Error groups | `exception` events with V8 stacks (`at f (file.js:N:C)`) | frames under `node_modules/` and `node:` internals are library frames. Defect D1 |
+| Dependencies, queries, N+1 | client spans from `pg`, `mysql2`, `mongodb`, `ioredis`, `undici`/`http` clients and others | statements are fingerprinted (literals become `?`) when the service's statement setting is `fingerprint`, the default; operation and table come from the statement when the instrumentation does not set them |
+| Message consumers | CONSUMER spans from `kafkajs`, `amqplib`, AWS SDK SQS | |
+| Error groups | `exception` events with V8 stacks (`at f (file.js:N:C)`) | frames under `node_modules/` and `node:` internals are library frames |
 | Instance identity | the `node` process | verified |
 
 ## What needs manual work
 
+- **Databases without an instrumentation.** `sqlite3`, and Sequelize on SQLite, have no OpenTelemetry instrumentation, so their queries are invisible. Wrap the query function in a CLIENT span with `db.system.name` (or `db.system`) and `db.query.text`; the agent derives operation and table from the statement. For Sequelize, wrap `Sequelize.prototype.query`.
 - **Exception names.** Most JavaScript errors report the type `Error`, so APP-A09 cannot tell a SQL syntax error from others. Set `this.name = 'SqlSyntaxError'` in your own error classes. The agent's parameter-value signatures still catch injection in query strings and helper bodies.
 - **Request body fields.** `ow-payload.js` (`samples/app/node/ow-payload.js`) with `HttpInstrumentation({ requestHook: payload.requestHook })` and `app.use(payload.middleware())` after the body parsers. Fastify: `payload.record(req.raw, req.body)` in a `preHandler` hook; Koa: `payload.record(ctx.req, ctx.request.body)`. Bodies up to 32 KiB are read.
-- **Jobs.** `ow-jobs.js` wraps a function: `const nightly = job('nightly-report', async () => {...})`. Each run is a root span with `ow.job.name`. Defect D1 currently prevents delivery.
-- **Metrics.** `OTEL_METRICS_EXPORTER=otlp` plus `@opentelemetry/instrumentation-runtime-node` gives `nodejs.eventloop.delay.p99`, `v8js.memory.heap.used` and `v8js.memory.heap.limit`, which feed the runtime summary and APM-O07. Use explicit-bucket histograms. Defect D1 currently prevents delivery.
+- **Jobs.** `ow-jobs.js` wraps a function: `const nightly = job('nightly-report', async () => {...})`. Each run is a root span with `ow.job.name` and fills the Jobs tab.
+- **Metrics.** `OTEL_METRICS_EXPORTER=otlp` plus `@opentelemetry/instrumentation-runtime-node` gives `nodejs.eventloop.delay.p99`, `v8js.memory.heap.used` and `v8js.memory.heap.limit`, which feed the runtime summary and APM-O07. Use explicit-bucket histograms.
 
 ## Security helper (optional, Tier 2)
 
@@ -106,3 +109,6 @@ Then **Applications → Services**, the **Endpoints** tab (templates such as `/o
 | Every error is `Error` in one group | unnamed error classes; groups are then told apart by stack frames, and by type and route when there is no stack |
 | POST route shows no fields | hook not passed, middleware before the body parser, multipart body, or body JSON over 32 KiB |
 | Security tab empty | helper not initialised or logs URL wrong |
+| `npm install` fails with `Cannot read properties of null (reading 'edgesOut')` | an npm 10 bug with peer dependencies; run `npm install --legacy-peer-deps` |
+| `TypeError: Resource is not a constructor` | `@opentelemetry/resources` 2.x or later; use `resourceFromAttributes` |
+| Queries tab shows operation `DB` and no table | agent older than the SQL-name parsing; update the agent |
