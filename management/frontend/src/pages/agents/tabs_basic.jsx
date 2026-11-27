@@ -12,6 +12,7 @@ import { AgentSavedSearchPanel } from './tamper.jsx'
 import { tagsToQuery, searchError } from '../events/library'
 import { HealthBoard } from './health_board.jsx'
 import AppHostApplications from '../../components/app/AppHostApplications.jsx'
+import { ProtectionPanel, ProtectionTile } from './protection.jsx'
 
 export function TabOverview({ agent }) {
   const navigate = useNavigate()
@@ -19,11 +20,13 @@ export function TabOverview({ agent }) {
   const goAlerts = () => navigate(`/alerts?host=${encodeURIComponent(agent.hostname)}`)
   return (
     <div className="p-5 space-y-4">
-      <div className="grid grid-cols-4 gap-3">
+      <div className="grid grid-cols-5 gap-3">
+        <ProtectionTile agentId={agent.id}/>
         {[{label:'Status',value:agent.online?'Online':'Offline',color:agent.online?'text-emerald-400':'text-siem-muted'},{label:'OS',value:agent.os||'-',color:'text-siem-text'},{label:'Version',value:agent.version||'-',color:'text-siem-text'},{label:'Events',value:agent.event_count?.toLocaleString()||'0',color:'text-siem-text'}].map(({label,value,color})=>(
           <div key={label} className="bg-siem-bg border border-siem-border rounded-xl p-4"><div className="text-2xs text-siem-muted uppercase tracking-wider mb-1">{label}</div><div className={`text-base font-bold font-mono ${color}`}>{value}</div></div>
         ))}
       </div>
+      <ProtectionPanel agent={agent}/>
       <HealthBoard agent={agent}/>
       <AppHostApplications agentId={agent.id}/>
       <div className="grid grid-cols-2 gap-4">

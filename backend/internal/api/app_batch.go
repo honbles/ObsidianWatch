@@ -739,7 +739,9 @@ func appHandleBatch(db appBatchStore, logger *slog.Logger) http.HandlerFunc {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
 			return
 		}
-		if evs := appChangeEvents(b.AgentID, ent.host, ent.os, res.Changes, now); len(evs) > 0 {
+		evs := appChangeEvents(b.AgentID, ent.host, ent.os, res.Changes, now)
+		evs = append(evs, appRecordEvents(b.AgentID, ent.host, ent.os, b, res.KeptPayloads)...)
+		if len(evs) > 0 {
 			if err := db.InsertEvents(r.Context(), evs); err != nil {
 				logger.Error("app batch: event insert failed", "agent", b.AgentID, "err", err) // data is already stored
 			}

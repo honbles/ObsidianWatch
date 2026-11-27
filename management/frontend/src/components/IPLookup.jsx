@@ -40,7 +40,7 @@ export function IPLookupModal({ ip, onClose }) {
   ] : []
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50" onClick={onClose}>
+    <div className="fixed inset-0 z-[220] flex items-center justify-center bg-black/50" onClick={onClose}>
       <div className="w-full max-w-md bg-siem-surface border border-siem-border rounded-xl shadow-2xl" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between px-4 py-3 border-b border-siem-border">
           <div className="text-sm font-semibold text-siem-text font-mono">{ip}</div>

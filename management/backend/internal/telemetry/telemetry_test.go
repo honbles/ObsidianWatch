@@ -134,6 +134,7 @@ func TestHTTPAndDBSpans(t *testing.T) {
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest("GET", "/api/items/42", nil)
 	req.Header.Set("X-Forwarded-For", "203.0.113.9, 10.0.0.1")
+	req.RemoteAddr = "172.22.0.5:4431" // the console nginx: forwarding headers are trusted only from a private proxy
 	h.ServeHTTP(rec, req)
 	func() {
 		defer func() { _ = recover() }()

@@ -102,6 +102,10 @@ type EventFilter struct {
 	// Expr is a parsed KQL-style query (AND/OR/NOT, fields, comparisons).
 	// It is ANDed with every other filter on this struct.
 	Expr  *QueryExpr
+	// ExcludeAppRecords leaves out the high-volume application records (AppRecordTypes) unless the query
+	// names an application (app:, service:, route:, trace:) or an app.* type. Console searches set it;
+	// detection, alert rules and correlation read everything.
+	ExcludeAppRecords bool
 	Since time.Time
 	Until time.Time
 	// IngestedAfter (D-01/D-02): when set, filters and orders by
@@ -286,6 +290,9 @@ func buildEventWhere(f EventFilter) (string, []interface{}, error) {
 			OR COALESCE(file_path,'') ILIKE $%d OR raw::text ILIKE $%d)`, n, n+1, n+2, n+3, n+4, n+5, n+6))
 		args = append(args, v, v, v, v, v, v, v)
 		n += 7
+	}
+	if f.ExcludeAppRecords && !f.Expr.MentionsApp() && !strings.HasPrefix(f.EventType, "app.") {
+		where = append(where, "event_type NOT IN ('"+strings.Join(AppRecordTypes, "','")+"')")
 	}
 	if f.Expr != nil {
 		clause, qargs, err := f.Expr.SQL(n)

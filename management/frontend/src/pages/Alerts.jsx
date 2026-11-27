@@ -5,6 +5,7 @@ import { useSearchParams, Link } from 'react-router-dom'
 import { Plus, RefreshCw, Search, X, Download, BarChart3 } from 'lucide-react'
 import api from '../api/client'
 import AlertPanel from '../components/AlertPanel'
+import { alertOutcome, OutcomeBadge } from '../components/alertOutcome'
 import {
   PageHeader, Num, Tabs, StatePill, SevPill, Facets, countBy, useFacetFilter, DenseTable, parseFilter, relTime, downloadCSV,
   Histogram, Drawer, SelectionBar, Dialog, Field, useSelection, SEV_STACKS, SEV_WORD, StateBar,
@@ -32,6 +33,7 @@ const GETTERS = {
   sla: a => slaOf(a).state,
   host: a => a.host || '(none)',
   type: a => a.event_type || '(none)',
+  outcome: a => { const o = alertOutcome(a); return o ? (o.stopped ? 'stopped' : 'not_stopped') : 'na' },
 }
 
 function NewAlertDialog({ onClose, onCreated }) {
@@ -204,6 +206,7 @@ export default function Alerts() {
     { key: 'owner', label: 'Owner', values: countBy(alerts, GETTERS.owner).slice(0, 10) },
     { key: 'host', label: 'Host', values: countBy(alerts, GETTERS.host).slice(0, 12) },
     { key: 'type', label: 'Source', values: countBy(alerts, GETTERS.type).slice(0, 10) },
+    ...(alerts.some(a => alertOutcome(a)) ? [{ key: 'outcome', label: 'Prevention', values: countBy(alerts, GETTERS.outcome, ['stopped', 'not_stopped'], { stopped: 'Stopped by the agent', not_stopped: 'Not stopped' }).filter(v => v.v !== 'na') }] : []),
   ]
 
   const cols = [
@@ -211,6 +214,7 @@ export default function Alerts() {
     { key: 'title', label: 'Alert', width: 'minmax(220px, 4fr)', render: a => (
       <span style={{ display: 'flex', gap: 8, alignItems: 'center', minWidth: 0 }}>
         <span className="t1" style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{a.title}</span>
+        <OutcomeBadge alert={a}/>
         {a.occurrence_count > 1 && <span className="tag mono" title={`Seen ${a.occurrence_count} times. Repeats within 30 minutes fold into one alert.`}>×{a.occurrence_count}</span>}
       </span>), title: a => a.description || a.title },
     { key: 'host', label: 'Host', width: 'minmax(100px, 1fr)', sortKey: 'host', render: a => a.host ? <span className="mono t1">{a.host}</span> : <span className="t3">—</span> },

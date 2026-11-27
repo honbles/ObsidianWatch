@@ -292,6 +292,9 @@ type AppChange struct {
 type AppIngestResult struct {
 	Instances, Routes, Edges, Traces, Clients, Params, Payloads, PayloadsRejected, Children, Queries, Errors, Metrics, Operations int
 	Changes                                                                                                                       []AppChange
+	// KeptPayloads are the payloads stored after the route's capture policy, holding only the parameters it
+	// allows; they are also recorded as app.payload events.
+	KeptPayloads []AppPayload
 }
 
 // AppAgentInfo returns the registered agent's hostname and OS. ok is false when
@@ -777,6 +780,9 @@ func (db *DB) AppIngestBatch(ctx context.Context, agentID, host string, b AppBat
 				return res, fmt.Errorf("payload: %w", err)
 			}
 			res.Payloads++
+			kp := p
+			kp.Params, kp.Withheld = kept, withheld
+			res.KeptPayloads = append(res.KeptPayloads, kp)
 		}
 	}
 

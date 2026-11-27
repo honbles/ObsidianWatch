@@ -57,6 +57,7 @@ func (e *VirusTotalEngine) Run(ctx context.Context) {
 
 	// Run immediately on start
 	e.ingestNewHashes(ctx)
+	e.ingestScanHashes(ctx)
 	e.processQueue(ctx)
 
 	for {
@@ -65,6 +66,7 @@ func (e *VirusTotalEngine) Run(ctx context.Context) {
 			return
 		case <-ingestTicker.C:
 			e.ingestNewHashes(ctx)
+			e.ingestScanHashes(ctx)
 			e.processQueue(ctx)
 		}
 	}

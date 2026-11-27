@@ -78,7 +78,7 @@ func (e *Engine) watchFiles(ctx context.Context) {
 			extra := append([]string(nil), e.watchDirs...)
 			n := len(e.hashes)
 			e.mu.RUnlock()
-			if n > 0 {
+			if n > 0 || e.hasTests() {
 				e.scanOnce(ctx, append(defaultWatchDirs(), extra...), seen, baseline)
 				baseline = false
 			}
@@ -157,6 +157,7 @@ func (e *Engine) checkFile(path string) {
 	if err != nil {
 		return
 	}
+	e.count(cFiles)
 	if _, ok := e.lookupHash(sum); !ok {
 		return
 	}

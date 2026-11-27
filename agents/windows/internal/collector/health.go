@@ -39,6 +39,9 @@ type HealthStats struct {
 
 var GlobalHealth = &HealthStats{}
 
+// ProtectionStatus reports the prevention engine's state for the heartbeat; nil when prevention is off.
+var ProtectionStatus func() map[string]any
+
 // SetSysmonStatus is called once from preflight (cmd/agent/main.go) after
 // it checks/attempts to install-and-start Sysmon. status should be one of
 // "running", "installed_not_running", or "not_installed".
@@ -380,6 +383,11 @@ func (h *HealthReporter) emit() {
 		"mem_percent":   memPct,
 		"disks":         disks,
 		"top_processes": procs,
+	}
+	if ProtectionStatus != nil {
+		data["protection"] = ProtectionStatus()
+	} else {
+		data["protection"] = map[string]any{"enabled": false}
 	}
 	rawJSON, _ := json.Marshal(data)
 	ev := schema.Event{

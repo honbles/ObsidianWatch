@@ -213,6 +213,7 @@ func (e *Engine) apply(set Set, modes map[string]string, dirs []string) {
 	e.mu.Lock()
 	e.ips, e.hashes, e.domains, e.version, e.modes, e.watchDirs = ips, hashes, domains, set.Version, m, dirs
 	e.mu.Unlock()
+	e.noteList()
 	e.syncKernel()
 }
 
@@ -275,7 +276,10 @@ func (e *Engine) lookupHash(h string) (Entry, bool) {
 	e.mu.RLock()
 	x, ok := e.hashes[strings.ToLower(h)]
 	e.mu.RUnlock()
-	return x, ok && x.Until > time.Now().Unix()
+	if !ok || x.Until <= time.Now().Unix() {
+		return e.lookupTest(h) // a protection test (protect.go)
+	}
+	return x, true
 }
 
 // lookupDomain matches the name or any parent domain (a listed

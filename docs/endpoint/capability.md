@@ -298,11 +298,11 @@ DNS categorisation (Quad9, SURBL and similar, no key) and the tiered hash-reputa
 
 **Close as false positive** on an alert (Details tab) closes it with the disposition `false_positive` and, for endpoint alerts, creates a suppression from what the alert was raised on so the same activity stops alerting.
 
-- **Eligible alerts:** built-in signatures, Sigma rules, threat-intel matches and rare-binary alerts on agent events. When the alert is raised, the engine stores the rule id and the evidence (hash, program path, process, parent, user, command line, file, IP or DNS domain, and for intel matches the indicator). Code-platform, cloud and application alerts, and alerts raised before this version, close as false positive without a suppression.
+- **Endpoint alerts only:** built-in signatures, Sigma rules, threat-intel matches and rare-binary alerts on agent events. When the alert is raised, the engine stores the rule id and the evidence (hash, program path, process, parent, user, command line, file, IP or DNS domain, and for intel matches the indicator). Only these alerts show **Close as false positive**; the server refuses the action for code-platform, cloud and application alerts, and for alerts raised before this version, which close with **Close with review**. An endpoint alert whose evidence has nothing to match on closes as false positive without a suppression.
 - **What is suppressed:**
   - A threat-intel match suppresses the indicator value for every intel source.
   - Any other alert suppresses its rule together with the strongest piece of evidence: the file hash, then the exact program path, then the DNS domain, the IP, the process name or the file path.
-  - When the program is a shell or script host (bash, sh, Python, PowerShell, cmd, rundll32 and similar), its hash and path would match every script it runs, so the suppression is that program plus the parent process that launched it, or else plus the command line.
+  - When the program is a shell or script host (bash, sh, Python, PowerShell, cmd, rundll32 and similar) or ships with the operating system (anything under `/bin`, `/sbin`, `/usr/bin`, `/usr/sbin`, `/usr/libexec`, `/System`, `C:\Windows`, such as curl, su or certutil), its hash and path are the same on every machine and are what the rule watches, so the suppression is that program plus the parent process that launched it, or else plus the command line.
   - A suppression always names a rule and at least one piece of evidence; it never switches a rule off.
 - **Defaults:** all hosts, permanent. The dialog shows exactly what will be suppressed and lets the analyst narrow it to the alert's host, give it an expiry (7, 30 or 90 days), or close without a suppression.
 - **Other open alerts:** open and acknowledged alerts that the new suppression covers are closed as false positives as well, with a note naming the suppression. The dialog shows how many.
@@ -471,7 +471,7 @@ The probe enrolls with a token like an agent and posts to `/api/v1/events` with 
 
 ## 10a. Prevention
 
-Agents match connections, files, processes and DNS answers against a server-published list of malicious IPs, SHA-256 hashes and domains, in audit or enforce mode per type. Linux refuses listed connections in the kernel. Full description: [prevention.md](prevention.md).
+Agents match connections, files, processes and DNS answers against a server-published list of malicious IPs, SHA-256 hashes and domains, in audit or enforce mode per type. Linux refuses listed connections in the kernel. Each host's overview shows whether it is protected, what the agent checked and stopped in the last 24 hours, a **Test protection** button (plants a harmless file the agent must catch) and on-demand **Scan** of a folder or the whole disk; prevention alerts are badged Stopped or Not stopped. Full description: [prevention.md](prevention.md) sections 6 and 7.
 
 ## 11. Known limits (from the improvement spec, checked against the current code)
 

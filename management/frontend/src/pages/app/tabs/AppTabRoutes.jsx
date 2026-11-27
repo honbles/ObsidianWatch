@@ -79,7 +79,9 @@ export default function AppTabRoutes({ service, range, focus }) {
         </span>)
     }, sort: r => (r.params || []).length },
     { key: 'calls', label: 'Calls', align: 'right', render: r => appInt(r.stats.calls), sort: r => r.stats.calls },
-    { key: 'err', label: 'Error rate', align: 'right', render: r => <span className={r.stats.error_rate > 0.05 ? 'text-red-300' : ''}>{appPct(r.stats.error_rate)}</span>, sort: r => r.stats.error_rate },
+    { key: 'err', label: 'Error rate', align: 'right', render: r => <span className={r.stats.error_rate > 0.05 ? 'text-red-300' : ''}>{appPct(r.stats.error_rate)}</span>,
+      // failing routes first; among equal rates (most are 0%) the busiest first
+      sort: r => Math.round((r.stats.error_rate || 0) * 1e4) * 1e9 + (r.stats.calls || 0) },
     { key: 'auth', label: '401/403', align: 'right', render: r => appInt(r.stats.status_401_403), sort: r => r.stats.status_401_403 },
     { key: 'rl', label: '429', align: 'right', render: r => appInt(r.stats.status_429), sort: r => r.stats.status_429 },
     { key: 'p95', label: 'p95', align: 'right', render: r => appMs(r.stats.p95_ms, r.stats.over_range), sort: r => r.stats.p95_ms },
@@ -117,7 +119,7 @@ export default function AppTabRoutes({ service, range, focus }) {
             </div>)}
         </div>)}
       <div className="card"><DataTable columns={cols} rows={rows} loading={loading} error={error} rowKey={(r) => r.method + r.route}
-        emptyText="No routes yet." initialSort={{ key: 'calls', dir: 'desc' }} pageSize={100} /></div>
+        emptyText="No routes yet." initialSort={{ key: 'err', dir: 'desc' }} pageSize={100} /></div>
       <div className="text-xs text-siem-muted">Dashed: declared in the API spec, not seen yet. Amber: seen in traffic but not in the spec.</div>
     </div>
   )

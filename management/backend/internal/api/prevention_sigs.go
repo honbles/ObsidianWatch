@@ -12,14 +12,20 @@ import (
 )
 
 type prevRaw struct {
-	Kind   string `json:"kind"`
-	Action string `json:"action"`
-	Mode   string `json:"mode"`
+	Kind      string `json:"kind"`
+	Action    string `json:"action"`
+	Mode      string `json:"mode"`
+	IOCSource string `json:"ioc_source"`
 }
 
 func prevOf(ev store.Event) (prevRaw, bool) {
 	var r prevRaw
 	if ev.EventType != "prevention" || len(ev.Raw) == 0 || json.Unmarshal(ev.Raw, &r) != nil {
+		return r, false
+	}
+	// A protection test (Fleet → host → Protection → Test) is a harmless file the agent planted itself: the
+	// result is shown on the host, not raised as an alert.
+	if r.IOCSource == prevTestSource {
 		return r, false
 	}
 	return r, true

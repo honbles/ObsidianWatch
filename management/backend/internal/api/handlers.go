@@ -6,9 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
-	"net"
 	"net/http"
-	"net/netip"
 	"strconv"
 	"strings"
 	"time"
@@ -24,49 +22,8 @@ func writeJSON(w http.ResponseWriter, status int, v interface{}) {
 	json.NewEncoder(w).Encode(v)
 }
 
-// clientIP returns the caller's address. X-Forwarded-For is honoured only when
-// the direct peer is itself a private/loopback address (i.e. our own reverse
-// proxy); the entry used is the right-most one that is not private, because a
-// client can freely prepend fake entries on the left. Without this, anyone could
-// rotate X-Forwarded-For to dodge the per-IP login limiter and forge audit IPs.
-// RemoteAddr's port is also stripped so rate limiting keys on the host, not the connection.
-func clientIP(r *http.Request) string {
-	peer := r.RemoteAddr
-	if host, _, err := net.SplitHostPort(peer); err == nil {
-		peer = host
-	}
-	pa, err := netip.ParseAddr(peer)
-	if err != nil {
-		return peer
-	}
-	pa = pa.Unmap()
-	if !(pa.IsPrivate() || pa.IsLoopback()) {
-		return pa.String()
-	}
-	xff := r.Header.Get("X-Forwarded-For")
-	if xff == "" {
-		return pa.String()
-	}
-	parts := strings.Split(xff, ",")
-	for i := len(parts) - 1; i >= 0; i-- {
-		a, err := netip.ParseAddr(strings.TrimSpace(parts[i]))
-		if err != nil {
-			continue
-		}
-		a = a.Unmap()
-		if a.IsPrivate() || a.IsLoopback() {
-			continue
-		}
-		return a.String()
-	}
-	// Every hop was private (internal client behind our proxy): use the left-most valid entry.
-	for _, p := range parts {
-		if a, err := netip.ParseAddr(strings.TrimSpace(p)); err == nil {
-			return a.Unmap().String()
-		}
-	}
-	return pa.String()
-}
+// clientIP returns the caller's address (telemetry.ClientIP: forwarding headers only from our own proxy).
+func clientIP(r *http.Request) string { return telemetry.ClientIP(r) }
 
 // validAgentAPIKey checks the X-API-Key header against the configured agent
 // key using a constant-time comparison. M-02/M-03: several agent-facing
@@ -353,6 +310,8 @@ func parseEventFilter(r *http.Request) store.EventFilter {
 		Channel:     q.Get("channel"),
 		Source:      q.Get("source"),
 		Search:      q.Get("search"),
+		// application records only when the query names an application (store.AppRecordTypes)
+		ExcludeAppRecords: true,
 	}
 	if s := q.Get("severity"); s != "" {
 		f.Severity, _ = strconv.Atoi(s)

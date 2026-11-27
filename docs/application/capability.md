@@ -75,6 +75,8 @@ Each instance reports the commit it was built from when it is known, in this ord
 
 ---
 
+When an instance reports its repository (`vcs.repository.url.full` or `git.repository_url`, or the OCI source label) and that repository belongs to a connected code platform, the service is linked to it automatically the first time its Code tab is opened. The link shows "reported by the service". An analyst's links are never changed. The ObsidianWatch console reports its own commit without configuration when it is built from a source archive: `git archive` writes the commit into `management/backend/internal/telemetry/build_commit.txt` (`export-subst` in `.gitattributes`). Set `OW_SOURCE_REPO` (for example `https://github.com/acme/obsidianwatch`) to link it automatically too.
+
 ## 2. Receiving OTLP on the host
 
 The agent runs an HTTP server only when the agent was built with the app-server profile (`app_monitoring.enabled: true`).
@@ -322,7 +324,7 @@ Run on every completed trace, before the sampling decision, so it covers all buf
 - **Self time** per span = duration − sum of the durations of its direct children present in the trace, never below 0.
 - **Slow downstream calls** ("top children"): for each CLIENT or PRODUCER span whose nearest ancestor is a SERVER span with a route, add calls and total time to `(route, minute, kind, target, name)`. Kind is `db` (has `db.system`), `queue` (PRODUCER), `http` (has `peer.service` or `server.address`) or `client`. The name is the span name with UUIDs, long hex strings and digits replaced by `?` (80 characters max). At most 20 keys per route and 5 000 in total per flush; more collapse into `(other)`.
 - **Database calls**: for every span with `db.system`, group by `(system, operation, table, fingerprint)` per minute with calls, errors, total time and the 12-bucket histogram. Operation = `db.operation.name`/`db.operation`, else the first word of the span name, upper-cased. At most 200 groups per service per flush; more collapse into `(other)`.
-- **Statement fingerprint**: only when the service's `db_statement_mode` is `fingerprint`. Comments are removed, string literals, hex literals, numbers and `$1`/`@p` placeholders become `?`, `IN (?, ?, ...)` and `VALUES (...)` lists collapse to `(?)`, whitespace is normalised and the text is lower-cased. The id is the first 8 bytes of SHA-256 of that text (16 hex characters). The text is cut to 512 bytes.
+- **Statement fingerprint**: when the service's `db_statement_mode` is `fingerprint`, the default since November 2026 (migration 084 switched existing services; a service can be set back to names only). Comments are removed, string literals, hex literals, numbers and `$1`/`@p` placeholders become `?`, `IN (?, ?, ...)` and `VALUES (...)` lists collapse to `(?)`, whitespace is normalised and the text is lower-cased. The id is the first 8 bytes of SHA-256 of that text (16 hex characters). The text is cut to 512 bytes.
 - **N+1**: within one trace, when 10 or more database spans with the same group (fingerprint, or `operation|table` without one) share the same parent span and sit under a routed server span, every one of them is flagged and the route's N+1 count goes up by one.
 
 Implemented in: `otel/diagnose.go`.
@@ -527,6 +529,9 @@ Implemented in: `app_red.go`, `app_sketch.go`.
 
 ### 10.2 Routes (Endpoints tab)
 
+Failing routes are listed first: the table is sorted by error rate, and routes with the same rate by calls.
+
+
 Each row: route template, method, first/last seen, active in range, RED totals, Apdex, parameter names with their state, review state, top 3 slow downstream calls (by total time), N+1 count, and spec flags. States of a parameter: `always_masked`, `pending`, `new`, `masked`, `captured`. Route review: `needs_review` (has names, no policy), `reviewed`, `new_fields` (a name not in the saved review). With an API spec: `declared`, `not_in_spec` (observed, spec loaded, not listed), declared-only rows, and `undocumented` fields (observed on a route the spec lists, not in the spec). Declared and observed templates are matched by shape (`/users/{id}` = `/users/:id`). At most 1 000 route rows.
 
 The tab shows 100 routes per page (First / Previous / Next / Last), sorted across all pages, with a finder that matches the method and path (`POST /orders`) and a count of matching routes. The server returns the 2,000 busiest routes in the range; the agent tracks at most 2,000 routes per service (`max_routes_per_service`) and counts the rest under `other`, which the tab reports at the top.
@@ -545,6 +550,9 @@ API: `GET /services/{id}/sampling` returns seen and kept per reason for the rang
 Implemented in: `app_traces.go`, `app_diagnosis.go` (`appEnrichSpans`), `app_sampling.go`, frontend `components/app/AppTraceWaterfall.jsx`.
 
 ### 10.4 Queries (database) tab
+
+Statements show with their values removed, which is the default. A service set to names only shows **Show statements**, linking to its settings.
+
 
 API: `GET /services/{id}/queries?sort=total_ms|p95|calls|errors`. Rows by system, operation, table and fingerprint with calls, errors, average, p95 (from the histogram) and total time; the fingerprint text when the service sends fingerprints. At most 200 rows.
 
@@ -900,3 +908,26 @@ The settings endpoint gives every agent the settings and reviewed routes of all 
 | D3 | `agents/*/internal/otel/aggregate.go` (`seen` map) | **Fixed.** The per-service route set is cleared every hour (`seenSince`), so a service that once hit the route limit no longer puts new routes in `other` until a restart |
 | D4 | `backend/internal/api/app_batch.go:685`, `app_agentconfig.go:28` | A batch whose `agent_id` differs from the certificate is refused (403) while the event endpoint now re-attributes. Today the agent passes its certificate's id to the application service (`cmd/agent/main.go:106`), so this only bites if the id and the certificate ever diverge in a running agent; then all application statistics are dropped as non-retryable |
 | D5 | `management/backend/cmd/server/main.go:91` | The purge runs on the management database. When `backend_db` points at a separate database the application tables are not there and the purge fails with a warning every 6 hours. The bundled docker-compose uses one database, where it works |
+
+
+## 11. Application records in the event store
+
+The ingest writes every application record it stores individually to the platform's event store, with the full payload under `raw.app`:
+
+| Event type | One per | Payload |
+|---|---|---|
+| `app.request` | kept trace (every error, slow and security request, and the baseline sample) | service, environment, route, method, status, duration, keep reason, trace id and every span (a trace over 256 KiB keeps its first spans) |
+| `app.payload` | captured request parameters (reviewed routes) | route, method, HTTP status, duration, trace id, the parameters the route's policy allows, the names withheld |
+| `app.error` | error report | type, message (as the error-message setting allows), frames, route, fingerprint, version, trace id, count |
+| `app.operation` | job or message consumer, per minute | kind, name, runs, failures, last run |
+
+The existing `app.security`, `app.service_change` and `app.dependency_new` events stay as they are.
+
+How many requests are recorded is the service's **Baseline sample** setting. The default is 1%; errors, slow and security-relevant requests are always kept. At 100%, every request is recorded, up to 5,000 per agent flush (30 seconds).
+
+**Searching.**
+- On **Detect → Events**, choose the application in the picker next to the search box, or write `app:<service>` (also `service:`, `route:`, `trace:`, `status:`).
+- Console searches leave the four record types out unless the query names an application or an `app.*` type. Host searches stay fast however busy the services are.
+- On a service page, **Events → Records** searches the same records with the application already chosen. Each record opens to its full payload, and **Open in Events** continues on the Events page.
+- Detection, alert rules and correlation read every event, but the endpoint signatures, Sigma rules and IOC matching skip the four record types (the application rules work on the aggregates).
+- Ingest migration 044 adds a partial index on `raw->'app'->>'service'` for these searches.

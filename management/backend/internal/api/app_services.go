@@ -67,7 +67,7 @@ type appServiceSettings struct {
 
 func appDefaultSettings() appServiceSettings {
 	return appServiceSettings{
-		Exposure: "unknown", Criticality: "normal", DataSensitivity: "normal", StoreClientIP: "full", DBStatementMode: "off", ErrorMessageMode: "off",
+		Exposure: "unknown", Criticality: "normal", DataSensitivity: "normal", StoreClientIP: "full", DBStatementMode: "fingerprint", ErrorMessageMode: "off",
 		TrustedProxies: []string{}, LoginRoutes: []string{}, ExportRoutes: []string{}, PublicRoutes: []string{}, Maintenance: []appMaintenance{},
 	}
 }
@@ -588,7 +588,7 @@ func appHandlePutServiceSettings(db, backendDB *store.DB) http.HandlerFunc {
 		}
 		dbMode := body.DBStatementMode
 		if dbMode == "" {
-			dbMode = "off"
+			dbMode = "fingerprint"
 		}
 		body.DBStatementMode = dbMode
 		errMode := body.ErrorMessageMode

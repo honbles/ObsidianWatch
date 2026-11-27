@@ -1,9 +1,11 @@
 FROM node:20-alpine AS builder
 WORKDIR /app
-COPY package*.json ./
-RUN npm ci --include=dev --no-audit --no-fund
+# Dependencies are installed in their own directory so nothing copied from the build context (a
+# node_modules left on the host, with or without .dockerignore) can replace them.
+COPY package*.json /deps/
+RUN cd /deps && npm ci --include=dev --no-audit --no-fund && test -x /deps/node_modules/.bin/vite
 COPY . .
-RUN npm run build
+RUN rm -rf node_modules && ln -s /deps/node_modules node_modules && npm run build
 
 FROM nginx:alpine
 COPY --from=builder /app/dist /usr/share/nginx/html

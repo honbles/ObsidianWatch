@@ -212,6 +212,7 @@ func New(cfg *config.Config, db *store.DB, backendDB *store.DB, logger *slog.Log
 	// One-click response (isolate/release, kill, quarantine) and threat hunting at scale.
 	protected.HandleFunc("POST /api/v1/agents/{id}/actions", adminOnly(handleAgentAction(db, lrRegistry, logger)))
 	protected.HandleFunc("GET /api/v1/agents/{id}/response", handleAgentResponseState(db, lrRegistry))
+	protected.HandleFunc("GET /api/v1/agents/{id}/protection", handleAgentProtection(db, lrRegistry))
 	protected.HandleFunc("GET /api/v1/agents/{id}/processes", adminOnly(handleAgentProcesses(db, lrRegistry)))
 	protected.HandleFunc("GET /api/v1/response/isolated", handleIsolatedAgents(db))
 	protected.HandleFunc("GET /api/v1/response/actions", handleResponseActions(db))

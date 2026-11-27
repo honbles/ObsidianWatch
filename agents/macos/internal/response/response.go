@@ -81,6 +81,7 @@ type isoState struct {
 
 // Handler runs response actions.
 type Handler struct {
+	extra  map[string]func(context.Context, Params) Result // actions other packages add (Register)
 	dir    string
 	hosts  []string // hostnames/IPs of the backend + management URLs
 	logger *slog.Logger
@@ -273,7 +274,19 @@ func (h *Handler) Handle(ctx context.Context, action string, p Params) (res Resu
 	case "enable_user":
 		return h.enableUserAction(p.User)
 	}
+	if f := h.extra[action]; f != nil {
+		return f(ctx, p)
+	}
 	return Result{Message: "unknown action " + action}
+}
+
+// Register adds an action handled outside this package (prevention: scan, test_protection). Call it before
+// the handler serves actions.
+func (h *Handler) Register(name string, f func(context.Context, Params) Result) {
+	if h.extra == nil {
+		h.extra = map[string]func(context.Context, Params) Result{}
+	}
+	h.extra[name] = f
 }
 
 func (h *Handler) isolate(p Params) Result {

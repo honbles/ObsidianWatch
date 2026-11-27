@@ -55,6 +55,42 @@ Every match is a `prevention` event (searchable on Events) with `kind`, `indicat
 | `PREV-DNS-1` Lookup of a known malicious domain; addresses blocked | Medium | domain, addresses blocked |
 | `PREV-DNS-0` Lookup of a known malicious domain | Medium | domain, not blocked |
 
-## 6. Not included
+## 6. Is a host protected? (Fleet → host → Overview → Protection)
+
+`GET /api/v1/agents/{id}/protection` (any signed-in role) combines what the server intends for the host and what the agent reports.
+
+- **Verdict.**
+  - *Protected*: files and programs, or at least one other type, are set to stop.
+  - *Audit only*: matches are alerted on but nothing is stopped. Also shown when the host's list is more than 2 hours old.
+  - *Not protected*: every type is off, or the host's list is empty so nothing can match, for example when the server cannot reach its threat feeds.
+  - *Unknown*: the agent has not reported for 10 minutes, or is too old to report.
+- **What it does.** The mode each type runs on the host. An asterisk marks a mode the agent has not picked up from the server's policy yet. Also shown: the size and age of the host's list, whether connections are refused in the kernel (Linux), and how many folders are watched for new files.
+- **Last 24 hours.**
+  - Agent counters, sent in every health heartbeat (`raw.protection`): files checked (watched folders, file events and scans), programs checked (process starts), connections checked, and DNS answers checked.
+  - Server counts from prevention events: threats stopped, and threats not stopped.
+- **Test protection** (admin; response action `test_protection`). The server sends a one-off random token; the client's input is ignored.
+  - The agent puts the token's SHA-256 on its own list for 10 minutes. After one watcher pass, it writes `obsidianwatch-protection-test-<hash>.txt` into a writable watched folder, preferring a temp folder. The file is harmless text.
+  - The file watcher must find the file like any new download.
+  - **Pass**: a prevention event for that hash arrives within 3 minutes. In enforce mode the file is quarantined; in audit it is reported and removed after 3 minutes.
+  - **Fail**: the agent does not answer, files are off, or nothing detects the file.
+  - Test events carry `ioc_source` `obsidianwatch-test`. They raise no alert and are not counted as threats.
+  - What the test exercises: the watched folders, hashing, matching, the action and delivery to the server. It does not test list download; the list age in *What it does* covers that.
+- **Scan** (admin; response action `scan`, parameters `path` or `kind: "whole"`).
+  - The agent hashes every file under the folder, or under `/` (every fixed drive on Windows) for the whole disk, and checks each against its list.
+  - A whole-disk scan skips virtual and operating-system folders: `/proc`, `/sys`, `/dev`, `/run`, `/snap`, container storage, `/usr`, `/bin`, `/lib`, `/System`, `C:\Windows` and similar.
+  - Limits: files over 200 MiB are not hashed; at most 500,000 files; at most 2 hours; it pauses every 200 files to stay in the background. One scan runs at a time per host.
+  - Matches go through the normal path: quarantined in enforce, reported in audit, and alerted as `PREV-HASH-*`.
+  - At the end the agent sends a `prevention_scan` event with: files scanned, threats found, files unreadable or too large, the duration, and up to 2,000 executables (by execute bit or extension) with their SHA-256.
+  - The server queues those executables for the tiered hash reputation lookups (Team Cymru, MalwareBazaar, CIRCL, Hybrid Analysis, VirusTotal if configured). A malicious verdict raises a hash alert.
+
+## 7. Outcome on alerts
+
+Every prevention alert records what the agent did: quarantined, killed, killed and quarantined, blocked, not stopped (audit), or failed.
+
+- The alert list and alert page show a **✓** badge for a stopped threat (quarantined, killed or blocked) and a **! Not stopped** badge otherwise.
+- The **Prevention** filter on Alerts selects either group.
+- Prevention alerts raised before this version are labelled from their rule: `PREV-*-1` is stopped, `PREV-*-0` is not.
+
+## 8. Not included
 
 Pre-execution blocking of programs (Linux fanotify permission events: a stalled agent could hang program launches), writing firewall rule sets or hosts-file entries, DNS filtering or content categories, device control, and server lockdown. See the decisions in the device management and prevention spec.

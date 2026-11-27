@@ -119,6 +119,38 @@ var queryFields = map[string]fieldSpec{
 	"type":     {fType, []string{"event_type"}},
 	"event":    {fType, []string{"event_type"}},
 	"time":     {fTime, []string{"time"}},
+	// application records (app.request, app.payload, app.error, app.operation, and the app.* service events)
+	"app":     {fText, []string{"(raw->'app'->>'service')"}},
+	"service": {fText, []string{"(raw->'app'->>'service')"}},
+	"route":   {fText, []string{"(raw->'app'->>'route')"}},
+	"trace":   {fText, []string{"(raw->'app'->>'trace_id')"}},
+	"status":  {fText, []string{"(raw->'app'->>'http_status')", "(raw->'app'->>'status')"}},
+}
+
+// AppRecordTypes are the per-request application records the ingest writes to the event store. Console
+// searches include them only when asked (EventFilter.ExcludeAppRecords).
+var AppRecordTypes = []string{"app.request", "app.payload", "app.error", "app.operation"}
+
+// MentionsApp reports whether the query names an application or an application event type, so it should
+// also search application records.
+func (e *QueryExpr) MentionsApp() bool {
+	if e == nil {
+		return false
+	}
+	switch e.field {
+	case "app", "service", "route", "trace", "status":
+		return true
+	case "type", "event":
+		if strings.HasPrefix(strings.ToLower(e.val), "app") {
+			return true
+		}
+	}
+	for _, k := range e.kids {
+		if k.MentionsApp() {
+			return true
+		}
+	}
+	return false
 }
 
 // QueryFieldNames lists the supported field names (for help and tests).

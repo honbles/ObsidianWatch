@@ -10,8 +10,8 @@ package api
 //	PATCH /api/v1/alerts/{id}/reopen            reopen; optionally delete the suppression the close created
 //
 // Only endpoint alerts (built-in signatures, Sigma, threat-intel matches and rare binaries on agent events)
-// record evidence and are eligible. Code, cloud and application alerts close as false positive without a
-// suppression. Defaults: all hosts, permanent. Threat-intel matches are suppressed by the indicator value
+// record evidence and can be closed as false positive. Code, cloud and application alerts are refused (they
+// close with a review). Defaults: all hosts, permanent. Threat-intel matches are suppressed by the indicator value
 // for every intel source; other rules by the rule plus the strongest evidence (hash, program path, IP or
 // domain, process name, file path). A suppression always names a rule and at least one piece of evidence.
 
@@ -47,6 +47,9 @@ type AlertEvidence struct {
 	File      string `json:"file,omitempty"`
 	IP        string `json:"ip,omitempty"`
 	Domain    string `json:"domain,omitempty"`
+	// Outcome is what the agent did about a prevention match: quarantined, killed, killed+quarantined,
+	// blocked, ip_blocked, audit (not stopped) or failed.
+	Outcome string `json:"outcome,omitempty"`
 }
 
 // isEndpointEvent: an agent event, not a code-platform, cloud or application event.
@@ -78,6 +81,9 @@ func endpointEvidence(kind string, ev store.Event, ioc ...string) json.RawMessag
 	}
 	if len(ioc) == 2 {
 		e.IOCType, e.Indicator = strings.ToLower(ioc[0]), ioc[1]
+	}
+	if p, ok := prevOf(ev); ok {
+		e.Outcome = p.Action
 	}
 	b, _ := json.Marshal(e)
 	return b
@@ -145,6 +151,18 @@ func isInterpreter(image, process string) bool {
 	return false
 }
 
+// isSystemProgram: a program shipped with the operating system (the paths the agents report).
+func isSystemProgram(image string) bool {
+	p := strings.ToLower(strings.ReplaceAll(image, `\`, "/"))
+	for _, pre := range []string{"/bin/", "/sbin/", "/usr/bin/", "/usr/sbin/", "/usr/libexec/", "/usr/lib/systemd/",
+		"/system/", "/library/apple/", "c:/windows/"} {
+		if strings.HasPrefix(p, pre) {
+			return true
+		}
+	}
+	return false
+}
+
 // globLiteral escapes glob metacharacters so a path matches only itself.
 func globLiteral(s string) string {
 	return strings.NewReplacer(`*`, `[*]`, `?`, `[?]`, `[`, `[[]`).Replace(s)
@@ -155,7 +173,7 @@ func globLiteral(s string) string {
 func fpProposal(a store.Alert) (EndpointSuppression, *AlertEvidence, bool, string) {
 	var e AlertEvidence
 	if a.RuleID == "" || len(a.Evidence) == 0 || json.Unmarshal(a.Evidence, &e) != nil || e.Origin != "endpoint" {
-		return EndpointSuppression{}, nil, false, "Only endpoint alerts raised after this update record the evidence a suppression is built from."
+		return EndpointSuppression{}, nil, false, "this is not an endpoint alert, or it was raised before alerts recorded their evidence. Use Close with Review."
 	}
 	s := EndpointSuppression{RuleID: a.RuleID, MatchMode: suppModeExact, Permanent: true, SourceAlertID: &a.ID,
 		Reason: fmt.Sprintf("False positive: alert #%d (%s)", a.ID, a.Title)}
@@ -166,9 +184,10 @@ func fpProposal(a store.Alert) (EndpointSuppression, *AlertEvidence, bool, strin
 	case e.Kind == "ioc" && e.Indicator != "":
 		// The indicator itself is known good: every intel source, any host.
 		s.RuleID, s.MatchMode, s.Indicator = "IOC:", suppModePrefix, e.Indicator
-	case isInterpreter(e.Image, e.Process):
-		// A shell or script host: its hash and path are the same for every script it runs, so suppressing
-		// them would switch the rule off. Narrow to what launched it, else to this command line.
+	case isInterpreter(e.Image, e.Process) || isSystemProgram(e.Image):
+		// A shell, script host or operating-system program (curl, su, certutil...): its hash and path are the
+		// same on every machine and are what the rule watches, so suppressing them would switch the rule off.
+		// Narrow to what launched it, else to this command line.
 		s.ImagePathGlob = globLiteral(e.Image)
 		if s.ImagePathGlob == "" {
 			s.ProcessName = e.Process
@@ -183,7 +202,7 @@ func fpProposal(a store.Alert) (EndpointSuppression, *AlertEvidence, bool, strin
 			}
 			s.CmdlineContain = c
 		default:
-			return EndpointSuppression{}, &e, false, "The alert was raised on a shell or script host with no parent or command line to narrow the suppression to."
+			return EndpointSuppression{}, &e, false, "The alert was raised on a system program or script host with no parent or command line to narrow the suppression to."
 		}
 	case e.Hash != "":
 		s.FileHash = e.Hash
@@ -274,7 +293,7 @@ func handleFalsePositivePreview(db *store.DB) http.HandlerFunc {
 			return
 		}
 		s, ev, eligible, why := fpProposal(*a)
-		resp := map[string]interface{}{"eligible": eligible, "reason": why, "evidence": ev, "host": a.Host}
+		resp := map[string]interface{}{"endpoint": ev != nil, "eligible": eligible, "reason": why, "evidence": ev, "host": a.Host}
 		if eligible {
 			req := fpRequest{ThisHostOnly: r.URL.Query().Get("this_host_only") == "true"}
 			if d, _ := strconv.Atoi(r.URL.Query().Get("expires_in_days")); d > 0 {
@@ -316,11 +335,17 @@ func handleFalsePositive(db *store.DB) http.HandlerFunc {
 			return
 		}
 		ctx := r.Context()
+		s, ev, eligible, why := fpProposal(*a)
+		if ev == nil {
+			// Code, cloud and application alerts (and endpoint alerts from before evidence was recorded) are
+			// closed with a review instead.
+			writeJSON(w, 400, map[string]string{"error": "only endpoint alerts can be closed as false positive: " + why})
+			return
+		}
 		var suppID *int64
 		var closedOthers []int64
 		if !req.NoSuppression {
-			s, _, eligible, _ := fpProposal(*a)
-			if eligible {
+			if eligible { // evidence with nothing to match on: close without a suppression
 				applyFPScope(&s, *a, req)
 				if req.Comment != "" {
 					s.Reason = strings.TrimSpace(s.Reason + ". " + req.Comment)

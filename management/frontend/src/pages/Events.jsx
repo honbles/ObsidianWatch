@@ -6,6 +6,7 @@ import { format, formatDistanceToNow } from 'date-fns'
 import api from '../api/client'
 import { LIBRARY_GROUPS, tagsToQuery, legacyToQuery, queryChip, searchError } from './events/library'
 import { useLiveFeed } from '../api/useLiveFeed'
+import { appApi } from '../api/app'
 import { SeverityBadge } from '../components/SeverityBadge'
 import { PageHeader, Histogram, SEV_STACKS, SEV_WORD, SevPill, fmtCompact } from '../components/ui'
 import { IPLink } from '../components/IPLookup'
@@ -385,7 +386,8 @@ const TAG_COLORS = {
 // or and/or/not make the input a query rather than a plain search word.
 const KQL_FIELDS = new Set(['host','os','user','proc','process','cmd','cmdline','image','file','path','hash','reg','regkey',
   'regvalue','domain','channel','source','proto','guid','logon','src','src_ip','dst','dst_ip','ip','pid','ppid','port',
-  'dstport','srcport','event_id','eid','sev','severity','type','event','time','dns','query','action'])
+  'dstport','srcport','event_id','eid','sev','severity','type','event','time','dns','query','action',
+  'app','service','route','trace','status'])
 export function looksLikeKQL(raw) {
   const l = ' ' + String(raw).toLowerCase() + ' '
   if (/[()]/.test(l) || / (and|or|not) /.test(l)) return true
@@ -405,6 +407,8 @@ const KQL_HELP = [
   ['dns:ngrok   domain:corp.local', 'dns: DNS query names; domain: also logon domains'],
   ['action:ssh_login_failure', "the collector's action tag (Linux journald and auditd, file actions)"],
   ['os:macos   type:sysmon', 'macos and darwin are the same; type:sysmon covers Sysmon events of every type'],
+  ['app:checkout status:500   route:/orders', 'application records (requests with their spans, payloads, errors, jobs): searched only when the query names an application or type:app.*'],
+  ['app:checkout type:app.error trace:4bf92f', 'an application\'s errors; trace: finds one request\'s records'],
   ['time>=2026-11-14T10:30', 'UTC date or date-time'],
   ['-chrome   not user:SYSTEM', 'exclude'],
 ]
@@ -433,6 +437,16 @@ export default function Events() {
   const { events: liveEvents, connected } = useLiveFeed(200)
 
   const [tags, setTags]     = useState([])
+  // Application scope: picking an application adds app:"<name>", which is what brings its records
+  // (requests, payloads, errors, jobs) into the search.
+  const [appScope, setAppScope] = useState(() => new URLSearchParams(window.location.search).get('app') || '')
+  const [appNames, setAppNames] = useState([])
+  useEffect(() => {
+    const to = new Date(), from = new Date(to.getTime() - 7 * 86400000)
+    appApi.services({ from: from.toISOString(), to: to.toISOString() }, { limit: 500 })
+      .then(r => setAppNames([...new Set((r?.services || []).map(x => x.name))].sort()))
+      .catch(() => {})
+  }, [])
   const [inputVal, setInputVal] = useState('')
   const [queryErr, setQueryErr] = useState('')
   const [showHelp, setShowHelp] = useState(false)
@@ -567,8 +581,9 @@ export default function Events() {
   // Every chip and the typed text become one query in the server's query language.
   const buildQuery = useCallback((liveInput = '') => {
     const live = liveInput.trim()
-    return [tagsToQuery(tags), live ? (looksLikeKQL(live) ? '(' + live + ')' : live) : ''].filter(Boolean).join(' ')
-  }, [tags])
+    const scope = appScope ? `app:"${appScope.replace(/"/g, '')}"` : ''
+    return [scope, tagsToQuery(tags), live ? (looksLikeKQL(live) ? '(' + live + ')' : live) : ''].filter(Boolean).join(' ')
+  }, [tags, appScope])
 
   const buildParams = useCallback((p = 0) => {
     const params = { limit, offset: p * limit }
@@ -610,7 +625,7 @@ export default function Events() {
       fetchEvents(0, inputVal); setPage(0)
     }, 300)
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current) }
-  }, [tags, since, until, inputVal])
+  }, [tags, since, until, inputVal, appScope])
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
@@ -720,6 +735,15 @@ export default function Events() {
     if (ev.dst_ip) parts.push(`→ ${ev.dst_ip}${ev.dst_port ? ':' + ev.dst_port : ''}`)
     if (ev.file_path) parts.push(ev.file_path)
     if (ev.reg_key) parts.push(ev.reg_key)
+    const app = raw?.app
+    if (app && !parts.length) {
+      const svc = app.service ? `[${app.service}] ` : ''
+      if (ev.event_type === 'app.request') return `${svc}${app.route || ''}  ${app.status || ''}  ${app.duration_ms ?? ''} ms  ·  ${app.span_count || 0} spans${app.keep_reason && app.keep_reason !== 'baseline' ? '  ·  kept: ' + app.keep_reason : ''}`
+      if (ev.event_type === 'app.payload') return `${svc}${app.method || ''} ${app.route || ''}  ${app.http_status || ''}  ·  ${Object.keys(app.params || {}).join(', ')}`
+      if (ev.event_type === 'app.error') return `${svc}${app.error_type || 'error'}: ${app.message || app.frame || ''}${app.count > 1 ? '  ×' + app.count : ''}`
+      if (ev.event_type === 'app.operation') return `${svc}${app.operation_kind || ''} ${app.operation || ''}  ·  ${app.runs} runs${app.failures ? ', ' + app.failures + ' failed' : ''}`
+      if (app['event.name']) return `${svc}${String(app['event.name']).replace(/_/g, ' ')}${app.version ? ' ' + app.version : ''}${app.dependency ? ' → ' + app.dependency : ''}`
+    }
     if (!parts.length) {
       const c = raw?.event_name || raw?.operation_name || raw?.method_name || raw?.repo || raw?.message || raw?.action || raw?.finding_type || raw?.commit_sha?.slice(0, 8)
       if (c) parts.push(String(c))
@@ -761,6 +785,12 @@ export default function Events() {
           <div className="ow-card" style={{ padding: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
             {/* Query + time range, one line, like a log explorer */}
             <div style={{ display: 'flex', gap: 8, alignItems: 'stretch', flexWrap: 'wrap' }}>
+              <select className="input" style={{ height: 34, width: 'auto', maxWidth: 240, alignSelf: 'flex-start', color: appScope ? 'var(--acc)' : undefined }}
+                value={appScope} onChange={e => setAppScope(e.target.value)} aria-label="Application"
+                title="Application records (requests, payloads, errors, jobs) are searched only for the application chosen here">
+                <option value="">Hosts and platform</option>
+                {appNames.map(n => <option key={n} value={n}>App: {n}</option>)}
+              </select>
               <div className="ow-field" style={{ flex: '1 1 480px', height: 'auto', minHeight: 34, flexWrap: 'wrap', padding: '3px 10px', cursor: 'text' }} onClick={() => inputRef.current?.focus()}>
                 <Search size={14} style={{ color: 'var(--t3)' }}/>
                 {tags.map(tag => (

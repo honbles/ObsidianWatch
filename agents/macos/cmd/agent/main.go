@@ -127,6 +127,8 @@ func main() {
 				Dir: response.DefaultDir(), Out: rawCh, Responder: rh, AgentID: agentID, Host: hostname, OS: "darwin",
 				Logger: logger, BackendURL: cfg.Forwarder.BackendURL, ProtectURLs: []string{cfg.Forwarder.ManagementURL}, TLS: tlsCfg,
 			})
+			prev.RegisterActions(rh)                 // scan, test_protection
+			collector.ProtectionStatus = prev.Status // protection block of the health heartbeat
 		}
 	}
 

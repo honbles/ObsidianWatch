@@ -42,6 +42,7 @@ func (e *Engine) inspectNetwork(ev *schema.Event) {
 	if mode == Off || ev.DstIP == "" {
 		return
 	}
+	e.count(cConnections)
 	x, ok := e.lookupIP(ev.DstIP)
 	if !ok {
 		return
@@ -86,6 +87,7 @@ func (e *Engine) inspectProcess(ev *schema.Event) {
 	if mode == Off || !isStart(ev) {
 		return
 	}
+	e.count(cProcesses)
 	e.mu.RLock()
 	n := len(e.hashes)
 	e.mu.RUnlock()
@@ -128,6 +130,7 @@ func (e *Engine) inspectFile(ev *schema.Event) {
 	if sum == "" {
 		return
 	}
+	e.count(cFiles)
 	if _, ok := e.lookupHash(sum); !ok {
 		return
 	}
@@ -228,6 +231,7 @@ func (e *Engine) inspectDNS(ev *schema.Event) {
 	if mode == Off || len(ev.Raw) == 0 {
 		return
 	}
+	e.count(cDNS)
 	var raw map[string]any
 	if json.Unmarshal(ev.Raw, &raw) != nil {
 		return
@@ -390,6 +394,7 @@ func (r *report) addProcess(ev *schema.Event) {
 // emit sends the report. action: audit, blocked (kernel), ip_blocked
 // (block_ip), killed, quarantined, killed+quarantined, failed.
 func (e *Engine) emit(r *report, action, detail string) {
+	e.noteOutcome(action, r.Entry.Src == TestSource)
 	raw := map[string]any{
 		"kind": r.Kind, "indicator": r.Value, "mode": r.Mode, "action": action,
 		"ioc_source": r.Entry.Src, "confidence": r.Entry.Conf, "malware": r.Entry.Name,

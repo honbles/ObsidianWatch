@@ -31,3 +31,23 @@ func TestEventsQueryLibraryParses(t *testing.T) {
 		t.Fatalf("only %d library queries found", len(lib))
 	}
 }
+
+func TestQueryMentionsApp(t *testing.T) {
+	for q, want := range map[string]bool{
+		"host:web1 proc:curl":                false,
+		"app:checkout status:500":            true,
+		"service:checkout":                   true,
+		"type:app.error":                     true,
+		"error and not (route:/health)":      true,
+		"type:process or (type:app.request)": true,
+		"timeout":                            false,
+	} {
+		e, err := ParseEventQuery(q)
+		if err != nil {
+			t.Fatalf("%s: %v", q, err)
+		}
+		if e.MentionsApp() != want {
+			t.Errorf("%q: MentionsApp=%v", q, !want)
+		}
+	}
+}

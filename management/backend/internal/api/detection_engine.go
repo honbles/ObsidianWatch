@@ -1645,6 +1645,12 @@ func (e *DetectionEngine) evaluateEvents(ctx context.Context, events []store.Eve
 	if len(events) == 0 {
 		return // nothing to evaluate; skip the per-cycle refresh work entirely
 	}
+	// Per-request application records (app.request, app.payload, app.error, app.operation) have their own
+	// rules over the aggregates; endpoint signatures, Sigma and IOC matching are not run on them.
+	events = dropAppRecords(events)
+	if len(events) == 0 {
+		return
+	}
 	e.logger.Info("detection: evaluating events", "count", len(events))
 
 	e.recordPrevalence(events)
@@ -2241,4 +2247,21 @@ func installerHostAllowed(lowerCmd string) bool {
 		}
 	}
 	return false
+}
+
+func dropAppRecords(events []store.Event) []store.Event {
+	out := events[:0:0]
+	for _, ev := range events {
+		skip := false
+		for _, t := range store.AppRecordTypes {
+			if ev.EventType == t {
+				skip = true
+				break
+			}
+		}
+		if !skip {
+			out = append(out, ev)
+		}
+	}
+	return out
 }

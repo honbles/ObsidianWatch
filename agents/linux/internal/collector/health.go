@@ -32,6 +32,9 @@ type HealthStats struct {
 
 var GlobalHealth = &HealthStats{}
 
+// ProtectionStatus reports the prevention engine's state for the heartbeat; nil when prevention is off.
+var ProtectionStatus func() map[string]any
+
 type HealthReporter struct {
 	interval     time.Duration
 	agentID      string
@@ -356,6 +359,11 @@ func (h *HealthReporter) emit() {
 		"mem_percent":   memPct,
 		"disks":         disks,
 		"top_processes": procs,
+	}
+	if ProtectionStatus != nil {
+		data["protection"] = ProtectionStatus()
+	} else {
+		data["protection"] = map[string]any{"enabled": false}
 	}
 
 	rawJSON, _ := json.Marshal(data)

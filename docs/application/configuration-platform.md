@@ -27,7 +27,7 @@ Settings are stored in `service_settings` in the management database. A service 
 | Latency target (ms) | `latency_target_ms` | 0–600 000 | none | agent slow-trace threshold (pulled), Apdex, latency SLO |
 | Error budget (%) | `error_budget_pct` | 0–100 | none | APM-O01 threshold (else 5 %); availability SLO target = 100 − budget (else 99.9 %) |
 | Maintenance windows | `maintenance` | list of `{start, end, reason}`, ≤ 50 | none | silences APM-O rules and APP-X06 while open |
-| Database statements | `db_statement_mode` | `off`, `fingerprint` | `off` | agent sends literal-free statement fingerprints (pulled) |
+| Database statements | `db_statement_mode` | `off`, `fingerprint` | `fingerprint` | agent sends literal-free statement fingerprints (pulled) |
 | Error messages | `error_message_mode` | `off`, `masked` | `off` | agent sends scrubbed error messages (pulled) |
 | Ordinary traces kept (%) | `sampling.baseline_pct` | 0–100 | agent default (1) | agent baseline sampling (pulled) |
 | Error traces per minute (max) | `sampling.error_max_per_min` | 0–100 000 (0 = no cap) | 0 | agent (pulled) |

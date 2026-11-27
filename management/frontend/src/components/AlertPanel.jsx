@@ -10,6 +10,7 @@ import { Bell, CheckCircle, XCircle, RefreshCw, X,
 import { format, formatDistanceToNow } from 'date-fns'
 import api from '../api/client'
 import { SeverityBadge } from './SeverityBadge'
+import { OutcomeBadge } from './alertOutcome'
 
 const SEV_COLOR = { 5:'var(--crit)', 4:'var(--high)', 3:'var(--warn)', 2:'var(--info)', 1:'var(--t3)' }
 const SEV_LABEL = { 5:'Critical', 4:'High', 3:'Medium', 2:'Low', 1:'Info' }
@@ -109,7 +110,7 @@ function AssignModal({ alert, users, onClose, onDone }) {
   }
 
   return createPortal(
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm"
+    <div className="fixed inset-0 z-[220] flex items-center justify-center bg-black/70 backdrop-blur-sm"
          onClick={e => { e.stopPropagation(); onClose() }}>
       <div className="bg-siem-surface border border-siem-border rounded-2xl p-6 w-full max-w-md shadow-2xl"
            onClick={e => e.stopPropagation()}>
@@ -169,7 +170,7 @@ function CloseModal({ alert, onClose, onDone }) {
   }
 
   return createPortal(
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm"
+    <div className="fixed inset-0 z-[220] flex items-center justify-center bg-black/70 backdrop-blur-sm"
          onClick={e => { e.stopPropagation(); onClose() }}>
       <div className="bg-siem-surface border border-siem-border rounded-2xl p-6 w-full max-w-md shadow-2xl"
            onClick={e => e.stopPropagation()}>
@@ -194,6 +195,14 @@ function CloseModal({ alert, onClose, onDone }) {
       </div>
     </div>, document.body
   )
+}
+
+// Only endpoint alerts (agent events: signatures, Sigma, threat intel, rare binaries) record evidence and can
+// be closed as false positive; code, cloud and application alerts use Close with Review.
+const isEndpointAlert = (a) => {
+  let e = a?.evidence
+  if (typeof e === 'string') { try { e = JSON.parse(e) } catch { e = null } }
+  return !!(a?.rule_id && e && e.origin === 'endpoint')
 }
 
 // ── False-positive modal ──────────────────────────────────────────────────────
@@ -244,7 +253,7 @@ function FalsePositiveModal({ alert, onClose, onDone }) {
   }
 
   return createPortal(
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm"
+    <div className="fixed inset-0 z-[220] flex items-center justify-center bg-black/70 backdrop-blur-sm"
          onClick={e => { e.stopPropagation(); onClose() }}>
       <div className="bg-siem-surface border border-siem-border rounded-2xl p-6 w-full max-w-lg shadow-2xl"
            onClick={e => e.stopPropagation()}>
@@ -684,6 +693,7 @@ function AlertPanel({ alertId, users, onClose, onStatusChange, inline = false })
             <div className="flex items-center gap-2 mb-1.5 flex-wrap">
               <SeverityBadge severity={alert.severity}/>
               <StatusBadge status={alert.status}/>
+              <OutcomeBadge alert={alert} size="lg"/>
               {alert.disposition === 'false_positive' && (
                 <span className="text-2xs px-2 py-0.5 rounded-full border font-semibold uppercase border-siem-border text-siem-muted">False positive</span>
               )}
@@ -904,10 +914,10 @@ function AlertPanel({ alertId, users, onClose, onStatusChange, inline = false })
                       className="flex items-center gap-1.5 text-xs text-siem-muted border border-siem-border hover:border-siem-accent/40 hover:text-siem-text rounded-lg px-3 py-2 transition-colors">
                       <XCircle size={12}/> Close with Review
                     </button>
-                    <button onClick={() => setShowFP(true)}
+                    {isEndpointAlert(alert) && <button onClick={() => setShowFP(true)}
                       className="flex items-center gap-1.5 text-xs text-siem-accent border border-siem-accent/40 hover:bg-siem-accent/10 rounded-lg px-3 py-2 transition-colors">
                       <Shield size={12}/> Close as false positive
-                    </button>
+                    </button>}
                     {/* Pre-fill a suppression from this alert's rule and source event. Only built-in
                         signature alerts carry a rule ID in their dedup key (sig:<ID>:host:...). */}
                     {/^sig:/.test(alert.event_id || '') && (

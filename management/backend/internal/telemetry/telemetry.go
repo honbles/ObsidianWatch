@@ -21,6 +21,7 @@ package telemetry
 
 import (
 	"context"
+	_ "embed"
 	"fmt"
 	"log/slog"
 	"net"
@@ -273,11 +274,17 @@ func resourceAttrs(version string) []attr {
 		out = append(out, attr{"service.version", version})
 	}
 	rev, dirty := buildRevision()
+	if rev == "" {
+		rev = archiveCommit() // a build from a source archive (git archive) has no VCS stamp
+	}
 	if v := os.Getenv("OW_BUILD_COMMIT"); v != "" {
 		rev, dirty = v, false
 	}
 	if rev != "" && !dirty {
 		out = append(out, attr{"vcs.ref.head.revision", rev})
+	}
+	if v := os.Getenv("OW_SOURCE_REPO"); v != "" { // e.g. https://github.com/acme/obsidianwatch: links the code automatically
+		out = append(out, attr{"vcs.repository.url.full", v})
 	}
 	for k, v := range extra {
 		if strings.HasPrefix(k, "vcs.") || k == "service.namespace" {
@@ -285,6 +292,19 @@ func resourceAttrs(version string) []attr {
 		}
 	}
 	return out
+}
+
+//go:embed build_commit.txt
+var buildCommitFile string
+
+// archiveCommit is the commit a source archive was made from: git archive fills build_commit.txt
+// (export-subst in .gitattributes). In a git checkout the file still holds the placeholder.
+func archiveCommit() string {
+	c := strings.TrimSpace(buildCommitFile)
+	if len(c) != 40 || strings.Trim(c, "0123456789abcdef") != "" {
+		return ""
+	}
+	return c
 }
 
 // buildRevision is the VCS revision Go stamped into the binary, if any.

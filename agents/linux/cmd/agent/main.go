@@ -160,6 +160,8 @@ func main() {
 				Logger: logger, BackendURL: cfg.Forwarder.BackendURL, ProtectURLs: []string{cfg.Forwarder.ManagementURL},
 				TLS: tlsCfg, Kernel: cfg.Prevention.KernelOn(),
 			})
+			prev.RegisterActions(rh)                 // scan, test_protection
+			collector.ProtectionStatus = prev.Status // protection block of the health heartbeat
 		}
 	}
 

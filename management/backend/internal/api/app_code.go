@@ -892,6 +892,7 @@ func appHandleServiceCode(db, backendDB *store.DB) http.HandlerFunc {
 			return sevName(base)
 		}
 
+		appAutoLinkCode(ctx, db, id, insts)
 		links, _ := db.ServiceCodeLinks(ctx, []int64{id})
 		conns := map[int64]store.DevOpsConnector{}
 		if list, err := db.ListDevOpsConnectors(ctx); err == nil {

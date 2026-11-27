@@ -341,6 +341,8 @@ func run(ctx context.Context, cfg *config.Config, logger *slog.Logger) error {
 				Dir: response.DefaultDir(), Out: eventCh, Responder: rh, AgentID: agentID, Host: hostInfo.Hostname, OS: "windows",
 				Logger: logger, BackendURL: cfg.Forwarder.BackendURL, ProtectURLs: []string{cfg.Forwarder.ManagementURL}, TLS: tlsCfg,
 			})
+			prev.RegisterActions(rh)                 // scan, test_protection
+			collector.ProtectionStatus = prev.Status // protection block of the health heartbeat
 		}
 	}
 
