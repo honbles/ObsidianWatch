@@ -41,6 +41,8 @@ var sensitiveFilePatterns = []string{
 	"credentials.json", "service-account.json",
 	".aws/credentials", "secrets.yaml", "secrets.yml",
 	"terraform.tfvars", "*.tfvars",
+	// Flagged by the removed Commit Scan; kept here so they still alert.
+	"*.tfstate", "kubeconfig", "wp-config.php",
 }
 
 // cicdFiles - changes to these trigger pipeline-modification alerts

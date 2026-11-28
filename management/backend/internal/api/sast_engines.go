@@ -927,13 +927,16 @@ func codeqlLanguages(dir string) []codeqlLang {
 }
 
 // runCodeQLAll analyses every language found, sharing the caller's deadline.
-func runCodeQLAll(ctx context.Context, repoDir, repoName string, logger *slog.Logger) ([]SASTFinding, []string, error) {
+// A language that fails is reported in failed (language → reason) while the
+// others still count; the error is returned only when no language succeeded.
+func runCodeQLAll(ctx context.Context, repoDir, repoName string, logger *slog.Logger) ([]SASTFinding, []string, map[string]string, error) {
 	langs := codeqlLanguages(repoDir)
 	if len(langs) == 0 {
-		return nil, nil, nil
+		return nil, nil, nil, nil
 	}
 	var all []SASTFinding
 	var done []string
+	failed := map[string]string{}
 	var lastErr error
 	for _, l := range langs {
 		if ctx.Err() != nil {
@@ -942,6 +945,7 @@ func runCodeQLAll(ctx context.Context, repoDir, repoName string, logger *slog.Lo
 		f, err := runCodeQLLang(ctx, repoDir, repoName, l, logger)
 		if err != nil {
 			lastErr = err
+			failed[l.Lang] = err.Error()
 			logger.Warn("sast: codeql language failed", "repo", repoName, "lang", l.Lang, "err", err)
 			continue
 		}
@@ -949,9 +953,35 @@ func runCodeQLAll(ctx context.Context, repoDir, repoName string, logger *slog.Lo
 		all = append(all, f...)
 	}
 	if len(done) == 0 {
-		return nil, nil, lastErr
+		return nil, nil, failed, lastErr
 	}
-	return all, done, nil
+	return all, done, failed, nil
+}
+
+// toolErrText keeps what explains a tool failure: the lines that report an
+// error (CodeQL prints them last, after pages of progress), else the end of
+// the output. Keeping the first 200 characters showed only "Initializing
+// database…" and hid the reason.
+func toolErrText(b []byte) string {
+	lines := strings.Split(strings.TrimSpace(string(b)), "\n")
+	var keep []string
+	for _, l := range lines {
+		ll := strings.ToLower(l)
+		if strings.Contains(ll, "fatal") || strings.Contains(ll, "error") || strings.Contains(ll, "exception") || strings.Contains(ll, "could not") {
+			keep = append(keep, strings.TrimSpace(l))
+		}
+	}
+	s := strings.Join(keep, " | ")
+	if len(keep) > 3 {
+		s = strings.Join(keep[len(keep)-3:], " | ")
+	}
+	if s == "" {
+		s = strings.TrimSpace(string(b))
+	}
+	if len(s) > 500 {
+		s = "…" + s[len(s)-500:]
+	}
+	return s
 }
 
 func runCodeQLLang(ctx context.Context, repoDir, repoName string, l codeqlLang, logger *slog.Logger) ([]SASTFinding, error) {
@@ -982,7 +1012,7 @@ func runCodeQLLang(ctx context.Context, repoDir, repoName string, l codeqlLang, 
 	create := exec.CommandContext(ctx, "codeql", args...)
 	create.Env = env
 	if out, err := create.CombinedOutput(); err != nil {
-		return nil, fmt.Errorf("database create: %v: %s", err, trimOut(out))
+		return nil, fmt.Errorf("database create: %v: %s", err, toolErrText(out))
 	}
 	sarif := dbDir + ".sarif"
 	defer os.Remove(sarif)
@@ -991,7 +1021,7 @@ func runCodeQLLang(ctx context.Context, repoDir, repoName string, l codeqlLang, 
 		fmt.Sprintf("codeql/%s:codeql-suites/%s", l.Pack, l.Suite))
 	analyze.Env = env
 	if out, err := analyze.CombinedOutput(); err != nil {
-		return nil, fmt.Errorf("analyze: %v: %s", err, trimOut(out))
+		return nil, fmt.Errorf("analyze: %v: %s", err, toolErrText(out))
 	}
 	return parseSARIF(sarif, repoName, repoDir)
 }
@@ -1158,7 +1188,7 @@ func scanCheckout(ctx context.Context, conn *store.DevOpsConnector, repo, repoDi
 	// AI business logic: only when chosen (never part of the default set).
 	if on(engBusinessLogic) {
 		if opts.BL == nil {
-			engines.set("business-logic", "skipped: only on protected branches")
+			engines.set("business-logic", "skipped: not available for this kind of scan")
 		} else if f, err := runBusinessLogic(ctx, opts.BL, repo, repoDir, engines, logger); err != nil {
 			engines.set("business-logic", "failed: "+err.Error())
 		} else {
@@ -1172,10 +1202,11 @@ func scanCheckout(ctx context.Context, conn *store.DevOpsConnector, repo, repoDi
 	} else if opts.CodeQL {
 		var codeqlFindings []SASTFinding
 		var langs []string
+		var failedLangs map[string]string
 		release, codeqlErr := heavySlot(ctx)
 		if codeqlErr == nil {
 			codeqlCtx, cancelCQ := context.WithTimeout(ctx, 12*time.Minute)
-			codeqlFindings, langs, codeqlErr = runCodeQLAll(codeqlCtx, repoDir, repo, logger)
+			codeqlFindings, langs, failedLangs, codeqlErr = runCodeQLAll(codeqlCtx, repoDir, repo, logger)
 			codeqlErr = explainKill(codeqlErr, codeqlCtx, 12*time.Minute, "")
 			cancelCQ()
 			release()
@@ -1190,6 +1221,14 @@ func scanCheckout(ctx context.Context, conn *store.DevOpsConnector, repo, repoDi
 			engines.set("codeql-languages", strings.Join(langs, ","))
 			out = append(out, codeqlFindings...)
 		}
+		if len(failedLangs) > 0 {
+			// A language that failed while others ran is shown, not hidden.
+			var parts []string
+			for _, l := range sortedStrKeys(failedLangs) {
+				parts = append(parts, l+": "+failedLangs[l])
+			}
+			engines.set("codeql-failed", strings.Join(parts, "; "))
+		}
 	} else {
 		engines.set("codeql", "missing")
 	}
@@ -1197,7 +1236,7 @@ func scanCheckout(ctx context.Context, conn *store.DevOpsConnector, repo, repoDi
 }
 
 // saveSASTResult upserts the stored result of a scan: one row per
-// (connector, repository or '' for all, branch).
+// (connector, repository or ” for all, branch).
 func saveSASTResult(ctx context.Context, db *store.DB, connID int64, repo, branch, commitSHA string, engines engineReport, findings []SASTFinding, sbom []byte, repos, files int) error {
 	counts := map[string]int{}
 	for _, f := range findings {
@@ -1235,9 +1274,7 @@ func saveSASTResult(ctx context.Context, db *store.DB, connID int64, repo, branc
 		counts["critical"], counts["high"], counts["medium"],
 		findingsJSON, enginesJSON, nullJSON(sbom), commitSHA)
 	if err == nil && strings.HasPrefix(branch, "@") {
-		// keep the 20 newest commit scans of a repository
-		_, _ = db.ExecContext(ctx, `DELETE FROM sast_results WHERE connector_id=$1 AND repo=$2 AND branch LIKE '@%' AND id NOT IN (
-			SELECT id FROM sast_results WHERE connector_id=$1 AND repo=$2 AND branch LIKE '@%' ORDER BY scanned_at DESC LIMIT 20)`, connID, repo)
+		pruneCommitScans(ctx, db, connID, repo) // newest OW_SAST_COMMIT_SCANS_KEEP plus the pinned ones
 	}
 	return err
 }
@@ -1408,4 +1445,72 @@ func goModuleDirs(repoDir string) []string {
 	}
 	sort.Strings(dirs)
 	return dirs
+}
+
+func sortedStrKeys(m map[string]string) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// mergeEngineReport folds one repository's engine report into the report of a
+// scan over several repositories. Each repository used to write into one shared
+// report, so the last repository's status won: CodeQL failing on a Python-only
+// repository showed as "failed" next to the JavaScript it had analysed in
+// another. Now an engine that ran anywhere is "ran", failures are listed per
+// repository under "<engine>-failed", and the analysed languages are combined.
+func mergeEngineReport(agg, one engineReport, repo string) {
+	rank := func(v string) int {
+		switch {
+		case v == "ran":
+			return 4
+		case strings.HasPrefix(v, "failed"):
+			return 3
+		case strings.HasPrefix(v, "skipped"):
+			return 2
+		case v == "":
+			return 0
+		}
+		return 1 // missing
+	}
+	appendDetail := func(k, v string) {
+		if agg[k] == "" {
+			agg[k] = v
+		} else if !strings.Contains(agg[k], v) {
+			agg[k] += "; " + v
+		}
+	}
+	for k, v := range one {
+		switch {
+		case k == "codeql-languages":
+			have := map[string]bool{}
+			var langs []string
+			for _, l := range strings.Split(agg[k]+","+v, ",") {
+				if l = strings.TrimSpace(l); l != "" && !have[l] {
+					have[l] = true
+					langs = append(langs, l)
+				}
+			}
+			sort.Strings(langs)
+			agg[k] = strings.Join(langs, ",")
+		case strings.HasSuffix(k, "-failed") || strings.HasSuffix(k, "-files"):
+			appendDetail(k, repo+": "+v)
+		case k == "source":
+			if agg[k] == "" {
+				agg[k] = v
+			} else if agg[k] != v {
+				agg[k] = "git+api"
+			}
+		default:
+			if strings.HasPrefix(v, "failed") {
+				appendDetail(k+"-failed", repo+": "+strings.TrimPrefix(strings.TrimPrefix(v, "failed"), ": "))
+			}
+			if rank(v) > rank(agg[k]) {
+				agg[k] = v
+			}
+		}
+	}
 }

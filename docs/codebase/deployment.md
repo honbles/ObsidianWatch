@@ -241,7 +241,7 @@ Implemented in: `devops_engine.go`, `sync_guard.go`, `detection_engine.go` (`run
 
 | Scan | Trigger | Runs where |
 |---|---|---|
-| Commit scan | **Commit Scan** tab → `POST .../code-scan` | In process, over stored commit diffs. No source is downloaded. |
+| Commit scan | **SAST** tab → **Commit** list → `POST .../sast?repo=&branch=&commit=<sha>` | Like a SAST scan, on exactly that commit (git fetch by id; no API fallback). Stored as a snapshot. |
 | SAST + SCA | **SAST** tab → `POST .../sast?async=1`; or an automated job (on push, schedule, PR, **Scan all repositories now**; section 6b) | Clones the repository to a temporary directory (provider API download as the fallback), then runs history secrets, pattern rules, Trivy (or OSV), the built-in rules and CodeQL |
 | Posture | **Posture** tab → `POST .../posture?async=1` | In process, API calls only |
 
@@ -314,7 +314,7 @@ Jobs survive restarts (a job running during a restart is marked failed). `OW_COD
 
 | Feature | Needs |
 |---|---|
-| AI Triage summary (SAST, Commit Scan tabs) | An AI key in Settings → AI (Groq or Anthropic). Snippets are only sent when `ai.send_source_snippets` is `true`. |
+| AI Triage summary (SAST tab) | An AI key in Settings → AI (Groq or Anthropic). Snippets are only sent when `ai.send_source_snippets` is `true`. |
 | AI fix suggestions for code findings (SAST tab, PR comments) | An **Anthropic** key **and** `ai.send_source_snippets = true` (a fix needs the code). Written by the code model. Otherwise the button answers with the missing setting. |
 | AI business-logic engine (SAST, protected branches) | An **Anthropic** key **and** `ai.send_source_snippets = true`, and a protected branch whose engines include it (Automation → Protected branches). Uses the code model. |
 | AI correlation of multi-engine findings (SAST, protected branch option) | Same as the business-logic engine; a result from two or more engines. |
@@ -357,6 +357,7 @@ Implemented in: `management/backend/internal/store/secrets.go`, `store/credmask.
 | `OW_SCANNER_DB_UPDATE` | `true` | `false`: never refresh the Trivy databases (fully offline) |
 | `OW_CODE_SCAN_WORKERS` | `1` | Automated scan jobs run in parallel (1-4) |
 | `OW_AI_BL_MAX_FILES` | `40` | Route files the AI business-logic engine reads per scan (1-500) |
+| `OW_SAST_COMMIT_SCANS_KEEP` | `50` | Unpinned commit scans kept per repository (1-1000); pinned ones are always kept |
 | `OW_AI_CORR_MAX_BATCHES` | `25` | Model requests per AI correlation, 60 findings each (1-500) |
 | `OW_SAST_HEAVY_SLOTS` | `1` | Pattern-rule and CodeQL runs allowed at the same time across all scans (1-8). Each needs 1-2 GB of memory; other scans wait. Raise only with memory to match. |
 | `OW_SEMGREP_TIMEOUT_MIN` | `10` | Time limit of the pattern-rule engine per repository (1-60 minutes) |
@@ -398,8 +399,9 @@ Viewers are read-only everywhere (every mutating request is refused for them). A
 |---|---|---|
 | List connectors | `GET /api/v1/devops-connectors` | any signed-in user |
 | Test / save / delete connector | `POST .../test`, `POST`, `DELETE .../{id}` | admin |
-| Sync, code scan, SAST scan, posture check, AI summaries | `POST .../{id}/sync`, `/code-scan`, `/sast`, `/posture`, `.../ai` | analyst, admin |
-| Read results, list repositories, SBOM | `GET .../{id}/code-scan`, `/sast`, `/sast/repos`, `/sast/sbom`, `/posture`, `/commits`, `GET /api/v1/findings` | any signed-in user |
+| Sync, SAST scan (branch or commit), correlation, posture check, AI summaries, pin a commit scan | `POST .../{id}/sync`, `/sast`, `/sast/correlate`, `/sast/commit-scans/pin`, `/posture`, `.../ai` | analyst, admin |
+| Delete a commit scan | `DELETE .../{id}/sast/commit-scans` | admin |
+| Read results, list repositories, commits and commit scans, compare, SBOM | `GET .../{id}/sast`, `/sast/repos`, `/sast/commits`, `/sast/commit-scans`, `/sast/commit-scans/compare`, `/sast/sbom`, `/posture`, `/commits`, `GET /api/v1/findings` | any signed-in user |
 | Automation policy | `GET .../{id}/scan-policy` (any), `PUT` (admin) | |
 | Automated scan jobs | `GET .../{id}/scan-jobs`, `GET /api/v1/scan-jobs/{job}` (any); `POST .../{id}/scan-jobs` "scan now" (admin) | |
 | Triage a finding | `POST .../{id}/findings/triage` | analyst, admin |
@@ -421,7 +423,6 @@ Select the connector in **Code → Repositories → Connectors and scans** and p
 |---|---|
 | Connector row, encrypted token, webhook secret | yes |
 | Stored commits (`devops_commits`) | yes (`ON DELETE CASCADE`) |
-| Code scan results (`code_scan_results`) | yes (cascade) |
 | SAST results (`sast_results`, with engines and SBOM) | yes (cascade) |
 | Automated scan jobs and PR check state (`code_scan_jobs`, `code_pr_checks`) | yes (cascade) |
 | Triage decisions and rules (`code_finding_triage`, `code_triage_rules`) | yes (cascade) |

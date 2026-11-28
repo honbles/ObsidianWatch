@@ -221,13 +221,16 @@ func corrCacheKey(model string, raw []SASTFinding, idx []int) string {
 // planCorrelation splits raw findings into files the model reviews (two or
 // more engines reported there) and findings that pass through.
 func planCorrelation(raw []SASTFinding) (batches []corrBatch, passThrough []int) {
+	// Keyed by repository and file: a result covering several repositories
+	// can have the same path in two of them.
 	byFile := map[string][]int{}
 	var files []string
 	for i, f := range raw {
-		if _, ok := byFile[f.File]; !ok {
-			files = append(files, f.File)
+		k := f.Repo + "\x00" + f.File
+		if _, ok := byFile[k]; !ok {
+			files = append(files, k)
 		}
-		byFile[f.File] = append(byFile[f.File], i)
+		byFile[k] = append(byFile[k], i)
 	}
 	sort.Strings(files)
 	var cur corrBatch
@@ -319,9 +322,9 @@ func applyGroups(raw []SASTFinding, b corrBatch, groups []corrGroup) (out [][]in
 				continue
 			}
 			if file == "" {
-				file = raw[i].File
-			} else if raw[i].File != file {
-				continue // never across files
+				file = raw[i].Repo + "\x00" + raw[i].File
+			} else if raw[i].Repo+"\x00"+raw[i].File != file {
+				continue // never across files or repositories
 			}
 			used[i] = true
 			members = append(members, i)
@@ -572,7 +575,13 @@ func handleSASTCorrelate(cfg *config.Config, db *store.DB) http.HandlerFunc {
 		}
 		repo, branch := r.URL.Query().Get("repo"), r.URL.Query().Get("branch")
 		if repo == "" {
-			writeJSON(w, 400, map[string]string{"error": "repo is required"})
+			// Every repository's latest result that two or more engines produced.
+			out, err := correlateAllRepos(r.Context(), cfg, db, connID, r.URL.Query().Get("undo") == "1")
+			if err != nil {
+				writeJSON(w, 400, map[string]string{"error": "correlation: " + err.Error()})
+				return
+			}
+			writeJSON(w, 200, out)
 			return
 		}
 		if branch == "" {
@@ -593,4 +602,108 @@ func handleSASTCorrelate(cfg *config.Config, db *store.DB) http.HandlerFunc {
 		}
 		writeJSON(w, 200, map[string]interface{}{"correlation": meta})
 	}
+}
+
+// correlateAllRepos correlates (or, with undo, restores) the latest result of
+// every repository of a connector scanned with two or more engines, then
+// rebuilds the connector-wide "all repositories" result from them.
+func correlateAllRepos(ctx context.Context, cfg *config.Config, db *store.DB, connID int64, undo bool) (map[string]interface{}, error) {
+	if !undo {
+		if err := businessLogicReady(ctx, cfg, db); err != nil {
+			return nil, err
+		}
+	}
+	rows, err := db.QueryContext(ctx, `SELECT repo, branch, COALESCE(engines,'{}'::jsonb), correlation IS NOT NULL FROM sast_results
+		WHERE connector_id=$1 AND repo <> '' AND branch NOT LIKE '@%'`, connID)
+	if err != nil {
+		return nil, err
+	}
+	type target struct {
+		repo, branch string
+		engines      engineReport
+		correlated   bool
+	}
+	var targets []target
+	for rows.Next() {
+		var t target
+		var ej []byte
+		if rows.Scan(&t.repo, &t.branch, &ej, &t.correlated) == nil {
+			_ = json.Unmarshal(ej, &t.engines)
+			targets = append(targets, t)
+		}
+	}
+	rows.Close()
+	type item struct {
+		Repo   string    `json:"repo"`
+		Branch string    `json:"branch"`
+		Status string    `json:"status"`
+		Meta   *corrMeta `json:"correlation,omitempty"`
+	}
+	var items []item
+	done := 0
+	for _, t := range targets {
+		if ctx.Err() != nil {
+			break
+		}
+		it := item{Repo: t.repo, Branch: t.branch}
+		switch {
+		case undo && !t.correlated:
+			continue
+		case undo:
+			if err := uncorrelateStored(ctx, db, connID, t.repo, t.branch); err != nil {
+				it.Status = "failed: " + err.Error()
+			} else {
+				it.Status, done = "restored", done+1
+			}
+		case !correlationAllowed(t.engines):
+			it.Status = "skipped: fewer than two engines ran"
+		default:
+			if m, err := correlateStored(ctx, cfg, db, connID, t.repo, t.branch, false); err != nil {
+				it.Status = "failed: " + err.Error()
+			} else {
+				it.Status, it.Meta, done = "correlated", &m, done+1
+			}
+		}
+		items = append(items, it)
+	}
+	rebuildAllReposResult(ctx, db, connID)
+	return map[string]interface{}{"repositories": items, "done": done}, nil
+}
+
+// rebuildAllReposResult refreshes the connector-wide result (repo ”) from the
+// repositories' current results, so the "All repos" view shows correlated
+// findings where a repository was correlated.
+func rebuildAllReposResult(ctx context.Context, db *store.DB, connID int64) {
+	rows, err := db.QueryContext(ctx, `SELECT findings, COALESCE(raw_findings, findings), correlation IS NOT NULL FROM sast_results
+		WHERE connector_id=$1 AND repo <> '' AND branch NOT LIKE '@%'`, connID)
+	if err != nil {
+		return
+	}
+	var all, raw []SASTFinding
+	anyCorr := false
+	for rows.Next() {
+		var fj, rj []byte
+		var corr bool
+		if rows.Scan(&fj, &rj, &corr) != nil {
+			continue
+		}
+		var f, r []SASTFinding
+		_ = json.Unmarshal(fj, &f)
+		_ = json.Unmarshal(rj, &r)
+		all, raw = append(all, f...), append(raw, r...)
+		anyCorr = anyCorr || corr
+	}
+	rows.Close()
+	c := countBySeverity(all)
+	fj, _ := json.Marshal(all)
+	var rawJSON, metaJSON interface{}
+	if anyCorr {
+		b, _ := json.Marshal(raw)
+		rawJSON = b
+		m, _ := json.Marshal(corrMeta{At: time.Now().UTC(), Raw: len(raw), Findings: len(all), Model: "per repository"})
+		metaJSON = m
+	}
+	_, _ = db.ExecContext(ctx, `UPDATE sast_results SET findings=$2, raw_findings=$3, correlation=$4,
+		finding_count=$5, critical_count=$6, high_count=$7, medium_count=$8 WHERE connector_id=$1 AND repo=''`,
+		connID, fj, rawJSON, metaJSON, len(all), c["critical"], c["high"], c["medium"])
 }

@@ -32,7 +32,7 @@ export default function RepoPage() {
         </>}/>
       <div className="ow-body" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
         <section className="ow-card" style={{ overflow: 'hidden' }}>
-          <div className="ow-card-bar"><span style={{ fontWeight: 600 }}>Findings</span><span className="t3" style={{ fontSize: 13.5 }}>From the commit scan, SAST and the posture check</span></div>
+          <div className="ow-card-bar"><span style={{ fontWeight: 600 }}>Findings</span><span className="t3" style={{ fontSize: 13.5 }}>From SAST and the posture check</span></div>
           <DenseTable rows={fs} rowKey={f => findingPath(f)} onRow={f => navigate(findingPath(f))} rowState={f => f.sev >= 5 ? 'crit' : f.sev >= 4 ? 'warn' : null}
             empty={d.loading ? 'Loading…' : 'No findings in the latest scans.'}
             cols={[

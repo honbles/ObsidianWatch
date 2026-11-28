@@ -5,7 +5,8 @@ import AutomationPanel from './code/AutomationPanel'
 import ReachBadge, { REACH_ORDER, reachTitle } from './code/ReachBadge'
 import FindingActions, { TriageBadge } from './code/FindingActions'
 import CreateIssuesDialog from './code/CreateIssuesDialog'
-import EnginePicker from './code/EnginePicker'
+import EnginePicker, { useEngines } from './code/EnginePicker'
+import { CommitPicker, CommitScansPanel, TokenConfirm } from './code/CommitScans'
 import { GitBranch, GitCommit, Code, Bell, Activity, Search,
          RefreshCw, Plus, Trash2, ChevronRight, AlertTriangle,
          CheckCircle, XCircle, Eye, EyeOff, Clock, User,
@@ -382,11 +383,6 @@ function ConnectorDetail({ conn, onSync, onDisconnect, syncing }) {
   const [selectedEvent, setSelectedEvent] = useState(null)
   const [selectedCommit, setSelectedCommit] = useState(null)
   const [loading, setLoading]   = useState(false)
-  const [scanResult, setScanResult] = useState(null)
-  const [scanning, setScanning]   = useState(false)
-  const [scanError, setScanError] = useState(null)
-  const [aiScan, setAiScan]       = useState(null)
-  const [aiScanLoading, setAiScanLoading] = useState(false)
   const navigate = useNavigate()
   const [sastResult, setSastResult] = useState(null)
   const [sasting, setSasting]       = useState(false)
@@ -403,6 +399,13 @@ function ConnectorDetail({ conn, onSync, onDisconnect, syncing }) {
   const [sastSelBranch, setSastSelBranch] = useState('')
   const [sastBranches, setSastBranches] = useState([])
   const [issuesOpen, setIssuesOpen] = useState(false)
+  const [reposWarning, setReposWarning] = useState('') // why the provider listed no repositories
+  // Commit: '' = the branch head (a branch scan), else a commit scanned as a snapshot.
+  const [sastCommit, setSastCommit] = useState('')
+  const [commitScansKey, setCommitScansKey] = useState(0)
+  const [confirm, setConfirm] = useState(null) // { title, body, label, run }
+  const engData = useEngines(conn.id)
+  useEffect(() => { setSastCommit('') }, [sastSelRepo, sastSelBranch])
   const loadBranches = useCallback((repo, def) => {
     setSastBranches([])
     if (!repo) return
@@ -425,14 +428,31 @@ function ConnectorDetail({ conn, onSync, onDisconnect, syncing }) {
     return [...new Set(Object.entries(eng || {}).filter(([, v]) => v === 'ran').map(([k]) => map[k]).filter(Boolean))]
   }
   const [correlating, setCorrelating] = useState(false)
+  const correlationOff = engData && engData.correlation_ready === false
+  const blEngine = (engData?.engines || []).find(e => e.id === 'business_logic')
+  const blOff = blEngine && !blEngine.available ? blEngine.reason : ''
+  const askCorrelate = () => setConfirm({
+    title: 'Correlate findings with AI?',
+    body: <>
+      <p>The findings{(sastResult?.repo || sastSelRepo) ? '' : ' of every repository scanned with two or more engines'} and the code around them are sent to <span className="font-mono">{engData?.code_model || 'the code model'}</span>. This uses Anthropic API tokens, billed to your key.</p>
+      <p>Findings of different engines that report the same weakness are merged and likely false positives are marked. The raw engine findings are kept; Undo restores them.</p>
+    </>,
+    label: 'Correlate', run: () => correlate(false),
+  })
   const correlate = async (undo) => {
+    // No repository: every repository's latest result with two or more engines.
     const repo = sastResult?.repo || sastSelRepo, branch = sastResult?.branch || sastSelBranch
-    if (!repo) return
     setCorrelating(true); setSastError(null)
     try {
-      const p = new URLSearchParams({ repo, branch: branch || 'HEAD' }); if (undo) p.set('undo', '1')
-      await runScan(`/api/v1/devops-connectors/${conn.id}/sast/correlate?${p}`, { maxWaitMs: 30 * 60 * 1000 })
-      await loadSASTForRepo(repo, branch)
+      const p = new URLSearchParams(); if (repo) { p.set('repo', repo); p.set('branch', branch || 'HEAD') }
+      if (undo) p.set('undo', '1')
+      const { data } = await runScan(`/api/v1/devops-connectors/${conn.id}/sast/correlate?${p}`, { maxWaitMs: 60 * 60 * 1000 })
+      if (repo) await loadSASTForRepo(repo, branch)
+      else {
+        await loadSAST()
+        const failed = (data?.repositories || []).filter(x => x.status?.startsWith('failed'))
+        if (failed.length) setSastError(failed.map(x => `${x.repo}: ${x.status}`).join('; '))
+      }
     } catch (e) { setSastError(e.response?.data?.error || 'Correlation failed') }
     finally { setCorrelating(false) }
   }
@@ -442,20 +462,36 @@ function ConnectorDetail({ conn, onSync, onDisconnect, syncing }) {
     const params = new URLSearchParams({ repo }); if (sastResult?.branch) params.set('branch', sastResult.branch); if (raw) params.set('raw', '1')
     try { const { data } = await api.get(`/api/v1/devops-connectors/${conn.id}/sast?${params}`); if (data?.scan) setSastResult(data.scan) } catch { /* keep */ }
   }
-  const runSast = async (engines) => {
+  const runSastNow = async (engines) => {
     setSasting(true); setSastError(null)
+    const commit = sastSelRepo ? sastCommit : ''
     try {
       const params = new URLSearchParams()
       if (sastSelRepo) params.set('repo', sastSelRepo)
       if (sastSelBranch) params.set('branch', sastSelBranch)
+      if (commit) params.set('commit', commit)
       if (engines && engines.length) params.set('engines', engines.join(','))
       const url = `/api/v1/devops-connectors/${conn.id}/sast${params.toString() ? '?' + params.toString() : ''}`
       const { data } = await runScan(url, { maxWaitMs: 42 * 60 * 1000 })
       setSastResult(data); setAiSast(null); if (data.warning) setSastError(data.warning)
+      if (commit) { setCommitScansKey(k => k + 1); loadSASTForRepo(sastSelRepo, '@' + commit) }
       // A partial scan merges with the stored result: show the stored, merged result.
-      if (sastSelRepo && engines && engines.length) loadSASTForRepo(sastSelRepo, sastSelBranch)
+      else if (sastSelRepo && engines && engines.length) loadSASTForRepo(sastSelRepo, sastSelBranch)
     } catch (e) { setSastError(e.response?.data?.error || 'SAST scan failed') }
     finally { setSasting(false) }
+  }
+  // The AI engine costs tokens: confirm first.
+  const runSast = (engines) => {
+    const ids = engines && engines.length ? engines : []
+    if (!ids.includes('business_logic')) return runSastNow(engines)
+    setConfirm({
+      title: 'Run the AI business-logic engine?',
+      body: <>
+        <p>Source files of {sastSelRepo || 'every repository'} are sent to <span className="font-mono">{engData?.code_model || 'the code model'}</span> to look for business-logic flaws. This uses Anthropic API tokens, billed to your key; a large repository can use many.</p>
+        <p>Unchanged files reuse earlier results and cost nothing.</p>
+      </>,
+      label: 'Run scan', run: () => runSastNow(engines),
+    })
   }
   const [search, setSearch]     = useState('')
   const [repoFilter, setRepoFilter] = useState('')
@@ -535,6 +571,7 @@ function ConnectorDetail({ conn, onSync, onDisconnect, syncing }) {
       .then(r => {
         const repos = r.data.repos || []
         setSastRepos(repos)
+        setReposWarning(repos.length ? '' : (r.data.warning || ''))
         // Pre-select first repo if none selected
         if (repos.length === 1 && !sastSelRepo) {
           setSastSelRepo(repos[0].repo)
@@ -557,29 +594,13 @@ function ConnectorDetail({ conn, onSync, onDisconnect, syncing }) {
     } catch {}
   }, [conn.id])
 
-  const loadCodeScan = useCallback(async () => {
-    try {
-      const { data } = await api.get(`/api/v1/devops-connectors/${conn.id}/code-scan`)
-      if (data?.scan) {
-        setScanResult(data.scan)
-        if (data.scan.ai_summary) {
-          try {
-            const clean = data.scan.ai_summary.replace(/```json\n?|```\n?/g, '').trim()
-            setAiScan(JSON.parse(clean))
-          } catch (e) { setAiScan({ executive_summary: data.scan.ai_summary }) }
-        }
-      }
-    } catch {}
-  }, [conn.id])
-
   useEffect(() => {
     setSelectedCommit(null)
     if (tab === 'commits')   loadCommits()
     if (tab === 'alerts')    loadAlerts()
     if (tab === 'events')    loadEvents()
-    if (tab === 'code-scan') loadCodeScan()
     if (tab === 'sast') loadSAST()
-  }, [tab, loadCommits, loadAlerts, loadEvents, loadCodeScan, loadSAST])
+  }, [tab, loadCommits, loadAlerts, loadEvents, loadSAST])
 
   useEffect(() => { if (tab === 'commits') loadCommits() }, [repoFilter])
 
@@ -602,7 +623,6 @@ function ConnectorDetail({ conn, onSync, onDisconnect, syncing }) {
 
   const tabs = [
     { id: 'commits',   label: 'Code Changes', icon: GitCommit },
-    { id: 'code-scan', label: 'Commit Scan',   icon: Shield    },
     { id: 'sast',      label: 'SAST',          icon: Code      },
     { id: 'events',    label: 'Events',        icon: Activity  },
     { id: 'alerts',    label: 'Alerts',        icon: Bell      },
@@ -751,6 +771,14 @@ function ConnectorDetail({ conn, onSync, onDisconnect, syncing }) {
               </div>
             </div>
 
+            {sastRepos.length === 0 && reposWarning && (
+              <div className="bg-amber-950/20 border border-amber-800/40 rounded-xl p-3 text-xs text-amber-300">
+                <div className="font-semibold mb-1">No repositories to choose from</div>
+                <div className="font-mono break-all text-amber-200/80">{reposWarning}</div>
+                <div className="mt-1 text-siem-muted">Fix the token's access, then reopen this tab. Disconnect and connect again to enter a new token.</div>
+              </div>
+            )}
+
             {/* Repo / branch selector */}
             {sastRepos.length > 0 && (
               <div className="flex items-center gap-3 flex-wrap">
@@ -791,6 +819,9 @@ function ConnectorDetail({ conn, onSync, onDisconnect, syncing }) {
                     </select>
                   </div>
                 )}
+                {sastSelRepo && (
+                  <CommitPicker connId={conn.id} repo={sastSelRepo} branch={sastSelBranch} value={sastCommit} onChange={setSastCommit} refreshKey={commitScansKey} />
+                )}
               </div>
             )}
 
@@ -799,9 +830,10 @@ function ConnectorDetail({ conn, onSync, onDisconnect, syncing }) {
               <div className="text-2xs uppercase tracking-wider text-siem-muted font-semibold mb-2">
                 Scan engines{protectedProfile ? ' · protected branch: its engines are preselected' : ''}
               </div>
-              <EnginePicker connId={conn.id} value={sastEngines} onChange={setSastEngines} allowAI={!!protectedProfile} compact />
-              {!protectedProfile && <div className="text-2xs text-siem-muted mt-2">The AI business-logic engine runs only on protected branches (Automation → Protected branches).</div>}
-              {sastSelRepo && <div className="text-2xs text-siem-muted mt-1">Engines left out keep their last findings for this branch.</div>}
+              <EnginePicker connId={conn.id} value={sastEngines} onChange={setSastEngines} compact />
+              <div className="text-2xs text-siem-muted mt-2">The AI business-logic engine uses Anthropic API tokens; it runs only when ticked here or in a protected branch's profile.</div>
+              {sastSelRepo && !sastCommit && <div className="text-2xs text-siem-muted mt-1">Engines left out keep their last findings for this branch.</div>}
+              {sastCommit && <div className="text-2xs text-siem-accent mt-1">Commit {sastCommit.slice(0, 7)} is scanned as a snapshot (Commit scans below); the branch's findings are not changed.</div>}
             </div>
 
             {/* Actions */}
@@ -809,19 +841,19 @@ function ConnectorDetail({ conn, onSync, onDisconnect, syncing }) {
               <button onClick={() => runSast(sastEngines)} disabled={sasting}
                 className="flex items-center gap-2 px-4 py-2 text-xs font-semibold bg-siem-accent hover:bg-siem-accent/90 text-white rounded-xl disabled:opacity-40 transition-colors">
                 <Code size={13} className={sasting ? 'animate-pulse' : ''}/>
-                {sasting ? 'Scanning source code…' : 'Run SAST Scan'}
+                {sasting ? 'Scanning source code…' : sastCommit ? `Scan commit ${sastCommit.slice(0, 7)}` : 'Run SAST Scan'}
               </button>
-              {sastResult?.repo && !sasting && !sastResult.correlation && ranEngines(sastResult.engines).length >= 2 && (
-                <button onClick={() => correlate(false)} disabled={correlating}
-                  title="Group the findings of the engines that report the same weakness, with the code model; the raw engine findings are kept"
-                  className="flex items-center gap-2 px-4 py-2 text-xs font-semibold border border-violet-500/60 text-violet-300 hover:bg-violet-950/30 rounded-xl disabled:opacity-40 transition-colors">
-                  <Zap size={13}/>{correlating ? 'Correlating…' : 'Correlate findings'}
+              {sastResult && !sasting && !sastResult.correlation && ranEngines(sastResult.engines).length >= 2 && (
+                <button onClick={askCorrelate} disabled={correlating || correlationOff}
+                  title={correlationOff ? `Not available: ${engData.correlation_reason} (Settings → AI)` : `Group the findings of the engines that report the same weakness, with the code model (uses tokens); the raw engine findings are kept${sastResult.repo ? '' : '. All repositories: each repository scanned with two or more engines is correlated.'}`}
+                  className="flex items-center gap-2 px-4 py-2 text-xs font-semibold border border-violet-500/60 text-violet-300 hover:bg-violet-950/30 rounded-xl disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
+                  <Zap size={13}/>{correlating ? 'Correlating…' : sastResult.repo ? 'Correlate findings' : 'Correlate all findings'}
                 </button>
               )}
-              {protectedProfile && !sasting && (
-                <button onClick={() => runSast(['business_logic'])}
-                  title="Run only the AI business-logic engine on this protected branch; the other engines' findings are kept"
-                  className="flex items-center gap-2 px-4 py-2 text-xs font-semibold bg-violet-600 hover:bg-violet-500 text-white rounded-xl transition-colors">
+              {sastSelRepo && !sasting && (
+                <button onClick={() => runSast(['business_logic'])} disabled={!!blOff}
+                  title={blOff ? `Not available: ${blOff}` : "Run only the AI business-logic engine on this branch (uses tokens); the other engines' findings are kept"}
+                  className="flex items-center gap-2 px-4 py-2 text-xs font-semibold bg-violet-600 hover:bg-violet-500 text-white rounded-xl disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
                   <Zap size={13}/>Run business-logic analysis
                 </button>
               )}
@@ -859,8 +891,23 @@ function ConnectorDetail({ conn, onSync, onDisconnect, syncing }) {
                 onClose={() => setIssuesOpen(false)} onDone={reloadSAST} />}
             </div>
 
+            {confirm && <TokenConfirm title={confirm.title} confirmLabel={confirm.label} onConfirm={confirm.run} onClose={() => setConfirm(null)}>{confirm.body}</TokenConfirm>}
+
             {sastError && (
               <div className="bg-red-950/20 border border-red-800/30 rounded-xl p-3 text-xs text-red-400">{sastError}</div>
+            )}
+
+            {sastSelRepo && (
+              <CommitScansPanel connId={conn.id} repo={sastSelRepo} viewing={sastResult?.branch} refreshKey={commitScansKey}
+                onView={(b) => loadSASTForRepo(sastSelRepo, b)} />
+            )}
+
+            {sastResult?.branch?.startsWith('@') && (
+              <div className="bg-siem-accent/10 border border-siem-accent/30 rounded-xl p-3 text-xs text-siem-text flex items-center gap-3 flex-wrap">
+                <GitCommit size={13} className="text-siem-accent"/>
+                <span>Showing the snapshot of commit <span className="font-mono">{sastResult.branch.slice(1, 8)}</span>. These are not the branch's current findings: automation and fix pull requests use the branch scan.</span>
+                <button onClick={() => loadSASTForRepo(sastSelRepo, sastSelBranch)} className="ml-auto text-siem-accent hover:underline">Back to {sastSelBranch || 'the branch'}</button>
+              </div>
             )}
 
             {sastResult?.correlation && (
@@ -875,8 +922,8 @@ function ConnectorDetail({ conn, onSync, onDisconnect, syncing }) {
                   {sastResult.correlation.failed ? `, ${sastResult.correlation.failed} batch(es) failed` : ''}).
                 </span>
                 <span className="ml-auto flex gap-3">
-                  <button onClick={() => showRawFindings(!sastResult.raw)} className="text-violet-300 hover:underline">{sastResult.raw ? 'Show correlated findings' : 'Show raw engine findings'}</button>
-                  <button onClick={() => correlate(false)} disabled={correlating} className="text-violet-300 hover:underline disabled:opacity-40">{correlating ? 'Correlating…' : 'Correlate again'}</button>
+                  {sastResult.repo && <button onClick={() => showRawFindings(!sastResult.raw)} className="text-violet-300 hover:underline">{sastResult.raw ? 'Show correlated findings' : 'Show raw engine findings'}</button>}
+                  <button onClick={askCorrelate} disabled={correlating || correlationOff} className="text-violet-300 hover:underline disabled:opacity-40">{correlating ? 'Correlating…' : 'Correlate again'}</button>
                   <button onClick={() => correlate(true)} disabled={correlating} className="text-siem-muted hover:underline disabled:opacity-40">Undo</button>
                 </span>
               </div>
@@ -929,7 +976,7 @@ function ConnectorDetail({ conn, onSync, onDisconnect, syncing }) {
                 {/* Engines and SBOM */}
                 {(sastResult.engines || sastResult.sbom_available) && (
                   <div className="flex items-center gap-2 flex-wrap">
-                    {Object.entries(sastResult.engines || {}).filter(([k]) => k !== 'codeql-languages' && k !== 'business-logic-files').map(([name, status]) => {
+                    {Object.entries(sastResult.engines || {}).filter(([k]) => !/-(languages|files|failed)$/.test(k)).map(([name, status]) => {
                       const ok = status === 'ran' || name === 'source'
                       const label = name === 'source' ? `source: ${status === 'git' ? 'git clone' : 'API download'}` : name
                       const detail = name === 'business-logic' && sastResult.engines?.['business-logic-files'] ? `${status} · ${sastResult.engines['business-logic-files']}` : status
@@ -940,6 +987,11 @@ function ConnectorDetail({ conn, onSync, onDisconnect, syncing }) {
                         </span>
                       )
                     })}
+                    {Object.entries(sastResult.engines || {}).filter(([k]) => k.endsWith('-failed')).map(([k, v]) => (
+                      <span key={k} title={v} className="text-mini px-2 py-0.5 rounded-full border border-amber-700/60 text-amber-400/90 cursor-help max-w-[420px] truncate">
+                        {k.replace(/-failed$/, '')} partly failed: {v}
+                      </span>
+                    ))}
                     {sastResult.sbom_available && (sastResult.repo || sastSelRepo) && (
                       <button onClick={() => {
                         const p = new URLSearchParams({ repo: sastResult.repo || sastSelRepo })
@@ -1196,6 +1248,13 @@ function ConnectorDetail({ conn, onSync, onDisconnect, syncing }) {
                     </div>
                   </div>
                 ) : (
+                  !sastResult.scanned_repos ? (
+                  <div className="flex flex-col items-center justify-center py-10 gap-2">
+                    <AlertTriangle size={24} className="text-amber-400/60"/>
+                    <div className="text-sm text-siem-text/60">No repositories were scanned</div>
+                    <div className="text-xs text-siem-muted/60">The repository list or the download failed, so this is not a clean result.</div>
+                  </div>
+                  ) : (
                   <div className="flex flex-col items-center justify-center py-10 gap-2">
                     <CheckCircle size={24} className="text-emerald-400/50"/>
                     <div className="text-sm text-siem-text/60">No security issues found</div>
@@ -1203,194 +1262,7 @@ function ConnectorDetail({ conn, onSync, onDisconnect, syncing }) {
                       Scanned {sastResult.scanned_files} files across {sastResult.scanned_repos} repos
                     </div>
                   </div>
-                )}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Commit Scan */}
-        {tab === 'code-scan' && (
-          <div className="p-5 space-y-4">
-
-            {/* Scan actions */}
-            <div className="flex items-center gap-3">
-              <button onClick={async () => {
-                setScanning(true); setScanError(null)
-                try {
-                  const { data } = await api.post(`/api/v1/devops-connectors/${conn.id}/code-scan`)
-                  setScanResult(data)
-                  setAiScan(null)
-                } catch (e) { setScanError(e.response?.data?.error || 'Scan failed') }
-                finally { setScanning(false) }
-              }} disabled={scanning}
-                className="flex items-center gap-2 px-4 py-2 text-xs font-semibold bg-siem-accent hover:bg-siem-accent/90 text-white rounded-xl disabled:opacity-40 transition-colors">
-                <Shield size={13} className={scanning ? 'animate-pulse' : ''}/>
-                {scanning ? 'Scanning…' : 'Run Commit Scan'}
-              </button>
-              {scanResult && !aiScan && (
-                <button onClick={async () => {
-                  setAiScanLoading(true)
-                  try {
-                    const { data } = await api.post(`/api/v1/devops-connectors/${conn.id}/code-scan/ai`, {}, { timeout: 60000 })
-                    const text = data.content?.find(b => b.type === 'text')?.text || ''
-                    const clean = text.replace(/```json\n?|```\n?/g, '').trim()
-                    try { setAiScan(JSON.parse(clean)) } catch { setAiScan({ executive_summary: clean }) }
-                  } catch (e) { setScanError(e.response?.data?.error || 'AI analysis failed') }
-                  finally { setAiScanLoading(false) }
-                }} disabled={aiScanLoading}
-                  className="flex items-center gap-2 px-4 py-2 text-xs font-semibold bg-violet-600 hover:bg-violet-500 text-white rounded-xl disabled:opacity-40 transition-colors">
-                  <Zap size={13} className={aiScanLoading ? 'animate-pulse' : ''}/>
-                  {aiScanLoading ? 'Analysing…' : 'AI Analysis'}
-                </button>
-              )}
-            </div>
-
-            {scanError && (
-              <div className="bg-red-950/20 border border-red-800/30 rounded-xl p-3 text-xs text-red-400">{scanError}</div>
-            )}
-
-            {/* No scan yet */}
-            {!scanResult && !scanning && (
-              <div className="flex flex-col items-center justify-center py-16 gap-3">
-                <div className="w-14 h-14 rounded-2xl bg-siem-surface border border-siem-border flex items-center justify-center">
-                  <Shield size={24} className="text-siem-muted/30"/>
-                </div>
-                <div className="text-center">
-                  <div className="text-sm font-medium text-siem-text/70 mb-1">No scan results</div>
-                  <div className="text-xs text-siem-muted/50 max-w-xs">
-                    Secrets, sensitive files, risky code and vulnerable dependencies in commit history.
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Scan results */}
-            {scanResult && (
-              <div className="space-y-4">
-
-                {/* Summary cards */}
-                <div className="grid grid-cols-4 gap-3">
-                  {[
-                    ['Findings', scanResult.finding_count, 'text-siem-text'],
-                    ['Critical', scanResult.critical_count, 'text-red-400'],
-                    ['High',     scanResult.high_count,     'text-orange-400'],
-                    ['Medium',   scanResult.medium_count,   'text-yellow-400'],
-                  ].map(([label, val, color]) => (
-                    <div key={label} className="bg-siem-surface border border-siem-border rounded-xl p-3 text-center">
-                      <div className={`text-2xl font-bold font-mono ${color}`}>{val ?? 0}</div>
-                      <div className="text-2xs text-siem-muted uppercase tracking-wide mt-0.5">{label}</div>
-                    </div>
-                  ))}
-                </div>
-
-                {/* AI Summary */}
-                {aiScan && (
-                  <div className="bg-violet-950/15 border border-violet-800/25 rounded-xl p-4 space-y-3">
-                    <div className="flex items-center gap-2">
-                      <Zap size={13} className="text-violet-400"/>
-                      <span className="text-2xs uppercase tracking-wider text-violet-400/80 font-semibold">AI Security Assessment</span>
-                      {aiScan.risk_label && (
-                        <span className={`text-2xs font-bold px-2 py-0.5 rounded-full border ml-auto ${
-                          aiScan.risk_label === 'Critical' ? 'text-red-400 border-red-800 bg-red-950/30' :
-                          aiScan.risk_label === 'High'     ? 'text-orange-400 border-orange-800 bg-orange-950/20' :
-                          aiScan.risk_label === 'Medium'   ? 'text-yellow-400 border-yellow-800 bg-yellow-950/20' :
-                          'text-emerald-400 border-emerald-800 bg-emerald-950/20'
-                        }`}>{aiScan.risk_label}</span>
-                      )}
-                    </div>
-                    {aiScan.executive_summary && <p className="text-xs text-siem-text leading-relaxed">{aiScan.executive_summary}</p>}
-                    {aiScan.patterns && (
-                      <div className="bg-siem-bg/50 rounded-lg p-3">
-                        <div className="text-2xs uppercase text-siem-muted/60 font-semibold mb-1">Patterns Detected</div>
-                        <p className="text-xs text-siem-muted/80">{aiScan.patterns}</p>
-                      </div>
-                    )}
-                    {aiScan.immediate_actions?.length > 0 && (
-                      <div>
-                        <div className="text-2xs uppercase text-emerald-400/70 font-semibold mb-2">Immediate Actions</div>
-                        <ul className="space-y-1">
-                          {aiScan.immediate_actions.map((a, i) => (
-                            <li key={i} className="flex items-start gap-2 text-xs text-siem-text">
-                              <span className="text-emerald-400/60 shrink-0">→</span>{a}
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {/* Findings list */}
-                {scanResult.findings?.length > 0 ? (
-                  <div className="bg-siem-surface border border-siem-border rounded-xl overflow-hidden">
-                    <div className="px-4 py-2.5 border-b border-siem-border/40 flex items-center gap-2">
-                      <Bug size={13} className="text-siem-accent"/>
-                      <span className="text-2xs uppercase tracking-wider text-siem-muted font-semibold">
-                        Findings ({scanResult.findings.length})
-                      </span>
-                    </div>
-                    <div className="max-h-96 overflow-y-auto divide-y divide-siem-border/20">
-                      {scanResult.findings
-                        .sort((a, b) => {
-                          const order = { critical:0, high:1, medium:2, low:3, info:4 }
-                          return (order[a.severity]??5) - (order[b.severity]??5)
-                        })
-                        .map((f, i) => {
-                          const sevColor = {
-                            critical: 'text-red-400',
-                            high:     'text-orange-400',
-                            medium:   'text-yellow-400',
-                            low:      'text-blue-400',
-                            info:     'text-siem-muted',
-                          }[f.severity] || 'text-siem-muted'
-                          const catIcon = {
-                            secret:         <KeyRound size={13}/>,
-                            sensitive_file: <FileText size={13}/>,
-                            dangerous_code: <AlertTriangle size={13}/>,
-                            dependency:     <Package size={13}/>,
-                            config:         <Settings2 size={13}/>,
-                          }[f.category] || '•'
-                          return (
-                            <div key={i} className="px-4 py-3 hover:bg-white/[0.02]">
-                              <div className="flex items-start gap-3">
-                                <span className="text-sm shrink-0 mt-0.5">{catIcon}</span>
-                                <div className="flex-1 min-w-0">
-                                  <div className="flex items-center gap-2 mb-0.5 flex-wrap">
-                                    <span className={`text-2xs font-bold uppercase ${sevColor}`}>{f.severity}</span>
-                                    <span className="text-xs font-medium text-siem-text truncate">{f.title}</span>
-                                  </div>
-                                  <div className="text-mini text-siem-muted truncate">{f.file}</div>
-                                  {f.detail && <div className="text-mini text-siem-muted/60 mt-0.5">{f.detail}</div>}
-                                  <div className="flex items-center gap-3 mt-1.5 flex-wrap">
-                                    {f.repo && <span className="text-2xs text-siem-muted/50 font-mono">{f.repo}</span>}
-                                    {f.author && <span className="text-2xs text-siem-muted/50">by {f.author}</span>}
-                                    {f.commit && (
-                                      <span className="text-2xs font-mono text-violet-400/60">
-                                        {f.commit.slice(0, 7)}
-                                      </span>
-                                    )}
-                                    {f.remediation && (
-                                      <div className="w-full mt-1 text-2xs text-emerald-400/70 bg-emerald-950/10 border border-emerald-800/20 rounded px-2 py-1">
-                                        Fix: {f.remediation}
-                                      </div>
-                                    )}
-                                  </div>
-                                </div>
-                              </div>
-                            </div>
-                          )
-                        })}
-                    </div>
-                  </div>
-                ) : (
-                  <div className="flex flex-col items-center justify-center py-10 gap-2">
-                    <CheckCircle size={24} className="text-emerald-400/50"/>
-                    <div className="text-sm text-siem-text/60">No issues found</div>
-                    <div className="text-xs text-siem-muted/40">
-                      Scanned {scanResult.scanned_commits} commits across {scanResult.repo_count} repos
-                    </div>
-                  </div>
+                  )
                 )}
               </div>
             )}

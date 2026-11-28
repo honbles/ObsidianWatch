@@ -43,7 +43,7 @@ var engineCatalog = []struct {
 	{engCodeQL, "CodeQL", "Deep data-flow analysis. Slow on large repositories.", false},
 	{engSecrets, "Secrets in history", "Every commit of the branch (gitleaks, or the built-in history scan).", false},
 	{engDependencies, "Dependencies, IaC and SBOM", "Trivy (or the built-in OSV lookup): vulnerable packages, licences, Dockerfiles.", false},
-	{engBusinessLogic, "AI business logic", "Claude reads route handlers for authorization, workflow and trust flaws the pattern engines cannot see. Protected branches only.", true},
+	{engBusinessLogic, "AI business logic", "Claude reads route handlers for authorization, workflow and trust flaws the pattern engines cannot see. Uses tokens: only when you tick it, or a protected branch's profile includes it.", true},
 }
 
 // engineSet is a chosen set of engine IDs. nil means "the default set".
@@ -172,7 +172,7 @@ func reportKeyEngineID(k string) string {
 	switch k {
 	case "semgrep":
 		return engSemgrep
-	case "codeql", "codeql-languages":
+	case "codeql", "codeql-languages", "codeql-failed":
 		return engCodeQL
 	case "secrets-history", "gitleaks", "history":
 		return engSecrets
@@ -265,6 +265,12 @@ func listEngineStatus(ctx context.Context, cfg *config.Config, db *store.DB) []e
 // handleSASTEngines: GET /api/v1/devops-connectors/{id}/sast/engines.
 func handleSASTEngines(cfg *config.Config, db *store.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, 200, map[string]interface{}{"engines": listEngineStatus(r.Context(), cfg, db), "code_model": codeModelName(r.Context(), db)})
+		resp := map[string]interface{}{"engines": listEngineStatus(r.Context(), cfg, db), "code_model": codeModelName(r.Context(), db),
+			"correlation_ready": true}
+		// Correlation needs the same as the AI engine: an Anthropic key and the source-sharing opt-in.
+		if err := businessLogicReady(r.Context(), cfg, db); err != nil {
+			resp["correlation_ready"], resp["correlation_reason"] = false, err.Error()
+		}
+		writeJSON(w, 200, resp)
 	}
 }

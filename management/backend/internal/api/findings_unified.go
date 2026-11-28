@@ -24,7 +24,7 @@ import (
 
 type UnifiedFinding struct {
 	ID          string    `json:"id"`
-	Source      string    `json:"source"` // first scanner that reported it: sast | code_scan | posture
+	Source      string    `json:"source"` // first scanner that reported it: sast | posture
 	ConnectorID int64     `json:"connector_id"`
 	Severity    string    `json:"severity"`
 	Category    string    `json:"category"`
@@ -69,15 +69,15 @@ func findingID(parts ...string) string {
 
 func fromSAST(connID int64, scanned time.Time, raw json.RawMessage) []UnifiedFinding {
 	var in []struct {
-		RuleID   string `json:"rule_id"`
-		Severity string `json:"severity"`
-		CWE      string `json:"cwe"`
-		Title    string `json:"title"`
-		Detail   string `json:"detail"`
-		Fix      string `json:"fix"`
-		Repo     string `json:"repo"`
-		File     string `json:"file"`
-		Line     int    `json:"line"`
+		RuleID   string        `json:"rule_id"`
+		Severity string        `json:"severity"`
+		CWE      string        `json:"cwe"`
+		Title    string        `json:"title"`
+		Detail   string        `json:"detail"`
+		Fix      string        `json:"fix"`
+		Repo     string        `json:"repo"`
+		File     string        `json:"file"`
+		Line     int           `json:"line"`
 		Package  string        `json:"package"`
 		Version  string        `json:"version"`
 		Reach    *findingReach `json:"reachability"`
@@ -92,23 +92,6 @@ func fromSAST(connID int64, scanned time.Time, raw json.RawMessage) []UnifiedFin
 			Title: f.Title, Detail: f.Detail, Repo: f.Repo, File: f.File, Line: f.Line,
 			Remediation: f.Fix, RuleID: f.RuleID, CWE: f.CWE, ScannedAt: scanned,
 			Package: f.Package, Version: f.Version, Reachability: f.Reach,
-		})
-	}
-	return out
-}
-
-func fromCodeScan(connID int64, scanned time.Time, raw json.RawMessage) []UnifiedFinding {
-	var in []CodeFinding
-	if json.Unmarshal(raw, &in) != nil {
-		return nil
-	}
-	out := make([]UnifiedFinding, 0, len(in))
-	for _, f := range in {
-		line, _ := strconv.Atoi(f.Line)
-		out = append(out, UnifiedFinding{
-			Source: "code_scan", ConnectorID: connID, Severity: normSeverity(f.Severity), Category: f.Category,
-			Title: f.Title, Detail: f.Detail, Repo: f.Repo, File: f.File, Line: line,
-			Remediation: f.Remediation, ScannedAt: scanned,
 		})
 	}
 	return out
@@ -174,20 +157,6 @@ func loadUnifiedFindings(ctx context.Context, db *store.DB) []UnifiedFinding {
 			var raw json.RawMessage
 			if rows.Scan(&id, &at, &raw) == nil {
 				all = append(all, fromSAST(id, at, enrichFindingsJSON(ctx, db, id, raw))...)
-			}
-		}
-		rows.Close()
-	}
-	// Latest code-scan result per connector.
-	if rows, err := db.QueryContext(ctx, `
-		SELECT DISTINCT ON (connector_id) connector_id, scanned_at, findings
-		FROM code_scan_results ORDER BY connector_id, scanned_at DESC`); err == nil {
-		for rows.Next() {
-			var id int64
-			var at time.Time
-			var raw json.RawMessage
-			if rows.Scan(&id, &at, &raw) == nil {
-				all = append(all, fromCodeScan(id, at, raw)...)
 			}
 		}
 		rows.Close()

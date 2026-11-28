@@ -98,12 +98,12 @@ function CodeFindings() {
   return (
     <div className="space-y-3">
       <div className="flex items-center gap-3 text-xs text-siem-muted flex-wrap">
-        <span>{data?.total ?? 0} findings across SAST, commit scan and DevOps posture (latest scan per repo, duplicates merged)</span>
+        <span>{data?.total ?? 0} findings across SAST and DevOps posture (latest scan per repo, duplicates merged)</span>
         <select className={btnCls + ' ml-auto'} value={minSev} onChange={e => setMinSev(e.target.value)}>
           <option value="">All severities</option><option value="critical">Critical</option><option value="high">High+</option><option value="medium">Medium+</option><option value="low">Low+</option>
         </select>
         <select className={btnCls} value={source} onChange={e => setSource(e.target.value)}>
-          <option value="">All scanners</option><option value="sast">SAST</option><option value="code_scan">Commit scan</option><option value="posture">Posture</option>
+          <option value="">All scanners</option><option value="sast">SAST</option><option value="posture">Posture</option>
         </select>
         <button className={btnCls} onClick={load}><RefreshCw size={12} className="inline mr-1" />Refresh</button>
       </div>

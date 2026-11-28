@@ -507,7 +507,8 @@ type gitlabProject struct {
 // else the user namespace's, else the single project when Org names one.
 func gitlabProjects(ctx context.Context, c *gitlabClient, org string) ([]gitlabProject, error) {
 	groupPath := fmt.Sprintf("/api/v4/groups/%s/projects?per_page=100&order_by=last_activity_at&include_subgroups=true&archived=false", gitlabID(org))
-	if ps, err := gitlabGetAll[gitlabProject](ctx, c, groupPath, 20); err == nil && len(ps) > 0 {
+	ps, gerr := gitlabGetAll[gitlabProject](ctx, c, groupPath, 20)
+	if gerr == nil && len(ps) > 0 {
 		return ps, nil
 	}
 	userPath := fmt.Sprintf("/api/v4/users/%s/projects?per_page=100&order_by=last_activity_at&archived=false", gitlabID(org))
@@ -515,8 +516,12 @@ func gitlabProjects(ctx context.Context, c *gitlabClient, org string) ([]gitlabP
 		return ps, nil
 	}
 	var one gitlabProject
-	if err := c.getJSON(ctx, "/api/v4/projects/"+gitlabID(org), &one); err != nil {
-		return nil, err
+	if err := c.getJSON(ctx, "/api/v4/projects/"+gitlabID(org), &one); err == nil && one.PathWithNamespace != "" {
+		return []gitlabProject{one}, nil
 	}
-	return []gitlabProject{one}, nil
+	// Say what the group listing found: that is the case for a group connector.
+	if gerr != nil {
+		return nil, fmt.Errorf("listing the projects of group %q: %v", org, gerr)
+	}
+	return nil, fmt.Errorf("group %q lists no projects this token can see: the token's user must be a member (Reporter or above) of the projects, or of the group, and the token needs the read_api scope", org)
 }

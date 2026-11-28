@@ -561,6 +561,13 @@ func handleSAST(cfg *config.Config, db *store.DB, logger *slog.Logger) http.Hand
 		// Optional filters - scan a specific repo and/or branch
 		filterRepo   := r.URL.Query().Get("repo")
 		filterBranch := r.URL.Query().Get("branch")
+		// ?commit=<sha>: scan exactly that commit (picked from filterBranch's
+		// history); stored as branch "@<sha>", kept as a snapshot.
+		commitPick := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("commit")))
+		if commitPick != "" && (filterRepo == "" || !fullSHARe.MatchString(commitPick)) {
+			writeJSON(w, 400, map[string]string{"error": "commit needs a repository and a full commit id"})
+			return
+		}
 
 		repoSet := map[string]bool{}
 		defaultBranch := map[string]string{}
@@ -602,14 +609,17 @@ func handleSAST(cfg *config.Config, db *store.DB, logger *slog.Logger) http.Hand
 		}
 
 		// Engines: ?engines=a,b; else a protected branch's profile; else the
-		// default set. The AI business-logic engine runs only on protected
-		// branches.
+		// default set. The AI business-logic engine is never in the default
+		// set: it runs only when chosen (it costs tokens).
 		saveBranch := filterBranch
 		if saveBranch == "" { saveBranch = "HEAD" }
+		if commitPick != "" {
+			saveBranch = "@" + commitPick
+		}
 		var set engineSet
 		var bl *blContext
 		protSet, isProtected := engineSet(nil), false
-		if filterRepo != "" {
+		if filterRepo != "" && commitPick == "" { // a commit scan never uses a profile or triggers remediation
 			protSet, isProtected = loadCodeScanPolicy(ctx, db, connID).engineSetFor(filterRepo, filterBranch)
 		}
 		if q := strings.TrimSpace(r.URL.Query().Get("engines")); q != "" {
@@ -623,10 +633,6 @@ func handleSAST(cfg *config.Config, db *store.DB, logger *slog.Logger) http.Hand
 			set = protSet
 		}
 		if set.on(engBusinessLogic) {
-			if !isProtected {
-				writeJSON(w, 400, map[string]string{"error": "AI business logic runs only on protected branches: add " + filterRepo + " " + saveBranch + " under Automation → Protected branches first"})
-				return
-			}
 			if rerr := businessLogicReady(ctx, cfg, db); rerr != nil {
 				writeJSON(w, 400, map[string]string{"error": "AI business logic: " + rerr.Error()})
 				return
@@ -640,6 +646,7 @@ func handleSAST(cfg *config.Config, db *store.DB, logger *slog.Logger) http.Hand
 		var sbom []byte
 		lastSourceErr := ""
 		commitSHA := ""
+		commitMsg, commitAuthor := "", ""
 		engine := "builtin"
 
 		logger.Info("sast: starting scan",
@@ -688,18 +695,37 @@ func handleSAST(cfg *config.Config, db *store.DB, logger *slog.Logger) http.Hand
 			if !sastHistoryEnabled() || !set.on(engSecrets) {
 				depth = 1
 			}
-			cloneErr := cloneRepo(ctx, conn, repo, branch, repoDir, depth)
-			if cloneErr != nil && depth == 0 {
+			var cloneErr error
+			if commitPick != "" {
+				cloneErr = cloneCommit(ctx, conn, repo, commitPick, repoDir, depth)
+				if cloneErr != nil && depth == 0 {
+					_ = os.RemoveAll(repoDir)
+					cloneErr = cloneCommit(ctx, conn, repo, commitPick, repoDir, 1)
+				} else if cloneErr == nil {
+					historyOK = depth == 0
+				}
+				if cloneErr != nil { // the provider API can only fetch a branch, not a commit
+					release()
+					writeJSON(w, 400, map[string]string{"error": "could not fetch commit " + commitPick[:12] + ": " + cloneErr.Error()})
+					return
+				}
+			} else {
+				cloneErr = cloneRepo(ctx, conn, repo, branch, repoDir, depth)
+			}
+			if commitPick == "" && cloneErr != nil && depth == 0 {
 				_ = os.RemoveAll(repoDir)
 				logger.Warn("sast: full clone failed, trying shallow", "repo", repo, "err", cloneErr)
 				cloneErr = cloneRepo(ctx, conn, repo, branch, repoDir, 1)
-			} else if cloneErr == nil {
+			} else if commitPick == "" && cloneErr == nil {
 				historyOK = depth == 0
 			}
 			if cloneErr == nil {
 				scannedFiles += countSourceFiles(repoDir)
 				if filterRepo != "" {
 					commitSHA = gitHeadSHA(ctx, repoDir)
+				}
+				if commitPick != "" {
+					commitMsg, commitAuthor = gitCommitMeta(ctx, repoDir)
 				}
 			} else {
 				_ = os.RemoveAll(repoDir)
@@ -720,12 +746,23 @@ func handleSAST(cfg *config.Config, db *store.DB, logger *slog.Logger) http.Hand
 			engines.set("source", source)
 			scannedRepos++
 
-			repoFindings, repoSBOM := scanCheckout(ctx, conn, repo, repoDir, scanOpts{History: historyOK, CodeQL: useCodeQL, Semgrep: useSemgrep, Engines: set, BL: bl}, engines, logger)
+			// Each repository gets its own engine report; a scan of several
+			// repositories merges them (mergeEngineReport) instead of letting the
+			// last repository's statuses overwrite the others.
+			repoEngines := engineReport{"source": source}
+			repoFindings, repoSBOM := scanCheckout(ctx, conn, repo, repoDir, scanOpts{History: historyOK, CodeQL: useCodeQL, Semgrep: useSemgrep, Engines: set, BL: bl}, repoEngines, logger)
+			if filterRepo != "" {
+				for k, v := range repoEngines {
+					engines[k] = v
+				}
+			} else {
+				mergeEngineReport(engines, repoEngines, repo)
+			}
 			if filterRepo == "" {
 				// "Scan all" also stores each repository's own result, so the repository page shows it and the
 				// coverage counts the repository as scanned even when it has no findings.
 				ownEngines := engineReport{}
-				for k, v := range engines {
+				for k, v := range repoEngines {
 					ownEngines[k] = v
 				}
 				ownF, ownSBOM := mergeStoredEngines(ctx, db, connID, repo, branch, set, ownEngines, append([]SASTFinding(nil), repoFindings...), repoSBOM)
@@ -764,6 +801,8 @@ func handleSAST(cfg *config.Config, db *store.DB, logger *slog.Logger) http.Hand
 		dbErr := saveSASTResult(ctx, db, connID, filterRepo, saveBranch, commitSHA, engines, allFindings, sbom, scannedRepos, scannedFiles)
 		if dbErr != nil {
 			logger.Warn("sast: failed to save", "err", dbErr)
+		} else if commitPick != "" && scannedRepos > 0 {
+			recordCommitScan(ctx, db, connID, filterRepo, commitPick, filterBranch, commitMsg, commitAuthor)
 		} else if isProtected && len(allFindings) > 0 {
 			// A manual scan of a protected branch with remediation on opens
 			// fix pull requests for new findings.
@@ -946,12 +985,17 @@ func handleListSASTRepos(db *store.DB, logger *slog.Logger) http.HandlerFunc {
 			writeJSON(w, 404, map[string]string{"error": "connector not found"})
 			return
 		}
-		out := listConnectorRepos(r.Context(), db, conn, logger)
-		writeJSON(w, 200, map[string]interface{}{
+		out, perr := listConnectorRepos(r.Context(), db, conn, logger)
+		resp := map[string]interface{}{
 			"repos":  out,
 			"count":  len(out),
-			"source": "github_api",
-		})
+			"source": conn.Provider + "_api",
+		}
+		if perr != "" {
+			// Shown in the SAST tab: an empty list otherwise looks like "no repositories".
+			resp["warning"] = "could not list repositories from " + conn.Provider + ": " + perr
+		}
+		writeJSON(w, 200, resp)
 	}
 }
 
@@ -964,13 +1008,18 @@ type sastRepoInfo struct {
 // listConnectorRepos lists the connector's repositories from the provider (the stored commits when that fails).
 // GitHub is paged (100 per page, up to 2 000 repositories): only the first page used to be read, so an
 // organization with more than 100 repositories showed only the 100 most recently pushed.
-func listConnectorRepos(ctx context.Context, db *store.DB, conn *store.DevOpsConnector, logger *slog.Logger) []sastRepoInfo {
+func listConnectorRepos(ctx context.Context, db *store.DB, conn *store.DevOpsConnector, logger *slog.Logger) ([]sastRepoInfo, string) {
 	token := conn.Credentials["token"]
 	var out []sastRepoInfo
+	provErr := "" // why the provider list failed, when it did
 	switch conn.Provider {
 	case "azuredevops":
 		client := adoClientFor(conn)
-		if projects, err := adoProjects(ctx, client, conn); err == nil {
+		projects, aerr := adoProjects(ctx, client, conn)
+		if aerr != nil {
+			provErr = aerr.Error()
+		}
+		if aerr == nil {
 			for _, projName := range projects {
 				var reposResp struct {
 					Value []struct {
@@ -979,7 +1028,9 @@ func listConnectorRepos(ctx context.Context, db *store.DB, conn *store.DevOpsCon
 					} `json:"value"`
 				}
 				repoURL := fmt.Sprintf("%s/%s/_apis/git/repositories?api-version=7.0", client.baseURL, neturl.PathEscape(projName))
-				if err2 := client.getJSON(ctx, repoURL, &reposResp); err2 == nil {
+				if err2 := client.getJSON(ctx, repoURL, &reposResp); err2 != nil {
+					provErr = projName + ": " + err2.Error()
+				} else {
 					for _, rp := range reposResp.Value {
 						branch := strings.TrimPrefix(rp.DefaultBranch, "refs/heads/")
 						if branch == "" {
@@ -997,7 +1048,11 @@ func listConnectorRepos(ctx context.Context, db *store.DB, conn *store.DevOpsCon
 		}
 		// The connector's own group/namespace, paged.
 		glc := &gitlabClient{token: token, baseURL: baseURL, group: conn.Org}
-		if projects, err := gitlabProjects(ctx, glc, conn.Org); err == nil {
+		projects, gerr := gitlabProjects(ctx, glc, conn.Org)
+		if gerr != nil {
+			provErr = gerr.Error()
+		}
+		if gerr == nil {
 			for _, p := range projects {
 				if p.EmptyRepo || p.Archived {
 					continue
@@ -1007,6 +1062,9 @@ func listConnectorRepos(ctx context.Context, db *store.DB, conn *store.DevOpsCon
 					branch = "HEAD"
 				}
 				out = append(out, sastRepoInfo{Repo: p.PathWithNamespace, Branch: branch})
+			}
+			if len(out) == 0 && len(projects) > 0 {
+				provErr = fmt.Sprintf("GitLab returned %d project(s), all empty or archived (a token user with only Guest access sees private projects as empty: Reporter or above is needed)", len(projects))
 			}
 		}
 	default:
@@ -1024,13 +1082,17 @@ func listConnectorRepos(ctx context.Context, db *store.DB, conn *store.DevOpsCon
 				req.Header.Set("Accept", "application/vnd.github+json")
 				resp, err := devopsHTTP.Do(req)
 				if err != nil {
+					provErr = err.Error()
+					break
+				}
+				if resp.StatusCode != 200 {
+					body, _ := io.ReadAll(io.LimitReader(resp.Body, 300))
+					resp.Body.Close()
+					provErr = fmt.Sprintf("GitHub API %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
 					break
 				}
 				_ = json.NewDecoder(io.LimitReader(resp.Body, 16<<20)).Decode(&batch)
 				resp.Body.Close()
-				if resp.StatusCode != 200 {
-					break
-				}
 				for _, rp := range batch {
 					if !githubRepoBelongs(rp.FullName, conn.Org) || seen[rp.FullName] {
 						continue
@@ -1049,6 +1111,11 @@ func listConnectorRepos(ctx context.Context, db *store.DB, conn *store.DevOpsCon
 		}
 		logger.Info("sast: repo list", "connector", conn.ID, "count", len(out))
 	}
+	if len(out) > 0 {
+		provErr = "" // GitHub: one of the two listings answered
+	} else if provErr != "" {
+		logger.Warn("sast: provider repository list failed", "connector", conn.ID, "provider", conn.Provider, "err", provErr)
+	}
 	// Fallback: repos from stored commits if the provider call failed.
 	if len(out) == 0 {
 		dbRepos, _ := db.ListDevOpsRepos(ctx, conn.ID)
@@ -1060,7 +1127,21 @@ func listConnectorRepos(ctx context.Context, db *store.DB, conn *store.DevOpsCon
 			out = append(out, sastRepoInfo{Repo: rp.Repo, Branch: branch})
 		}
 	}
-	return out
+	// Repositories with stored scan results are listed too, so their results
+	// stay reachable when the provider cannot be reached.
+	if len(out) == 0 {
+		if rows, err := db.QueryContext(ctx, `SELECT DISTINCT ON (repo) repo, branch FROM sast_results
+			WHERE connector_id=$1 AND repo <> '' AND branch NOT LIKE '@%' ORDER BY repo, scanned_at DESC`, conn.ID); err == nil {
+			for rows.Next() {
+				var rp sastRepoInfo
+				if rows.Scan(&rp.Repo, &rp.Branch) == nil {
+					out = append(out, rp)
+				}
+			}
+			rows.Close()
+		}
+	}
+	return out, provErr
 }
 
 func handleGetSASTResults(db *store.DB) http.HandlerFunc {

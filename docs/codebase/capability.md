@@ -8,7 +8,7 @@ Feature map:
 |---|---|---|
 | Platform activity collection (audit logs, commits, pipelines, webhooks) | 2, 3 | A connector |
 | Platform threat detection (DEV-001 … DEV-031, CODE-RT-001) | 6 | A connector; webhooks for real time |
-| Code scan over stored diffs | 4.2 | A synced connector |
+| Commit scans (one exact commit, in SAST) | 4.2 | Git access to the repository |
 | SAST: secrets over history, pattern rules, CodeQL, dependencies, IaC, licences, SBOM | 4.3 – 4.8 | The scanner image (deployment.md section 6.1) |
 | Automated scans: on push, on a schedule, pull-request checks with comments and merge blocking | 4.10 | Automation tab; webhooks; a token with write access for PR checks |
 | Runtime reachability of dependency vulnerabilities | 4.11 | Linux agent with the host sensor on the servers |
@@ -41,7 +41,7 @@ See also [deployment.md](deployment.md) and [configuration.md](configuration.md)
  Linux agents (host sensor) ─► runtime_inventory events ─► runtime_packages ─► reachability labels,
                                                                               alert CODE-RT-001
  Analysts ─► triage decisions / rules ─► hide, learn, hints
- Code scan (stored diffs) ─► code_scan_results     Posture (settings APIs) ─► devops.posture.last.{id}
+ SAST tab, one commit ─► sast_results branch '@<sha>'  Posture (settings APIs) ─► devops.posture.last.{id}
                                    │
        Code → Repositories pages, SAST tab, Insights → Code findings, GET /api/v1/findings
 ```
@@ -235,7 +235,7 @@ With a delivery ID, webhook events get the ID `gh-wh:{delivery}:{n}`, `gl-wh:{uu
 | Layer | Input | Trigger | Stored in | Engine label |
 |---|---|---|---|---|
 | 4.1 Commit secret scanner | Added lines of polled diffs | Every sync | `devops.secret_push` events | – |
-| 4.2 Commit scan | Stored, redacted commit diffs (last 500 commits) | **Commit Scan** tab | `code_scan_results` | – |
+| 4.2 Commit scans | One exact commit, cloned | **SAST** tab, **Commit** list | `sast_results` (branch `@<sha>`) | the engines chosen |
 | 4.3a History secrets | Every commit of the cloned branch | **SAST** tab | `sast_results` | `gitleaks`, or `history` (built-in patterns) |
 | 4.4 Built-in SAST rules | The checkout (4.3) | **SAST** tab | `sast_results` | `builtin` |
 | 4.5 Pattern rules / CodeQL | The checkout | **SAST** tab | `sast_results` | `semgrep` (opengrep or semgrep engine), `codeql`, `semgrep+codeql` |
@@ -243,7 +243,7 @@ With a delivery ID, webhook events get the ID `gh-wh:{delivery}:{n}`, `gl-wh:{uu
 | 4.9 Pipeline-change detection | Polled commits | Every sync | `devops.cicd_modified` events | – |
 | 5 Posture | Provider settings APIs | **Posture** tab | settings `devops.posture.last.{id}` | – |
 
-Every SAST result stores `engines`: what ran, what was missing, and why something failed (for example `{"source":"git","gitleaks":"ran","semgrep":"ran","trivy":"ran","codeql":"ran","codeql-languages":"go,javascript","builtin":"ran"}`). The SAST tab shows it as chips; a crossed-out chip is an engine that did not run.
+Every SAST result stores `engines`: what ran, what was missing, and why something failed (for example `{"source":"git","gitleaks":"ran","semgrep":"ran","trivy":"ran","codeql":"ran","codeql-languages":"go,javascript","builtin":"ran"}`). The SAST tab shows it as chips; a crossed-out chip is an engine that did not run. When CodeQL succeeds for some languages and fails for others, `codeql` is `ran` and `codeql-failed` lists each failed language with the tail of the tool's error (the last lines mentioning an error, at most 500 characters; it used to be the first 200 characters, which hid the cause). A scan of all repositories keeps one engine report per repository and merges them: an engine is `ran` if it ran anywhere, the failures go to `<engine>-failed` as `repo: reason`, and the CodeQL languages are the union (before, the last repository scanned overwrote the others, so one Python-only repository failing showed CodeQL as failed next to languages from another).
 
 ### 4.1 Commit secret scanner (sync time)
 
@@ -273,69 +273,30 @@ Generic rules apply the placeholder and entropy filter (configuration.md section
 
 #### 4.1.1 Sensitive file names (sync time)
 
-`.env`, `.env.local`, `.env.production`, `.env.staging`, `id_rsa`, `id_ed25519`, `id_ecdsa`, `id_dsa`, `*.pem`, `*.key`, `*.p12`, `*.pfx`, `credentials.json`, `service-account.json`, `.aws/credentials`, `secrets.yaml`, `secrets.yml`, `terraform.tfvars`, `*.tfvars`. Matching is on the exact base name (or path suffix for `.aws/credentials`), case-insensitive. `*.ext` matches the extension. Files ending `.pub`, `.example`, `.sample`, `.template` or `.dist` never match.
+`.env`, `.env.local`, `.env.production`, `.env.staging`, `id_rsa`, `id_ed25519`, `id_ecdsa`, `id_dsa`, `*.pem`, `*.key`, `*.p12`, `*.pfx`, `credentials.json`, `service-account.json`, `.aws/credentials`, `secrets.yaml`, `secrets.yml`, `terraform.tfvars`, `*.tfvars`, `*.tfstate`, `kubeconfig`, `wp-config.php` (the last three were flagged only by the removed Commit Scan). Matching is on the exact base name (or path suffix for `.aws/credentials`), case-insensitive. `*.ext` matches the extension. Files ending `.pub`, `.example`, `.sample`, `.template` or `.dist` never match.
 
-### 4.2 Commit scan (stored diffs)
+### 4.2 Commit scans (SAST)
 
-Named **Commit scan** in the console (it was "Code scan"; the API path `/code-scan` and the `code_scan` source name are unchanged). It is not part of Automation, which runs SAST engines only.
+The old **Commit Scan** tab (pattern matching of the stored, redacted commit diffs, table `code_scan_results`) is removed: migration `087` drops the table and `/code-scan` no longer exists. Its secret patterns live on in the history secrets scan (4.3a), and push-time secret alerts (4.1, `devops.secret_push`) are unchanged.
 
-`POST /api/v1/devops-connectors/{id}/code-scan` reads the connector's last 500 stored commits and scans each stored file diff. Findings are deduplicated by `repository + category + title + file`. Every run inserts a new row in `code_scan_results`.
+A **commit scan** runs the SAST engines on one exact commit. In the SAST tab, the **Commit** list (next to Branch) offers **Latest (branch head)**, the normal branch scan, or one of the branch's 30 newest commits from the provider (`GET .../sast/commits?repo=&branch=`: id, subject line, author, date, and whether it was scanned already). With a commit picked, **Scan commit <id>** calls `POST .../sast?repo=&branch=&commit=<full id>&engines=…`.
 
-**Important limitation.** The stored patches are already redacted and cut to 2 000 characters per file at sync time. Most provider-specific secret patterns below therefore no longer match: the value is `[REDACTED]`. The "Generic Password" pattern still matches `password = "[REDACTED]"`, because `[REDACTED]` is 10 characters. Azure DevOps commits have no stored patch, so only the file-name checks apply.
-
-Sensitive files (matched on the full path of every file in the diff):
-
-| Title | Pattern | Severity |
+| | Branch scan | Commit scan |
 |---|---|---|
-| Environment file committed | path is exactly `.env`, `.env.local`, `.env.prod`, `.env.production`, `.env.staging` (repository root only) | critical |
-| Certificate or private key file | ends `.pem`, `.key`, `.p12`, `.pfx`, `.cer`, `.crt` | critical |
-| SSH private key | path is exactly `id_rsa`, `id_ecdsa`, `id_ed25519` (root only) | critical |
-| AWS credentials file | ends `.aws/credentials` | critical |
-| Secrets file | ends `secret(s).yml/yaml` or `credential(s).yml/yaml` | high |
-| Terraform state file | ends `terraform.tfstate` | high |
-| Kubernetes config file | ends `kubeconfig` | high |
-| WordPress config (may contain DB credentials) | ends `wp-config.php` | medium |
-| Database config file | ends `database.yml` / `database.yaml` | medium |
+| What is fetched | The branch head (`git clone`, provider API as fallback) | Exactly that commit (`git init`, `git fetch <remote> <sha>`, detached checkout); no API fallback, so a commit that cannot be fetched answers 400 |
+| Stored as | The branch's row, replaced by each scan | Branch `@<sha>`, a snapshot never overwritten by a branch scan; a rescan of the same commit replaces that snapshot |
+| Used by | Findings pages, Insights, `GET /api/v1/findings`, automation, fix pull requests, issues | Nothing else: commit scans never appear as current findings (every current-findings query excludes `branch LIKE '@%'`) |
+| Engines | Chosen, or the protected branch's profile | Chosen only; no profile, no remediation |
 
-Secret patterns (on added lines; one finding per pattern per file; title is `<name> detected in commit`):
+Commit scans also come from linked services (4.15: the deployed commit, job kind `commit`); they share the same storage and list.
 
-| Name | Severity |
-|---|---|
-| AWS Access Key | critical |
-| AWS Secret Key | critical |
-| Private Key Block | critical |
-| GitHub Token | critical |
-| Slack Token | critical |
-| Stripe Key | critical |
-| Google API Key | high |
-| JWT Token | high |
-| Generic Password | high |
-| DB Connection String | high |
-| Generic Token | medium |
-| IP + Port Hardcoded | low |
+**Commit scans list.** Under the engines, per repository: commit, the branch it was picked from, subject line, author, when scanned, critical / high / medium and total counts, and actions: **show** (loads the snapshot, with a banner saying these are not the branch's current findings and **Back to <branch>**), **compare**, **pin** / **unpin**, **delete** (admin). `GET .../sast/commit-scans?repo=`, `POST .../sast/commit-scans/pin?repo=&sha=&pinned=1|0`, `DELETE .../sast/commit-scans?repo=&sha=`.
 
-Dangerous code patterns (on added lines, by file extension):
+**Compare with branch.** `GET .../sast/commit-scans/compare?repo=&sha=[&branch=]` (default: the branch the commit was picked from) matches the commit scan's findings with the branch's current result by fingerprint (rule, file and code, not the line number, so moved code still matches): **Fixed since** (in the commit, no longer on the branch), **New since** (on the branch, not in the commit) and the number unchanged. When the two scans used different engines the answer warns that differences can come from the engines. A branch that was never scanned answers 404 ("scan it first").
 
-| Title | Extensions | Severity |
-|---|---|---|
-| eval() with user input | .js .ts .py .php .rb | high |
-| exec() with user input | .js .ts .py .go .php | high |
-| SQL string concatenation | .js .ts .py .php .java .go .cs | high |
-| innerHTML assignment | .js .ts .jsx .tsx .html | medium |
-| Hardcoded localhost URL | .js .ts .py .go .java .env | low |
-| TODO: security comment | .js .ts .py .go .java .cs .php | info |
-| Disabled SSL verification | .py .go .js .ts .yaml .yml | high |
-| Hardcoded debug mode | .py .env .yaml .yml .json | medium |
+**Retention.** The newest `OW_SAST_COMMIT_SCANS_KEEP` (default 50, at most 1 000) unpinned commit scans per repository are kept, plus every pinned one; older ones are deleted after each commit scan and on unpin. Migration `087` adds `of_branch`, `commit_message`, `commit_author` and `pinned` to `sast_results`.
 
-Dependency checks (on added lines of the named file). These flag the **presence** of the package. The version is not compared.
-
-| File | Packages flagged | Severity |
-|---|---|---|
-| `package.json` | lodash, axios, log4js, minimist, node-fetch, xmlhttprequest, marked, ejs | medium |
-| `requirements.txt`, `Pipfile`, `Pipfile.lock` | django, flask, requests, pillow, cryptography, pyyaml, urllib3, jinja2 (when followed by a version operator) | medium |
-| `go.mod` | github.com/dgrijalva/jwt-go, github.com/form3tech-oss/jwt-go, gopkg.in/yaml.v2 | high |
-
-Implemented in: `codescan.go`.
+Implemented in: `sast_commits.go`, `sast_engine.go` (`commit` parameter), `pages/code/CommitScans.jsx`.
 
 ### 4.3 SAST: source download
 
@@ -351,7 +312,14 @@ If no repository could be downloaded, the response carries a `warning` with the 
 
 ### 4.3a History secrets
 
-With **gitleaks** installed: `gitleaks git` over the clone (its full rule set, 5 MB per blob). Without it: the built-in secret patterns of section 4.2 (critical and high ones only) over `git log -p` added lines, up to 5 000 commits.
+With **gitleaks** installed: `gitleaks git` over the clone (its full rule set, 5 MB per blob). Without it: the built-in secret patterns below (critical and high ones only) over `git log -p` added lines, up to 5 000 commits.
+
+| Built-in pattern | Severity |
+|---|---|
+| AWS Access Key, AWS Secret Key, Private Key Block, GitHub Token, Slack Token, Stripe Key | critical |
+| Google API Key, JWT Token, Generic Password, DB Connection String | high |
+
+(Implemented in `sast_secret_patterns.go`; the medium and low patterns of that file, Generic Token and IP + Port Hardcoded, are not used.)
 
 One finding per (rule, file, secret), however many commits contain it:
 
@@ -649,7 +617,7 @@ A SAST scan runs a chosen set of engines. `GET /api/v1/devops-connectors/{id}/sa
 | `codeql` | CodeQL (4.5) | yes |
 | `secrets` | Secrets in the branch history: gitleaks, or the built-in history scan | yes |
 | `dependencies` | Trivy, or the built-in parser and OSV: dependencies, IaC, licences, SBOM (4.6) | yes |
-| `business_logic` | AI business logic (4.6.2) | no; only on protected branches |
+| `business_logic` | AI business logic (4.6.2) | no; runs only when chosen (uses tokens) |
 
 The set comes from, in order: `?engines=a,b` on `POST .../sast`; else the scan profile of the protected branch being scanned (4.10); else the default set. Scheduled, on-push and manual Automation scans of a protected branch, and PR checks into one, use that branch's profile. The **SAST** tab shows one checkbox per engine; on a protected branch its engines are preselected. Without `secrets` the clone is shallow.
 
@@ -661,7 +629,7 @@ Pattern and data-flow engines find dangerous calls. They cannot tell that a hand
 
 | Aspect | Behaviour |
 |---|---|
-| Where it runs | Only on protected branches (4.10). A manual scan with it on another branch answers 400. On a PR into a protected branch it reads only the files the PR changes. **Run business-logic analysis** in the SAST tab runs it alone on the selected protected branch. |
+| Where it runs | Any repository and branch, but only when chosen: ticked in the SAST tab (a confirmation says it uses Anthropic API tokens), or in a protected branch's profile (4.10) for automated scans. It is never in the default set. On a PR into a protected branch it reads only the files the PR changes. **Run business-logic analysis** in the SAST tab runs it alone on the selected repository and branch, merged with the stored result. Without an Anthropic key or the source-sharing opt-in the checkbox and the button are faded with the reason, and the API answers 400. |
 | Requirements | An Anthropic API key and the source-sharing opt-in (`ai.send_source_snippets = true`). The model is the **code model** (`ai.code_model`, default `claude-opus-5-5`): Claude Opus 5.5 or newer, or Claude Fable / Mythos. Other models are refused. |
 | Files read | Source files (`.js .jsx .ts .tsx .mjs .cjs .py .go .java .kt .cs .php .rb`) that declare routes or handlers (Express/Fastify/Koa, NestJS, Flask/FastAPI, Django `path()`, Go routers and `http.ResponseWriter`/gin/echo/fiber handlers, Spring/JAX-RS, ASP.NET, Laravel, Sinatra/Rails routes). Files with the most route declarations first. Test code and `node_modules`, `vendor`, `dist`, `build`, `target` and similar folders are skipped. Files over 64 KB are skipped and counted. At most `OW_AI_BL_MAX_FILES` files per scan (default 40); the rest are counted. |
 | Prompt | One file per request, with line numbers, fenced as untrusted input. The model is told to report authorization, authentication logic, mass assignment, workflow, race condition, trust-boundary, rate-limit and data-exposure flaws only, and not injection, XSS, crypto, secrets or dependencies. Three requests run at a time, 3 minutes each. |
@@ -673,7 +641,9 @@ Implemented in: `sast_engine_select.go`, `sast_business_logic.go`.
 
 ### 4.6.3 AI correlation of multi-engine findings
 
-When a branch's stored result comes from two or more engines, the same weakness is often reported several times: CodeQL's data flow, an opengrep rule and a built-in rule on the same lines; a pattern finding and a business-logic finding in the same handler. Correlation is optional. **Correlate findings** in the SAST tab (shown when two or more engines ran) or the protected branch's **Correlate** option (after each automated scan) asks the code model to group the findings that describe the same weakness. `POST /api/v1/devops-connectors/{id}/sast/correlate?repo=&branch=` (async job); `&undo=1` restores the raw findings.
+When a branch's stored result comes from two or more engines, the same weakness is often reported several times: CodeQL's data flow, an opengrep rule and a built-in rule on the same lines; a pattern finding and a business-logic finding in the same handler. Correlation is optional. **Correlate findings** in the SAST tab (shown for any repository whose result has two or more engines that ran, protected or not) or the protected branch's **Correlate** option (after each automated scan) asks the code model to group the findings that describe the same weakness. Clicking it first shows a confirmation that the findings go to the code model and use Anthropic API tokens. Without an Anthropic key or the source-sharing opt-in the button is faded and its tooltip gives the reason (`GET .../sast/engines` returns `correlation_ready` and `correlation_reason`). `POST /api/v1/devops-connectors/{id}/sast/correlate?repo=&branch=` (async job); `&undo=1` restores the raw findings.
+
+**All repositories.** In the **All repos** view the button reads **Correlate all findings**: `POST .../sast/correlate` without `repo` correlates the latest result of every repository of the connector (commit scans excluded) where two or more engines ran, one repository after another, and answers per repository `correlated`, `skipped: fewer than two engines ran` or `failed: <reason>`; with `undo=1` it restores every correlated repository. The connector-wide "all repositories" result is then rebuilt from the repositories' results. Findings are never grouped across repositories or files.
 
 | Aspect | Behaviour |
 |---|---|
@@ -710,7 +680,7 @@ Before these steps, credential snippets are masked (4.4), and findings in test c
 | `IAC003` Secret in Dockerfile `ENV` | built-in rules |
 | `IAC004` Unpinned Docker base image | built-in rules |
 | Terraform, Kubernetes, Dockerfile and YAML pattern rules | opengrep-rules (4.5) |
-| Terraform state, kubeconfig, `.tfvars`, secrets YAML committed | code scan sensitive files (4.2), sync-time sensitive-file events (4.1.1) |
+| Terraform state, kubeconfig, `.tfvars`, secrets YAML committed | sync-time sensitive-file events (4.1.1) |
 
 Container images are not pulled or scanned; Dockerfiles are checked as configuration.
 
@@ -908,7 +878,7 @@ An admin links a repository branch to an Application Monitoring service; there i
 
 **Link.** Service page → **Code** tab → **Link repository**: pick the connector, the repository (from the provider) and the branch (from the provider, default marked, with the last scan time). `POST /api/v1/app/services/{id}/code-links` `{connector_id, repo, branch, is_default}` (admin). Linking again changes the branch. If the branch has no stored scan, a branch scan is queued (trigger `service-link`) and the tab refreshes while it runs. **Unlink**: `DELETE /api/v1/app/services/{id}/code-links/{link}` (admin). Links are stored in `service_code_links` (migration `080`) and are removed with their connector.
 
-**Which scan: the deployed commit first.** When the service's live instances report the commit they run (application capability.md section 1.2), the tab groups them by commit ("Running 3f2a… · 3 instances on web-01, web-02 · from container image label"). For the commit with the most instances it shows the findings of the scan of **that commit**: a stored result whose `commit_sha` is that commit (every scan now records the commit it checked out, migration `081`), or a scan of exactly that commit. A commit with no scan is queued as a job of kind `commit` (trigger `deployed`): the commit is fetched by id (`git init`, `git fetch <remote> <sha>`, detached checkout, same hardening as every clone) and the result is stored as branch `@<sha>`; the 20 newest commit scans of a repository are kept. Commit scans never appear in branch lists, the repository's own result, the Code overview or Insights. A watcher checks linked services every 5 minutes (and when a link is created) and queues up to 10 commit scans per round; a failed commit scan is retried after 6 hours. The state of each commit is shown: scanned (with counts), scan queued, scanning, scan failed (with the error), short commit id (7-character ids cannot be fetched), or different repository (the instance reports a repository URL that is not the linked one; no scan is queued). While no commit is reported or its scan is pending, the findings are those of the linked branch, and the tab says so.
+**Which scan: the deployed commit first.** When the service's live instances report the commit they run (application capability.md section 1.2), the tab groups them by commit ("Running 3f2a… · 3 instances on web-01, web-02 · from container image label"). For the commit with the most instances it shows the findings of the scan of **that commit**: a stored result whose `commit_sha` is that commit (every scan now records the commit it checked out, migration `081`), or a scan of exactly that commit. A commit with no scan is queued as a job of kind `commit` (trigger `deployed`): the commit is fetched by id (`git init`, `git fetch <remote> <sha>`, detached checkout, same hardening as every clone) and the result is stored as branch `@<sha>`, with the commit scans picked in the SAST tab (4.2: newest 50 per repository kept, plus pinned ones). Commit scans never appear in branch lists, the repository's own result, the Code overview or Insights. A watcher checks linked services every 5 minutes (and when a link is created) and queues up to 10 commit scans per round; a failed commit scan is retried after 6 hours. The state of each commit is shown: scanned (with counts), scan queued, scanning, scan failed (with the error), short commit id (7-character ids cannot be fetched), or different repository (the instance reports a repository URL that is not the linked one; no scan is queued). While no commit is reported or its scan is pending, the findings are those of the linked branch, and the tab says so.
 
 **Branch fallback.** The latest stored result for that repository whose branch is the linked branch, or, when the linked branch is the default branch, a result stored as `HEAD` or with no branch (scheduled and manual default-branch scans).
 
@@ -1051,14 +1021,14 @@ Implemented in: `devops_sigs.go`, `devops_detect_more.go`, `devops_typed.go`, `b
 
 ### 7.1 On the Code pages (frontend)
 
-The Code pages (section 8) build findings in the browser from three API calls per connector: `GET .../code-scan` (latest run), `GET .../sast` (its `scans` list: the latest SAST row of every repository of the connector), and `GET .../posture`. Each finding gets:
+The Code pages (section 8) build findings in the browser from two API calls per connector: `GET .../sast` (its `scans` list: the latest SAST row of every repository of the connector), and `GET .../posture`. Each finding gets:
 
 | Field | Derivation |
 |---|---|
 | `repo` | Short repository name: the last path segment, before any `@branch`, lower-cased. `acme/api`, `group/sub/api` and `org/proj/api` all become `api`. |
 | `where` | `file[:line]`, or the posture resource |
-| `source` | `scan`, `sast` or `posture` |
-| `type` | code-scan category (`secret`, `dependency`, `dangerous_code`, `sensitive_file`, `config`), or `sast`, or `posture` |
+| `source` | `sast` or `posture` |
+| `type` | `sast` or `posture` |
 | `sev` | 5 critical, 4 high, 3 medium, 2 low, 1 info or unknown |
 | `reach` | SAST dependency findings: runtime reachability level (section 4.11) |
 | `triage` | SAST findings: `confirmed`, `false_positive`, `accepted_risk`, a learned hint, or `open` (section 4.12) |
@@ -1075,11 +1045,11 @@ The Code pages (section 8) build findings in the browser from three API calls pe
 - It is computed in the browser and is not stored. A link to a finding that a newer scan no longer reports shows "Finding not found".
 - Two findings with the same connector, source, short repository name, location, title and type get the same ID. The finding page then shows the first one. 32-bit hash collisions are possible but unlikely at normal volumes.
 
-Findings are not merged across sources on these pages. A secret reported by both the code scan and SAST appears twice.
+Findings are not merged across sources on these pages.
 
 ### 7.2 Unified findings API (Insights → Code findings)
 
-`GET /api/v1/findings[?min_severity=&source=&repo=]` builds a merged list on the server from the latest SAST row per (connector, repository), the latest code-scan row per connector, and the last posture result per connector.
+`GET /api/v1/findings[?min_severity=&source=&repo=]` builds a merged list on the server from the latest SAST row per (connector, repository) and the last posture result per connector.
 
 | Aspect | Rule |
 |---|---|
@@ -1147,8 +1117,7 @@ The left sidebar lists connectors (organisation, provider, status, items synced)
 | Tab | Content |
 |---|---|
 | **Code Changes** | Last 100 stored commits (search box, repository filter). A commit opens its detail with the file list and redacted patches. |
-| **Commit Scan** | Run the commit scan, see counts and findings of the latest run, and request an AI summary (risk score, label, executive summary, top issues, immediate actions). |
-| **SAST** | Repository selector (live list from the provider, GitHub paged up to 2 000 repositories) and Branch dropdown (`GET .../sast/branches?repo=`: the repository's branches from the provider, default first, then scanned branches, marked "scanned"); choosing a repository or branch shows the latest stored result of exactly that branch (from a manual, scheduled, on-push or "scan all" run); **Scan engines** checkboxes (4.6.1; a protected branch's engines are preselected; the AI engine only on protected branches); **Run SAST Scan** (async job, polled every 2 seconds for up to 42 minutes); **Run business-logic analysis** on a protected branch (the AI engine alone, merged with the stored result); **Correlate findings** when two or more engines ran, then a banner with **Show raw engine findings** / **Correlate again** / **Undo** (4.6.3); engine chips (what ran, what was missing or failed, source git clone or API, CodeQL languages); **Download SBOM (CycloneDX)**; summary counts; severity filter; **Show dismissed**; findings with snippet, CWE, OWASP, engine, runtime badge, triage badge or hint, and fix; per finding **Suggest fix** / **Show fix**, **False positive**, **Accept risk**, **Confirm**, **Clear decision**, and a one-click triage rule from a hint; **AI Triage** summary of the repository on screen. Selecting a repository loads its last stored result. |
+| **SAST** | Repository selector (live list from the provider, GitHub paged up to 2 000 repositories; when the provider lists none, `GET .../sast/repos` returns `warning` with the provider's error, for GitLab including a group that lists no projects the token can see or only empty ones, and the tab shows it; a scan that reached no repository says "No repositories were scanned" instead of "No security issues found") and Branch dropdown (`GET .../sast/branches?repo=`: the repository's branches from the provider, default first, then scanned branches, marked "scanned"); choosing a repository or branch shows the latest stored result of exactly that branch (from a manual, scheduled, on-push or "scan all" run); **Commit** list (4.2: latest, or one of the branch's 30 newest commits scanned as a snapshot); **Scan engines** checkboxes (4.6.1; a protected branch's engines are preselected; the AI engine on any repository, with a token-cost confirmation); **Run SAST Scan** (async job, polled every 2 seconds for up to 42 minutes); **Run business-logic analysis** (the AI engine alone, merged with the stored result); **Commit scans** list with show, compare with branch, pin and delete (4.2); **Correlate findings** (or **Correlate all findings** in All repos) when two or more engines ran, with a token-cost confirmation, faded when AI is not configured, then a banner with **Show raw engine findings** / **Correlate again** / **Undo** (4.6.3); engine chips (what ran, what was missing or failed, source git clone or API, CodeQL languages; an amber chip per engine that failed for some languages or repositories, e.g. `codeql-failed`, with the error tail in its tooltip); **Download SBOM (CycloneDX)**; summary counts; severity filter; **Show dismissed**; findings with snippet, CWE, OWASP, engine, runtime badge, triage badge or hint, and fix; per finding **Suggest fix** / **Show fix**, **False positive**, **Accept risk**, **Confirm**, **Clear decision**, and a one-click triage rule from a hint; **AI Triage** summary of the repository on screen. Selecting a repository loads its last stored result. |
 | **Automation** | Policy (PR checks, comments, CodeQL on PRs, AI fixes in comments, blocking level, comments per update, scan on push, schedule and hour, repositories for scheduled scans), **Scan all repositories now**, the status name to require for merge blocking with the provider-specific steps, the **Triage rules** list (delete), and the **Automated scans** list (trigger, repository, target, result, findings; a row shows what was posted, notes and the findings). Refreshes every 10 seconds. |
 | **Events** | Up to 500 events whose host equals the organisation name (all time). Events whose host is a repository (GitHub audit entries with a repository) are not listed here. |
 | **Alerts** | Up to 100 alerts whose host equals the organisation name. |
@@ -1175,6 +1144,7 @@ Implemented in: `management/frontend/src/pages/code/CodeOverview.jsx`, `RepoPage
 | AI correlation | 60 findings per request, 25 requests per correlation (`OW_AI_CORR_MAX_BATCHES`, up to 500); answers cached 90 days |
 | AI business-logic engine | 40 route files per scan (`OW_AI_BL_MAX_FILES`, up to 500); files over 64 KB skipped; 3 requests at a time; answers cached 90 days |
 | Concurrent repository scans | `OW_SAST_MAX_CONCURRENT` (default 2): manual, "scan all", push, schedule and pull-request scans share the slots |
+| Commit scans | Newest 50 per repository (`OW_SAST_COMMIT_SCANS_KEEP`), plus pinned ones; the commit list offers the branch's 30 newest commits |
 | PR checks | Shallow fetch of 300 commits (deepened once to 3 000); inline comments 1-100 per update (default 20); AI fixes 5 per update; 2 000 commented-finding keys remembered per PR |
 | Runtime inventory | Every 15 min per service process (re-sent every 6 h when unchanged); 5 000 packages per process; "running" = seen in 24 h; index rows kept 14 days |
 | AI | Source-AI rate limit 6 requests per 10 minutes (shared by AI triage and fix suggestions); 30 lines of context each side; fixes cached 30 days |

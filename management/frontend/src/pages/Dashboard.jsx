@@ -378,7 +378,7 @@ export default function Dashboard() {
                 <div style={{ overflowX:'auto' }}>
                   {(raw?.sast_results || []).length === 0
                     ? <div style={{ padding:20, fontSize: 13.5, color:'var(--text3)', textAlign:'center', fontStyle:'italic' }}>
-                        No scans yet - connect a repo under DevOps → Commit Scan to begin.
+                        No scans yet - connect a repository under DevOps and run a SAST scan to begin.
                       </div>
                     : <table className="tbl">
                         <thead><tr>

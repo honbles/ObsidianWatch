@@ -13,8 +13,9 @@ package api
 //   - Each answer is cached by model + file path + file content for 90 days,
 //     so a rescan only pays for files that changed.
 //   - On a pull request only the files the PR changes are read.
-//   - It runs only on protected branches (and PRs into them), and only with
-//     the code model (Claude Opus 5.5 or newer, or Claude Fable / Mythos).
+//   - It runs only when chosen for a scan (or in a protected branch's
+//     profile), never by default, and only with the code model (Claude Opus
+//     5.5 or newer, or Claude Fable / Mythos).
 
 import (
 	"bytes"

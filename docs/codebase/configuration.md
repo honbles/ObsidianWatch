@@ -133,7 +133,7 @@ SAST findings have triage decisions and triage rules (capability.md section 4.12
 | Triage rules | SAST findings: a rule for a repository or all, optional path prefix and expiry | Automation tab / SAST tab hint (admin) |
 | Business hours | `DEV-017`, `DEV-018` | Settings `detection.business_hours` (for example `07-19`) and `detection.business_tz` (IANA zone). Default 06-22 UTC. |
 
-The code-scan secret patterns, the built-in SAST rules and the sensitive-file finder in the code scan do **not** honour the inline ignore markers.
+The history secret patterns and the built-in SAST rules do **not** honour the inline ignore markers.
 
 ---
 
@@ -174,7 +174,7 @@ The code-scan secret patterns, the built-in SAST rules and the sensitive-file fi
 |---|---|---|
 | `devops.*` events | Event retention of the events hypertable, default 90 days | `retention_days` in the agent-ingest backend `server.yaml` (7-3650), applied by `applyRetention` in `backend/cmd/server/main.go` |
 | Stored commits and redacted patches (`devops_commits`) | Until the connector is deleted | none |
-| Code scan results (`code_scan_results`) | **Every run is kept** (one new row per run). Pages show only the latest. | none; delete by hand if needed |
+| Commit scans (`sast_results`, branch `@<sha>`) | The newest `OW_SAST_COMMIT_SCANS_KEEP` (default 50) per repository, plus pinned ones | `OW_SAST_COMMIT_SCANS_KEEP` |
 | SAST results (`sast_results`) | One row per (connector, repository, branch). A re-scan overwrites it and clears the AI summary. | none |
 | Posture result | Last result per connector, in settings key `devops.posture.last.{id}` (maximum 4 MB). Removed with the connector. | none |
 | Automated scan jobs (`code_scan_jobs`) | Until the connector is deleted | none |

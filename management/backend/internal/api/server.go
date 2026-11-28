@@ -276,9 +276,6 @@ func New(cfg *config.Config, db *store.DB, backendDB *store.DB, logger *slog.Log
 	protected.HandleFunc("GET /api/v1/devops-commits/{sha}", handleGetDevOpsCommit(db))
 
 	// Code scanning
-	protected.HandleFunc("POST /api/v1/devops-connectors/{id}/code-scan", handleCodeScan(cfg, db, logger))
-	protected.HandleFunc("GET /api/v1/devops-connectors/{id}/code-scan", handleGetCodeScanResults(db))
-	protected.HandleFunc("POST /api/v1/devops-connectors/{id}/code-scan/ai", handleCodeScanAI(cfg, db))
 
 	// SAST - static analysis on full repo source
 	protected.HandleFunc("GET /api/v1/devops-connectors/{id}/posture", handleGetDevOpsPosture(db))
@@ -289,6 +286,11 @@ func New(cfg *config.Config, db *store.DB, backendDB *store.DB, logger *slog.Log
 	protected.HandleFunc("GET /api/v1/devops-connectors/{id}/sast/repos", handleListSASTRepos(db, logger))
 	protected.HandleFunc("GET /api/v1/devops-connectors/{id}/sast/sbom", handleSASTSBOM(db))
 	protected.HandleFunc("GET /api/v1/devops-connectors/{id}/sast/branches", handleListSASTBranches(db))
+	protected.HandleFunc("GET /api/v1/devops-connectors/{id}/sast/commits", handleListBranchCommits(db))
+	protected.HandleFunc("GET /api/v1/devops-connectors/{id}/sast/commit-scans", handleListCommitScans(db))
+	protected.HandleFunc("GET /api/v1/devops-connectors/{id}/sast/commit-scans/compare", handleCompareCommitScan(db))
+	protected.HandleFunc("POST /api/v1/devops-connectors/{id}/sast/commit-scans/pin", handlePinCommitScan(db))
+	protected.HandleFunc("DELETE /api/v1/devops-connectors/{id}/sast/commit-scans", adminOnly(handleDeleteCommitScan(db)))
 	protected.HandleFunc("GET /api/v1/devops-connectors/{id}/sast/coverage", handleSASTCoverage(db, logger))
 	protected.HandleFunc("GET /api/v1/devops-connectors/{id}/sast/engines", handleSASTEngines(cfg, db))
 	protected.HandleFunc("POST /api/v1/devops-connectors/{id}/sast/correlate", asyncJob(handleSASTCorrelate(cfg, db)))

@@ -175,17 +175,6 @@ func TestDevOpsDedupKeyPerRepo(t *testing.T) {
 	}
 }
 
-func TestCodeFindingDedupKeepsRepos(t *testing.T) {
-	out := deduplicateFindings([]CodeFinding{
-		{Repo: "a", Category: "secret", Title: "AWS key", File: ".env"},
-		{Repo: "b", Category: "secret", Title: "AWS key", File: ".env"},
-		{Repo: "a", Category: "secret", Title: "AWS key", File: ".env"},
-	})
-	if len(out) != 2 {
-		t.Fatalf("got %d", len(out))
-	}
-}
-
 func TestDevOpsDialGuard(t *testing.T) {
 	t.Setenv("OW_ALLOW_PRIVATE_DEVOPS", "")
 	for addr, ok := range map[string]bool{

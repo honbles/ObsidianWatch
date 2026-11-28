@@ -97,7 +97,7 @@ func scannedBranches(ctx context.Context, db *store.DB, connID int64) (map[strin
 }
 
 func computeSASTCoverage(ctx context.Context, db *store.DB, conn *store.DevOpsConnector, logger *slog.Logger) sastCoverage {
-	repos := listConnectorRepos(ctx, db, conn, logger)
+	repos, _ := listConnectorRepos(ctx, db, conn, logger)
 	scanned, last := scannedBranches(ctx, db, conn.ID)
 	reposPartial := false
 	if len(repos) == 0 && len(scanned) > 0 {

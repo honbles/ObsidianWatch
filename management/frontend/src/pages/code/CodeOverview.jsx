@@ -1,5 +1,5 @@
 // Code: repositories and findings across every connected Git source.
-// Each connector contributes its latest commit scan, its latest SAST scan and its last posture check.
+// Each connector contributes its latest SAST scan per repository and its last posture check.
 // They are joined on the short repository name, since posture reports "org/repo@branch" and scans "repo" or "org/repo".
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
@@ -19,7 +19,7 @@ const SEV_N = { critical: 5, high: 4, medium: 3, low: 2, info: 1 }
 const N_SEV = { 5: 'critical', 4: 'high', 3: 'medium', 2: 'low', 1: 'info' }
 const SEV_LABEL = { critical: 'Critical', high: 'High', medium: 'Medium', low: 'Low', info: 'Info', clean: 'Clean' }
 const TYPE_LABEL = { secret: 'Secrets', dependency: 'Dependencies', dangerous_code: 'Dangerous code', sensitive_file: 'Sensitive files', config: 'Configuration', sast: 'Code weaknesses (SAST)', posture: 'Branch and access rules' }
-const SOURCE_LABEL = { scan: 'Commit scan', sast: 'SAST', posture: 'Posture check' }
+const SOURCE_LABEL = { sast: 'SAST', posture: 'Posture check' }
 const PROVIDER_LABEL = { github: 'GitHub', gitlab: 'GitLab', azuredevops: 'Azure DevOps' }
 
 const repoKey = (s) => (s || '').split('@')[0].split('/').filter(Boolean).pop()?.toLowerCase() || ''
@@ -28,17 +28,12 @@ const parseJSON = (v) => { if (!v) return []; if (Array.isArray(v)) return v; tr
 
 async function loadConnector(c) {
   const get = (u) => api.get(u).then(r => r.data).catch(e => ({ _err: e.response?.status || 'error' }))
-  const [scan, sast, posture] = await Promise.all([
-    get(`/api/v1/devops-connectors/${c.id}/code-scan`),
+  const [sast, posture] = await Promise.all([
     get(`/api/v1/devops-connectors/${c.id}/sast`),
     get(`/api/v1/devops-connectors/${c.id}/posture`),
   ])
   const findings = []
   const base = { connector: c.id, org: c.org, provider: c.provider }
-  if (scan?.scan) for (const f of parseJSON(scan.scan.findings)) findings.push({
-    ...base, source: 'scan', type: f.category || 'config', sev: SEV_N[f.severity] || 1, title: f.title, detail: f.detail,
-    repo: repoKey(f.repo) || '(unknown)', where: f.file ? `${f.file}${f.line ? ':' + f.line : ''}` : '', at: scan.scan.scanned_at, fix: f.remediation, commit: f.commit, author: f.author,
-  })
   // Latest result per repository (older servers only send the single latest scan).
   const sastScans = Array.isArray(sast?.scans) && sast.scans.length ? sast.scans : (sast?.scan ? [sast.scan] : [])
   for (const sc of sastScans) for (const f of parseJSON(sc.findings)) findings.push({
@@ -53,8 +48,8 @@ async function loadConnector(c) {
       repo: repoLevel ? repoKey(f.resource) : `(${c.org})`, orgLevel: !repoLevel, branch: branchOf(f.resource), where: f.resource, at: pf.scanned_at, fix: f.fix,
     })
   }
-  const lastScan = [scan?.scan?.scanned_at, sast?.scan?.scanned_at, pf?.scanned_at].filter(Boolean).sort().pop()
-  return { findings, lastScan, scanned: { scan: !!scan?.scan, sast: !!sast?.scan, posture: !!pf }, reposChecked: pf?.repos_checked || 0 }
+  const lastScan = [sast?.scan?.scanned_at, pf?.scanned_at].filter(Boolean).sort().pop()
+  return { findings, lastScan, scanned: { sast: !!sast?.scan, posture: !!pf }, reposChecked: pf?.repos_checked || 0 }
 }
 
 export function useCodeData({ coverage = false } = {}) {
@@ -223,7 +218,7 @@ function FindingsTab({ findings, initialRepo }) {
   const groups = [
     { key: 'severity', label: 'Severity', values: countBy(findings, F_GET.severity, SEV_ORDER, SEV_LABEL) },
     { key: 'type', label: 'Finding type', values: countBy(findings, F_GET.type, Object.keys(TYPE_LABEL), TYPE_LABEL) },
-    { key: 'source', label: 'Source', values: countBy(findings, F_GET.source, ['scan', 'sast', 'posture'], SOURCE_LABEL) },
+    { key: 'source', label: 'Source', values: countBy(findings, F_GET.source, ['sast', 'posture'], SOURCE_LABEL) },
     { key: 'triage', label: 'Triage', values: countBy(findings.filter(f => f.triage), F_GET.triage, Object.keys(TRIAGE_LABEL), TRIAGE_LABEL) },
     ...(findings.some(f => f.testCode) ? [{ key: 'code', label: 'Code', values: countBy(findings.filter(f => f.source === 'sast'), F_GET.code, ['production', 'test'], CODE_LABEL) }] : []),
     { key: 'runtime', label: 'Runtime (dependencies)', values: countBy(findings.filter(f => f.reach), F_GET.runtime, Object.keys(REACH_LABEL), REACH_LABEL) },

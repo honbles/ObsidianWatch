@@ -10,7 +10,7 @@ func TestMergeUnifiedDedupAndSort(t *testing.T) {
 	now := time.Now()
 	sast := fromSAST(1, now, json.RawMessage(`[{"rule_id":"R1","severity":"HIGH","title":"Hardcoded secret","repo":"o/app","file":"a.go","line":10,"fix":"rotate"},
 		{"rule_id":"R2","severity":"low","title":"Weak hash","repo":"o/app","file":"b.go","line":3}]`))
-	code := fromCodeScan(1, now, json.RawMessage(`[{"severity":"critical","category":"secret","title":"Hardcoded secret","file":"a.go","line":"10","repo":"o/app"}]`))
+	code := fromSAST(2, now, json.RawMessage(`[{"rule_id":"S9","severity":"critical","title":"Hardcoded secret","repo":"o/app","file":"a.go","line":10}]`))
 	post := fromPosture(1, `{"findings":[{"severity":"medium","title":"No branch protection","detail":"d","resource":"o/app","fix":"enable"}],"scanned_at":"2026-11-01T00:00:00Z"}`)
 	got := mergeUnified(append(append(sast, code...), post...))
 	if len(got) != 3 {
